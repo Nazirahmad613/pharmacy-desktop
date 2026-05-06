@@ -17,3 +17,9 @@ build
 # OS files
 .DS_Store
 Thumbs.db
+
+.env
+/vendor
+/storage/logs
+/storage/framework
+/bootstrap/cache
