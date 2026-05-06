@@ -1,25 +1,37 @@
 # Dependencies
-node_modules
-vendor
+node_modules/
+vendor/
 
-# Env files
+# Environment
 .env
-
-# Build files
-dist
-build
+.env.*
 
 # Laravel
-/storage/logs
-/storage/framework
-/bootstrap/cache
+backend/storage/*
+!backend/storage/app/public
+!backend/storage/framework/.gitignore
+!backend/storage/logs/.gitignore
+backend/bootstrap/cache/*
+
+# Logs
+*.log
+
+# Database
+*.sqlite
+*.sqlite3
+
+# PHP local runtime (خیلی مهم)
+php/
 
 # OS files
 .DS_Store
 Thumbs.db
 
-.env
-/vendor
-/storage/logs
-/storage/framework
-/bootstrap/cache
+# Build
+dist/
+build/
+out/
+
+# IDE
+.vscode/
+.idea/
