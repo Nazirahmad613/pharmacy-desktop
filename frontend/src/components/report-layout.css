@@ -1,0 +1,135 @@
+/* ReportLayout.css */
+.report-page {
+  direction: rtl;
+  padding: 30px;
+  background: #eaf2ff; /* روشن‌تر برای کنتراست بهتر */
+  min-height: 100vh;
+}
+
+.report-title {
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 30px;
+  color: #0b1b3a;
+}
+
+/* کارت اصلی */
+.account-card {
+  background: #0d47a1; /* آبی واضح */
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: center;
+  border-right: 5px solid #64b5f6;
+  margin-bottom: 15px;
+
+  color: #ffffff; /* 👈 مهم: همه محتوا سفید شود */
+}
+
+/* hover */
+.account-card:hover {
+  transform: translateY(-3px);
+  transition: 0.3s ease;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+/* متن‌ها داخل کارت */
+.account-name {
+  font-weight: bold;
+  font-size: 18px;
+  min-width: 180px;
+  color: #ffffff;
+}
+
+.account-info {
+  min-width: 150px;
+  font-size: 14px;
+  color: #e3f2fd;
+  font-weight: 500;
+}
+
+.account-number {
+  font-weight: bold;
+  font-size: 15px;
+  color: #bbdefb;
+}
+
+/* بالانس‌ها */
+.balance-positive {
+  color: #00e676;
+  font-weight: bold;
+  font-size: large;
+}
+
+.balance-negative {
+  color: #ff5252;
+  font-weight: bold;
+  font-size: large;
+}
+
+/* فیلتر */
+.filter-section {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 25px;
+  justify-content: center;
+}
+
+.filter-section input {
+  padding: 10px 15px;
+  border-radius: 8px;
+  border: 1px solid #90caf9;
+  font-size: 16px;
+  min-width: 250px;
+}
+
+/* pagination */
+.pagination-wrapper {
+  margin-top: 30px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pagination-wrapper button {
+  background-color: #0d47a1;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pagination-wrapper button:hover {
+  background-color: #1565c0;
+}
+
+.pagination-wrapper button:disabled {
+  background-color: #90a4ae;
+}
+
+.pagination-wrapper .active-page {
+  background-color: #00c853;
+  font-weight: bold;
+}
+
+/* حالت‌ها */
+.loading-box,
+.no-data {
+  text-align: center;
+  margin-top: 40px;
+  font-size: 18px;
+  color: #0d47a1;
+}
+
+.error-text {
+  text-align: center;
+  color: #d50000;
+  margin-top: 30px;
+  font-weight: bold;
+}

@@ -1,0 +1,154 @@
+  /* ===================== */
+/* Global Styles for Purchase Form */
+/* ===================== */
+
+/* فرم کلی و پس‌زمینه */
+.main-layout {
+   min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  background-image: url("/bg3.jpg");
+  background-size: cover;
+  background-position: center;
+  color: rgb(251, 253, 253);
+  font-family: "Arial", sans-serif;
+  font: size 40px;
+}
+
+/* کانتینر فرم */
+.form-container {
+  width: 25%;                  /* کمی کوچکتر برای فرم اصلی */
+  background-color: #0b061e;
+  padding: 5px;                /* کاهش ارتفاع */
+  border-radius: 5px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+  margin-right: px;
+}
+
+/* لیبل‌ها */
+.form-container label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: normal;        /* کم کردن بولد بودن */
+  font-size: 13px;            /* کوچکتر کردن متن لیبل */
+}
+
+/* اینپوت‌ها و سلکت‌ها */
+.form-container input[type="text"],
+.form-container input[type="number"],
+.form-container input[type="date"],
+.form-container select {
+  width: 100%;
+  padding: 6px 8px;           /* کمتر کردن padding برای کوتاه شدن فرم */
+  margin-bottom: 8px;
+  border: 1px solid #0a041d;
+  border-radius: 6px;
+  font-size: 13px;            /* متن کوچکتر */
+  box-sizing: border-box;
+}
+
+/* دکمه‌ها */
+.form-container button {
+  padding: 10px 15px;
+  background-color: #4caf50;
+  color: #fff;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.form-container button:hover {
+  background-color: #45a049;
+}
+
+/* ====================== */
+/* آیتم‌های اضافه شده (لیست خرید) */
+.purchase-card {
+  border: 1px solid #2a2a40;
+  padding: 12px 18px;          /* کمی بزرگتر */
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background-color: #1a1a2e;
+  font-size: 22px;             /* بزرگتر */
+  font-weight: bold;           /* بولد کردن آیتم‌ها */
+  color: #f0f0f0;
+  line-height: 1.5;
+}
+
+/* عنوان‌ها داخل کارت */
+.purchase-card strong {
+  color: #e0e0ff;
+  font-size: 15px;             /* کمی بزرگتر */
+  font-weight: bold;
+}
+
+/* لیست آیتم‌ها */
+.purchase-card ul {
+  padding-left: 15px;
+  margin-top: 5px;
+  list-style-type: none; /* بدون بولت */
+}
+
+/* هر آیتم لیست */
+.purchase-card ul li {
+  margin-bottom: 6px;
+  padding: 3px 0;
+  border-bottom: 1px dashed #333;
+  font-size: 18px;            /* بزرگتر و قابل خواندن */
+  font-weight: bold;           /* بولد */
+}
+
+/* حذف خط آخر */
+.purchase-card ul li:last-child {
+  border-bottom: none;
+}
+
+/* خط جداکننده آیتم‌ها */
+.purchase-card hr {
+  border: 0.5px solid #333;
+  margin: 5px 0;
+}
+
+/* واکنش‌گرایی */
+@media (max-width: 768px) {
+  .form-container {
+    width: 90%;               /* فرم برای موبایل */
+    padding: 10px;
+    margin-right: 0;
+  }
+
+  .form-container input,
+  .form-container select {
+    font-size: 13px;
+  }
+
+  .form-container button {
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .purchase-card {
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+
+  .purchase-card ul li {
+    font-size: 14px;
+  }
+}
+
+/* عنوان کلی صفحه */
+.layout-title {
+  width: 100%;
+  text-align: center;
+  font-size: 2.6rem;
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: rgb(246, 247, 249);
+  text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.7);
+  align-self: center;
+}

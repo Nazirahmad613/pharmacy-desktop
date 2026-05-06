@@ -1,0 +1,242 @@
+{
+    "welcome": "Welcome",
+    "ongoing_projects": "Ongoing Projects",
+    "traffic_sources": "Traffic Sources",
+    "last_30_days": "Last 30 Days",
+
+    "campaigns": "Campaigns",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "google_visits": "Google ({{count}}k visits)",
+    "twitter_visits": "Twitter ({{count}}k visits)",
+    "tensor_visits": "Tensor ({{count}}k visits)",
+
+    "Sidebar theme": "Sidebar theme",
+    "Sidebar mode": "Sidebar mode",
+    "Full": "Full",
+    "Close": "Close",
+    "Compact": "Compact",
+    "Sidebar background image": "Sidebar background image",
+    "Topbar": "Topbar",
+    "Show": "Show",
+    "Fixed": "Fixed",
+
+    
+      "app.title": "App Title",
+      "app.description": "This is the application description.",
+      "nav.home": "Home",
+      "nav.settings": "Settings",
+      "nav.profile": "Profile",
+      "nav.logout": "Logout",
+      "settings.theme": "Theme",
+      "settings.language": "Language",
+      "settings.darkMode": "Dark Mode",
+      "settings.lightMode": "Light Mode",
+      "profile.name": "Name",
+      "profile.email": "Email",
+      "profile.update": "Update Profile",
+      "profile.changePassword": "Change Password",
+      "auth.login": "Login",
+      "auth.logout": "Logout",
+      "auth.register": "Register",
+      "auth.forgotPassword": "Forgot Password?",
+      "auth.username": "Username",
+      "auth.password": "Password",
+      "buttons.save": "Save",
+      "buttons.cancel": "Cancel",
+      "buttons.submit": "Submit",
+      "messages.success": "Operation completed successfully!",
+      "messages.error": "An error occurred. Please try again.",
+      "welcome_message": "صفحه اصلی دوخانه الفلاح",
+      "header_title": "شفاخانه الفلاح",
+      
+  
+  "login": "Login",
+  "logout": "Logout",
+  "authenticated": "Authenticated",
+  "not_authenticated": "Not Authenticated",
+  
+    "loading_notifications": "Loading notifications...",
+    "delete_notification": "Delete Notification",
+    "clear_notifications": "Clear Notifications",
+    "no_notifications": "No notifications available",
+    "tooltip_value": "Value",
+  "y_axis_unit": "units",
+  "traffic_rate": "Traffic Rate",
+  "google": "Google",
+  "facebook": "Facebook",
+  "others": "Others",
+  "percentage": "%",
+
+  "tooltip_title": "Data Information",
+  "x_axis": "Time",
+  "y_axis": "Value",
+  "series_1": "Revenue",
+  "series_2": "Expenses",
+  "series_3": "Profit",
+  "project_name": "Project {{id}}",
+  "more_users": "+{{count}} more",
+  "options": "More options",
+
+  "active_users": "Active Users",
+  "transactions": "Transactions",
+  "percentage_growth": "(+{{value}}%)",
+  "top_selling_products": "Top Selling Products",
+  "this_month": "This Month",
+  "last_month": "Last Month",
+  "name": "Name",
+  "revenue": "Revenue",
+  "stock_status": "Stock Status",
+  "action": "Action",
+  "earphone": "Earphone",
+  "iPhone x": "iPhone X",
+  "Head phone": "Headphone",
+  "available": "{{count}} available",
+  "in_stock": "In Stock",
+  "out_of_stock": "Out of Stock",
+
+  "upgrade": "Upgrade",
+  "upgrade_message": "Upgrade to <b>MatX PRO</b> for <br /> more resources",
+  "upgrade_now": "Upgrade Now",
+
+   
+    "change_language": "Change Language",
+    
+    "english": "English",
+    "persian": "فارسی",
+    
+      "material": "Material",
+      "autocomplete": "Autocomplete",
+      "autocomplete_combo": "Autocomplete Combo",
+      "async_autocomplete": "Asynchronous Autocomplete",
+      "badge_autocomplete": "Badge Autocomplete",
+      "settings": "Settings",
+      "update_settings": "Update Settings",
+      "current_settings": "Current Settings",
+      "layout_settings": "Layout Settings",
+      "language": "Language",
+      
+        "dashboard": "Main Page",
+          "pages": "Pages",
+          "session_auth": "Session/Auth",
+          "sign_in": "Sign In",
+          "sign_up": "Sign Up",
+          "forgot_password": "Forgot Password",
+          "error": "Error",
+          "add_information": "Add Information",
+          "add_new_information": "Add New Information",
+          "addmedication": "Add Medication",
+          "buttons": "Buttons",
+          "checkbox": "Checkbox",
+          "dialog": "Dialog",
+          "expansion_panel": "Expansion Panel",
+          "form": "Form",
+          "icons": "Icons",
+          "radio": "Radio",
+          "switch": "Switch",
+          "slider": "Slider",
+          "snackbar": "Snackbar",
+          "table": "Table",
+          "charts": "Charts",
+          "echarts": "Echarts",
+          "documentation": "Documentation",
+        
+        
+
+         
+
+  "notifications": {
+    "title": "Notifications",
+    "empty": "No notifications available",
+    "clear": "Clear Notifications",
+    "ago": "{time} ago",
+    "view": "View Notification"
+   
+  },
+  
+  "sidebar": {
+    "toggle": "Toggle Sidebar",
+    "open": "Open Sidebar",
+    "close": "Close Sidebar"
+  } ,
+  
+  "footer": {
+    "getMatXPro": "Get MatX Pro",
+    "designBy": "Designed and Developed by"
+  },
+  "loading": {
+    "message": "Loading, please wait..."
+  },
+
+  "logo": {
+    "title": "My Custom Logo",
+    "alt": "My Admin Panel Logo"
+  },
+  "menu": {
+    "open": "Open menu",
+    "options": "Menu options",
+    "item": "Menu item {{index}}"
+  },
+  "progress": {
+    "loading": "Loading...",
+    "completed": "Completed",
+    "in_progress": "In Progress"
+  },
+
+  "search": {
+    "placeholder": "Search here..."
+  },
+  "cart": {
+    "title": "Shopping Cart",
+    "checkout": "Checkout",
+    "price": "Price:",
+    "products": {
+      "333sa680bdf4976dfgga21rt4": { "title": "Bit Bass Headphone" },
+      "323sa680b324976dfgga21rt47": { "title": "Bass Speaker 1" },
+      "323sa680bdf4976dfgga21rt4": { "title": "Bass Speaker 2" }
+    }
+  },
+
+
+
+  
+ 
+        
+        "pres_insert":  "pres_insert",
+        "invent_insert": "invent_inser",
+        "sales_insert": "sales_insert",
+        "addsuppliers":"addsuppliers",
+        "addcustomers":"addcustomers",
+        "RegistationForm":"RegistationForm",
+          
+        "addchanges":"addchanges",
+        "parchases":"parchases",
+        "logs":"logs",
+        "PaymentForm":"PaymentForm",
+        "addcatagory":"addcatagory",
+        "BenefitsChart":"BenefitsChart",
+        "BenefitsReport":"BenefitsReport",
+        
+        "MedicationStockC":"MedicationStockC",
+        "MedicationStockT":"MedicationStockT",
+        "SalesChart":"SalesChart",
+        "SalesTable":"SalesTable",
+        "ParchasesChart":"ParchasesChart",
+        "ParchasesTable":"ParchasesTable",
+        "AccountSummaryPa":"AccountSummaryPa",
+        "hospital_Report":"hospital_Report"
+
+  
+
+
+
+
+
+
+
+
+
+
+        
+  }
+  

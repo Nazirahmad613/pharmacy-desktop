@@ -1,0 +1,423 @@
+/* sale-print.css - Fixed version with proper text display */
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700&family=Roboto:wght@300;400;500;700&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.print-container {
+  width: 100%;
+  max-width: 210mm;
+  background: white;
+  font-family: 'Vazirmatn', 'Roboto', sans-serif;
+  direction: rtl;
+  position: relative;
+  color: #000;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Header Section */
+.print-header {
+  background: linear-gradient(135deg, #003580 0%, #00509e 100%);
+  height: 90px;
+  position: relative;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.print-header::after {
+  content: '';
+  position: absolute;
+  bottom: -20px;
+  left: 0;
+  width: 100%;
+  height: 30px;
+  background: linear-gradient(135deg, #0095ff 0%, #0066cc 100%);
+  clip-path: polygon(0 0, 100% 0, 100% 70%, 0 100%);
+}
+
+.print-header::before {
+  content: '';
+  position: absolute;
+  bottom: -24px;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  background: linear-gradient(90deg, #ff9933 0%, #ffcc00 100%);
+  clip-path: polygon(0 50%, 100% 0, 100% 100%, 0 100%);
+}
+
+.logo-left {
+  width: 60px;
+  height: 60px;
+  background: white;
+  border-radius: 50%;
+  border: 3px solid #0095ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
+
+.logo-left-inner {
+  width: 45px;
+  height: 45px;
+  background: linear-gradient(135deg, #0095ff, #00d4ff);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 22px;
+  font-weight: bold;
+}
+
+.hospital-name {
+  flex: 1;
+  text-align: center;
+  color: white;
+  z-index: 2;
+}
+
+.hospital-name-persian {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 3px;
+  letter-spacing: 1px;
+}
+
+.hospital-name-english {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.5px;
+}
+
+.logo-right {
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, #003580, #0066cc);
+  border-radius: 50%;
+  border: 3px solid #ffcc00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
+
+.logo-right-inner {
+  color: #ffcc00;
+  font-size: 26px;
+}
+
+.date-section {
+  position: absolute;
+  top: 68px;
+  right: 20px;
+  color: white;
+  font-size: 10px;
+  z-index: 3;
+  font-weight: 500;
+}
+
+/* Prescription Info Section */
+.prescription-info {
+  display: flex;
+  padding: 15px;
+  gap: 15px;
+  border-bottom: 2px solid #0095ff;
+  background: white;
+  position: relative;
+  z-index: 2;
+}
+
+.prescription-left {
+  width: 45%;
+  border-right: 2px solid #0095ff;
+  padding-right: 15px;
+}
+
+.prescription-right {
+  width: 55%;
+  padding-left: 15px;
+}
+
+.doctor-info {
+  margin-bottom: 20px;
+}
+
+.doctor-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: #000;
+  margin-bottom: 5px;
+  font-family: 'Vazirmatn', 'Roboto', sans-serif;
+}
+
+.doctor-specialty {
+  font-size: 12px;
+  font-weight: 500;
+  color: #333;
+  font-family: 'Vazirmatn', 'Roboto', sans-serif;
+}
+
+.patient-details {
+  margin-top: 0;
+}
+
+.detail-field {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  font-family: 'Vazirmatn', 'Roboto', sans-serif;
+}
+
+.detail-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #003580;
+  margin-left: 8px;
+  min-width: 70px;
+}
+
+.detail-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #000;
+  border-bottom: 1px solid #ccc;
+  padding: 4px 0;
+  flex: 1;
+}
+
+.detail-row {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 8px;
+}
+
+.detail-row .detail-field {
+  flex: 1;
+}
+
+/* Vital Signs Section */
+.vital-signs {
+  margin: 12px 15px;
+  padding: 10px 15px;
+  background: linear-gradient(135deg, #f0f7ff 0%, #e8f0fe 100%);
+  border-radius: 8px;
+  border-right: 3px solid #0095ff;
+  position: relative;
+  z-index: 2;
+}
+
+.vital-signs-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.vital-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.vital-label {
+  font-weight: 800;
+  color: #003580;
+  font-size: 11px;
+}
+
+.vital-value {
+  color: #000;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Table Styles */
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 10px;
+  position: relative;
+  z-index: 2;
+}
+
+.print-table th {
+  background: linear-gradient(135deg, #003580 0%, #00509e 100%);
+  color: white;
+  padding: 8px 4px;
+  text-align: center;
+  font-weight: 800;
+  border: 1px solid #0066cc;
+  font-size: 10px;
+}
+
+.print-table td {
+  border: 1px solid #ddd;
+  padding: 6px 4px;
+  text-align: center;
+  color: #000;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.print-table tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+/* Summary Section */
+.summary-section {
+  display: flex;
+  justify-content: flex-end;
+  margin: 12px 15px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #003580 0%, #00509e 100%);
+  border-radius: 8px;
+  gap: 30px;
+  position: relative;
+  z-index: 2;
+}
+
+.summary-item {
+  text-align: center;
+}
+
+.summary-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: #ffcc00;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.summary-value {
+  font-size: 14px;
+  font-weight: 800;
+  color: white;
+}
+
+/* Footer */
+.print-footer {
+  position: relative;
+  margin-top: 15px;
+  background: linear-gradient(135deg, #003580 0%, #00509e 100%);
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  color: white;
+  z-index: 2;
+}
+
+.print-footer::before {
+  content: '';
+  position: absolute;
+  top: -20px;
+  left: 0;
+  width: 100%;
+  height: 25px;
+  background: linear-gradient(135deg, #0095ff 0%, #0066cc 100%);
+  clip-path: polygon(0 30%, 100% 0, 100% 100%, 0 100%);
+}
+
+.footer-icon {
+  font-size: 22px;
+  position: relative;
+  z-index: 2;
+}
+
+.footer-contact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  position: relative;
+  z-index: 2;
+}
+
+.footer-phones {
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.footer-address {
+  font-size: 9px;
+  text-align: right;
+}
+
+/* Watermark - moved to back */
+.watermark {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.04;
+  font-size: 50px;
+  color: #003580;
+  font-weight: 900;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Loading State */
+.loading-placeholder {
+  padding: 40px;
+  text-align: center;
+  font-size: 14px;
+  color: #666;
+}
+
+/* Print Styles */
+@media print {
+  body {
+    margin: 0;
+    padding: 0;
+    background: white;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .print-container {
+    box-shadow: none;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    max-width: 100%;
+    page-break-after: avoid;
+    page-break-inside: avoid;
+  }
+  
+  .print-table th {
+    background: #003580 !important;
+    color: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .summary-section,
+  .print-header,
+  .print-footer,
+  .vital-signs {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .print-table {
+    page-break-inside: avoid;
+  }
+  
+  .prescription-info {
+    page-break-inside: avoid;
+  }
+}

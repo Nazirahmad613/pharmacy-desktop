@@ -1,0 +1,73 @@
+.custom-form .form-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 60px); /* فضای باقیمانده بعد از هدر */
+    margin-top: 60px; /* جلوگیری از رفتن فرم زیر هدر */
+    background-color: #f4f4f4;
+}
+
+.custom-form .form-container {
+    background: rgb(25, 23, 39);
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.2);
+    width: 400px;
+    text-align: center;
+}
+
+/* استایل عنوان فرم */
+.custom-form h2 {
+    color: #f4ecec;
+    margin-bottom: 15px;
+}
+
+/* استایل لیبل‌ها */
+.custom-form label {
+    display: block;
+    margin-top: 10px;
+    font-weight: bold;
+    color: #e6e4ef;
+    text-align: right;
+}
+
+/* استایل فیلدهای ورودی */
+.custom-form input {
+    width: 100%;
+    padding: 12px;
+    margin-top: 5px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border 0.3s ease-in-out;
+}
+
+.custom-form input:focus {
+    border-color: #007bff;
+    outline: none;
+}
+
+/* استایل دکمه */
+.custom-form button {
+    width: 100%;
+    padding: 12px;
+    margin-top: 15px;
+    background-color: #56569e;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s ease-in-out;
+}
+
+.custom-form button:hover {
+    background-color: #2626c1;
+}
+
+/* پیام موفقیت */
+.custom-form .success-message {
+    text-align: center;
+    color: rgb(227, 230, 245);
+    margin-bottom: 10px;
+}

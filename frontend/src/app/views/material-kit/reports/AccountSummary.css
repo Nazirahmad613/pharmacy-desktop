@@ -1,0 +1,89 @@
+.account-page {
+  direction: rtl;
+  padding: 30px;
+  background: #939699;
+  min-height: 100vh;
+}
+
+.account-title {
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 30px;
+  color: #000105;
+}
+
+.filter-section {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 25px;
+  color: #0f032e;
+}
+
+.account-card {
+  background: #1b084f;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.07);
+  transition: all 0.3s ease;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: center;
+  border-right: 5px solid #5d5959;
+}
+
+.account-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.account-name {
+  font-weight: bold;
+  font-size: 18px;
+  min-width: 180px;
+  color: #ffffff;
+}
+
+.account-info {
+  min-width: 150px;
+  font-size: 14px;
+  color: #cfd8dc;
+  font-weight: bold;
+}
+
+.account-number {
+  font-weight: bold;
+  font-size: 15px;
+}
+
+.balance-positive {
+  color: #0fba18;
+  font-weight: bold;
+  font-size: large;
+}
+
+.balance-negative {
+  color: #e43636;
+  font-weight: bold;
+  font-size: large;
+}
+
+.pagination-wrapper {
+  margin-top: 30px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.loading-box {
+  text-align: center;
+  margin-top: 40px;
+}
+
+.error-text {
+  text-align: center;
+  color: red;
+  margin-top: 30px;
+}

@@ -1,0 +1,164 @@
+ /* صفحه کامل */
+.medication-page {
+  padding: 30px;
+  background-color: #1c1b29;
+  min-height: 100vh;
+  color: #f4f4f4;
+  direction: rtl;
+  font-family: "Vazir", sans-serif;
+}
+
+/* کانتینر فرم */
+.medication-page .form-container {
+  background: #2a283e;
+  padding: 30px 40px;
+  border-radius: 12px;
+  max-width: 1200px; /* افزایش عرض فرم */
+  margin: 0 auto;
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* گروه‌بندی هر فیلد فرم */
+.medication-page .form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 20px;
+}
+
+/* عنوان */
+.medication-page h2 {
+  font-size: 22px;
+  margin-bottom: 20px;
+  color: #fff;
+}
+
+/* لیبل‌ها */
+.medication-page label {
+  font-weight: bold;
+  margin-bottom: 6px;
+  display: block;
+  color: #e4e4f3;
+  font-size: 14px;
+}
+
+/* ورودی‌ها و سلکت‌ها */
+.medication-page input,
+.medication-page select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background-color: #f8f8f8;
+  font-size: 14px;
+  color: #222;
+  box-sizing: border-box;
+  margin-top: 3px;
+}
+
+/* حالت فوکوس */
+.medication-page input:focus,
+.medication-page select:focus {
+  outline: none;
+  border-color: #6699ff;
+}
+
+/* ردیف عنوان اقلام نسخه */
+.sale-form-header-row {
+  display: grid;
+  grid-template-columns: 2.5fr 2.5fr 2fr 1.5fr 1.5fr 1.5fr auto;
+  gap: 5px;
+  margin-top: 25px;
+  padding: 12px 13px;
+  font-weight: bold;
+  font-size: 14px;
+  background-color: #161d3a;
+  border-radius: 8px;
+  color: #fff;
+  text-align: center;
+  user-select: none;
+  box-shadow: 0 0 5px rgba(19, 40, 124, 0.7);
+}
+
+.sale-form-header-row > div {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ردیف هر آیتم نسخه */
+.sale-form-item-row {
+  display: grid;
+  grid-template-columns: 2.5fr 2.5fr 2fr 1.5fr 1.5fr 1.5fr auto;
+  gap: 12px;
+  margin-top: 10px;
+  align-items: center;
+  background-color: #373555;
+  padding: 10px 15px;
+  border-radius: 10px;
+  color: #eee;
+  font-size: 14px;
+}
+
+/* ورودی‌ها و سلکت‌ها در ردیف آیتم‌ها */
+.sale-form-item-row input,
+.sale-form-item-row select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #555;
+  background-color: #f8f8f8;
+  color: #222;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+/* فقط خواندنی */
+.sale-form-item-row input[readonly],
+.medication-page input[readonly] {
+  background-color: #e9ecef;
+  color: #333;
+  font-weight: bold;
+}
+
+/* فوکوس روی ورودی‌ها */
+.sale-form-item-row input:focus,
+.sale-form-item-row select:focus {
+  outline: none;
+  border-color: #6699ff;
+}
+
+/* دکمه حذف آیتم */
+.sale-form-item-row button {
+  background-color: #d9534f;
+  color: white;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.sale-form-item-row button:hover {
+  background-color: #c9302c;
+}
+
+/* دکمه افزودن و ثبت */
+.medication-page button {
+  background-color: #5c7cfa;
+  color: white;
+  padding: 12px;
+  font-size: 15px;
+  border: none;
+  border-radius: 10px;
+  margin-top: 20px;
+  cursor: pointer;
+  transition: 0.3s ease-in-out;
+}
+
+.medication-page button:hover {
+  background-color: #3b5bdb;
+}

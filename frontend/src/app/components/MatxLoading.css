@@ -1,0 +1,190 @@
+
+.matx-loading-small {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.5s ease;
+}
+
+.matx-loading-small.exit-small {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.matx-loading-small.small-mode {
+  transform: scale(0.8);
+}
+
+.matx-loading-small-container {
+  width: 300px;
+  height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* ماشین اسپرت کوچک */
+.sports-car-small {
+  position: relative;
+  width: 160px;
+  height: 60px;
+  animation: carBounceSmall 0.5s ease-in-out infinite;
+}
+
+.sports-car-small.drive-away-small {
+  animation: driveAwaySmall 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.car-svg-small {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.2));
+}
+
+/* خطوط حرکت کوچک */
+.motion-lines-small {
+  position: absolute;
+  left: -30px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.line-small {
+  display: block;
+  height: 2px;
+  background: linear-gradient(90deg, #ff3b3b, #4facfe);
+  border-radius: 2px;
+  animation: lineMoveSmall 0.6s ease-out infinite;
+}
+
+.line1-small {
+  width: 20px;
+  animation-delay: 0s;
+}
+
+.line2-small {
+  width: 15px;
+  animation-delay: 0.15s;
+}
+
+.line3-small {
+  width: 10px;
+  animation-delay: 0.3s;
+}
+
+/* دود کوچک */
+.smoke-group-small {
+  animation: smokeFloatSmall 0.6s ease-out infinite;
+}
+
+.smoke-puff-small {
+  animation: puffExpandSmall 0.6s ease-out infinite;
+}
+
+.puff1-small { animation-delay: 0s; }
+.puff2-small { animation-delay: 0.15s; }
+.puff3-small { animation-delay: 0.3s; }
+.puff4-small { animation-delay: 0.45s; }
+
+/* متن لودینگ کوچک */
+ .loading-text-small {
+  margin-top: 15px;
+  display: flex;
+  gap: 3px;
+  font-size: 14px;
+  font-weight: bold;
+  font-family: 'Arial Black', sans-serif;
+  direction: ltr;
+  unicode-bidi: embed; /* اضافه کنید برای پشتیبانی بهتر */
+}
+
+.loading-text-small span {
+  background: linear-gradient(135deg, #ff3b3b, #4facfe);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
+  animation: textFloatSmall 0.4s ease-in-out infinite alternate;
+}
+
+.loading-text-small span:nth-child(1) { animation-delay: 0s; }
+.loading-text-small span:nth-child(2) { animation-delay: 0.1s; }
+.loading-text-small span:nth-child(3) { animation-delay: 0.2s; }
+.loading-text-small span:nth-child(4) { animation-delay: 0.3s; }
+.loading-text-small span:nth-child(5) { animation-delay: 0.4s; }
+.loading-text-small span:nth-child(6) { animation-delay: 0.5s; }
+.loading-text-small span:nth-child(7) { animation-delay: 0.6s; }
+.loading-text-small span:nth-child(8) { animation-delay: 0.7s; }
+.loading-text-small span:nth-child(9) { animation-delay: 0.8s; }
+.loading-text-small span:nth-child(10) { animation-delay: 0.9s; }
+
+/* انیمیشن‌ها */
+@keyframes carBounceSmall {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes driveAwaySmall {
+  0% {
+    transform: translateX(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(200px) rotate(5deg);
+    opacity: 0;
+  }
+}
+
+@keyframes lineMoveSmall {
+  0% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+}
+
+@keyframes smokeFloatSmall {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-20px);
+  }
+}
+
+@keyframes puffExpandSmall {
+  0% {
+    r: 3;
+    opacity: 0.6;
+  }
+  100% {
+    r: 8;
+    opacity: 0;
+  }
+}
+
+@keyframes textFloatSmall {
+  from {
+    transform: translateY(0px) scale(1);
+  }
+  to {
+    transform: translateY(-4px) scale(1.05);
+  }
+}   

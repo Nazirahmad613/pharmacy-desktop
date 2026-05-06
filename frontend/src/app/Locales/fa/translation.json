@@ -1,0 +1,263 @@
+{
+    "welcome": "خوش آمدید",
+    "ongoing_projects": "پروژه‌های جاری",
+    "traffic_sources": "منابع ترافیک",
+    "last_30_days": "آخرین ۳۰ روز",
+
+    "campaigns": "کمپین‌ها",
+    "today": "امروز",
+    "yesterday": "دیروز",
+    "google_visits": "گوگل ({{count}}k بازدید)",
+    "twitter_visits": "توییتر ({{count}}k بازدید)",
+    "tensor_visits": "تنسور ({{count}}k بازدید)",
+
+    "Sidebar theme": "تم نوار کناری",
+    "Sidebar mode": "حالت نوار کناری",
+    "Full": "کامل",
+    "Close": "بسته",
+    "Compact": "فشرده",
+    "Sidebar background image": "تصویر پس‌زمینه نوار کناری",
+    "Topbar": "نوار بالایی",
+    "Show": "نمایش",
+    "Fixed": "ثابت",
+  
+      "dashboard": "صفحه اصلی",
+      "users": "کاربران",
+      "profile": "پروفایل",
+      "settings": "تنظیمات",
+      "logout": "خروج",
+      "login": "ورود",
+      "register": "ثبت نام",
+      "email": "ایمیل",
+      "password": "رمز عبور",
+      "confirm_password": "تأیید رمز عبور",
+      "remember_me": "مرا به خاطر بسپار",
+      "forgot_password": "رمز عبور خود را فراموش کرده‌اید؟",
+      "submit": "ارسال",
+      "cancel": "لغو",
+    
+      "actions": "عملیات",
+      "edit": "ویرایش",
+      "delete": "حذف",
+      "save": "ذخیره",
+      "create": "اضافه کردن ",
+      "update": "بروزرسانی",
+    
+    
+      "no_data_found": "داده‌ای یافت نشد",
+      "home": "صفحه اصلی",
+      "language": "زبان",
+     
+      "view": "مشاهده",
+      "details": "جزئیات",
+      "success": "موفقیت‌آمیز",
+      "error": "خطا",
+      "warning": "هشدار",
+      "info": "اطلاعات",
+     
+  
+        "authenticated": "احراز هویت شده",
+        "not_authenticated": "احراز هویت نشده",
+        
+          "loading_notifications": "در حال بارگذاری اعلان‌ها...",
+          "delete_notification": "حذف اعلان",
+          "clear_notifications": "پاک کردن اعلان‌ها",
+          "no_notifications": "هیچ اعلانی موجود نیست",
+           
+            "tooltip_value": "مقدار",
+            "y_axis_unit": "واحد",
+            "traffic_rate": "نرخ ترافیک",
+  "google": "گوگل",
+  "facebook": "فیس‌بوک",
+  "others": "سایر",
+  "percentage": "درصد",
+
+  "tooltip_title": "اطلاعات داده",
+  "x_axis": "زمان",
+  "y_axis": "مقدار",
+  "series_1": "درآمد",
+  "series_2": "هزینه‌ها",
+  "series_3": "سود",
+  "project_name": "پروژه ",
+  "more_users": "بیشتر",
+  "options": "گزینه‌های بیشتر",
+
+  "active_users": "کاربران فعال",
+  "transactions": "تراکنش‌ها",
+  "percentage_growth": " فیصدی رشد ",
+  
+    "top_selling_products": "پرفروش‌ترین محصولات",
+    "this_month": "این ماه",
+    "last_month": "ماه گذشته",
+    "name": "نام",
+    "revenue": "درآمد",
+    "stock_status": "وضعیت موجودی",
+    "action": "عملیات",
+    "earphone": "هدفون",
+    "iPhone x": "آیفون X",
+    "Head phone": "هدست",
+    "available": "عدد موجود",
+    "in_stock": "موجود در انبار",
+    "out_of_stock": "ناموجود",
+  
+    "navigation": {
+      "expand": "باز کردن",
+      "collapse": "بستن"
+    },
+   
+      
+     
+    "badge": {
+      "new": "جدید",
+      "update": "بروزرسانی",
+      "hot": "داغ"
+    },
+
+    "notifications":{
+      "title": "اعلان‌ها",
+      "empty": "هیچ اعلانی موجود نیست",
+      "clear": "پاک کردن اعلان‌ها",
+      "ago": "{time} پیش",
+      "view": "مشاهده اعلان"
+    },
+    "sidebar": {
+      "toggle": "تغییر وضعیت سایدبار",
+      "open": "باز کردن سایدبار",
+      "close": "بستن سایدبار"
+    },
+
+    "footer": {
+      "getMatXPro": "دریافت  صحفحات اصلی سیستم ",
+      "designBy": "طراحی و توسعه توسط"
+    },
+    "loading": {
+      "message": "در حال بارگذاری، لطفاً صبر کنید..."
+    },
+    "logo": {
+      "title": " مشتریان ",
+      "alt": "مدیر صفحه"
+    },
+
+    
+      "menu": {
+        "open": "باز کردن منو",
+        "options": "گزینه‌های منو",
+        "item": "گزینه منو {{index}}",
+        "dashboard": "داشبورد",
+      "users": "کاربران",
+      "settings": "تنظیمات",
+      "reports": "گزارش‌ها",
+      "help": "راهنما"
+      },
+      "progress": {
+        "loading": "در حال بارگذاری...",
+        "completed": "تکمیل شده",
+        "in_progress": "در حال انجام"
+      },
+      "search": {
+        "placeholder": "اینجا جستجو کنید..."
+      },
+
+          
+  "cart": {
+    "title": "سبد خرید",
+    "checkout": "پرداخت",
+    "price": "قیمت:",
+    "products": {
+      "333sa680bdf4976dfgga21rt4": { "title": "هدفون بیس بیت" },
+      "323sa680b324976dfgga21rt47": { "title": "بلندگوی بیس ۱" },
+      "323sa680bdf4976dfgga21rt4": { "title": "بلندگوی بیس ۲" }
+    }
+  },
+  "upgrade": "ارتقا",
+  "upgrade_message": "ب ارتقا دهید ت منابع بیشتری داشته باشید",
+  "upgrade_now": "همین حالا ارتقا دهید",
+
+  "change_language": "تغییر زبان",
+  "english": "انگلیسی",
+  "persian": "فارسی",
+  
+    "material": "متریال",
+    "autocomplete": "تکمیل خودکار",
+    "autocomplete_combo": "ترکیب تکمیل خودکار",
+    "async_autocomplete": "تکمیل خودکار ناهمزمان",
+    "badge_autocomplete": "تکمیل خودکار با نشان",
+    
+    "update_settings": "به‌روزرسانی تنظیمات",
+    "current_settings": "تنظیمات فعلی",
+    "layout_settings": "تنظیمات چیدمان",
+    
+    
+      "pages": "بخش های عمده سیستم ",
+      "session_auth": "احراز هویت",
+      "sign_in": "ورود",
+      "sign_up": "ثبت‌نام",
+      "components": "اجزا",
+        "add_information": "افزودن اطلاعات",
+        "add_new_information": "افزودن اطلاعات جدید",
+        "addmedication": "ثبت دواها",
+        "buttons": "دکمه‌ها",
+        "checkbox": "چک‌باکس",
+        "dialog": "دیالوگ",
+        "expansion_panel": "پنل توسعه",
+        "form": "فرم",
+        "icons": "آیکون‌ها",
+        "radio": "دکمه رادیویی",
+        "switch": "کلید تغییر وضعیت",
+        "slider": "نوار لغزنده",
+        "snackbar": "نوار اطلاع‌رسانی",
+        "table": "جدول",
+        "charts": "چارت ها ",
+        "echarts": "ای‌چارتز",
+        "documentation": "مستندات",
+        "cust_insert":"ثبت معلومات مشتری",
+        "doctor_insert":"ثبت معلومات داکتر ",
+        "pres_insert":"اجرآ نخسه جات ",
+        "invent_insert":"ذخیره معلومات عمومی در گدام",
+        "sales_insert":"فروشات",
+        "sales_d_insert":"ثبت معلومات  جزئیات فروش  بطور عمده ",
+        "addsuppliers":"اضاقه نمودن شرکت سازنده دوا",
+        "addcustomers":"اضافه نمودن مشتری جدید",
+        "RegistationForm":"ثبت نام ",
+        
+        "addchanges":"معاملات",
+        "parchases":"خریداری",
+        "logs":"ذخیره تغییرات سیستم",
+        "PaymentForm":"فورم پرداخت ها",
+        "addcatagory":"اضافه نمودن کتگوری",
+        "BenefitsChart":"چارت گزارش  فواید",
+        "BenefitsReport":"گزارش وضعیت فواید",
+       
+        "MedicationStockChart":"چارت گزارش موجودی ",
+        "MedicationStockTable":"جدول گزارش موجودی ",
+        "SalesChart":"چارت گزارش فروش",
+        "SalesTable":"جدول گزارش فروش",
+        "ParchasesChart":"چارت گزارش خریداری",
+        "ParchasesTable":"جدول گزارش خریداری",
+        "AccountSummaryPage":"حسابات",
+        "hospital_Report":"گزارش عمومی شفاخانه"
+
+        
+
+
+
+       
+      
+      
+      
+     
+    
+
+
+    
+    
+  
+
+    
+    
+
+
+
+
+  }
+  

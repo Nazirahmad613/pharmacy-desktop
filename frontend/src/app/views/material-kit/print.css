@@ -1,0 +1,102 @@
+@media print {
+
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  body {
+    background: white !important;
+    direction: rtl;
+    font-family: Vazirmatn;
+  }
+
+  .print-container {
+    width: 100%;
+    color: black !important;
+  }
+
+  .print-container * {
+    color: black !important;
+  }
+
+  .clinic-title {
+    text-align: center;
+    font-size: 24px;
+    margin: 0;
+  }
+
+  .print-header {
+    text-align: center;
+    margin-bottom: 25px;
+  }
+
+  .print-info {
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+  }
+
+  .print-table th,
+  .print-table td {
+    
+    padding: 8px;
+    text-align: center;
+    font-size: 14px;
+  }
+
+  .print-table th {
+    background: #f2f2f2;
+  }
+
+  .print-footer {
+    margin-top: 25px;
+    text-align: left;
+    font-weight: bold;
+  }
+}
+
+ @media print {
+
+  header,
+  nav,
+  aside,
+  .sidebar,
+  .main-layout-header {
+    display: none !important;
+  }
+
+}
+
+.header-contact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 5px;
+  font-size: 14px;
+}
+
+.address {
+  text-align: right;
+}
+
+.phone {
+  text-align: left;
+}
+
+
+@media print {
+  header,
+  .main-layout-header,
+  .sidebar,
+  nav {
+    display: none !important;
+  }
+}

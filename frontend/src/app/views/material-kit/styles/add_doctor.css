@@ -1,0 +1,60 @@
+.doctor-form .doctor-form-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background: url('/images/1.jpg') no-repeat center center fixed;
+    background-size: cover;
+}
+
+.doctor-form .doctor-form-container {
+    background: rgb(19, 17, 62);
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    width: 350px;
+    text-align: right;
+}
+
+.doctor-form .doctor-form-container h2 {
+    text-align: center;
+    color: #f9eded;
+    margin-bottom: 15px;
+}
+
+.doctor-form .doctor-form-container label {
+    font-weight: bold;
+    display: block;
+    margin-top: 10px;
+    color: #f9f7f7;
+    font-size: 14px;
+}
+
+.doctor-form .doctor-form-container input[type="text"],
+.doctor-form .doctor-form-container input[type="number"],
+.doctor-form .doctor-form-container input[type="file"] {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 14px;
+    background-color: #f9f9f9;
+}
+
+.doctor-form .doctor-form-container button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 15px;
+    background-color: #56569e;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s ease;
+}
+
+.doctor-form .doctor-form-container button:hover {
+    background-color: #1f259f;
+}
