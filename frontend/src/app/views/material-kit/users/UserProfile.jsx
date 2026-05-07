@@ -1,80 +1,134 @@
 import { useEffect, useState } from "react";
+import api from "../../../../api";
+import ReportLayout from "../../../../components/ReportLayout";
 import {
   Box,
   Button,
-  Card,
-  CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   TextField,
-  Avatar,
-  Typography,
-  Grid,
-  Divider,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
   IconButton,
   CircularProgress,
-  Alert,
-  Snackbar,
-  InputAdornment,
+  Avatar,
 } from "@mui/material";
-import {
-  Save as SaveIcon,
-  Edit as EditIcon,
-  PhotoCamera as PhotoCameraIcon,
-  Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon,
-} from "@mui/icons-material";
-import { useAuth } from "../../../contexts/AuthContext";
-import api from "../../../../api";
-import ReportLayout from "../../../../components/ReportLayout";
-import { FaUserCircle, FaKey, FaEnvelope, FaUserTag } from "react-icons/fa";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import { FaKey, FaUserCircle } from "react-icons/fa";
+import { NavLink } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { useAuth } from "../../../contexts/AuthContext";
+import "../../../../components/ReportLayout";
 
-export default function ProfilePage() {
-  const { user, updateUser } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+export default function UsersPage() {
+  const { user: currentUser, updateUser } = useAuth();
+
+  const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    current_password: "",
-    new_password: "",
-    new_password_confirmation: "",
+    role: "user",
+    password: "",
+    password_confirmation: "", // اضافه شد برای تایید پسورد
+    avatar: null,
   });
-  const [avatar, setAvatar] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "success",
-  });
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  const isAdminOrSuper = currentUser && ["admin", "super_admin"].includes(currentUser.role?.toLowerCase() || "");
 
   useEffect(() => {
+    Promise.all([
+      api.get("/users"),
+      api.get("/roles")
+    ])
+      .then(([usersRes, rolesRes]) => {
+        setUsers(usersRes.data);
+        setRoles(rolesRes.data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        toast.error("❌ خطا در دریافت اطلاعات");
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return (
+      <ReportLayout>
+        <div className="report-page">
+          <div className="loading-box">
+            <CircularProgress />
+          </div>
+        </div>
+      </ReportLayout>
+    );
+  }
+
+  if (currentUser?.role === "hospital_head") {
+    return (
+      <ReportLayout>
+        <div className="report-page">
+          <div style={{ textAlign: "center", marginTop: "40px" }}>
+            <h2 className="report-title">شما فقط اجازه مشاهده گزارش‌ها را دارید</h2>
+            <NavLink to="/reports" style={{ textDecoration: "none" }}>
+              <Button variant="contained" color="primary" sx={{ mt: 2 }}>
+                مشاهده گزارش‌ها
+              </Button>
+            </NavLink>
+          </div>
+        </div>
+      </ReportLayout>
+    );
+  }
+
+  const handleOpenDialog = (user = null) => {
     if (user) {
+      setEditingUser(user);
       setFormData({
-        ...formData,
-        name: user.name || "",
-        email: user.email || "",
-        current_password: "",
-        new_password: "",
-        new_password_confirmation: "",
+        name: user.name,
+        email: user.email,
+        role: user.roles?.[0]?.name || "user",
+        password: "",
+        password_confirmation: "",
+        avatar: null,
       });
       setAvatarPreview(user.avatar_url || null);
+    } else {
+      setEditingUser(null);
+      setFormData({ 
+        name: "", 
+        email: "", 
+        role: "user", 
+        password: "", 
+        password_confirmation: "",
+        avatar: null 
+      });
+      setAvatarPreview(null);
     }
-  }, [user]);
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setAvatarPreview(null);
+  };
 
   const handleAvatarChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error("❌ حجم عکس نباید بیشتر از 2 مگابایت باشد");
-        return;
-      }
-      if (!file.type.match(/image\/(jpeg|png|jpg|gif)/)) {
-        toast.error("❌ فرمت عکس باید JPEG، PNG، JPG یا GIF باشد");
-        return;
-      }
-      setAvatar(file);
+      setFormData({ ...formData, avatar: file });
       const reader = new FileReader();
       reader.onloadend = () => {
         setAvatarPreview(reader.result);
@@ -83,337 +137,370 @@ export default function ProfilePage() {
     }
   };
 
-  const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const handleUpdateProfile = async () => {
-    if (!formData.name.trim()) {
-      toast.error("❌ نام خود را وارد کنید");
+  const handleSave = async () => {
+    // اعتبارسنجی ساده سمت کلاینت
+    if (!formData.name?.trim()) {
+      toast.error("❌ نام کاربر را وارد کنید");
       return;
     }
-    if (!formData.email.trim()) {
-      toast.error("❌ ایمیل خود را وارد کنید");
+    if (!formData.email?.trim()) {
+      toast.error("❌ ایمیل کاربر را وارد کنید");
+      return;
+    }
+    if (!editingUser && !formData.password) {
+      toast.error("❌ رمز عبور را وارد کنید");
+      return;
+    }
+    if (!editingUser && formData.password !== formData.password_confirmation) {
+      toast.error("❌ رمز عبور با تکرار آن مطابقت ندارد");
       return;
     }
 
-    setLoading(true);
+    setUploading(true);
 
     try {
-      const formDataToSend = new FormData();
-      formDataToSend.append("name", formData.name);
-      formDataToSend.append("email", formData.email);
-
-      if (avatar instanceof File) {
-        formDataToSend.append("avatar", avatar);
+      if (editingUser) {
+        // ویرایش کاربر - می‌توان از JSON یا FormData استفاده کرد
+        const updateData = {
+          name: formData.name,
+          email: formData.email,
+          role: formData.role,
+        };
+        
+        if (formData.password && formData.password.trim() !== "") {
+          updateData.password = formData.password;
+          updateData.password_confirmation = formData.password_confirmation;
+        }
+        
+        // اگر آواتار وجود دارد، از FormData استفاده می‌کنیم
+        if (formData.avatar instanceof File) {
+          const formDataToSend = new FormData();
+          formDataToSend.append('name', formData.name);
+          formDataToSend.append('email', formData.email);
+          formDataToSend.append('role', formData.role);
+          if (formData.password) {
+            formDataToSend.append('password', formData.password);
+            formDataToSend.append('password_confirmation', formData.password_confirmation);
+          }
+          formDataToSend.append('avatar', formData.avatar);
+          formDataToSend.append('_method', 'PUT');
+          
+          const res = await api.post(`/users/${editingUser.id}`, formDataToSend, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          
+          const updatedUser = res.data;
+          setUsers(users.map(u => (u.id === editingUser.id ? updatedUser : u)));
+          
+          if (currentUser && currentUser.id === editingUser.id) {
+            updateUser(updatedUser);
+          }
+          toast.success("✅ کاربر با موفقیت ویرایش شد");
+        } else {
+          // بدون آواتار، از JSON استفاده می‌کنیم
+          const res = await api.put(`/users/${editingUser.id}`, updateData);
+          const updatedUser = res.data;
+          setUsers(users.map(u => (u.id === editingUser.id ? updatedUser : u)));
+          
+          if (currentUser && currentUser.id === editingUser.id) {
+            updateUser(updatedUser);
+          }
+          toast.success("✅ کاربر با موفقیت ویرایش شد");
+        }
+      } else {
+        // ایجاد کاربر جدید - استفاده از JSON (نه FormData)
+        const newUserData = {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          password_confirmation: formData.password_confirmation,
+          role: formData.role,
+        };
+        
+        console.log("Sending user data:", newUserData);
+        
+        const res = await api.post("/users", newUserData);
+        
+        console.log("User created successfully:", res.data);
+        setUsers([...users, res.data]);
+        toast.success("✅ کاربر با موفقیت اضافه شد");
       }
-
-      if (formData.new_password) {
-        if (formData.new_password.length < 6) {
-          toast.error("❌ رمز عبور جدید باید حداقل 6 کاراکتر باشد");
-          setLoading(false);
-          return;
-        }
-        if (formData.new_password !== formData.new_password_confirmation) {
-          toast.error("❌ رمز عبور جدید با تکرار آن مطابقت ندارد");
-          setLoading(false);
-          return;
-        }
-        if (!formData.current_password) {
-          toast.error("❌ برای تغییر رمز عبور، رمز فعلی را وارد کنید");
-          setLoading(false);
-          return;
-        }
-        formDataToSend.append("current_password", formData.current_password);
-        formDataToSend.append("new_password", formData.new_password);
-      }
-
-      formDataToSend.append("_method", "PUT");
-
-   const token = localStorage.getItem("token");
-
-const res = await api.post(`/profile`, formDataToSend, {
-  headers: {
-    "Content-Type": "multipart/form-data",
-    Authorization: `Bearer ${token}`,
-  },
-});
-
-      const updatedUser = res.data.user || res.data;
-      updateUser(updatedUser);
-
-      setFormData({
-        ...formData,
-        current_password: "",
-        new_password: "",
-        new_password_confirmation: "",
-      });
-
-      setEditing(false);
-      toast.success("✅ پروفایل با موفقیت به‌روزرسانی شد");
+      
+      handleCloseDialog();
     } catch (err) {
-      console.error(err);
-      const errorMessage = err.response?.data?.message || "خطا در به‌روزرسانی پروفایل";
-      toast.error(`❌ ${errorMessage}`);
+      console.error("Error details:", err);
+      
+      // نمایش دقیق خطاهای اعتبارسنجی
+      if (err.response?.status === 422) {
+        const errorData = err.response.data;
+        console.log("Validation errors:", errorData.errors);
+        
+        // نمایش خطاها به صورت جداگانه
+        if (errorData.errors) {
+          const errorMessages = [];
+          for (const [field, messages] of Object.entries(errorData.errors)) {
+            messages.forEach(msg => {
+              errorMessages.push(`${field}: ${msg}`);
+              toast.error(`❌ ${field}: ${msg}`);
+            });
+          }
+          
+          // همچنین در یک alert برای دیباگ
+          alert(`خطاهای اعتبارسنجی:\n${errorMessages.join('\n')}`);
+        } else if (errorData.message) {
+          toast.error(`❌ ${errorData.message}`);
+          alert(`خطا: ${errorData.message}`);
+        } else {
+          toast.error("❌ داده‌های ارسالی معتبر نیست");
+        }
+      } else if (err.response?.status === 500) {
+        toast.error("❌ خطای سرور - لطفاً با پشتیبانی تماس بگیرید");
+        console.error("Server error:", err.response.data);
+      } else {
+        toast.error("❌ خطا در ارتباط با سرور");
+      }
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   };
 
-  const handleCancel = () => {
-    setEditing(false);
-    setFormData({
-      ...formData,
-      name: user?.name || "",
-      email: user?.email || "",
-      current_password: "",
-      new_password: "",
-      new_password_confirmation: "",
-    });
-    setAvatar(null);
-    setAvatarPreview(user?.avatar_url || null);
+  const handleDelete = (id) => {
+    if (window.confirm("آیا مطمئن هستید می‌خواهید این کاربر را حذف کنید؟")) {
+      api.delete(`/users/${id}`)
+        .then(() => {
+          setUsers(users.filter(u => u.id !== id));
+          toast.success("✅ کاربر با موفقیت حذف شد");
+        })
+        .catch(err => {
+          console.error(err);
+          toast.error("❌ خطا در حذف کاربر");
+        });
+    }
   };
 
   return (
     <ReportLayout>
-<ToastContainer
-  position="top-left"
-  autoClose={1500}
-  hideProgressBar={false}
-  newestOnTop
-  closeOnClick
-  rtl={true}
-  pauseOnFocusLoss
-  draggable
-  pauseOnHover
-  theme="colored"
-  limit={5}
-  style={{
-    zIndex: 9999999,
-    position: 'fixed',
-    top: '20px',
-    left: '20px',
-    right: 'auto',
-    width: 'auto',
-    maxWidth: '350px',
-    transform: 'none'
-  }}
-/>
-      <Box sx={{ maxWidth: 800, mx: "auto", p: 3 }}>
-        <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
-          <CardContent>
-            {/* هدر */}
-            <Box sx={{ textAlign: "center", mb: 4 }}>
-              <Typography variant="h4" component="h1" gutterBottom>
-                پروفایل کاربری
-              </Typography>
-              <Divider sx={{ my: 2 }} />
-            </Box>
+      <div className="report-page">
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          rtl={true}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme="colored"
+          limit={5}
+          style={{
+            zIndex: 9999999,
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            left: 'auto',
+            width: 'auto',
+            maxWidth: '350px',
+            transform: 'none'
+          }}
+        />
 
-            {/* عکس پروفایل */}
-            <Box sx={{ display: "flex", justifyContent: "center", mb: 4 }}>
-              <Box sx={{ position: "relative" }}>
+        <h1 className="report-title">مدیریت کاربران</h1>
+
+        <table style={{ 
+          width: "100%", 
+          borderCollapse: "collapse",
+          backgroundColor: "white",
+          borderRadius: "12px",
+          overflow: "hidden",
+          boxShadow: "0 6px 18px rgba(0, 0, 0, 0.1)"
+        }}>
+          <thead style={{ backgroundColor: "#0d47a1", color: "white" }}>
+            <tr>
+              <th style={{ padding: "15px", textAlign: "center", borderBottom: "2px solid #64b5f6" }}>عکس</th>
+              <th style={{ padding: "15px", textAlign: "center", borderBottom: "2px solid #64b5f6" }}>نام</th>
+              <th style={{ padding: "15px", textAlign: "center", borderBottom: "2px solid #64b5f6" }}>ایمیل</th>
+              <th style={{ padding: "15px", textAlign: "center", borderBottom: "2px solid #64b5f6" }}>نقش</th>
+              <th style={{ padding: "15px", textAlign: "center", borderBottom: "2px solid #64b5f6" }}>عملیات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((u, index) => (
+              <tr 
+                key={u.id} 
+                style={{ 
+                  borderBottom: index !== users.length - 1 ? "2px solid #64b5f6" : "none",
+                  transition: "0.3s ease"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#f0f7ff";
+                  e.currentTarget.style.transform = "translateX(-3px)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.transform = "translateX(0)";
+                }}
+              >
+                <td style={{ padding: "12px", textAlign: "center" }}>
+                  <Avatar 
+                    src={u.avatar_url} 
+                    alt={u.name}
+                    sx={{ width: 45, height: 45, margin: "0 auto" }}
+                  >
+                    {!u.avatar_url && <FaUserCircle />}
+                  </Avatar>
+                </td>
+                <td style={{ padding: "12px", textAlign: "center", fontWeight: "500" }}>
+                  {u.name} <FaKey style={{ marginLeft: 5, color: "#0d47a1" }} />
+                </td>
+                <td style={{ padding: "12px", textAlign: "center", color: "#1565c0" }}>{u.email}</td>
+                <td style={{ padding: "12px", textAlign: "center" }}>
+                  <span style={{
+                    backgroundColor: u.roles && u.roles[0]?.name === "super_admin" ? "#d32f2f" : "#0d47a1",
+                    color: "white",
+                    padding: "4px 12px",
+                    borderRadius: "20px",
+                    fontSize: "12px",
+                    fontWeight: "bold"
+                  }}>
+                    {u.roles && u.roles.length > 0
+                      ? u.roles.map(r => r.name).join(", ")
+                      : "بدون رول"}
+                  </span>
+                </td>
+                <td style={{ padding: "12px", textAlign: "center" }}>
+                  <IconButton 
+                    color="primary" 
+                    onClick={() => handleOpenDialog(u)}
+                    sx={{ color: "#0d47a1" }}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton 
+                    color="error" 
+                    onClick={() => handleDelete(u.id)}
+                    sx={{ color: "#d32f2f" }}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
+          <Button 
+            variant="contained" 
+            onClick={() => handleOpenDialog()}
+            sx={{
+              backgroundColor: "#0d47a1",
+              color: "white",
+              padding: "10px 20px",
+              borderRadius: "8px",
+              "&:hover": {
+                backgroundColor: "#1565c0"
+              }
+            }}
+          >
+            افزودن کاربر جدید
+          </Button>
+        </Box>
+
+        <Dialog open={openDialog} onClose={handleCloseDialog}>
+          <DialogTitle sx={{ backgroundColor: "#0d47a1", color: "white" }}>
+            {editingUser ? "ویرایش کاربر" : "افزودن کاربر"}
+          </DialogTitle>
+          <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 300, mt: 2 }}>
+            <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
+              <Box sx={{ position: "relative", display: "inline-block" }}>
                 <Avatar
-                  src={avatarPreview}
-                  alt={user?.name}
-                  sx={{
-                    width: 150,
-                    height: 150,
-                    cursor: editing ? "pointer" : "default",
-                    border: "3px solid",
-                    borderColor: "primary.main",
-                  }}
-                  onClick={() => editing && document.getElementById("avatar-input").click()}
+                  src={avatarPreview || (editingUser?.avatar_url)}
+                  alt={formData.name || "Avatar"}
+                  sx={{ width: 100, height: 100, cursor: "pointer", margin: "0 auto" }}
+                  onClick={() => document.getElementById('avatar-input').click()}
                 >
-                  {!avatarPreview && <FaUserCircle style={{ fontSize: 100 }} />}
+                  {!avatarPreview && !editingUser?.avatar_url && <FaUserCircle style={{ fontSize: 80 }} />}
                 </Avatar>
-                {editing && (
-                  <>
-                    <input
-                      id="avatar-input"
-                      type="file"
-                      accept="image/*"
-                      style={{ display: "none" }}
-                      onChange={handleAvatarChange}
-                    />
-                    <IconButton
-                      sx={{
-                        position: "absolute",
-                        bottom: 0,
-                        right: 0,
-                        bgcolor: "primary.main",
-                        color: "white",
-                        "&:hover": { bgcolor: "primary.dark" },
-                      }}
-                      onClick={() => document.getElementById("avatar-input").click()}
-                    >
-                      <PhotoCameraIcon />
-                    </IconButton>
-                  </>
-                )}
+                <input
+                  id="avatar-input"
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handleAvatarChange}
+                />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => document.getElementById('avatar-input').click()}
+                  sx={{ mt: 1, display: "block", mx: "auto" }}
+                >
+                  انتخاب عکس
+                </Button>
               </Box>
             </Box>
-
-            {/* فرم اطلاعات */}
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="نام کامل"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  disabled={!editing}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <FaUserTag />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="ایمیل"
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  disabled={!editing}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <FaEnvelope />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-
-              {editing && (
-                <>
-                  <Grid item xs={12}>
-                    <Divider sx={{ my: 1 }}>
-                      <Typography variant="body2" color="textSecondary">
-                        تغییر رمز عبور (اختیاری)
-                      </Typography>
-                    </Divider>
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="رمز عبور فعلی"
-                      name="current_password"
-                      type={showPassword ? "text" : "password"}
-                      value={formData.current_password}
-                      onChange={handleInputChange}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <FaKey />
-                          </InputAdornment>
-                        ),
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
-                              {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                            </IconButton>
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="رمز عبور جدید"
-                      name="new_password"
-                      type={showPassword ? "text" : "password"}
-                      value={formData.new_password}
-                      onChange={handleInputChange}
-                      helperText="حداقل 6 کاراکتر"
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="تکرار رمز عبور جدید"
-                      name="new_password_confirmation"
-                      type={showPassword ? "text" : "password"}
-                      value={formData.new_password_confirmation}
-                      onChange={handleInputChange}
-                    />
-                  </Grid>
-                </>
-              )}
-
-              <Grid item xs={12}>
-                <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
-                  {!editing ? (
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      startIcon={<EditIcon />}
-                      onClick={() => setEditing(true)}
-                    >
-                      ویرایش پروفایل
-                    </Button>
-                  ) : (
-                    <>
-                      <Button variant="outlined" color="error" onClick={handleCancel} disabled={loading}>
-                        انصراف
-                      </Button>
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        startIcon={loading ? <CircularProgress size={20} /> : <SaveIcon />}
-                        onClick={handleUpdateProfile}
-                        disabled={loading}
-                      >
-                        {loading ? "در حال ذخیره..." : "ذخیره تغییرات"}
-                      </Button>
-                    </>
-                  )}
-                </Box>
-              </Grid>
-            </Grid>
-
-            {/* اطلاعات اضافی */}
-            <Box sx={{ mt: 4, p: 2, bgcolor: "grey.50", borderRadius: 2 }}>
-              <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                اطلاعات حساب کاربری
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    نقش:
-                  </Typography>
-                  <Typography variant="body1">
-                    {user?.roles?.map(r => r.name).join(", ") || "کاربر عادی"}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    تاریخ عضویت:
-                  </Typography>
-                  <Typography variant="body1">
-                    {user?.created_at ? new Date(user.created_at).toLocaleDateString("fa-IR") : "نامشخص"}
-                  </Typography>
-                </Grid>
-              </Grid>
-            </Box>
-          </CardContent>
-        </Card>
-      </Box>
+            <TextField
+              label="نام"
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              fullWidth
+              required
+            />
+            <TextField
+              label="ایمیل"
+              type="email"
+              value={formData.email}
+              onChange={e => setFormData({ ...formData, email: e.target.value })}
+              fullWidth
+              required
+            />
+            <TextField
+              label={editingUser ? "تغییر پسورد (اختیاری)" : "پسورد"}
+              type="password"
+              value={formData.password}
+              onChange={e => setFormData({ ...formData, password: e.target.value })}
+              fullWidth
+            />
+            <TextField
+              label={editingUser ? "تکرار پسورد (اختیاری)" : "تکرار پسورد"}
+              type="password"
+              value={formData.password_confirmation}
+              onChange={e => setFormData({ ...formData, password_confirmation: e.target.value })}
+              fullWidth
+              error={formData.password !== formData.password_confirmation && formData.password !== ""}
+              helperText={formData.password !== formData.password_confirmation && formData.password !== "" ? "رمز عبور مطابقت ندارد" : ""}
+            />
+            <FormControl fullWidth>
+              <InputLabel>نقش</InputLabel>
+              <Select
+                value={formData.role}
+                label="نقش"
+                onChange={e => setFormData({ ...formData, role: e.target.value })}
+              >
+                <MenuItem value="user">User</MenuItem>
+                {roles.map(role => (
+                  <MenuItem key={role.id} value={role.name}>
+                    {role.name}
+                  </MenuItem>
+                ))}
+                <MenuItem value="hospital_head">رئیس عمومی شفاخانه</MenuItem>
+                {isAdminOrSuper && <MenuItem value="super_admin">Super Admin</MenuItem>}
+              </Select>
+            </FormControl>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDialog}>لغو</Button>
+            <Button 
+              variant="contained" 
+              onClick={handleSave} 
+              disabled={uploading}
+              sx={{ backgroundColor: "#0d47a1" }}
+            >
+              {uploading ? <CircularProgress size={24} /> : (editingUser ? "ذخیره تغییرات" : "افزودن")}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </div>
     </ReportLayout>
   );
 }

@@ -24,7 +24,7 @@ import { NavLink } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useAuth } from "../../../contexts/AuthContext";
-import "../../../../components/ReportLayout"; // اضافه شده
+import "../../../../components/ReportLayout";
 
 export default function UsersPage() {
   const { user: currentUser, updateUser } = useAuth();
@@ -179,8 +179,27 @@ export default function UsersPage() {
         
         handleCloseDialog();
       } catch (err) {
-        console.error(err);
-        toast.error("❌ خطا در ویرایش کاربر");
+        console.error("Full error:", err);
+        
+        if (err.response) {
+          console.error("Response data:", err.response.data);
+          console.error("Response status:", err.response.status);
+          
+          if (err.response.data && err.response.data.errors) {
+            const errorMessages = Object.values(err.response.data.errors).flat();
+            errorMessages.forEach(message => {
+              toast.error(`❌ ${message}`);
+            });
+          } else if (err.response.data && err.response.data.message) {
+            toast.error(`❌ ${err.response.data.message}`);
+          } else {
+            toast.error("❌ خطا در ویرایش کاربر");
+          }
+        } else if (err.request) {
+          toast.error("❌ خطا در ارتباط با سرور");
+        } else {
+          toast.error(`❌ خطا: ${err.message}`);
+        }
       } finally {
         setUploading(false);
       }
@@ -205,8 +224,27 @@ export default function UsersPage() {
         toast.success("✅ کاربر با موفقیت اضافه شد");
         handleCloseDialog();
       } catch (err) {
-        console.error(err);
-        toast.error("❌ خطا در افزودن کاربر");
+        console.error("Full error:", err);
+        
+        if (err.response) {
+          console.error("Response data:", err.response.data);
+          console.error("Response status:", err.response.status);
+          
+          if (err.response.data && err.response.data.errors) {
+            const errorMessages = Object.values(err.response.data.errors).flat();
+            errorMessages.forEach(message => {
+              toast.error(`❌ ${message}`);
+            });
+          } else if (err.response.data && err.response.data.message) {
+            toast.error(`❌ ${err.response.data.message}`);
+          } else {
+            toast.error("❌ خطا در افزودن کاربر");
+          }
+        } else if (err.request) {
+          toast.error("❌ خطا در ارتباط با سرور");
+        } else {
+          toast.error(`❌ خطا: ${err.message}`);
+        }
       } finally {
         setUploading(false);
       }
@@ -256,7 +294,6 @@ export default function UsersPage() {
 
         <h1 className="report-title">مدیریت کاربران</h1>
 
-        {/* جدول کاربران با خط آبی بین هر ردیف */}
         <table style={{ 
           width: "100%", 
           borderCollapse: "collapse",
@@ -279,7 +316,7 @@ export default function UsersPage() {
               <tr 
                 key={u.id} 
                 style={{ 
-                  borderBottom: index !== users.length - 1 ? "2px solid #64b5f6" : "none", // خط آبی بین ردیف‌ها
+                  borderBottom: index !== users.length - 1 ? "2px solid #64b5f6" : "none",
                   transition: "0.3s ease"
                 }}
                 onMouseEnter={(e) => {
