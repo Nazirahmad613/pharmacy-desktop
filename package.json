@@ -1,11 +1,24 @@
 {
-  "name": "pharmacy-desktop",
-  "version": "1.0.0",
-  "main": "main.js",
-  "scripts": {
-    "start": "electron ."
-  },
-  "devDependencies": {
-    "electron": "^42.0.0"
-  }
+"name": "pharmacy-desktop",
+"version": "1.0.0",
+"main": "main.js",
+"scripts": {
+"start": "electron .",
+"build": "vite build",
+"dist": "electron-builder"
+},
+"devDependencies": {
+"electron": "^42.0.0",
+"electron-builder": "^26.8.1"
+},
+"build": {
+"appId": "com.pharmacy.desktop",
+"productName": "Pharmacy Desktop",
+"directories": {
+"output": "dist"
+},
+"files": [
+"**/*"
+]
+}
 }
