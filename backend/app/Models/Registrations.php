@@ -15,40 +15,43 @@ class Registrations extends Model
     protected $primaryKey = 'reg_id';
     public $incrementing = true;
     protected $keyType = 'int';
- protected $fillable = [
-    'reg_type',
-    'full_name',
-    'father_name',
-    'phone',
-    'gender',
-    'department_id',
-    'age',
-    'blood_group',
-    'address',
-    'visit_date',
-    'note',
-    'tazkira_number',
-    'status',
-    // === NEW PATIENT FIELDS ===
-    'diagnosis',
-    'weight',
-    'blood_pressure',
-    'temperature',
-    'oxygen',
-];
+    
+    protected $fillable = [
+        'reg_type',
+        'full_name',
+        'father_name',
+        'phone',
+        'gender',
+        'department_id',
+        'age',
+        'blood_group',
+        'address',
+        'visit_date',
+        'note',
+        'tazkira_number',
+        'status',
+        'diagnosis',
+        'weight',
+        'blood_pressure',
+        'temperature',
+        'oxygen',
+    ];
 
     public function department()
     {
         return $this->belongsTo(Departement::class, 'department_id');
     }
 
-    /* =========================
-       Relationships
-    ========================= */
+    /**
+     * ✅ ارتباط با sales_items از طریق supplier_id
+     */
+    public function salesItems()
+    {
+        return $this->hasMany(SalesItem::class, 'supplier_id', 'reg_id');
+    }
 
     /**
      * ارتباط با ژورنال‌ها
-     * (بر اساس reg_type + reg_id)
      */
     public function journals()
     {
@@ -62,10 +65,6 @@ class Registrations extends Model
         );
     }
 
-    /* =========================
-       Accessors (برای نمایش)
-    ========================= */
-
     /**
      * نام نمایشی واحد برای ژورنال و Select ها
      */
@@ -77,10 +76,25 @@ class Registrations extends Model
         );
     }
 
-    /* =========================
-       Scopes (اختیاری ولی مفید)
-    ========================= */
+    /**
+     * ✅ scope برای فیلتر کردن supplierها
+     */
+    public function scopeSuppliers($query)
+    {
+        return $query->where('reg_type', 'supplier');
+    }
 
+    /**
+     * ✅ scope برای فیلتر کردن customerها
+     */
+    public function scopeCustomers($query)
+    {
+        return $query->where('reg_type', 'customer');
+    }
+
+    /**
+     * ✅ scope برای فیلتر کردن بر اساس نوع
+     */
     public function scopeByType($query, string $type)
     {
         return $query->where('reg_type', $type);

@@ -6,7 +6,7 @@ const http = require("http");
 let win;
 let laravelProcess;
 
-const PHP_PATH = "C:\\wamp64\\bin\\php\\php8.4.15\\php.exe";
+const PHP_PATH = path.join(process.cwd(), "php", "php.exe");
 const BACKEND_PATH = path.join(__dirname, "backend");
 
 function waitForLaravelReady(retries = 40) {

@@ -16,9 +16,15 @@ class RolePermissionSeeder extends Seeder
         // پاک کردن cache
         app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
+        // ✅ تغییر گارد به 'sanctum' برای هماهنگی با کنترلرها
+        $guardName = 'sanctum';
+
         // ================= ROLES =================
-        $adminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
-        $userRole  = Role::firstOrCreate(['name' => 'user', 'guard_name' => 'web']);
+        $adminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => $guardName]);
+        $userRole  = Role::firstOrCreate(['name' => 'user', 'guard_name' => $guardName]);
+
+        // اضافه کردن نقش hospital_head
+        $hospitalHeadRole = Role::firstOrCreate(['name' => 'hospital_head', 'guard_name' => $guardName]);
 
         // ================= PERMISSIONS =================
         $permissions = [
@@ -45,7 +51,7 @@ class RolePermissionSeeder extends Seeder
         foreach ($permissions as $permission) {
             Permission::firstOrCreate([
                 'name' => $permission,
-                'guard_name' => 'web'
+                'guard_name' => $guardName  // ✅ استفاده از گارد یکسان
             ]);
         }
 
@@ -58,13 +64,12 @@ class RolePermissionSeeder extends Seeder
             [
                 'name' => 'Super Admin',
                 'password' => Hash::make('12345678'),
-                'role' => 'admin'
             ]
         );
 
         // assign role
         $admin->assignRole($adminRole);
 
-        $this->command->info('Roles, Permissions and Admin created successfully!');
+        $this->command->info('Roles, Permissions and Admin created successfully with sanctum guard!');
     }
 }

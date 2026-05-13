@@ -10,13 +10,14 @@ use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
-       public function index()
+    public function index()
     {
         $users = User::with('roles', 'permissions')->get();
         
-        // اضافه کردن avatar_url به هر کاربر
+        // اضافه کردن avatar_url و role_name به هر کاربر
         $users->each(function($user) {
             $user->avatar_url = $user->avatar_url;
+            $user->role_name = $user->role_name;
         });
         
         return response()->json($users);
@@ -24,13 +25,12 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
-        // اعتبارسنجی ساده (اختیاری اما توصیه می‌شود)
         $request->validate([
             'name'     => 'required|string|max:255',
             'email'    => 'required|email|unique:users,email',
             'password' => 'required|min:6',
             'role'     => 'required|exists:roles,name',
-            'avatar'   => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // اعتبارسنجی عکس
+            'avatar'   => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
         $userData = [
@@ -39,7 +39,6 @@ class UserController extends Controller
             'password' => Hash::make($request->password),
         ];
 
-        // ذخیره عکس اگر وجود داشته باشد
         if ($request->hasFile('avatar')) {
             $avatarPath = $request->file('avatar')->store('avatars', 'public');
             $userData['avatar'] = $avatarPath;
@@ -47,10 +46,27 @@ class UserController extends Controller
 
         $user = User::create($userData);
 
-        // تخصیص نقش با گارد تعریف‌شده در مدل (همان sanctum)
-        $user->assignRole($request->role);
+        // ✅ تخصیص نقش با گارد sanctum
+        $role = Role::findByName($request->role, 'sanctum');
+        $user->assignRole($role);
 
-        return $user->load('roles', 'permissions');
+        // بارگذاری مجدد با roles
+        $user->load('roles', 'permissions');
+        
+        // اضافه کردن فیلدهای اضافی
+        $user->avatar_url = $user->avatar_url;
+        $user->role_name = $user->role_name;
+
+        return response()->json($user);
+    }
+
+    public function show(User $user)
+    {
+        $user->load('roles', 'permissions');
+        $user->avatar_url = $user->avatar_url;
+        $user->role_name = $user->role_name;
+        
+        return response()->json($user);
     }
 
     public function update(Request $request, User $user)
@@ -60,20 +76,16 @@ class UserController extends Controller
             'email'    => 'sometimes|email|unique:users,email,' . $user->id,
             'password' => 'nullable|min:6',
             'role'     => 'nullable|exists:roles,name',
-            'avatar'   => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // اعتبارسنجی عکس
+            'avatar'   => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
-        // به‌روزرسانی فیلدهای اصلی
         $user->fill($request->only(['name', 'email']));
 
-        // اگر پسورد جدید ارسال شده باشد، هش و ذخیره کن
         if ($request->filled('password')) {
             $user->password = Hash::make($request->password);
         }
 
-        // ذخیره عکس جدید اگر وجود داشته باشد
         if ($request->hasFile('avatar')) {
-            // حذف عکس قدیمی اگر وجود داشته باشد
             if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
                 Storage::disk('public')->delete($user->avatar);
             }
@@ -83,22 +95,24 @@ class UserController extends Controller
 
         $user->save();
 
-        // به‌روزرسانی نقش (اگر مقدار role ارسال شده باشد)
         if ($request->has('role')) {
-            $user->syncRoles([$request->role]);
+            $role = Role::findByName($request->role, 'sanctum');
+            $user->syncRoles([$role]);
         }
 
-        // در صورت نیاز به همگام‌سازی پرمیشن‌ها
         if ($request->has('permissions')) {
             $user->syncPermissions($request->permissions);
         }
 
-        return $user->load('roles', 'permissions');
+        $user->load('roles', 'permissions');
+        $user->avatar_url = $user->avatar_url;
+        $user->role_name = $user->role_name;
+
+        return response()->json($user);
     }
 
     public function destroy(User $user)
     {
-        // حذف عکس کاربر اگر وجود داشته باشد
         if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
             Storage::disk('public')->delete($user->avatar);
         }

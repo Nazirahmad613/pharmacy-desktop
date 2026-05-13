@@ -21,6 +21,7 @@ const navigations = [
     name: "dashboard",
     path: "/dashboard/default",
     icon: <DashboardIcon />,
+    permissions: ["view-dashboard"], // ✅ اضافه کردن پرمیشن
   },
 
   { label: "pages", type: "label" },
@@ -36,190 +37,193 @@ const navigations = [
     ],
   },
 
-  
-
-
   { label: "ثبت معلومات", type: "label" },
 
   {
     name: "ثبت معلومات جدید",
     icon: <AppRegistrationIcon />,
-    roles: ["user", "admin", "super_admin"],
+    permissions: ["create-medications", "create-prescriptions", "create-sales", "create-purchases", "create-registrations"], // ✅ پرمیشن‌های مورد نیاز
     children: [
       {
         name: "RegistationForm",
         path: "/material/registrations",
         icon: <AppRegistrationIcon />,
-        roles: ["admin", "user", "super_admin"],
+        permissions: ["create-registrations"],
       },
       {
         name: "addmedication",
         path: "/material/addinformation",
         icon: <VaccinesIcon />,
-        roles: ["admin", "user", "super_admin"],
+        permissions: ["create-medications"],
       },
       {
         name: "addchanges",
         path: "/material/changes",
         icon: <ChangeCircleIcon />,
-        roles: ["admin", "user", "super_admin"],
+        permissions: ["edit-medications"],
       },
       {
         name: "pres_insert",
         path: "/material/pres_insert",
         icon: <DescriptionIcon />,
-        roles: ["admin", "user", "super_admin"],
+        permissions: ["create-prescriptions"],
       },
       {
         name: "sales_insert",
         path: "/material/sales_insert",
         icon: <PointOfSaleIcon />,
-        roles: ["admin", "user", "super_admin"],
+        permissions: ["create-sales"],
       },
       {
         name: "parchases",
         path: "/material/parchases",
         icon: <ShoppingCartIcon />,
-        roles: ["admin", "user", "super_admin"],
+        permissions: ["create-purchases"],
       },
       {
         name: "addcatagory",
         path: "/material/addcatagory",
         icon: <CategoryIcon />,
-        roles: ["admin", "user", "super_admin"],
+        permissions: ["create-categories"],
       },
-   {
-  name: "logs",
-  path: "/material/logs",
-  icon: <DescriptionIcon />,   // ✅ یا هر آیکون دیگر
-  roles: ["admin", "user", "super_admin"],
-},
+      {
+        name: "logs",
+        path: "/material/logs",
+        icon: <DescriptionIcon />,
+        permissions: ["view-logs"],
+      },
       {
         name: "PaymentForm",
         path: "/material/payment",
         icon: <PaymentIcon />,
-        roles: ["admin", "user", "super_admin"],
-      },
-     
-    ],
-  },
-
-  { label: "کاربران", type: "label", roles: ["admin", "super_admin"] },
-
-  {
-    name: "مدیریت کاربران",
-    icon: <PeopleIcon />,
-    roles: ["admin", "super_admin"],
-    children: [
-      {
-        name: "مدیریت کاربران",
-        path: "/material/users",
-        icon: <PeopleIcon />,
-        roles: ["admin", "super_admin"],
-      },
-      {
-        name: "مدیریت رول‌ها و پرمیشن‌ها",
-        path: "/material/roles-permissions",
-        icon: <PeopleIcon />,
-        roles: ["admin", "super_admin"], // فقط ادمین و سوپر ادمین
+        permissions: ["create-payments"],
       },
     ],
   },
+
+  // ✅ اصلاح شده: اضافه کردن roles و permissions
+  { 
+    label: "کاربران", 
+    type: "label", 
+    roles: ["Admin"],  // ✅ فقط ادمین می‌تواند ببیند
+    permissions: ["view-users", "view-roles"]  // ✅ پرمیشن‌های مورد نیاز
+  },
+{ 
+  label: "کاربران", 
+  type: "label", 
+  roles: ["Admin"],  // ✅ فقط ادمین
+},
+
+{
+  name: "مدیریت کاربران",
+  icon: <PeopleIcon />,
+  roles: ["Admin"],  // ✅ فقط ادمین
+  permissions: ["view-users"],  // ✅ با پرمیشن view-users
+  children: [
+    {
+      name: "مدیریت کاربران",
+      path: "/material/users",
+      icon: <PeopleIcon />,
+      permissions: ["view-users"],  // ✅ نیاز به view-users
+    },
+    {
+      name: "مدیریت رول‌ها و پرمیشن‌ها",
+      path: "/material/roles-permissions",
+      icon: <PeopleIcon />,
+      permissions: ["view-roles"],  // ✅ نیاز به view-roles
+    },
+  ],
+},
+   
 
   { label: "نمایش اطلاعات", type: "label" },
 
   {
     name: "گزارش ها",
     icon: <AssessmentIcon />,
-    roles: ["user", "admin", "super_admin", "hospital_head"],
+    permissions: ["view-hospital-reports", "view-account-summary", "view-stock", "view-sales", "view-profit-loss"],
     children: [
       {
         name: "hospital_Report",
         path: "/material/hospital-report",
         icon: <LocalHospitalIcon />,
-        roles: ["user", "admin", "super_admin"],
+        permissions: ["view-hospital-reports"],
       },
       {
         name: "AccountSummaryPage",
         path: "/material/AcountSummaryPage",
         icon: <AccountBalanceIcon />,
-        roles: ["user", "admin", "super_admin"],
+        permissions: ["view-account-summary"],
       },
-
-
-{
-  name: "MedicationStockTable",
-  path: "/material/MedicationStockTable",
-  icon: <BarChartIcon />,
-},
-{
-  name: "SalesTable",
-  path: "/material/SalesTable",
-  icon: <BarChartIcon />,
-},
-
-
-
-{
-  name: "گزارش روزانه (جدول)",
-  path: "/material/dashboard-daily-table",
-  icon: <BarChartIcon />,
-},
-
- {
-  name: "گزارشات مالی",
-  icon: "bar_chart",
-  children: [
-    {
-      name: "فواید (جدول)",
-      path: "/reports/benefits"
-    },
-   
-  ]
-}
-
-
-
+      {
+        name: "MedicationStockTable",
+        path: "/material/MedicationStockTable",
+        icon: <BarChartIcon />,
+        permissions: ["view-stock"],
+      },
+      {
+        name: "SalesTable",
+        path: "/material/SalesTable",
+        icon: <BarChartIcon />,
+        permissions: ["view-sales"],
+      },
+      {
+        name: "گزارش روزانه (جدول)",
+        path: "/material/dashboard-daily-table",
+        icon: <BarChartIcon />,
+        permissions: ["view-dashboard"],
+      },
+      {
+        name: "گزارشات مالی",
+        icon: "bar_chart",
+        permissions: ["view-profit-loss"],
+        children: [
+          {
+            name: "فواید (جدول)",
+            path: "/reports/benefits",
+            permissions: ["view-benefits"],
+          },
+        ]
+      }
     ],
   },
 
   {
     name: "charts",
     icon: <BarChartIcon />,
-    roles: ["admin", "user", "super_admin"],
+    permissions: ["view-dashboard", "view-sales", "view-benefits", "view-stock"],
     children: [
-       
-
-       {
-      name: "فواید (گراف)",
-      path: "/reports/benefits-chart",
-      icon: <BarChartIcon />,
-    },
-    {
-  name: "گزارش روزانه (چارت)",
-  path: "/material/dashboard-daily-chart",
-  icon: <BarChartIcon />,
-},
-
-{
-  name: "SalesChart",
-  path: "/material/SalesChart",
-  icon: <BarChartIcon />,
-},
-       {
-  name: "MedicationStockChart",
-  path: "/material/MedicationStockChart",
-  icon: <BarChartIcon />,
-},
-
-
+      {
+        name: "فواید (گراف)",
+        path: "/reports/benefits-chart",
+        icon: <BarChartIcon />,
+        permissions: ["view-benefits"],
+      },
+      {
+        name: "گزارش روزانه (چارت)",
+        path: "/material/dashboard-daily-chart",
+        icon: <BarChartIcon />,
+        permissions: ["view-dashboard"],
+      },
+      {
+        name: "SalesChart",
+        path: "/material/SalesChart",
+        icon: <BarChartIcon />,
+        permissions: ["view-sales"],
+      },
+      {
+        name: "MedicationStockChart",
+        path: "/material/MedicationStockChart",
+        icon: <BarChartIcon />,
+        permissions: ["view-stock"],
+      },
     ],
   },
 
   {
     name: "documentation",
     icon: <MenuBookIcon />,
-    roles: ["admin", "user", "super_admin"],
+    permissions: ["view-documentation"],
   },
 ];
 

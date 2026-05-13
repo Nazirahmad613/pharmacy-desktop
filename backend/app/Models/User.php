@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\Storage;
 class User extends Authenticatable
 {
     use HasApiTokens, Notifiable, HasRoles;
+    
+    protected $with = ['roles', 'permissions'];
 
+    // ✅ تنظیم گارد پیش‌فرض برای Spatie
     protected $guard_name = 'sanctum';
 
     protected $fillable = [
@@ -33,13 +36,18 @@ class User extends Authenticatable
     // اضافه شدن avatar_url به خروجی JSON
     protected $appends = [
         'avatar_url',
+        'role_name',  // اضافه کردن role_name به appends
     ];
 
     // نمایش لینک کامل عکس پروفایل
     public function getAvatarUrlAttribute()
     {
         if ($this->avatar) {
-            return asset('storage/' . $this->avatar);
+            // بررسی اینکه آیا مسیر قبلاً کامل است یا خیر
+            if (filter_var($this->avatar, FILTER_VALIDATE_URL)) {
+                return $this->avatar;
+            }
+            return asset('storage/' . ltrim($this->avatar, '/'));
         }
 
         return null;
@@ -49,6 +57,12 @@ class User extends Authenticatable
     public function getRoleNameAttribute(): string
     {
         return $this->roles->pluck('name')->join(', ') ?: 'بدون نقش';
+    }
+
+    // متد کمکی برای چک کردن نقش
+    public function hasRoleName(string $roleName): bool
+    {
+        return $this->roles->contains('name', $roleName);
     }
 
     // Relations

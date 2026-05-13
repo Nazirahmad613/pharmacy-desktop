@@ -1,10 +1,10 @@
 <?php
 
 namespace App\Models;
+
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
- 
- 
+
 class Medication extends Model
 {
     use HasFactory;
@@ -16,17 +16,10 @@ class Medication extends Model
     protected $fillable = [
         'gen_name',
         'dosage',
-        'supplier_id',
         'category_id',
         'type',
-        
+        'added_med'
     ];
-
-  
-public function supplier()
-{
-    return $this->belongsTo(\App\Models\Registrations::class, 'supplier_id', 'reg_id');
-}
 
     // ارتباط با دسته‌بندی (Category)
     public function category()

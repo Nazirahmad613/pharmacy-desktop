@@ -1,15 +1,11 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect } from "react";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import api from "../../../../api";
 import MainLayoutjur from "../../../../components/MainLayoutjur";
-import { useAuth } from "../../../contexts/AuthContext";
 
 const MedicationForm = () => {
-  const { user, loading } = useAuth(); // دریافت اطلاعات کاربر و وضعیت لودینگ
-
   const [categories, setCategories] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
   const [medications, setMedications] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -17,36 +13,15 @@ const MedicationForm = () => {
 
   const [formData, setFormData] = useState({
     category_id: "",
-    supplier_id: "",
     type: "",
     gen_name: "",
     dosage: "",
   });
 
-  // نمایش لودینگ تا زمانی که اطلاعات کاربر دریافت نشده
-  if (loading) {
-    return <div>در حال بارگذاری...</div>;
-  }
-
- const hasAccess = (() => {
-  if (!user) return false;
-  // اگر role مستقیماً یک رشته باشد
-  if (user.role === "user") return true;
-  // اگر roles آرایه‌ای از نام‌ها باشد
-  if (Array.isArray(user.roles) && user.roles.includes("user")) return true;
-  // اگر roles آرایه‌ای از اشیاء دارای name باشد
-  if (Array.isArray(user.roles) && user.roles.some(r => r.name === "user")) return true;
-  return false;
-})();
- 
-
   useEffect(() => {
-    if (hasAccess) {
-      loadCategories();
-      loadSuppliers();
-      loadMedications();
-    }
-  }, [hasAccess]);
+    loadCategories();
+    loadMedications();
+  }, []);
 
   const loadCategories = async () => {
     try {
@@ -55,19 +30,6 @@ const MedicationForm = () => {
       setCategories(Array.isArray(data) ? data : []);
     } catch {
       toast.error("❌ خطا در دریافت کتگوری‌ها");
-    }
-  };
-
-  const loadSuppliers = async () => {
-    try {
-      const res = await api.get("/registrations");
-      const data = res.data.data ?? res.data ?? [];
-      const onlySuppliers = Array.isArray(data)
-        ? data.filter(r => r.reg_type === "supplier")
-        : [];
-      setSuppliers(onlySuppliers);
-    } catch {
-      toast.error("❌ خطا در دریافت حمایت‌کننده‌ها");
     }
   };
 
@@ -99,7 +61,6 @@ const MedicationForm = () => {
 
       setFormData({
         category_id: "",
-        supplier_id: "",
         type: "",
         gen_name: "",
         dosage: "",
@@ -119,7 +80,6 @@ const MedicationForm = () => {
   const handleEdit = (med) => {
     setFormData({
       category_id: med.category_id,
-      supplier_id: med.supplier_id,
       type: med.type,
       gen_name: med.gen_name,
       dosage: med.dosage,
@@ -132,7 +92,6 @@ const MedicationForm = () => {
     setEditingId(null);
     setFormData({
       category_id: "",
-      supplier_id: "",
       type: "",
       gen_name: "",
       dosage: "",
@@ -159,16 +118,6 @@ const MedicationForm = () => {
   const totalPages = Math.ceil(medications.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = medications.slice(startIndex, startIndex + itemsPerPage);
-
-  if (!hasAccess) {
-    return (
-      <MainLayoutjur>
-        <div style={{ textAlign: "center", padding: "50px", fontSize: "18px", color: "red" }}>
-          ⛔ شما دسترسی لازم برای مشاهده این صفحه را ندارید.
-        </div>
-      </MainLayoutjur>
-    );
-  }
 
   return (
     <MainLayoutjur>
@@ -214,23 +163,6 @@ const MedicationForm = () => {
               {categories.map(cat => (
                 <option key={cat.category_id} value={cat.category_id}>
                   {cat.category_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label>انتخاب حمایت‌کننده</label>
-            <select
-              name="supplier_id"
-              value={formData.supplier_id}
-              onChange={handleChange}
-              required
-            >
-              <option value="">انتخاب حمایت‌کننده</option>
-              {suppliers.map(s => (
-                <option key={s.reg_id} value={s.reg_id}>
-                  {s.full_name}
                 </option>
               ))}
             </select>
@@ -319,9 +251,8 @@ const MedicationForm = () => {
               <th>نوع</th>
               <th>دوز</th>
               <th>کتگوری</th>
-              <th>حمایت‌کننده</th>
               <th>عملیات</th>
-             </tr>
+            </tr>
           </thead>
           <tbody>
             {currentItems.length ? (
@@ -331,7 +262,6 @@ const MedicationForm = () => {
                   <td>{m.type}</td>
                   <td>{m.dosage}</td>
                   <td>{m.category?.category_name || "-"}</td>
-                  <td>{m.supplier?.full_name || "-"}</td>
                   <td style={{ display: "flex", gap: "5px" }}>
                     <button
                       onClick={() => handleEdit(m)}
@@ -365,7 +295,7 @@ const MedicationForm = () => {
               ))
             ) : (
               <tr>
-                <td colSpan="6" style={{ textAlign: "center" }}>
+                <td colSpan="5" style={{ textAlign: "center" }}>
                   هیچ دوا ثبت نشده است
                 </td>
               </tr>

@@ -35,12 +35,7 @@ return new class extends Migration
                 ->references('med_id')
                 ->on('medications')
                 ->onDelete('cascade');
-
-            $table->foreign('supplier_id')
-                ->references('supplier_id')
-                ->on('suppliers')
-                ->onDelete('cascade');
-
+ 
             $table->foreign('category_id')
                 ->references('category_id')
                 ->on('categories')

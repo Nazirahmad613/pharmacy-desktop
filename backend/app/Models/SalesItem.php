@@ -16,13 +16,13 @@ class SalesItem extends Model
     protected $fillable = [
         'sales_id',
         'med_id',
-        'supplier_id', // اینجا reg_id از جدول registrations ذخیره می‌شود
+        'supplier_id',
         'category_id',
         'type',
         'quantity',
         'unit_sales',
         'total_sales',
-     
+        'exp_date' // اگر این فیلد را دارید
     ];
 
     /**
@@ -42,11 +42,13 @@ class SalesItem extends Model
     }
 
     /**
-     * ارتباط با حمایت‌کننده از جدول registrations
+     * ✅ ارتباط با حمایت‌کننده از جدول registrations
+     * supplier_id همان reg_id از جدول registrations است
      */
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\Registrations::class, 'supplier_id', 'reg_id');
+        return $this->belongsTo(Registrations::class, 'supplier_id', 'reg_id')
+                    ->where('reg_type', 'supplier'); // فقط supplierها
     }
 
     /**

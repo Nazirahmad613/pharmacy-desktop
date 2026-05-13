@@ -17,6 +17,37 @@ import {
 import "react-toastify/dist/ReactToastify.css";
 import "./i18n";
 
+// ================= کامپوننت DebugAuth =================
+const DebugAuth = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) return null;
+  if (!user) return null;
+
+  return (
+    <div style={{ 
+      position: 'fixed', 
+      bottom: 0, 
+      right: 0, 
+      background: '#333', 
+      color: 'white', 
+      padding: '8px 12px', 
+      fontSize: 11, 
+      zIndex: 9999,
+      borderRadius: '8px 0 0 0',
+      fontFamily: 'monospace',
+      opacity: 0.8,
+      pointerEvents: 'none'
+    }}>
+      <div>👤 {user.name}</div>
+      <div>🎭 Roles: {user.role_names?.join(', ') || 'none'}</div>
+      <div>🔑 Permissions: {user.all_permissions?.length || 0}</div>
+      <div>👑 Is Admin: {user.isAdmin ? '✅ Yes' : '❌ No'}</div>
+    </div>
+  );
+};
+// ====================================================
+
 /* 🔹 Protected Route */
 function ProtectedRoute({ children, allowedRoles }) {
   const { currentUser } = useAuth();
@@ -35,7 +66,7 @@ function ProtectedRoute({ children, allowedRoles }) {
   return children;
 }
 
-/* 🔹 Router (FIXED) */
+/* 🔹 Router */
 function AppRouter() {
   const element = useRoutes([
     ...routes,
@@ -73,6 +104,7 @@ export default function App() {
             <div style={{ direction: i18n.language === "fa" ? "rtl" : "ltr" }}>
               <AnimatedBackground>
                 <AppRouter />
+                <DebugAuth />
               </AnimatedBackground>
             </div>
 

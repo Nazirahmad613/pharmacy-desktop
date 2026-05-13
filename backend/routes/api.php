@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\LogController;
 use App\Http\Controllers\MedicationController;
-use App\Http\Controllers\SupplierController;
+ ;
 use App\Http\Controllers\CustomersController;
 use App\Http\Controllers\DoctorController;
 use App\Http\Controllers\SalesController;
@@ -17,7 +17,7 @@ use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\ViewInventoryController;
 use App\Http\Controllers\ViewMedicationsController;
 use App\Http\Controllers\ViewProfitLossController;
-use App\Http\Controllers\ViewSupplierPurchasesController;
+ 
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
@@ -79,7 +79,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/roles', [RoleController::class, 'index'])->middleware('can:view-roles');
     Route::post('/roles', [RoleController::class, 'store'])->middleware('can:create-roles');
     Route::delete('/roles/{id}', [RoleController::class, 'destroy'])->middleware('can:delete-roles');
-    Route::post('/roles/{id}/permissions', [RoleController::class, 'assignPermissions'])->middleware('can:assign-permissions');
+    Route::post('/roles/{id}/permissions', [RoleController::class, 'assignPermissions']);
+    
     Route::delete('/roles/{id}/permissions/{permissionId}', [RoleController::class, 'removePermission'])->middleware('can:edit-roles');
 
     // ===== Permissions Management =====
@@ -99,10 +100,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ===== Dashboard =====
     Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('can:view-dashboard');
 
-    // ===== Suppliers =====
-    Route::get('/suppliers', [SupplierController::class, 'index'])->middleware('can:view-suppliers');
-    Route::post('/suppliers', [SupplierController::class, 'store'])->middleware('can:create-suppliers');
-
+   
     // ===== Medications =====
     Route::get('/medications', [MedicationController::class, 'index'])->middleware('can:view-medications');
     Route::post('/medications', [MedicationController::class, 'store'])->middleware('can:create-medications');
@@ -123,9 +121,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // ===== Stock & Sales Reports =====
     Route::get('/stock', [StockReportController::class, 'index'])->middleware('can:view-stock');
     Route::get('/salesd', [SalesFullDetailsController::class, 'index'])->middleware('can:view-sales-details');
-
-    // ===== Suppliers by Medication =====
-    Route::get('/suppliers/by-medication/{med_id}', [SupplierController::class, 'suppliersByMedication'])->middleware('can:view-suppliers');
+ 
+ 
 
     // ===== Inventory =====
     Route::get('/inventory', [InventoryController::class, 'index'])->middleware('can:view-inventory');
@@ -174,7 +171,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/view-medications', [ViewMedicationsController::class, 'index'])->middleware('can:view-medications');
     Route::get('/account-summary', [AccountSummaryController::class, 'index'])->middleware('can:view-account-summary');
     Route::get('/view-profit-loss', [ViewProfitLossController::class, 'index'])->middleware('can:view-profit-loss');
-    Route::get('/view-supplier-purchases', [ViewSupplierPurchasesController::class, 'index'])->middleware('can:view-supplier-purchases');
+    
     Route::get('/hospital-reports', [HospitalReportController::class, 'index'])->middleware('can:view-hospital-reports');
     Route::get('/reports/medication-stock', function () {
         return DB::table('vw_medication_status')->get();

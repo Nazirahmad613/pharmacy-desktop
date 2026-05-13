@@ -44,9 +44,25 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
-  const isAdminOrSuper = currentUser && ["admin", "super_admin"].includes(currentUser.role?.toLowerCase() || "");
+  // ✅ اصلاح: بررسی صحیح نقش کاربر
+  const getUserRoles = () => {
+    if (!currentUser) return [];
+    if (currentUser.role_names) return currentUser.role_names;
+    if (currentUser.roles) return currentUser.roles.map(r => r.name);
+    if (currentUser.role) return [currentUser.role];
+    return [];
+  };
+
+  const userRoles = getUserRoles();
+  const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
+  const isHospitalHead = userRoles.includes('hospital_head');
+
+  // ✅ بررسی دسترسی برای نمایش صفحه
+  const hasAccess = isAdmin;
 
   useEffect(() => {
+    if (!hasAccess) return;
+    
     Promise.all([
       api.get("/users"),
       api.get("/roles")
@@ -61,7 +77,7 @@ export default function UsersPage() {
         toast.error("❌ خطا در دریافت اطلاعات");
         setLoading(false);
       });
-  }, []);
+  }, [hasAccess]);
 
   if (loading) {
     return (
@@ -75,12 +91,34 @@ export default function UsersPage() {
     );
   }
 
-  if (currentUser?.role === "hospital_head") {
+  // ✅ اگر دسترسی ندارد
+  if (!hasAccess) {
     return (
       <ReportLayout>
         <div className="report-page">
           <div style={{ textAlign: "center", marginTop: "40px" }}>
-            <h2 className="report-title">شما فقط اجازه مشاهده گزارش‌ها را دارید</h2>
+            <h2 className="report-title">⛔ شما دسترسی به این بخش را ندارید</h2>
+            <p style={{ marginTop: 10, color: "#666" }}>
+              فقط کاربران با نقش ادمین می‌توانند کاربران را مدیریت کنند.
+            </p>
+            <NavLink to="/dashboard/default" style={{ textDecoration: "none" }}>
+              <Button variant="contained" color="primary" sx={{ mt: 2 }}>
+                بازگشت به داشبورد
+              </Button>
+            </NavLink>
+          </div>
+        </div>
+      </ReportLayout>
+    );
+  }
+
+  // ✅ اگر کاربر hospital_head است (قبلاً چک شده)
+  if (isHospitalHead && !isAdmin) {
+    return (
+      <ReportLayout>
+        <div className="report-page">
+          <div style={{ textAlign: "center", marginTop: "40px" }}>
+            <h2 className="report-title">⛔ شما فقط اجازه مشاهده گزارش‌ها را دارید</h2>
             <NavLink to="/reports" style={{ textDecoration: "none" }}>
               <Button variant="contained" color="primary" sx={{ mt: 2 }}>
                 مشاهده گزارش‌ها
@@ -459,7 +497,7 @@ export default function UsersPage() {
                   </MenuItem>
                 ))}
                 <MenuItem value="hospital_head">رئیس عمومی شفاخانه</MenuItem>
-                {isAdminOrSuper && <MenuItem value="super_admin">Super Admin</MenuItem>}
+                {isAdmin && <MenuItem value="super_admin">Super Admin</MenuItem>}
               </Select>
             </FormControl>
           </DialogContent>

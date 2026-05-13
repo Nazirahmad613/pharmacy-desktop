@@ -30,7 +30,6 @@ class RoleController extends Controller
                 'name' => 'required|string|unique:roles,name',
             ]);
 
-            // ✅ تغییر گارد از 'web' به 'sanctum'
             $role = Role::create([
                 'name' => $request->name, 
                 'guard_name' => 'sanctum'
@@ -50,7 +49,7 @@ class RoleController extends Controller
             
             return response()->json([
                 'message' => 'رول با موفقیت ایجاد شد',
-                'role' => $role
+                'role' => $role->load('permissions')
             ], 201);
         } catch (ValidationException $e) {
             return response()->json(['error' => $e->errors()], 422);
@@ -59,7 +58,7 @@ class RoleController extends Controller
         }
     }
 
-    // حذف رول (بدون تغییر)
+    // حذف رول
     public function destroy($id)
     {
         try {
@@ -98,7 +97,7 @@ class RoleController extends Controller
         }
     }
 
-    // اختصاص پرمیشن به رول (بدون تغییر)
+    // ✅ اضافه کردن متد assignPermissions
     public function assignPermissions(Request $request, $id)
     {
         try {
@@ -113,8 +112,9 @@ class RoleController extends Controller
             $addedPermissions = [];
             
             foreach ($permissionIds as $permissionId) {
-                if (!$role->hasPermissionTo($permissionId)) {
-                    $role->givePermissionTo($permissionId);
+                $permission = Permission::findById($permissionId, 'sanctum');
+                if (!$role->hasPermissionTo($permission)) {
+                    $role->givePermissionTo($permission);
                     $addedPermissions[] = $permissionId;
                 }
             }
@@ -151,7 +151,7 @@ class RoleController extends Controller
         }
     }
 
-    // حذف یک پرمیشن خاص از رول (بدون تغییر)
+    // ✅ اضافه کردن متد removePermission
     public function removePermission($id, $permissionId)
     {
         try {

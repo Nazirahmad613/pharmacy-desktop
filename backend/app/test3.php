@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\LogController;
 use App\Http\Controllers\MedicationController;
-use App\Http\Controllers\SupplierController;
+ 
 use App\Http\Controllers\CustomersController;
 use App\Http\Controllers\DoctorController;
 use App\Http\Controllers\SalesController;
@@ -17,7 +17,7 @@ use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\ViewInventoryController;
 use App\Http\Controllers\ViewMedicationsController;
 use App\Http\Controllers\ViewProfitLossController;
-use App\Http\Controllers\ViewSupplierPurchasesController;
+ 
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;

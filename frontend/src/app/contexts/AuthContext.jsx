@@ -27,8 +27,6 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
-
-      // 🔥 مهم: برای Electron + HashRouter
       window.location.href = "#/session/signin";
     }
     return Promise.reject(error);
@@ -62,15 +60,102 @@ const getAvatarUrl = (userData) => {
 };
 
 // ================= PROCESS USER =================
+ // ================= PROCESS USER =================
 const processUserData = (userData) => {
   if (!userData) return null;
 
-  return {
+  // ✅ اگر userData قبلاً پردازش شده بود
+  if (userData.hasPermission && typeof userData.hasPermission === 'function') {
+    return userData;
+  }
+
+  // ✅ استخراج نقش‌های کاربر
+  const userRoles = userData.roles?.map(role => role.name) || [];
+  
+  // ✅ استخراج تمام پرمیشن‌های کاربر
+  let allPermissions = [];
+  
+  // از roles
+  if (userData.roles && Array.isArray(userData.roles)) {
+    userData.roles.forEach(role => {
+      if (role.permissions && Array.isArray(role.permissions)) {
+        role.permissions.forEach(perm => {
+          const permName = typeof perm === 'object' ? perm.name : perm;
+          if (!allPermissions.includes(permName)) {
+            allPermissions.push(permName);
+          }
+        });
+      }
+    });
+  }
+  
+  // از permissions مستقیم
+  if (userData.permissions && Array.isArray(userData.permissions)) {
+    userData.permissions.forEach(perm => {
+      const permName = typeof perm === 'object' ? perm.name : perm;
+      if (!allPermissions.includes(permName)) {
+        allPermissions.push(permName);
+      }
+    });
+  }
+
+  // ✅ متدهای کمکی برای بررسی دسترسی
+  const hasRole = (roleName) => {
+    // پشتیبانی از roleName به صورت string یا array
+    if (Array.isArray(roleName)) {
+      return roleName.some(role => userRoles.includes(role));
+    }
+    return userRoles.includes(roleName);
+  };
+
+  const hasPermission = (permissionName) => {
+    if (!permissionName) return true;
+    // پشتیبانی از permissionName به صورت string یا array
+    if (Array.isArray(permissionName)) {
+      return permissionName.some(perm => allPermissions.includes(perm));
+    }
+    return allPermissions.includes(permissionName);
+  };
+
+  const hasAnyPermission = (permissionList) => {
+    if (!permissionList || permissionList.length === 0) return true;
+    return permissionList.some(perm => allPermissions.includes(perm));
+  };
+
+  const hasAllPermissions = (permissionList) => {
+    if (!permissionList || permissionList.length === 0) return true;
+    return permissionList.every(perm => allPermissions.includes(perm));
+  };
+
+  const result = {
     ...userData,
     avatar_url: getAvatarUrl(userData),
+    roles: userData.roles || [],
+    role_names: userRoles,
+    permissions: userData.permissions || [],
+    all_permissions: allPermissions,
+    // متدهای کمکی
+    hasRole,
+    hasPermission,
+    hasAnyPermission,
+    hasAllPermissions,
+    // برای راحتی کار
+    isAdmin: hasRole('admin') || hasRole('Admin'),
+    isSuperAdmin: hasRole('super_admin'),
+    isHospitalHead: hasRole('hospital_head'),
+    isUser: hasRole('user'),
   };
+  
+  // ✅ برای دیباگ
+  console.log("Processed user:", {
+    name: result.name,
+    roles: result.role_names,
+    permissions: result.all_permissions,
+    isAdmin: result.isAdmin
+  });
+  
+  return result;
 };
-
 // ================= PROVIDER =================
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -89,9 +174,19 @@ export const AuthProvider = ({ children }) => {
       .get("/me")
       .then((res) => {
         const rawUser = res.data.user ?? res.data;
-        setUser(processUserData(rawUser));
+        const processedUser = processUserData(rawUser);
+        setUser(processedUser);
+        
+        // ✅ برای دیباگ
+        console.log("User loaded:", {
+          name: processedUser.name,
+          roles: processedUser.role_names,
+          permissions: processedUser.all_permissions,
+          isAdmin: processedUser.isAdmin
+        });
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Auth check failed:", err);
         localStorage.removeItem("token");
         setUser(null);
       })
@@ -106,17 +201,29 @@ export const AuthProvider = ({ children }) => {
 
     const processedUser = processUserData(res.data.user);
     setUser(processedUser);
+    
+    // ✅ برای دیباگ
+    console.log("User logged in:", {
+      name: processedUser.name,
+      roles: processedUser.role_names,
+      permissions: processedUser.all_permissions,
+      isAdmin: processedUser.isAdmin
+    });
 
     return { ...res.data, user: processedUser };
   };
 
   // LOGOUT
-  const logout = () => {
-    localStorage.removeItem("token");
-    setUser(null);
-
-    // 🔥 مهم برای Electron
-    window.location.href = "#/session/signin";
+  const logout = async () => {
+    try {
+      await api.post("/logout");
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      localStorage.removeItem("token");
+      setUser(null);
+      window.location.href = "#/session/signin";
+    }
   };
 
   // UPDATE USER
@@ -126,8 +233,10 @@ export const AuthProvider = ({ children }) => {
       ...updatedData,
       avatar_url: getAvatarUrl({ ...user, ...updatedData }),
     };
-    setUser(updatedUser);
-    return updatedUser;
+    // ✅ دوباره پردازش کن
+    const processedUser = processUserData(updatedUser);
+    setUser(processedUser);
+    return processedUser;
   };
 
   return (

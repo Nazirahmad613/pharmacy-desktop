@@ -6,7 +6,6 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -25,22 +24,49 @@ class AuthController extends Controller
             'password' => Hash::make($validated['password']),
         ]);
 
-        if (!empty($validated['role'])) {
-            $user->assignRole($validated['role']);
-        } else {
-            $user->assignRole('user');
-        }
+        // ✅ اختصاص نقش
+        $roleName = $validated['role'] ?? 'user';
+        $user->assignRole($roleName);
 
-        // ✅ ایجاد توکن
+        // ✅ بارگذاری مجدد کاربر با روابط
+        $user->load('roles.permissions');
+        
         $token = $user->createToken('auth_token')->plainTextToken;
+
+        // ✅ ساخت ساختار داده مناسب برای فرانت‌اند
+        $userData = [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'email_verified_at' => $user->email_verified_at,
+            'created_at' => $user->created_at,
+            'updated_at' => $user->updated_at,
+            'roles' => $user->roles->map(function($role) {
+                return [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                    'permissions' => $role->permissions->map(function($permission) {
+                        return [
+                            'id' => $permission->id,
+                            'name' => $permission->name
+                        ];
+                    })
+                ];
+            }),
+            'permissions' => $user->getAllPermissions()->map(function($permission) {
+                return [
+                    'id' => $permission->id,
+                    'name' => $permission->name
+                ];
+            })
+        ];
 
         return response()->json([
             'success' => true,
             'message' => 'ثبت نام با موفقیت انجام شد',
-            'user' => $user,
+            'user' => $userData,
             'token' => $token,
             'token_type' => 'Bearer',
-            'permissions' => $user->getAllPermissions()->pluck('name'),
         ], 201);
     }
 
@@ -60,27 +86,45 @@ class AuthController extends Controller
 
         $user = Auth::user();
         
-        // ✅ ایجاد توکن جدید
+        // ✅ بارگذاری مجدد کاربر با روابط
+        $user->load('roles.permissions');
+        
         $token = $user->createToken('auth_token')->plainTextToken;
+
+        // ✅ ساخت ساختار داده مناسب برای فرانت‌اند
+        $userData = [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'email_verified_at' => $user->email_verified_at,
+            'created_at' => $user->created_at,
+            'updated_at' => $user->updated_at,
+            'roles' => $user->roles->map(function($role) {
+                return [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                    'permissions' => $role->permissions->map(function($permission) {
+                        return [
+                            'id' => $permission->id,
+                            'name' => $permission->name
+                        ];
+                    })
+                ];
+            }),
+            'permissions' => $user->getAllPermissions()->map(function($permission) {
+                return [
+                    'id' => $permission->id,
+                    'name' => $permission->name
+                ];
+            })
+        ];
 
         return response()->json([
             'success' => true,
             'message' => 'ورود موفقیت آمیز',
-            'user' => $user,
+            'user' => $userData,
             'token' => $token,
             'token_type' => 'Bearer',
-            'permissions' => $user->getAllPermissions()->pluck('name'),
-        ]);
-    }
-
-    public function logout(Request $request)
-    {
-        // ✅ حذف توکن فعلی
-        $request->user()->currentAccessToken()->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'خروج از سیستم با موفقیت انجام شد'
         ]);
     }
 
@@ -88,11 +132,50 @@ class AuthController extends Controller
     {
         $user = $request->user();
         
+        // ✅ بارگذاری مجدد کاربر با روابط
+        $user->load('roles.permissions');
+
+        // ✅ ساخت ساختار داده مناسب برای فرانت‌اند
+        $userData = [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'email_verified_at' => $user->email_verified_at,
+            'created_at' => $user->created_at,
+            'updated_at' => $user->updated_at,
+            'roles' => $user->roles->map(function($role) {
+                return [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                    'permissions' => $role->permissions->map(function($permission) {
+                        return [
+                            'id' => $permission->id,
+                            'name' => $permission->name
+                        ];
+                    })
+                ];
+            }),
+            'permissions' => $user->getAllPermissions()->map(function($permission) {
+                return [
+                    'id' => $permission->id,
+                    'name' => $permission->name
+                ];
+            })
+        ];
+
         return response()->json([
             'success' => true,
-            'user' => $user,
-            'permissions' => $user->getAllPermissions()->pluck('name'),
-            'roles' => $user->getRoleNames(),
+            'user' => $userData,
+        ]);
+    }                   
+    
+    public function logout(Request $request)
+    {
+        $request->user()->currentAccessToken()->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'خروج از سیستم با موفقیت انجام شد'
         ]);
     }
 }
