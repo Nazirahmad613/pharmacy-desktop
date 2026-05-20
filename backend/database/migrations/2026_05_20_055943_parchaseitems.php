@@ -1,4 +1,5 @@
 <?php
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -14,8 +15,9 @@ return new class extends Migration
             $table->unsignedBigInteger('parchase_id');
             $table->unsignedBigInteger('med_id');
             $table->unsignedBigInteger('category_id');
+            $table->unsignedBigInteger('supplier_id'); // ارجاع به reg_id در جدول registrations
 
-            $table->string('type')->nullable(); // ✅ ستون type اضافه شد
+            $table->string('type')->nullable();
 
             $table->integer('quantity');
             $table->integer('unit_price');
@@ -27,6 +29,9 @@ return new class extends Migration
             $table->foreign('parchase_id')->references('parchase_id')->on('parchases')->onDelete('cascade');
             $table->foreign('med_id')->references('med_id')->on('medications')->onDelete('cascade');
             $table->foreign('category_id')->references('category_id')->on('categories')->onDelete('cascade');
+            
+            // اصلاح: ارجاع به reg_id در جدول registrations (نه id)
+            $table->foreign('supplier_id')->references('reg_id')->on('registrations')->onDelete('cascade');
         });
     }
 

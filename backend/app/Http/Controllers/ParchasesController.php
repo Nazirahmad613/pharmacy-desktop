@@ -1,4 +1,6 @@
 <?php
+// app/Http/Controllers/ParchasesController.php
+
 namespace App\Http\Controllers;
 
 use App\Models\Parchase;
@@ -8,7 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
-use App\Services\LogService; // ✅ اضافه شد
+use App\Services\LogService;
+use App\Services\StockService;
 
 class ParchasesController extends Controller
 {
@@ -54,7 +57,8 @@ class ParchasesController extends Controller
             ]);
 
             foreach ($validated['items'] as $item) {
-                $parchase->items()->create([
+                // ثبت آیتم خرید
+                $parchaseItem = $parchase->items()->create([
                     'med_id'      => $item['med_id'],
                     'category_id' => $item['category_id'],
                     'type'        => $item['type'] ?? null,
@@ -62,15 +66,24 @@ class ParchasesController extends Controller
                     'unit_price'  => $item['unit_price'],
                     'total_price' => $item['quantity'] * $item['unit_price'],
                     'exp_date'    => $item['exp_date'],
+                    'supplier_id' => $validated['supplier_id'],
                 ]);
+
+                // ✅ افزایش موجودی (استاک) با type
+                StockService::increase(
+                    $item['med_id'],
+                    $validated['supplier_id'],
+                    $item['exp_date'],
+                    $item['quantity'],
+                    $item['type'] ?? null  // ✅ ارسال type به StockService
+                );
             }
 
-            // ثبت ژورنال خرید و پرداخت
+            // ثبت ژورنال خرید
             $this->syncJournal($parchase);
 
             DB::commit();
 
-            // ✅ لاگ ثبت خرید
             LogService::create(
                 'create',
                 'parchases',
@@ -79,15 +92,24 @@ class ParchasesController extends Controller
                 $parchase->load('items')->toArray()
             );
 
-            return response()->json($parchase->load(['items.medication','items.category','items.supplier','supplier']), 201);
+            return response()->json([
+                'success' => true,
+                'message' => 'خرید با موفقیت ثبت شد',
+                'data' => $parchase->load(['items.medication', 'items.category', 'items.supplier', 'supplier'])
+            ], 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Parchase Store Error', ['error'=>$e->getMessage(),'request'=>$request->all()]);
-            return response()->json(['message'=>'خطا در ثبت خرید','error'=>$e->getMessage()],500);
+            Log::error('Parchase Store Error', ['error' => $e->getMessage(), 'request' => $request->all()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در ثبت خرید',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
+    // متد update نیز باید مشابه اصلاح شود
     public function update(Request $request, $id)
     {
         $validated = $request->validate([
@@ -106,11 +128,22 @@ class ParchasesController extends Controller
         DB::beginTransaction();
         try {
             $parchase = Parchase::findOrFail($id);
-            $oldData = $parchase->load('items')->toArray(); // ✅ داده‌های قبلی
+            $oldData = $parchase->load('items')->toArray();
+
+            // برگرداندن موجودی آیتم‌های قبلی
+            foreach ($parchase->items as $oldItem) {
+                StockService::reverseDecrease(
+                    $oldItem->med_id,
+                    $parchase->supplier_id,
+                    $oldItem->exp_date,
+                    $oldItem->quantity,
+                    $oldItem->type
+                );
+            }
 
             // حذف آیتم‌ها و ژورنال قبلی
             $parchase->items()->delete();
-            Journal::where('ref_type','parchase')->where('ref_id',$parchase->parchase_id)->delete();
+            Journal::where('ref_type', 'parchase')->where('ref_id', $parchase->parchase_id)->delete();
 
             $total_parchase = collect($validated['items'])->sum(fn($i) => $i['quantity'] * $i['unit_price']);
             $due_par = $total_parchase - $validated['par_paid'];
@@ -123,6 +156,7 @@ class ParchasesController extends Controller
                 'supplier_id'    => $validated['supplier_id'],
             ]);
 
+            // ثبت آیتم‌های جدید و افزایش موجودی
             foreach ($validated['items'] as $item) {
                 $parchase->items()->create([
                     'med_id'      => $item['med_id'],
@@ -132,31 +166,37 @@ class ParchasesController extends Controller
                     'unit_price'  => $item['unit_price'],
                     'total_price' => $item['quantity'] * $item['unit_price'],
                     'exp_date'    => $item['exp_date'],
+                    'supplier_id' => $validated['supplier_id'],
                 ]);
+
+                // افزایش موجودی برای آیتم جدید با type
+                StockService::increase(
+                    $item['med_id'],
+                    $validated['supplier_id'],
+                    $item['exp_date'],
+                    $item['quantity'],
+                    $item['type'] ?? null
+                );
             }
 
             $this->syncJournal($parchase);
 
             DB::commit();
 
-            // ✅ لاگ بروزرسانی
-            LogService::create(
-                'update',
-                'parchases',
-                $parchase->parchase_id,
-                'Parchase updated',
-                [
-                    'old' => $oldData,
-                    'new' => $parchase->load('items')->toArray()
-                ]
-            );
-
-            return response()->json($parchase->load(['items.medication','items.category','items.supplier','supplier']), 200);
+            return response()->json([
+                'success' => true,
+                'message' => 'خرید با موفقیت بروزرسانی شد',
+                'data' => $parchase->load(['items.medication', 'items.category', 'items.supplier', 'supplier'])
+            ], 200);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Parchase Update Error', ['error'=>$e->getMessage(),'request'=>$request->all()]);
-            return response()->json(['message'=>'خطا در بروزرسانی خرید','error'=>$e->getMessage()],500);
+            Log::error('Parchase Update Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در بروزرسانی خرید',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -165,38 +205,49 @@ class ParchasesController extends Controller
         DB::beginTransaction();
         try {
             $parchase = Parchase::findOrFail($id);
-            $data = $parchase->load('items')->toArray(); // ✅ ذخیره اطلاعات قبل از حذف
+            $data = $parchase->load('items')->toArray();
+
+            // برگرداندن موجودی آیتم‌ها قبل از حذف
+            foreach ($parchase->items as $item) {
+                StockService::reverseDecrease(
+                    $item->med_id,
+                    $parchase->supplier_id,
+                    $item->exp_date,
+                    $item->quantity,
+                    $item->type
+                );
+            }
 
             // حذف ژورنال و آیتم‌ها
-            Journal::where('ref_type','parchase')->where('ref_id',$parchase->parchase_id)->delete();
+            Journal::where('ref_type', 'parchase')->where('ref_id', $parchase->parchase_id)->delete();
             $parchase->items()->delete();
             $parchase->delete();
 
             DB::commit();
 
-            // ✅ لاگ حذف
-            LogService::create(
-                'delete',
-                'parchases',
-                $id,
-                'Parchase deleted',
-                $data
-            );
-
-            return response()->json(['message'=>'خرید حذف شد'], 200);
+            return response()->json([
+                'success' => true,
+                'message' => 'خرید با موفقیت حذف شد'
+            ], 200);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Parchase Delete Error', ['error'=>$e->getMessage()]);
-            return response()->json(['message'=>'خطا در حذف خرید','error'=>$e->getMessage()],500);
+            Log::error('Parchase Delete Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در حذف خرید',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
+
+    // سایر متدها...
 
     private function syncJournal($parchase)
     {
         Journal::create([
             'journal_date' => $parchase->parchase_date,
-            'description'  => "خرید دارو شماره {$parchase->parchase_id}",
+            'description'  => "خرید دارو شماره {$parchase->parchase_id} از تأمین‌کننده",
             'entry_type'   => Journal::ENTRY_DEBIT,
             'amount'       => $parchase->total_parchase,
             'parchase_id'  => $parchase->parchase_id,  

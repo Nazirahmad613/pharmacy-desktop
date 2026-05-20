@@ -1,4 +1,4 @@
- import { lazy } from "react";
+import { lazy } from "react";
 import Loadable from "app/components/Loadable";
 import AdminRoute from "../material-kit/AdminRoute"; // ✅ Route Guard
 
@@ -19,7 +19,7 @@ const AppExpansionPanel = Loadable(lazy(() => import("./expansion-panel/AppExpan
 const AppAddcatagory = Loadable(lazy(() => import("./addcatagory/addcatagory")));
 const AppAddmedication = Loadable(lazy(() => import("./addinformation/addmedication")));
 const AppUsersPage = Loadable(lazy(() => import("./users/UsersPage")));
-const AppRolesPermissionsPage = Loadable(lazy(() => import("./users/RolesPermissionsPage"))); // ✅ صفحه رول و پرمیشن
+const AppRolesPermissionsPage = Loadable(lazy(() => import("./users/RolesPermissionsPage")));
 const AppAddchanges = Loadable(lazy(() => import("./changes/addchanges")));
 const AppAddprescriptions = Loadable(lazy(() => import("./pres_insert/pres_insert")));
 const AppAddsales = Loadable(lazy(() => import("./sales_insert/sales_insert")));
@@ -34,12 +34,15 @@ const AppMedicationStockTable = Loadable(lazy(() => import("./reports/medication
 const AppMedicationStockChart = Loadable(lazy(() => import("./reports/medication-stock/MedicationStockChart")));
 const AppSalesTable = Loadable(lazy(() => import("./reports/sales/SalesTable")));
 const AppSalesChart = Loadable(lazy(() => import("./reports/sales/SalesChart")));
-const AppDashboardDailyChart = Loadable(
-  lazy(() => import("./reports/dashboard/DashboardDailyChart")));
+const AppDashboardDailyChart = Loadable(lazy(() => import("./reports/dashboard/DashboardDailyChart")));
 const AppDashboardDailyTable = Loadable(lazy(() => import("./reports/dashboard/DashboardDailyTable")));
+
+// ===== ✅ صفحه استاک (مدیریت موجودی انبار) =====
+const AppStock = Loadable(lazy(() => import("./stock/Stock")));
 
 // ===== Routes =====
 const materialRoutes = [
+  // ===== Material UI Samples =====
   { path: "/material/form", element: <AppForm /> },
   { path: "/material/icons", element: <AppIcon /> },
   { path: "/material/progress", element: <AppProgress /> },
@@ -52,6 +55,7 @@ const materialRoutes = [
   { path: "/material/dialog", element: <AppDialog /> },
   { path: "/material/snackbar", element: <AppSnackbar /> },
 
+  // ===== Forms & Data Entry =====
   { path: "/material/addinformation", element: <AppAddmedication /> },
   { path: "/material/changes", element: <AppAddchanges /> },
   { path: "/material/pres_insert", element: <AppAddprescriptions /> },
@@ -61,14 +65,21 @@ const materialRoutes = [
   { path: "/material/registrations", element: <AppRegistrationForm /> },
   { path: "/material/logs", element: <AppAddlogs /> },
 
+  // ===== Reports =====
   { path: "/material/hospital-report", element: <AppHospital_report /> },
   { path: "/material/AcountSummaryPage", element: <AppAccountSummaryPage /> },
   { path: "/material/MedicationStockTable", element: <AppMedicationStockTable /> },
   { path: "/material/MedicationStockChart", element: <AppMedicationStockChart /> },
   { path: "/material/SalesTable", element: <AppSalesTable /> },
   { path: "/material/SalesChart", element: <AppSalesChart /> },
-{ path: "/material/dashboard-daily-chart", element: <AppDashboardDailyChart /> },
-{ path: "/material/dashboard-daily-table", element: <AppDashboardDailyTable /> },
+  { path: "/material/dashboard-daily-chart", element: <AppDashboardDailyChart /> },
+  { path: "/material/dashboard-daily-table", element: <AppDashboardDailyTable /> },
+
+  // ===== ✅ مسیر استاک (مدیریت موجودی انبار) =====
+  {
+    path: "/material/stock",
+    element: <AppStock />,
+  },
 
   // ===== مسیر مدیریت کاربران فقط برای ادمین و سوپر ادمین =====
   {
@@ -81,14 +92,14 @@ const materialRoutes = [
   },
 
   // ===== مسیر مدیریت رول‌ها و پرمیشن‌ها فقط برای ادمین و سوپر ادمین =====
-   {
-  path: "/material/roles-permissions",
-  element: (
-    <AdminRoute>
-      <AppRolesPermissionsPage />
-    </AdminRoute>
-  ),
-}
+  {
+    path: "/material/roles-permissions",
+    element: (
+      <AdminRoute>
+        <AppRolesPermissionsPage />
+      </AdminRoute>
+    ),
+  }
 ];
 
 export default materialRoutes;

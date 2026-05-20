@@ -1,3 +1,5 @@
+// MatxVerticalNav.jsx
+
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import Box from "@mui/material/Box";
@@ -56,64 +58,134 @@ export default function MatxVerticalNav({ items }) {
   const { t } = useTranslation();
   const { user } = useAuth();
 
-  // فیلتر آیتم‌ها بر اساس نقش کاربر
-  const filterItemsByRole = (data) => {
-    return data
-      .filter(item => !item.roles || item.roles.includes(user?.role))
-      .map(item => ({
-        ...item,
-        children: item.children ? filterItemsByRole(item.children) : undefined,
-      }));
+  const hasRoleAccess = (itemRoles = []) => {
+    if (!itemRoles || itemRoles.length === 0) return true;
+
+    if (!user) return false;
+
+    const userRoles =
+      user.role_names ||
+      user.roles?.map((role) =>
+        typeof role === "object" ? role.name : role
+      ) ||
+      [];
+
+    return itemRoles.some((role) => userRoles.includes(role));
   };
 
-  const filteredItems = Array.isArray(items) ? filterItemsByRole(items) : [];
+  const hasPermissionAccess = (itemPermissions = []) => {
+    if (!itemPermissions || itemPermissions.length === 0) {
+      return true;
+    }
+
+    if (!user) return false;
+
+    if (user.isAdmin === true) {
+      return true;
+    }
+
+    const allPermissions = user.all_permissions || [];
+
+    return itemPermissions.some((perm) =>
+      allPermissions.includes(perm)
+    );
+  };
+
+  const filterItems = (data) => {
+    return data.reduce((acc, item) => {
+      const roleAccess = hasRoleAccess(item.roles);
+      const permissionAccess = hasPermissionAccess(item.permissions);
+
+      if (!roleAccess || !permissionAccess) {
+        return acc;
+      }
+
+      const clonedItem = { ...item };
+
+      if (clonedItem.children) {
+        clonedItem.children = filterItems(clonedItem.children);
+
+        if (
+          clonedItem.children.length === 0 &&
+          !clonedItem.path
+        ) {
+          return acc;
+        }
+      }
+
+      acc.push(clonedItem);
+      return acc;
+    }, []);
+  };
+
+  const filteredItems = Array.isArray(items)
+    ? filterItems(items)
+    : [];
 
   const renderLevels = (data) => {
     return data.map((item, index) => {
-      if (item.type === "label")
+      if (item.type === "label") {
         return (
-          <ListLabel key={index} mode={mode} className="sidenavHoverShow">
+          <ListLabel
+            key={index}
+            mode={mode}
+            className="sidenavHoverShow"
+          >
             {t(item.label)}
           </ListLabel>
         );
+      }
 
       if (item.children && item.children.length > 0) {
         return (
-          <MatxVerticalNavExpansionPanel mode={mode} item={item} key={index}>
+          <MatxVerticalNavExpansionPanel
+            mode={mode}
+            item={item}
+            key={index}
+          >
             {renderLevels(item.children)}
           </MatxVerticalNavExpansionPanel>
         );
-      } else {
-        return (
-          <InternalLink key={index}>
-            <NavLink
-              to={item.path}
-              className={({ isActive }) => (isActive ? `navItemActive` : "")}
-            >
-              <ButtonBase key={item.name} sx={{ width: "100%" }}>
-                {/* ✅ اصلاح شده: بررسی نوع icon و تبدیل به string در صورت نیاز */}
-                {item.icon && (
-                  typeof item.icon === 'string' ? (
-                    <Icon className={item.icon} />
-                  ) : (
-                    // اگر icon از نوع object است، آن را نادیده بگیر یا آیکون پیش‌فرض نمایش بده
-                    <Icon className="default-icon" />
-                  )
-                )}
-                <StyledText mode={mode} className="sidenavHoverShow">
-                  {t(item.name)}
-                </StyledText>
-                {item.badge && <BadgeValue>{t(item.badge.value)}</BadgeValue>}
-              </ButtonBase>
-            </NavLink>
-          </InternalLink>
-        );
       }
+
+      return (
+        <InternalLink key={index}>
+          <NavLink
+            to={item.path}
+            className={({ isActive }) =>
+              isActive ? "navItemActive" : ""
+            }
+          >
+            <ButtonBase sx={{ width: "100%" }}>
+              {item.icon}
+
+              <StyledText
+                mode={mode}
+                className="sidenavHoverShow"
+              >
+                {t(item.name)}
+              </StyledText>
+
+              {item.badge && (
+                <BadgeValue>
+                  {t(item.badge.value)}
+                </BadgeValue>
+              )}
+            </ButtonBase>
+          </NavLink>
+        </InternalLink>
+      );
     });
   };
 
   return (
-    <div className="navigation" style={{ overflowY: "auto", maxHeight: "100vh" }}>
+    <div
+      className="navigation"
+      style={{
+        overflowY: "auto",
+        maxHeight: "100vh",
+      }}
+    >
       {renderLevels(filteredItems)}
     </div>
   );

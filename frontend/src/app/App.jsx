@@ -17,7 +17,6 @@ import {
 import "react-toastify/dist/ReactToastify.css";
 import "./i18n";
 
-// ================= کامپوننت DebugAuth =================
 const DebugAuth = () => {
   const { user, loading } = useAuth();
 
@@ -25,14 +24,14 @@ const DebugAuth = () => {
   if (!user) return null;
 
   return (
-    <div style={{ 
-      position: 'fixed', 
-      bottom: 0, 
-      right: 0, 
-      background: '#333', 
-      color: 'white', 
-      padding: '8px 12px', 
-      fontSize: 11, 
+    <div style={{
+      position: 'fixed',
+      bottom: 0,
+      right: 0,
+      background: '#333',
+      color: 'white',
+      padding: '8px 12px',
+      fontSize: 11,
       zIndex: 9999,
       borderRadius: '8px 0 0 0',
       fontFamily: 'monospace',
@@ -46,27 +45,28 @@ const DebugAuth = () => {
     </div>
   );
 };
-// ====================================================
 
-/* 🔹 Protected Route */
 function ProtectedRoute({ children, allowedRoles }) {
-  const { currentUser } = useAuth();
+  const { user, loading } = useAuth();
 
-  if (!currentUser) {
+  if (loading) return null;
+
+  if (!user) {
     return <Navigate to="/session/signin" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
-    if (currentUser.role === "hospital_head") {
-      return <Navigate to="/material/hospital-report" replace />;
-    }
+  if (
+    allowedRoles &&
+    !user.roles?.some((r) =>
+      allowedRoles.includes(r.name)
+    )
+  ) {
     return <Navigate to="/dashboard/default" replace />;
   }
 
   return children;
 }
 
-/* 🔹 Router */
 function AppRouter() {
   const element = useRoutes([
     ...routes,
@@ -85,13 +85,18 @@ export default function App() {
 
   useEffect(() => {
     const savedLanguage = localStorage.getItem("i18nextLng") || "fa";
+
     i18n.changeLanguage(savedLanguage);
 
     document.documentElement.setAttribute(
       "dir",
       savedLanguage === "fa" ? "rtl" : "ltr"
     );
-    document.documentElement.setAttribute("lang", savedLanguage);
+
+    document.documentElement.setAttribute(
+      "lang",
+      savedLanguage
+    );
   }, [i18n]);
 
   return (
@@ -101,7 +106,12 @@ export default function App() {
           <MatxTheme>
             <CssBaseline />
 
-            <div style={{ direction: i18n.language === "fa" ? "rtl" : "ltr" }}>
+            <div
+              style={{
+                direction:
+                  i18n.language === "fa" ? "rtl" : "ltr"
+              }}
+            >
               <AnimatedBackground>
                 <AppRouter />
                 <DebugAuth />

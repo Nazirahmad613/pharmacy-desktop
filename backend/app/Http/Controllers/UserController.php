@@ -5,119 +5,101 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
     public function index()
     {
-        $users = User::with('roles', 'permissions')->get();
-        
-        // اضافه کردن avatar_url و role_name به هر کاربر
-        $users->each(function($user) {
-            $user->avatar_url = $user->avatar_url;
-            $user->role_name = $user->role_name;
-        });
-        
-        return response()->json($users);
+        try {
+            $users = User::with('roles')->get();
+            return response()->json($users);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 
     public function store(Request $request)
     {
-        $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users,email',
-            'password' => 'required|min:6',
-            'role'     => 'required|exists:roles,name',
-            'avatar'   => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-        ]);
+        try {
+            $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => 'required|string|email|max:255|unique:users',
+                'password' => 'required|string|min:6',
+                'role' => 'required|string|exists:roles,name',
+            ]);
 
-        $userData = [
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'password' => Hash::make($request->password),
-        ];
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+            ]);
 
-        if ($request->hasFile('avatar')) {
-            $avatarPath = $request->file('avatar')->store('avatars', 'public');
-            $userData['avatar'] = $avatarPath;
-        }
-
-        $user = User::create($userData);
-
-        // ✅ تخصیص نقش با گارد sanctum
-        $role = Role::findByName($request->role, 'sanctum');
-        $user->assignRole($role);
-
-        // بارگذاری مجدد با roles
-        $user->load('roles', 'permissions');
-        
-        // اضافه کردن فیلدهای اضافی
-        $user->avatar_url = $user->avatar_url;
-        $user->role_name = $user->role_name;
-
-        return response()->json($user);
-    }
-
-    public function show(User $user)
-    {
-        $user->load('roles', 'permissions');
-        $user->avatar_url = $user->avatar_url;
-        $user->role_name = $user->role_name;
-        
-        return response()->json($user);
-    }
-
-    public function update(Request $request, User $user)
-    {
-        $request->validate([
-            'name'     => 'sometimes|string|max:255',
-            'email'    => 'sometimes|email|unique:users,email,' . $user->id,
-            'password' => 'nullable|min:6',
-            'role'     => 'nullable|exists:roles,name',
-            'avatar'   => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-        ]);
-
-        $user->fill($request->only(['name', 'email']));
-
-        if ($request->filled('password')) {
-            $user->password = Hash::make($request->password);
-        }
-
-        if ($request->hasFile('avatar')) {
-            if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
-                Storage::disk('public')->delete($user->avatar);
+            if ($request->hasFile('avatar')) {
+                $path = $request->file('avatar')->store('avatars', 'public');
+                $user->avatar = $path;
+                $user->save();
             }
-            $avatarPath = $request->file('avatar')->store('avatars', 'public');
-            $user->avatar = $avatarPath;
+
+            $user->assignRole($request->role);
+
+            return response()->json($user->load('roles'), 201);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
         }
-
-        $user->save();
-
-        if ($request->has('role')) {
-            $role = Role::findByName($request->role, 'sanctum');
-            $user->syncRoles([$role]);
-        }
-
-        if ($request->has('permissions')) {
-            $user->syncPermissions($request->permissions);
-        }
-
-        $user->load('roles', 'permissions');
-        $user->avatar_url = $user->avatar_url;
-        $user->role_name = $user->role_name;
-
-        return response()->json($user);
     }
 
-    public function destroy(User $user)
+    public function show($id)
     {
-        if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
-            Storage::disk('public')->delete($user->avatar);
+        try {
+            $user = User::with('roles')->findOrFail($id);
+            return response()->json($user);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 404);
         }
-        
-        $user->delete();
-        return response()->json(['message' => 'deleted']);
+    }
+
+    public function update(Request $request, $id)
+    {
+        try {
+            $user = User::findOrFail($id);
+
+            $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => 'required|string|email|max:255|unique:users,email,' . $id,
+                'password' => 'nullable|string|min:6',
+                'role' => 'required|string|exists:roles,name',
+            ]);
+
+            $user->name = $request->name;
+            $user->email = $request->email;
+
+            if ($request->filled('password')) {
+                $user->password = Hash::make($request->password);
+            }
+
+            if ($request->hasFile('avatar')) {
+                $path = $request->file('avatar')->store('avatars', 'public');
+                $user->avatar = $path;
+            }
+
+            $user->save();
+            $user->syncRoles([$request->role]);
+
+            return response()->json($user->load('roles'));
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function destroy($id)
+    {
+        try {
+            $user = User::findOrFail($id);
+            $user->delete();
+            return response()->json(['message' => 'User deleted successfully']);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 }

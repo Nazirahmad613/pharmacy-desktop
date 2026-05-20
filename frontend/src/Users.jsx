@@ -5,10 +5,10 @@ const Users = () => {
   const [users, setUsers] = useState([]);
 
   useEffect(() => {
-    api.get("/users")
+api.get("/users")
       .then((response) => {
         setUsers(response.data);
-      })
+      }    )
       .catch((error) => {
         console.error("خطا در دریافت داده‌ها:", error);
       });

@@ -12,7 +12,7 @@ class ParchaseItem extends Model
     protected $table = 'parchaseitems';
     protected $primaryKey = 'parchase_it_id';
     public $timestamps = false;
-
+ 
     protected $fillable = [
         'parchase_id',
         'med_id',

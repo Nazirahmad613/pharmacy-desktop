@@ -43,7 +43,7 @@ export default function UsersPage() {
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-
+ 
   // ✅ اصلاح: بررسی صحیح نقش کاربر
   const getUserRoles = () => {
     if (!currentUser) return [];
@@ -54,7 +54,7 @@ export default function UsersPage() {
   };
 
   const userRoles = getUserRoles();
-  const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
+  const isAdmin = userRoles.includes('Admin') || userRoles.includes('super_admin');
   const isHospitalHead = userRoles.includes('hospital_head');
 
   // ✅ بررسی دسترسی برای نمایش صفحه
