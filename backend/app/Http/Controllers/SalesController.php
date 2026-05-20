@@ -6,12 +6,13 @@ use App\Models\Sales;
 use App\Models\SalesView;
 use App\Models\Journal;
 use App\Models\Registrations;
+use App\Models\Stock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use App\Services\LogService;
-use App\Services\StockService; // ✅ سرویس مدیریت موجودی
+use App\Services\StockService;
 
 class SalesController extends Controller
 {
@@ -58,12 +59,137 @@ class SalesController extends Controller
         return response()->json($sales);
     }
 
+    /**
+     * ✅ بررسی موجودی یک قلم خاص قبل از ثبت فروش (API برای فرانت‌اند)
+     * این متد برای بررسی لحظه‌ای موجودی هنگام وارد کردن تعداد استفاده می‌شود
+     */
+    public function checkStockBeforeSale(Request $request)
+    {
+        $request->validate([
+            'med_id' => 'required|exists:medications,med_id',
+            'supplier_id' => 'required|exists:registrations,reg_id',
+            'type' => 'nullable|string',
+            'quantity' => 'required|numeric|min:1',
+        ]);
+
+        try {
+            // دریافت موجودی فعلی با در نظر گرفتن type
+            $typeValue = $request->type && $request->type !== '' ? $request->type : null;
+            
+            $availableStock = StockService::getAvailableQuantity(
+                $request->med_id,
+                $request->supplier_id,
+                $typeValue
+            );
+            
+            $requestedQuantity = (int) $request->quantity;
+            $isAvailable = $availableStock >= $requestedQuantity;
+            
+            // دریافت اطلاعات دارو برای نمایش بهتر
+            $medication = \App\Models\Medication::find($request->med_id);
+            $supplier = Registrations::find($request->supplier_id);
+            
+            $medName = $medication->gen_name ?? $medication->brand_name ?? 'نامشخص';
+            $supplierName = $supplier->full_name ?? $supplier->reg_name ?? 'نامشخص';
+            
+            return response()->json([
+                'success' => true,
+                'available' => $isAvailable,
+                'total_quantity' => $availableStock,
+                'requested_quantity' => $requestedQuantity,
+                'med_id' => $request->med_id,
+                'med_name' => $medName,
+                'supplier_id' => $request->supplier_id,
+                'supplier_name' => $supplierName,
+                'type' => $request->type,
+                'message' => $isAvailable 
+                    ? "✅ موجودی کافی است (موجودی انبار: {$availableStock})" 
+                    : "❌ موجودی کافی نیست! موجودی انبار: {$availableStock} - درخواستی: {$requestedQuantity}"
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Check stock error', [
+                'error' => $e->getMessage(),
+                'request' => $request->all()
+            ]);
+            return response()->json([
+                'success' => false,
+                'available' => false,
+                'total_quantity' => 0,
+                'message' => 'خطا در بررسی موجودی: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ بررسی موجودی چند قلم همزمان (برای ثبت نهایی فروش)
+     */
+    public function checkMultipleStockBeforeSale(Request $request)
+    {
+        $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.med_id' => 'required|exists:medications,med_id',
+            'items.*.supplier_id' => 'required|exists:registrations,reg_id',
+            'items.*.type' => 'nullable|string',
+            'items.*.quantity' => 'required|numeric|min:1',
+        ]);
+
+        try {
+            $unavailableItems = [];
+            
+            foreach ($request->items as $index => $item) {
+                $typeValue = isset($item['type']) && $item['type'] !== '' ? $item['type'] : null;
+                
+                $availableStock = StockService::getAvailableQuantity(
+                    $item['med_id'],
+                    $item['supplier_id'],
+                    $typeValue
+                );
+                
+                if ($availableStock < $item['quantity']) {
+                    $medication = \App\Models\Medication::find($item['med_id']);
+                    $supplier = Registrations::find($item['supplier_id']);
+                    
+                    $unavailableItems[] = [
+                        'index' => $index,
+                        'med_id' => $item['med_id'],
+                        'med_name' => $medication->gen_name ?? $medication->brand_name ?? 'نامشخص',
+                        'supplier_id' => $item['supplier_id'],
+                        'supplier_name' => $supplier->full_name ?? $supplier->reg_name ?? 'نامشخص',
+                        'type' => $item['type'] ?? 'بدون نوع',
+                        'requested_quantity' => $item['quantity'],
+                        'available_quantity' => $availableStock
+                    ];
+                }
+            }
+            
+            if (count($unavailableItems) > 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'برخی از اقلام موجودی کافی ندارند',
+                    'unavailable_items' => $unavailableItems
+                ], 422);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'همه اقلام موجودی کافی دارند'
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در بررسی موجودی',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function store(Request $request)
     {
         DB::beginTransaction();
 
         try {
-            // ✅ اعتبارسنجی
             $validated = $request->validate([
                 'sales_date' => 'required|date',
                 'cust_id' => 'required|exists:registrations,reg_id',
@@ -79,9 +205,9 @@ class SalesController extends Controller
                 'items.*.unit_sales' => 'required|numeric|min:0',
             ]);
 
-            // ✅ بررسی موجودی قبل از ثبت فروش
-            foreach ($request->items as $item) {
-                // بررسی اینکه supplier_id واقعاً از نوع supplier باشد
+            $stockErrors = [];
+            
+            foreach ($request->items as $index => $item) {
                 $supplier = Registrations::where('reg_id', $item['supplier_id'])
                     ->where('reg_type', 'supplier')
                     ->first();
@@ -90,16 +216,38 @@ class SalesController extends Controller
                     throw new \Exception("تأمین‌کننده با شناسه {$item['supplier_id']} معتبر نیست");
                 }
 
-                // بررسی موجودی کافی
-                $isAvailable = StockService::check(
+                $typeValue = isset($item['type']) && $item['type'] !== '' ? $item['type'] : null;
+                
+                $availableStock = StockService::getAvailableQuantity(
                     $item['med_id'],
                     $item['supplier_id'],
-                    $item['quantity']
+                    $typeValue
                 );
-
-                if (!$isAvailable) {
-                    throw new \Exception("موجودی دارو با شناسه {$item['med_id']} از تأمین‌کننده مربوطه کافی نیست");
+                
+                if ($availableStock < $item['quantity']) {
+                    $medication = \App\Models\Medication::find($item['med_id']);
+                    $medName = $medication->gen_name ?? $medication->brand_name ?? 'نامشخص';
+                    
+                    $stockErrors[] = [
+                        'index' => $index,
+                        'med_id' => $item['med_id'],
+                        'med_name' => $medName,
+                        'supplier_id' => $item['supplier_id'],
+                        'supplier_name' => $supplier->full_name ?? $supplier->reg_name ?? 'نامشخص',
+                        'type' => $item['type'] ?? 'بدون نوع',
+                        'requested' => $item['quantity'],
+                        'available' => $availableStock
+                    ];
                 }
+            }
+            
+            if (!empty($stockErrors)) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'موجودی برخی اقلام کافی نیست',
+                    'errors' => $stockErrors
+                ], 422);
             }
 
             $totalSales = collect($request->items)
@@ -120,7 +268,6 @@ class SalesController extends Controller
                 'sales_user'  => Auth::id(),
             ]);
 
-            // ثبت آیتم‌های فروش و کاهش موجودی
             foreach ($request->items as $item) {
                 $sale->items()->create([
                     'med_id'      => $item['med_id'],
@@ -132,11 +279,11 @@ class SalesController extends Controller
                     'total_sales' => $item['quantity'] * $item['unit_sales'],
                 ]);
 
-                // ✅ کاهش موجودی (استاک)
                 StockService::decrease(
                     $item['med_id'],
                     $item['supplier_id'],
-                    $item['quantity']
+                    $item['quantity'],
+                    $item['type'] ?? null
                 );
             }
 
@@ -164,7 +311,7 @@ class SalesController extends Controller
             Log::error('Sales Store Error', ['error' => $e->getMessage(), 'request' => $request->all()]);
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در ثبت فروش',
+                'message' => 'خطا در ثبت فروش: ' . $e->getMessage(),
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -175,7 +322,6 @@ class SalesController extends Controller
         DB::beginTransaction();
 
         try {
-            // ✅ اعتبارسنجی
             $request->validate([
                 'sales_date' => 'required|date',
                 'cust_id' => 'required|exists:registrations,reg_id',
@@ -197,17 +343,18 @@ class SalesController extends Controller
 
             $oldData = $sale->load('items')->toArray();
 
-            // ✅ برگرداندن موجودی آیتم‌های قبلی
             foreach ($sale->items as $oldItem) {
                 StockService::reverseDecrease(
                     $oldItem->med_id,
                     $oldItem->supplier_id,
-                    $oldItem->quantity
+                    $oldItem->quantity,
+                    $oldItem->type
                 );
             }
 
-            // ✅ بررسی موجودی برای آیتم‌های جدید
-            foreach ($request->items as $item) {
+            $stockErrors = [];
+            
+            foreach ($request->items as $index => $item) {
                 $supplier = Registrations::where('reg_id', $item['supplier_id'])
                     ->where('reg_type', 'supplier')
                     ->first();
@@ -216,15 +363,38 @@ class SalesController extends Controller
                     throw new \Exception("تأمین‌کننده با شناسه {$item['supplier_id']} معتبر نیست");
                 }
 
-                $isAvailable = StockService::check(
+                $typeValue = isset($item['type']) && $item['type'] !== '' ? $item['type'] : null;
+                
+                $availableStock = StockService::getAvailableQuantity(
                     $item['med_id'],
                     $item['supplier_id'],
-                    $item['quantity']
+                    $typeValue
                 );
-
-                if (!$isAvailable) {
-                    throw new \Exception("موجودی دارو با شناسه {$item['med_id']} از تأمین‌کننده مربوطه کافی نیست");
+                
+                if ($availableStock < $item['quantity']) {
+                    $medication = \App\Models\Medication::find($item['med_id']);
+                    $medName = $medication->gen_name ?? $medication->brand_name ?? 'نامشخص';
+                    
+                    $stockErrors[] = [
+                        'index' => $index,
+                        'med_id' => $item['med_id'],
+                        'med_name' => $medName,
+                        'supplier_id' => $item['supplier_id'],
+                        'supplier_name' => $supplier->full_name ?? $supplier->reg_name ?? 'نامشخص',
+                        'type' => $item['type'] ?? 'بدون نوع',
+                        'requested' => $item['quantity'],
+                        'available' => $availableStock
+                    ];
                 }
+            }
+            
+            if (!empty($stockErrors)) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'موجودی برخی اقلام کافی نیست',
+                    'errors' => $stockErrors
+                ], 422);
             }
 
             $totalSales = collect($request->items)
@@ -234,10 +404,8 @@ class SalesController extends Controller
             $netSales = $totalSales - $discount;
             $totalPaid = min($request->total_paid ?? 0, $netSales);
 
-            // حذف آیتم‌های قدیمی
             $sale->items()->delete();
 
-            // ثبت آیتم‌های جدید و کاهش موجودی
             foreach ($request->items as $item) {
                 $sale->items()->create([
                     'med_id'      => $item['med_id'],
@@ -249,11 +417,11 @@ class SalesController extends Controller
                     'total_sales' => $item['quantity'] * $item['unit_sales'],
                 ]);
 
-                // ✅ کاهش موجودی برای آیتم جدید
                 StockService::decrease(
                     $item['med_id'],
                     $item['supplier_id'],
-                    $item['quantity']
+                    $item['quantity'],
+                    $item['type'] ?? null
                 );
             }
 
@@ -267,7 +435,6 @@ class SalesController extends Controller
                 'total_paid'    => $totalPaid,
             ]);
 
-            // حذف و ثبت مجدد ژورنال
             Journal::where('ref_type', 'sale')
                 ->where('ref_id', $sales_id)
                 ->delete();
@@ -314,12 +481,12 @@ class SalesController extends Controller
 
             $data = $sale->load('items')->toArray();
 
-            // ✅ برگرداندن موجودی آیتم‌ها قبل از حذف
             foreach ($sale->items as $item) {
                 StockService::reverseDecrease(
-                    $item['med_id'],
-                    $item['supplier_id'],
-                    $item['quantity']
+                    $item->med_id,
+                    $item->supplier_id,
+                    $item->quantity,
+                    $item->type
                 );
             }
 
@@ -357,69 +524,8 @@ class SalesController extends Controller
         }
     }
 
-    /**
-     * بررسی موجودی قبل از ثبت فروش (API جداگانه برای فرانت‌اند)
-     */
-    public function checkStockBeforeSale(Request $request)
-    {
-        $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.med_id' => 'required|exists:medications,med_id',
-            'items.*.supplier_id' => 'required|exists:registrations,reg_id',
-            'items.*.quantity' => 'required|numeric|min:1',
-        ]);
-
-        try {
-            $unavailableItems = [];
-            
-            foreach ($request->items as $index => $item) {
-                $isAvailable = StockService::check(
-                    $item['med_id'],
-                    $item['supplier_id'],
-                    $item['quantity']
-                );
-                
-                if (!$isAvailable) {
-                    $medication = \App\Models\Medication::find($item['med_id']);
-                    $supplier = Registrations::find($item['supplier_id']);
-                    
-                    $unavailableItems[] = [
-                        'index' => $index,
-                        'med_id' => $item['med_id'],
-                        'med_name' => $medication->gen_name ?? 'نامشخص',
-                        'supplier_id' => $item['supplier_id'],
-                        'supplier_name' => $supplier->full_name ?? $supplier->reg_name ?? 'نامشخص',
-                        'required_quantity' => $item['quantity'],
-                        'available_quantity' => StockService::getAvailableQuantity($item['med_id'], $item['supplier_id'])
-                    ];
-                }
-            }
-            
-            if (count($unavailableItems) > 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'برخی از اقلام موجودی کافی ندارند',
-                    'unavailable_items' => $unavailableItems
-                ], 422);
-            }
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'همه اقلام موجودی کافی دارند'
-            ]);
-            
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در بررسی موجودی',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
     private function saveJournal($saleId, $custId, $netSales, $totalPaid, $date)
     {
-        // ثبت بستانکار (فروش)
         Journal::create([
             'journal_date' => $date,
             'description' => 'ثبت فروش شماره ' . $saleId,
@@ -431,7 +537,6 @@ class SalesController extends Controller
             'user_id' => Auth::id(),
         ]);
 
-        // ثبت بدهکار (دریافت وجه)
         if ($totalPaid > 0) {
             Journal::create([
                 'journal_date' => $date,

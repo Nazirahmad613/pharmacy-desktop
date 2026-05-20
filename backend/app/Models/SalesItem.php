@@ -1,4 +1,5 @@
 <?php
+// app/Models/SalesItem.php
 
 namespace App\Models;
 
@@ -22,7 +23,14 @@ class SalesItem extends Model
         'quantity',
         'unit_sales',
         'total_sales',
-        'exp_date' // اگر این فیلد را دارید
+        'exp_date'
+    ];
+
+    protected $casts = [
+        'quantity' => 'integer',
+        'unit_sales' => 'decimal:2',
+        'total_sales' => 'decimal:2',
+        'exp_date' => 'date'
     ];
 
     /**
@@ -42,13 +50,11 @@ class SalesItem extends Model
     }
 
     /**
-     * ✅ ارتباط با حمایت‌کننده از جدول registrations
-     * supplier_id همان reg_id از جدول registrations است
+     * ✅ ارتباط با تأمین‌کننده از جدول registrations
      */
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Registrations::class, 'supplier_id', 'reg_id')
-                    ->where('reg_type', 'supplier'); // فقط supplierها
+        return $this->belongsTo(Registrations::class, 'supplier_id', 'reg_id');
     }
 
     /**
@@ -57,5 +63,27 @@ class SalesItem extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class, 'category_id', 'category_id');
+    }
+
+    /**
+     * ✅ ارتباط با استاک برای دریافت type
+     * این متد type را از جدول stock بر اساس med_id و supplier_id دریافت می‌کند
+     */
+    public function stock(): BelongsTo
+    {
+        return $this->belongsTo(Stock::class, 'med_id', 'med_id')
+                    ->whereColumn('sales_items.supplier_id', 'stock.supplier_id');
+    }
+
+    /**
+     * ✅ متد کمکی برای گرفتن type از stock
+     */
+    public function getTypeFromStockAttribute()
+    {
+        $stock = Stock::where('med_id', $this->med_id)
+            ->where('supplier_id', $this->supplier_id)
+            ->first();
+        
+        return $stock->type ?? $this->type;
     }
 }

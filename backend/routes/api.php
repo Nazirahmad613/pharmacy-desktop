@@ -9,8 +9,6 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\LogController;
 use App\Http\Controllers\MedicationController;
 use App\Http\Controllers\StockController;
-
- ;
 use App\Http\Controllers\CustomersController;
 use App\Http\Controllers\DoctorController;
 use App\Http\Controllers\SalesController;
@@ -19,7 +17,6 @@ use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\ViewInventoryController;
 use App\Http\Controllers\ViewMedicationsController;
 use App\Http\Controllers\ViewProfitLossController;
- 
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
@@ -37,7 +34,6 @@ use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\DepartementController;
 use App\Http\Controllers\BenefitController;
 use App\Http\Controllers\ProfileController;
- 
 
 /*
 |--------------------------------------------------------------------------
@@ -61,11 +57,10 @@ Route::get('/sales/chart', [SalesController::class, 'chart']);
 
 /*
 |--------------------------------------------------------------------------
-| Protected Routes (Token-based) with Permissions
+| Stock Routes (PUBLIC - بدون احراز هویت برای تست)
 |--------------------------------------------------------------------------
 */
-
- Route::prefix('stock')->group(function () {
+Route::prefix('stock')->group(function () {
     Route::get('/', [StockController::class, 'index']);
     Route::get('/summary', [StockController::class, 'summary']);
     Route::get('/expiring', [StockController::class, 'expiring']);
@@ -74,14 +69,23 @@ Route::get('/sales/chart', [SalesController::class, 'chart']);
     Route::post('/check', [StockController::class, 'check']);
     Route::get('/suppliers/{medId}', [StockController::class, 'getSuppliersByMedication']);
     Route::get('/details/{medId}', [StockController::class, 'getStockDetails']);
+    Route::get('/types/{medId}', [StockController::class, 'getTypesByMedication']);
 });
 
+/*
+|--------------------------------------------------------------------------
+| Sales Stock Check Routes (بدون احراز هویت برای تست)
+|--------------------------------------------------------------------------
+*/
+// ✅ این Route ها باید خارج از گروه stock باشند
+Route::post('/sales/check-stock', [SalesController::class, 'checkStockBeforeSale']);
+Route::post('/sales/check-multiple-stock', [SalesController::class, 'checkMultipleStockBeforeSale']);
 
-
-
-
-
-
+/*
+|--------------------------------------------------------------------------
+| Protected Routes (Token-based) with Permissions
+|--------------------------------------------------------------------------
+*/
 Route::middleware('auth:sanctum')->group(function () {
     Route::put('/profile', [ProfileController::class, 'updateProfile']);
     Route::get('/profile', [ProfileController::class, 'getProfile']);
@@ -90,7 +94,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/logs', [LogController::class, 'index'])->middleware('can:view-logs');
 
     // ===== Users Management =====
-    // حذف موقت middleware برای تست
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
     Route::get('/users/{user}', [UserController::class, 'show']);
@@ -143,7 +146,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/prescriptions/{pres_id}', [PrescriptionController::class, 'destroy']);
 
     // ===== Stock & Sales Reports =====
-    // Route::get('/stock', [StockReportController::class, 'index']);
     Route::get('/salesd', [SalesFullDetailsController::class, 'index']);
 
     // ===== Inventory =====

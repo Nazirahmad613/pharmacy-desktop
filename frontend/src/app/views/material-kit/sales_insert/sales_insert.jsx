@@ -24,8 +24,8 @@ export default function SaleForm() {
   const [saleDate, setSaleDate] = useState("");
   const [categories, setCategories] = useState([]);
   const [medications, setMedications] = useState([]);
-  const [allSuppliers, setAllSuppliers] = useState([]); // ✅ همه حمایت‌کننده‌ها
-  const [suppliers, setSuppliers] = useState([]); // ✅ حمایت‌کننده‌های فیلتر شده برای نمایش
+  const [allSuppliers, setAllSuppliers] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [salesList, setSalesList] = useState([]);
 
@@ -36,6 +36,14 @@ export default function SaleForm() {
   const [remaining, setRemaining] = useState(0);
   const [paymentStatus, setPaymentStatus] = useState("پرداخت نشده");
   const [printSale, setPrintSale] = useState(null);
+
+  // ✅ State برای بررسی موجودی
+  const [stockAvailability, setStockAvailability] = useState({ 
+    available: false, 
+    totalStock: 0, 
+    message: "",
+    checking: false 
+  });
 
   const [formItem, setFormItem] = useState({
     cust_id: "",
@@ -92,36 +100,25 @@ export default function SaleForm() {
     else setPaymentStatus("پرداخت کامل شده");
   }, [netSales, totalPaid]);
 
-  // ✅ دریافت لیست کتگوری‌ها، داروها، ثبت‌نام‌ها
+  // دریافت لیست کتگوری‌ها، داروها، ثبت‌نام‌ها
   useEffect(() => {
     api.get("/categories").then(res => setCategories(res.data.data ?? res.data));
     api.get("/medications").then(res => setMedications(res.data.data ?? res.data));
     
-    // ✅ دریافت همه registrations
     api.get("/registrations").then(res => {
       const data = res.data.data ?? res.data ?? [];
-      
-      // ✅ همه حمایت‌کننده‌ها (supplier)
       const supplierList = data.filter(r => r.reg_type === "supplier");
-      // ✅ همه مشتری‌ها (customer)
       const customerList = data.filter(r => r.reg_type === "customer");
       
-      // ✅ ذخیره همه حمایت‌کننده‌ها در state جداگانه
       setAllSuppliers(supplierList);
-      // ✅ در ابتدا همه حمایت‌کننده‌ها را نمایش بده
       setSuppliers(supplierList);
       setCustomers(customerList);
-      
-      console.log("All Suppliers loaded:", supplierList.length);
-      console.log("Suppliers data:", supplierList);
-      console.log("Customers loaded:", customerList.length);
     }).catch(err => {
       console.error("Error loading registrations:", err);
       toast.error("خطا در دریافت لیست ثبت‌نام‌ها");
     });
   }, [api]);
 
-  // هرگاه مشتری تغییر کند، شماره تذکره آن را از لیست مشتریان پیدا کرده و در state ذخیره می‌کنیم
   useEffect(() => {
     if (!formItem.cust_id) {
       setCustomerNID("");
@@ -144,48 +141,88 @@ export default function SaleForm() {
     m => Number(m.med_id) === Number(formItem.med_id)
   );
 
-  // ✅ اصلاح شده: فیلتر کردن حمایت‌کنندگان بر اساس supplier_id داروی انتخاب شده
+  // فیلتر کردن حمایت‌کنندگان بر اساس supplier_id داروی انتخاب شده
   useEffect(() => {
     if (!selectedMedication) {
-      // اگر دارویی انتخاب نشده، همه حمایت‌کننده‌ها را نشان بده
       setSuppliers(allSuppliers);
       return;
     }
     
     const medSupplierId = selectedMedication.supplier_id;
     
-    // اگر دارو supplier_id ندارد، همه حمایت‌کننده‌ها را نشان بده
     if (!medSupplierId) {
-      console.log("No supplier_id for this medication, showing all suppliers");
       setSuppliers(allSuppliers);
       return;
     }
     
-    // فیلتر کردن حمایت‌کننده‌ها
     let filtered = [];
     
     if (Array.isArray(medSupplierId)) {
-      // اگر supplier_id به صورت آرایه است
       filtered = allSuppliers.filter(s => 
         medSupplierId.some(id => Number(id) === Number(s.reg_id))
       );
     } else {
-      // اگر تنها یک مقدار است
       filtered = allSuppliers.filter(s => 
-        Number(medSupplierId) === Number(s.reg_id)
-        || String(medSupplierId) === String(s.reg_id)
+        Number(medSupplierId) === Number(s.reg_id) ||
+        String(medSupplierId) === String(s.reg_id)
       );
     }
     
-    // اگر هیچ حمایت‌کننده‌ای پیدا نشد، همه را نشان بده (یا می‌توانی خالی بگذاری)
     if (filtered.length === 0) {
-      console.log("No matching suppliers, showing all");
       setSuppliers(allSuppliers);
     } else {
-      console.log(`Found ${filtered.length} suppliers for this medication`);
       setSuppliers(filtered);
     }
   }, [selectedMedication, allSuppliers]);
+
+  // ✅ بررسی موجودی هنگام تغییر تعداد یا انتخاب حمایت‌کننده
+  useEffect(() => {
+    const checkStockAvailability = async () => {
+      if (!formItem.med_id || !formItem.supplier_id || !formItem.quantity || Number(formItem.quantity) <= 0) {
+        setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+        return;
+      }
+
+      setStockAvailability(prev => ({ ...prev, checking: true }));
+      
+      try {
+         const response = await api.post("/sales/check-stock",  {
+          med_id: formItem.med_id,
+          supplier_id: formItem.supplier_id,
+          type: formItem.type || null,
+          quantity: Number(formItem.quantity)
+        });
+        
+        if (response.data.success) {
+          const isAvailable = response.data.available;
+          const totalStock = response.data.total_quantity || 0;
+          
+          setStockAvailability({
+            available: isAvailable,
+            totalStock: totalStock,
+            message: isAvailable 
+              ? `✅ موجودی کافی است (موجودی انبار: ${totalStock})`
+              : `❌ موجودی کافی نیست! موجودی انبار: ${totalStock} - درخواستی: ${formItem.quantity}`,
+            checking: false
+          });
+        }
+      } catch (error) {
+        console.error("Error checking stock:", error);
+        setStockAvailability({
+          available: false,
+          totalStock: 0,
+          message: "⚠️ خطا در بررسی موجودی",
+          checking: false
+        });
+      }
+    };
+    
+    const timer = setTimeout(() => {
+      checkStockAvailability();
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [formItem.med_id, formItem.supplier_id, formItem.quantity, formItem.type, api]);
 
   const handleChange = (field, value) => {
     let updated = { ...formItem, [field]: value };
@@ -193,12 +230,17 @@ export default function SaleForm() {
       updated.med_id = "";
       updated.supplier_id = "";
       updated.type = "";
+      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
     }
     if (field === "med_id") {
       const med = medications.find(m => Number(m.med_id) === Number(value));
       updated.type = med?.type ?? "";
       updated.unit_sales = med?.unit_sales ?? "";
-      updated.supplier_id = ""; // ✅ Reset supplier when medication changes
+      updated.supplier_id = "";
+      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+    }
+    if (field === "supplier_id") {
+      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
     }
     const qty = Number(field === "quantity" ? value : updated.quantity || 0);
     const price = Number(field === "unit_sales" ? value : updated.unit_sales || 0);
@@ -210,7 +252,12 @@ export default function SaleForm() {
     if (e.key !== "Enter") return;
     e.preventDefault();
     
-    // بررسی کنید که supplier_id معتبر است
+    // ✅ بررسی موجودی قبل از افزودن
+    if (!stockAvailability.available) {
+      toast.error(`❌ موجودی کافی نیست! ${stockAvailability.message}`);
+      return;
+    }
+    
     if (!formItem.supplier_id) {
       toast.error("❌ لطفاً حمایت‌کننده را انتخاب کنید");
       return;
@@ -251,6 +298,7 @@ export default function SaleForm() {
       unit_sales: "",
       total_sales: 0,
     });
+    setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
   };
 
   const handleRemoveItem = (id) => {
@@ -278,6 +326,7 @@ export default function SaleForm() {
     setNetSales(0);
     setRemaining(0);
     setPaymentStatus("پرداخت نشده");
+    setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
   };
 
   const handleCancelEdit = () => {
@@ -319,7 +368,8 @@ export default function SaleForm() {
       setCurrentPage(1);
     } catch (err) {
       console.error(err);
-      toast.error("❌ خطا در ثبت فروش");
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || "خطا در ثبت فروش";
+      toast.error(`❌ ${errorMsg}`);
     }
   };
 
@@ -399,7 +449,8 @@ export default function SaleForm() {
       setCurrentPage(1);
     } catch (err) {
       console.error(err);
-      toast.error("❌ خطا در بروزرسانی فروش");
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || "خطا در بروزرسانی فروش";
+      toast.error(`❌ ${errorMsg}`);
     }
   };
 
@@ -528,7 +579,13 @@ export default function SaleForm() {
           </div>
           <div>
             <label>حمایت‌کننده</label>
-            <select value={formItem.supplier_id} onChange={e => handleChange("supplier_id", e.target.value)}>
+            <select 
+              value={formItem.supplier_id} 
+              onChange={e => handleChange("supplier_id", e.target.value)}
+              style={{
+                borderColor: formItem.supplier_id && !stockAvailability.available && formItem.quantity ? "#dc2626" : ""
+              }}
+            >
               <option value="">-- انتخاب حمایت‌کننده --</option>
               {suppliers.map((s) => (
                 <option key={s.reg_id} value={s.reg_id}>
@@ -536,12 +593,8 @@ export default function SaleForm() {
                 </option>
               ))}
             </select>
-            {/* نمایش تعداد حمایت‌کننده‌ها برای دیباگ */}
             {suppliers.length === 0 && (
               <small style={{ color: "red" }}>هیچ حمایت‌کننده‌ای یافت نشد</small>
-            )}
-            {suppliers.length > 0 && (
-              <small style={{ color: "green" }}>{suppliers.length} حمایت‌کننده موجود است</small>
             )}
           </div>
           <div>
@@ -550,7 +603,26 @@ export default function SaleForm() {
           </div>
           <div>
             <label>تعداد</label>
-            <input type="number" value={formItem.quantity} onChange={e => handleChange("quantity", e.target.value)} />
+            <input 
+              type="number" 
+              value={formItem.quantity} 
+              onChange={e => handleChange("quantity", e.target.value)}
+              style={{
+                borderColor: stockAvailability.message && !stockAvailability.available ? "#dc2626" : 
+                            stockAvailability.available ? "#10b981" : ""
+              }}
+            />
+            {/* ✅ نمایش وضعیت موجودی */}
+            {stockAvailability.message && (
+              <small style={{ 
+                color: stockAvailability.available ? "#10b981" : "#dc2626",
+                display: "block",
+                marginTop: "4px",
+                fontWeight: "bold"
+              }}>
+                {stockAvailability.checking ? "⏳ در حال بررسی موجودی..." : stockAvailability.message}
+              </small>
+            )}
           </div>
           <div>
             <label>قیمت واحد</label>
@@ -561,22 +633,26 @@ export default function SaleForm() {
             <input type="number" value={formItem.total_sales} readOnly />
           </div>
         </div>
+        <div style={{ marginTop: "10px", fontSize: "12px", color: "#6b7280", textAlign: "center" }}>
+          ⚡ برای افزودن آیتم، کلید Enter را بزنید
+        </div>
       </div>
 
       {/* جدول آیتم‌ها */}
       {saleItems.length > 0 && (
         <div className="table-container">
+          <h3>آیتم‌های فروش</h3>
           <table className="dark-table">
             <thead>
               <tr>
-                <th>شماره</th>
+                <th>#</th>
                 <th>کتگوری</th>
                 <th>نام دوا</th>
                 <th>حمایت‌کننده</th>
-                <th>نوع دوا</th>
+                <th>نوع</th>
                 <th>تعداد</th>
                 <th>قیمت واحد</th>
-                <th>قیمت مجموعی</th>
+                <th>مجموع</th>
                 <th>عملیات</th>
               </tr>
             </thead>
@@ -589,19 +665,27 @@ export default function SaleForm() {
                   <td>{item.supplier_name}</td>
                   <td>{item.type}</td>
                   <td>{item.quantity}</td>
-                  <td>{item.unit_sales?.toLocaleString()}</td>
-                  <td>{item.total_sales?.toLocaleString()}</td>
+                  <td>{Number(item.unit_sales).toLocaleString()}</td>
+                  <td>{Number(item.total_sales).toLocaleString()}</td>
                   <td>
                     <button className="delete" onClick={() => handleRemoveItem(item.id)}>حذف</button>
                   </td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan="7" style={{ textAlign: "left", fontWeight: "bold" }}>مجموع کل:</td>
+                <td colSpan="2" style={{ fontWeight: "bold", color: "#2563eb" }}>
+                  {totalSale.toLocaleString()} تومان
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
 
-      <div style={{ marginTop: "10px", display: "flex", gap: "10px", justifyContent: "center" }}>
+      <div style={{ marginTop: "10px", display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
         <button 
           className="edit" 
           onClick={editingId ? handleUpdateSale : handleSaveSale}
@@ -639,7 +723,7 @@ export default function SaleForm() {
           <table className="dark-table">
             <thead>
               <tr>
-                <th>شماره</th>
+                <th>#</th>
                 <th>تاریخ</th>
                 <th>مشتری</th>
                 <th>مجموع</th>
@@ -657,11 +741,11 @@ export default function SaleForm() {
                   <td>{indexOfFirst + i + 1}</td>
                   <td>{s.sales_date}</td>
                   <td>{s.customer_name}</td>
-                  <td>{s.total_sales}</td>
-                  <td>{s.discount}</td>
-                  <td>{s.net_sales}</td>
-                  <td>{s.total_paid}</td>
-                  <td>{s.remaining}</td>
+                  <td>{Number(s.total_sales).toLocaleString()}</td>
+                  <td>{Number(s.discount).toLocaleString()}</td>
+                  <td>{Number(s.net_sales).toLocaleString()}</td>
+                  <td>{Number(s.total_paid).toLocaleString()}</td>
+                  <td>{Number(s.remaining).toLocaleString()}</td>
                   <td>{s.payment_status}</td>
                   <td>
                     <button 
