@@ -70,6 +70,7 @@ Route::prefix('stock')->group(function () {
     Route::get('/suppliers/{medId}', [StockController::class, 'getSuppliersByMedication']);
     Route::get('/details/{medId}', [StockController::class, 'getStockDetails']);
     Route::get('/types/{medId}', [StockController::class, 'getTypesByMedication']);
+      Route::get('/reports/medication-stock', [StockReportController::class, 'medicationStock']);
 });
 
 /*
@@ -80,7 +81,7 @@ Route::prefix('stock')->group(function () {
 // ✅ این Route ها باید خارج از گروه stock باشند
 Route::post('/sales/check-stock', [SalesController::class, 'checkStockBeforeSale']);
 Route::post('/sales/check-multiple-stock', [SalesController::class, 'checkMultipleStockBeforeSale']);
-
+    Route::get('/low-stock', [StockController::class, 'lowStock']);
 /*
 |--------------------------------------------------------------------------
 | Protected Routes (Token-based) with Permissions

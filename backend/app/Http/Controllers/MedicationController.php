@@ -38,6 +38,7 @@ class MedicationController extends Controller
                 'type' => 'required|string|in:شربت,تابلیت,سیروم,پودر,کپسول,کریم',
                 'gen_name' => 'required|string|max:255',
                 'dosage' => 'required|string|max:255',
+                'minimum_quantity' => 'nullable|integer|min:1|max:1000',
             ], [
                 'category_id.required' => 'انتخاب کتگوری الزامی است',
                 'category_id.exists' => 'کتگوری انتخاب شده معتبر نیست',
@@ -45,6 +46,8 @@ class MedicationController extends Controller
                 'type.in' => 'نوع دوا باید یکی از: شربت، تابلیت، سیروم، پودر، کپسول، کریم باشد',
                 'gen_name.required' => 'نام عمومی دوا الزامی است',
                 'dosage.required' => 'مقدار مصرف الزامی است',
+                'minimum_quantity.integer' => 'حداقل موجودی باید عدد باشد',
+                'minimum_quantity.min' => 'حداقل موجودی باید حداقل 1 باشد',
             ]);
 
             if ($validator->fails()) {
@@ -60,6 +63,7 @@ class MedicationController extends Controller
                 'type' => $request->type,
                 'gen_name' => $request->gen_name,
                 'dosage' => $request->dosage,
+                'minimum_quantity' => $request->minimum_quantity ?? 10,
             ]);
 
             // بارگذاری رابطه کتگوری
@@ -123,6 +127,7 @@ class MedicationController extends Controller
                 'type' => 'required|string|in:شربت,تابلیت,سیروم,پودر,کپسول,کریم',
                 'gen_name' => 'required|string|max:255',
                 'dosage' => 'required|string|max:255',
+                'minimum_quantity' => 'nullable|integer|min:1|max:1000',
             ], [
                 'category_id.required' => 'انتخاب کتگوری الزامی است',
                 'category_id.exists' => 'کتگوری انتخاب شده معتبر نیست',
@@ -145,6 +150,7 @@ class MedicationController extends Controller
                 'type' => $request->type,
                 'gen_name' => $request->gen_name,
                 'dosage' => $request->dosage,
+                'minimum_quantity' => $request->minimum_quantity ?? 10,
             ]);
 
             // بارگذاری رابطه کتگوری
@@ -167,26 +173,29 @@ class MedicationController extends Controller
      * حذف دوا
      */
     public function destroy($id)
-{
-    try {
-        // مستقیماً با Query Builder حذف کنید
-        $deleted = \DB::table('medications')->where('med_id', $id)->delete();
-        
-        if (!$deleted) {
+    {
+        try {
+            // پیدا کردن دوا
+            $medication = Medication::find($id);
+            
+            if (!$medication) {
+                return response()->json([
+                    'error' => 'دوا یافت نشد'
+                ], 404);
+            }
+
+            // حذف دوا
+            $medication->delete();
+
             return response()->json([
-                'error' => 'دوا یافت نشد'
-            ], 404);
+                'message' => '✅ دوا حذف شد'
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'خطا در حذف دوا',
+                'message' => $e->getMessage()
+            ], 500);
         }
-
-        return response()->json([
-            'message' => '✅ دوا حذف شد'
-        ], 200);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'error' => 'خطا در حذف دوا',
-            'message' => $e->getMessage()
-        ], 500);
     }
-}
 }

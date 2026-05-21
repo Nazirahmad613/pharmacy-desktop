@@ -2,46 +2,60 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Medication extends Model
 {
     use HasFactory;
 
+    protected $table = 'medications'; // ✅ نام درست جدول
     protected $primaryKey = 'med_id';
-    public $incrementing = true;
-    protected $keyType = 'int';
 
     protected $fillable = [
         'gen_name',
         'dosage',
         'category_id',
         'type',
-        'added_med'
+        'added_med',
+        'minimum_quantity' // ✅ اضافه شد
     ];
 
-    // ارتباط با دسته‌بندی (Category)
+    protected $casts = [
+        'minimum_quantity' => 'integer',
+        'added_med' => 'integer'
+    ];
+
+    // رابطه با کتگوری
     public function category()
     {
         return $this->belongsTo(Category::class, 'category_id', 'category_id');
     }
 
-    // ارتباط با موجودی انبار
-    public function inventory()
+    // رابطه با استاک
+    public function stocks()
     {
-        return $this->hasMany(Inventory::class, 'med_id', 'med_id');
+        return $this->hasMany(Stock::class, 'med_id', 'med_id');
     }
 
-    // ارتباط با جزئیات فروش
-    public function salesDetails()
+    // ✅ متد کمکی برای بررسی موجودی کم
+    public function isLowStock($currentQuantity)
     {
-        return $this->hasMany(SalesItem::class, 'med_id', 'med_id');
+        $minQty = $this->minimum_quantity ?? 10;
+        return $currentQuantity <= $minQty;
     }
 
-    // ارتباط با نسخه‌ها
-    public function prescriptions()
+    // ✅ متد کمکی برای گرفتن وضعیت موجودی
+    public function getStockStatusAttribute($currentQuantity)
     {
-        return $this->hasMany(Prescription::class, 'med_id', 'med_id');
+        $minQty = $this->minimum_quantity ?? 10;
+        
+        if ($currentQuantity <= 0) {
+            return ['status' => 'ناموجود', 'color' => 'red', 'icon' => '❌'];
+        }
+        if ($currentQuantity <= $minQty) {
+            return ['status' => 'موجودی کم', 'color' => 'orange', 'icon' => '⚠️'];
+        }
+        return ['status' => 'موجود', 'color' => 'green', 'icon' => '✅'];
     }
 }

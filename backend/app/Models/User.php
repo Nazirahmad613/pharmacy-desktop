@@ -29,35 +29,45 @@ class User extends Authenticatable
         'password' => 'hashed',
     ];
 
+    // ================= APPENDS =================
     protected $appends = [
         'avatar_url',
         'role_name',
     ];
 
+    // ================= AVATAR URL =================
     public function getAvatarUrlAttribute()
     {
-        if ($this->avatar) {
-
-            if (filter_var($this->avatar, FILTER_VALIDATE_URL)) {
-                return $this->avatar;
-            }
-
-            return asset('storage/' . ltrim($this->avatar, '/'));
+        // اگر عکس نداشت
+        if (!$this->avatar) {
+            return null;
         }
 
-        return null;
+        // اگر لینک کامل باشد
+        if (filter_var($this->avatar, FILTER_VALIDATE_URL)) {
+            return $this->avatar;
+        }
+
+        // حذف / اضافی
+        $avatarPath = ltrim($this->avatar, '/');
+
+        // ساخت URL کامل
+        return asset('storage/' . $avatarPath);
     }
 
+    // ================= ROLE NAME =================
     public function getRoleNameAttribute(): string
     {
         return $this->roles->pluck('name')->join(', ') ?: 'بدون نقش';
     }
 
+    // ================= ROLE CHECK =================
     public function hasRoleName(string $roleName): bool
     {
         return $this->roles->contains('name', $roleName);
     }
 
+    // ================= RELATIONS =================
     public function prescriptions()
     {
         return $this->hasMany(Prescription::class, 'doc_id', 'id');

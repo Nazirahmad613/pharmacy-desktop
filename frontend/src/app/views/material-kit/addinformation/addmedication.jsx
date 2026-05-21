@@ -16,6 +16,7 @@ const MedicationForm = () => {
     type: "",
     gen_name: "",
     dosage: "",
+    minimum_quantity: 10, // ✅ مقدار پیش‌فرض
   });
 
   useEffect(() => {
@@ -64,6 +65,7 @@ const MedicationForm = () => {
         type: "",
         gen_name: "",
         dosage: "",
+        minimum_quantity: 10,
       });
 
       setEditingId(null);
@@ -83,6 +85,7 @@ const MedicationForm = () => {
       type: med.type,
       gen_name: med.gen_name,
       dosage: med.dosage,
+      minimum_quantity: med.minimum_quantity || 10,
     });
     setEditingId(med.med_id);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -95,6 +98,7 @@ const MedicationForm = () => {
       type: "",
       gen_name: "",
       dosage: "",
+      minimum_quantity: 10,
     });
     toast.info("✏️ ویرایش لغو شد");
   };
@@ -121,29 +125,7 @@ const MedicationForm = () => {
 
   return (
     <MainLayoutjur>
-      <ToastContainer
-        position="top-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        rtl={true}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="colored"
-        limit={5}
-        style={{
-          zIndex: 9999999,
-          position: 'fixed',
-          top: '20px',
-          right: '20px',
-          left: 'auto',
-          width: 'auto',
-          maxWidth: '350px',
-          transform: 'none'
-        }}
-      />
+      
 
       <div className="form-container">
         <h2 style={{ textAlign: "center" }}>
@@ -198,17 +180,48 @@ const MedicationForm = () => {
           </div>
 
           <div>
-            <label>مقدار مصرف</label>
+            <label>مقدار مصرف (دوز)</label>
             <input
               type="text"
               name="dosage"
               value={formData.dosage}
               onChange={handleChange}
               required
+              placeholder="مثال: 500mg"
             />
           </div>
 
-          <div style={{ gridColumn: "1 / span 2", textAlign: "center", display: "flex", gap: "10px", justifyContent: "center" }}>
+          {/* ✅ فیلد جدید: حداقل تعداد */}
+          <div>
+            <label>حداقل موجودی (هشدار)</label>
+            <input
+              type="number"
+              name="minimum_quantity"
+              value={formData.minimum_quantity}
+              onChange={handleChange}
+              min="1"
+              max="1000"
+              required
+              style={{
+                borderColor: formData.minimum_quantity < 5 ? "#dc2626" : "#d1d5db"
+              }}
+            />
+            <small style={{ 
+              display: "block", 
+              color: "#6b7280", 
+              fontSize: "11px",
+              marginTop: "4px"
+            }}>
+              ⚡ زمانی که موجودی به کمتر از این مقدار برسد، هشدار داده می‌شود
+            </small>
+            {formData.minimum_quantity < 5 && (
+              <small style={{ color: "#dc2626", fontSize: "11px" }}>
+                ⚠️ حداقل موجودی خیلی کم است! پیشنهاد می‌شود حداقل 10 باشد
+              </small>
+            )}
+          </div>
+
+          <div style={{ gridColumn: "1 / span 2", textAlign: "center", display: "flex", gap: "10px", justifyContent: "center", marginTop: "10px" }}>
             <button 
               type="submit" 
               className="edit"
@@ -244,64 +257,79 @@ const MedicationForm = () => {
       <div className="form-container mt-10">
         <h3 style={{ textAlign: "center" }}>لیست دواها</h3>
 
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-gray-700 text-white">
-              <th>نام دوا</th>
-              <th>نوع</th>
-              <th>دوز</th>
-              <th>کتگوری</th>
-              <th>عملیات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currentItems.length ? (
-              currentItems.map(m => (
-                <tr key={m.med_id}>
-                  <td>{m.gen_name}</td>
-                  <td>{m.type}</td>
-                  <td>{m.dosage}</td>
-                  <td>{m.category?.category_name || "-"}</td>
-                  <td style={{ display: "flex", gap: "5px" }}>
-                    <button
-                      onClick={() => handleEdit(m)}
-                      style={{
-                        backgroundColor: "#facc15",
-                        color: "#000",
-                        padding: "5px 10px",
-                        borderRadius: "5px",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      تصحیح
-                    </button>
+        <div className="table-responsive" style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ backgroundColor: "#374151", color: "white" }}>
+                <th style={{ padding: "12px", textAlign: "center" }}>نام دوا</th>
+                <th style={{ padding: "12px", textAlign: "center" }}>نوع</th>
+                <th style={{ padding: "12px", textAlign: "center" }}>دوز</th>
+                <th style={{ padding: "12px", textAlign: "center" }}>کتگوری</th>
+                <th style={{ padding: "12px", textAlign: "center" }}>حداقل موجودی</th>
+                <th style={{ padding: "12px", textAlign: "center" }}>عملیات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {currentItems.length ? (
+                currentItems.map(m => (
+                  <tr key={m.med_id} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                    <td style={{ padding: "10px", textAlign: "center" }}>{m.gen_name}</td>
+                    <td style={{ padding: "10px", textAlign: "center" }}>{m.type}</td>
+                    <td style={{ padding: "10px", textAlign: "center" }}>{m.dosage}</td>
+                    <td style={{ padding: "10px", textAlign: "center" }}>{m.category?.category_name || "-"}</td>
+                    <td style={{ padding: "10px", textAlign: "center" }}>
+                      <span style={{
+                        backgroundColor: (m.minimum_quantity || 10) <= 5 ? "#fee2e2" : "#dcfce7",
+                        color: (m.minimum_quantity || 10) <= 5 ? "#dc2626" : "#16a34a",
+                        padding: "4px 8px",
+                        borderRadius: "12px",
+                        fontSize: "12px",
+                        fontWeight: "bold"
+                      }}>
+                        {(m.minimum_quantity || 10)} عدد
+                      </span>
+                    </td>
+                    <td style={{ padding: "10px", textAlign: "center", display: "flex", gap: "5px", justifyContent: "center" }}>
+                      <button
+                        onClick={() => handleEdit(m)}
+                        style={{
+                          backgroundColor: "#facc15",
+                          color: "#000",
+                          padding: "5px 10px",
+                          borderRadius: "5px",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        تصحیح
+                      </button>
 
-                    <button
-                      onClick={() => handleDelete(m.med_id)}
-                      style={{
-                        backgroundColor: "#dc2626",
-                        color: "#fff",
-                        padding: "5px 10px",
-                        borderRadius: "5px",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      حذف
-                    </button>
+                      <button
+                        onClick={() => handleDelete(m.med_id)}
+                        style={{
+                          backgroundColor: "#dc2626",
+                          color: "#fff",
+                          padding: "5px 10px",
+                          borderRadius: "5px",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        حذف
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: "center", padding: "20px" }}>
+                    هیچ دوا ثبت نشده است
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="5" style={{ textAlign: "center" }}>
-                  هیچ دوا ثبت نشده است
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {totalPages > 1 && (
           <div style={{ marginTop: "15px", textAlign: "center" }}>

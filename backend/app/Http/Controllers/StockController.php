@@ -502,4 +502,68 @@ class StockController extends Controller
         
         return $types[$type] ?? $type ?? 'نامشخص';
     }
+
+
+     public function lowStock()
+    {
+        try {
+            $lowStockSummary = StockService::getLowStockSummary();
+            
+            return response()->json([
+                'success' => true,
+                'data' => $lowStockSummary['items'],
+                'summary' => [
+                    'total_low_stock' => $lowStockSummary['total_low_stock_items'],
+                    'out_of_stock' => $lowStockSummary['total_out_of_stock'],
+                    'low_stock' => $lowStockSummary['total_low_stock']
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت داروهای با موجودی کم',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * دریافت هشدارهای موجودی برای داشبورد
+     */
+    public function stockWarnings()
+    {
+        try {
+            $lowStockItems = StockService::getLowStockMedications();
+            
+            // هشدارهای فوری (موجودی صفر یا کمتر از 5)
+            $criticalWarnings = array_filter($lowStockItems, function($item) {
+                return $item['current_stock'] <= 0 || $item['current_stock'] <= 5;
+            });
+            
+            // هشدارهای عادی (موجودی کمتر از minimum_quantity)
+            $normalWarnings = array_filter($lowStockItems, function($item) {
+                return $item['current_stock'] > 0 && $item['current_stock'] <= $item['minimum_quantity'];
+            });
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'critical' => array_values($criticalWarnings),
+                    'normal' => array_values($normalWarnings),
+                    'all' => $lowStockItems
+                ],
+                'counts' => [
+                    'critical' => count($criticalWarnings),
+                    'normal' => count($normalWarnings),
+                    'total' => count($lowStockItems)
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت هشدارهای موجودی',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

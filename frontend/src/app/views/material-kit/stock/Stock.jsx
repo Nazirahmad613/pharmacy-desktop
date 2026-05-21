@@ -3,12 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import MainLayoutjur from '../../../../components/Mainlayoutjur';
-import { FaBox, FaExclamationTriangle, FaCheckCircle, FaClock, FaChartLine, FaFilter, FaSearch, FaSortAmountDown, FaSortAmountUp, FaTag, FaSignOutAlt, FaPlus, FaEdit, FaTrash, FaSave, FaTimes } from 'react-icons/fa';
+import { FaBox, FaExclamationTriangle, FaCheckCircle, FaClock, FaChartLine, FaFilter, FaSearch, FaSortAmountDown, FaSortAmountUp, FaTag, FaSignOutAlt, FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaBell, FaShoppingCart } from 'react-icons/fa';
 
 const Stock = () => {
     const [stocks, setStocks] = useState([]);
     const [summary, setSummary] = useState(null);
     const [expiringItems, setExpiringItems] = useState([]);
+    const [lowStockWarnings, setLowStockWarnings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -19,6 +20,7 @@ const Stock = () => {
     const [authError, setAuthError] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
     const [debugInfo, setDebugInfo] = useState(null);
+    const [showWarnings, setShowWarnings] = useState(false);
     
     // State for form
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -117,6 +119,18 @@ const Stock = () => {
         }
     };
 
+    // ✅ دریافت هشدارهای موجودی کم بر اساس minimum_quantity
+    const fetchLowStockWarnings = async () => {
+        try {
+            const response = await axios.get('/api/stock/low-stock', getAuthHeaders());
+            if (response.data.success) {
+                setLowStockWarnings(response.data.data || []);
+            }
+        } catch (error) {
+            console.error('Error fetching low stock warnings:', error);
+        }
+    };
+
     const loadAllData = async () => {
         setLoading(true);
         setErrorMessage('');
@@ -131,6 +145,7 @@ const Stock = () => {
         await fetchStockData();
         await fetchSummary();
         await fetchExpiringItems();
+        await fetchLowStockWarnings();
     };
 
     useEffect(() => {
@@ -421,20 +436,83 @@ const Stock = () => {
     return (
         <MainLayoutjur>
             <div className="p-6 bg-white min-h-screen">
-                {/* Header with Add Button */}
+                {/* Header with Add Button and Warning Bell */}
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-800 mb-1">مدیریت موجودی انبار</h1>
                         <p className="text-gray-500 text-sm">مدیریت و نظارت بر موجودی داروها و اقلام انبار</p>
                     </div>
-                    <button
-                        onClick={handleAddNew}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-                    >
-                        <FaPlus />
-                        افزودن موجودی جدید
-                    </button>
+                    <div className="flex items-center gap-3">
+                        {/* ✅ دکمه هشدار موجودی کم */}
+                        {lowStockWarnings.length > 0 && (
+                            <button
+                                onClick={() => setShowWarnings(!showWarnings)}
+                                className="relative bg-orange-100 hover:bg-orange-200 text-orange-600 px-3 py-2 rounded-lg transition-colors"
+                            >
+                                <FaBell size={18} />
+                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                                    {lowStockWarnings.length}
+                                </span>
+                            </button>
+                        )}
+                        <button
+                            onClick={handleAddNew}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                        >
+                            <FaPlus />
+                            افزودن موجودی جدید
+                        </button>
+                    </div>
                 </div>
+
+                {/* ✅ پنل هشدار موجودی کم */}
+                {showWarnings && lowStockWarnings.length > 0 && (
+                    <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-lg font-bold text-red-800 flex items-center gap-2">
+                                <FaExclamationTriangle className="text-red-600" />
+                                هشدار! موجودی برخی داروها کمتر از حد مجاز است
+                            </h3>
+                            <button
+                                onClick={() => setShowWarnings(false)}
+                                className="text-gray-400 hover:text-gray-600"
+                            >
+                                <FaTimes size={16} />
+                            </button>
+                        </div>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                            {lowStockWarnings.map((warning, index) => (
+                                <div key={index} className="flex justify-between items-center p-3 bg-white rounded-lg border border-red-100">
+                                    <div>
+                                        <span className="font-medium text-gray-800">{warning.med_name}</span>
+                                        <span className="text-xs text-gray-500 mr-2">
+                                            (حداقل نیاز: {warning.minimum_quantity})
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <span className={`font-bold ${warning.current_stock <= 0 ? 'text-red-600' : 'text-orange-600'}`}>
+                                            موجودی: {warning.current_stock}
+                                        </span>
+                                        {warning.need_order > 0 && (
+                                            <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full flex items-center gap-1">
+                                                <FaShoppingCart size={10} />
+                                                نیاز به سفارش: {warning.need_order}
+                                            </span>
+                                        )}
+                                        {warning.percentage > 0 && warning.percentage <= 50 && (
+                                            <div className="w-20 bg-gray-200 rounded-full h-2">
+                                                <div 
+                                                    className="bg-red-500 h-2 rounded-full" 
+                                                    style={{ width: `${warning.percentage}%` }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Horizontal Form Section */}
                 {isFormOpen && (
@@ -566,7 +644,7 @@ const Stock = () => {
                         />
                         <SummaryCard 
                             title="موجودی کم" 
-                            value={summary.low_stock} 
+                            value={lowStockWarnings.length} 
                             icon={<FaExclamationTriangle />} 
                             color="#F97316"
                         />
@@ -773,6 +851,12 @@ const Stock = () => {
                                 <div>مجموع موجودی: <span className="font-bold text-gray-900">{displayData.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0).toLocaleString()}</span> عدد</div>
                                 <div>تعداد اقلام: <span className="font-bold text-gray-900">{displayData.length}</span></div>
                                 <div>تعداد تأمین‌کنندگان: <span className="font-bold text-gray-900">{uniqueSuppliers.length}</span></div>
+                                {lowStockWarnings.length > 0 && (
+                                    <div className="text-red-500 flex items-center gap-1">
+                                        <FaExclamationTriangle />
+                                        {lowStockWarnings.length} دارو با موجودی کم
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Stock;
+use App\Models\Medication;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -191,5 +192,157 @@ class StockService
                 ];
             })
         ];
+    }
+
+    // ==================== متدهای جدید برای هشدار موجودی ====================
+
+    /**
+     * دریافت داروهای با موجودی کم (بر اساس minimum_quantity از جدول medications)
+     */
+    public static function getLowStockMedications()
+    {
+        try {
+            // دریافت همه داروها به همراه مجموع موجودی از جدول stock
+            $medications = Medication::with(['stocks' => function($q) {
+                $q->select('med_id', DB::raw('SUM(quantity) as total_quantity'))
+                  ->groupBy('med_id');
+            }])->get();
+            
+            $lowStockItems = [];
+            
+            foreach ($medications as $medication) {
+                // جمع کل موجودی دارو از همه تأمین‌کننده‌ها و همه نوع‌ها
+                $totalQuantity = (int) ($medication->stocks->sum('total_quantity') ?? 0);
+                $minQuantity = (int) ($medication->minimum_quantity ?? 10);
+                
+                if ($totalQuantity <= $minQuantity) {
+                    $status = $totalQuantity <= 0 ? 'ناموجود' : 'موجودی کم';
+                    $color = $totalQuantity <= 0 ? 'red' : 'orange';
+                    
+                    $lowStockItems[] = [
+                        'med_id' => $medication->med_id,
+                        'med_name' => $medication->gen_name,
+                        'current_stock' => $totalQuantity,
+                        'minimum_quantity' => $minQuantity,
+                        'status' => $status,
+                        'color' => $color,
+                        'need_order' => max(0, $minQuantity - $totalQuantity),
+                        'percentage' => $totalQuantity > 0 ? round(($totalQuantity / $minQuantity) * 100) : 0
+                    ];
+                }
+            }
+            
+            // مرتب‌سازی بر اساس کمترین موجودی
+            usort($lowStockItems, function($a, $b) {
+                return $a['current_stock'] - $b['current_stock'];
+            });
+            
+            Log::info("Low stock medications found", ['count' => count($lowStockItems)]);
+            
+            return $lowStockItems;
+            
+        } catch (\Exception $e) {
+            Log::error("Error getting low stock medications", ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * بررسی موجودی یک داروی خاص (با در نظر گرفتن minimum_quantity)
+     */
+    public static function checkLowStockByMedication($medId)
+    {
+        try {
+            $medication = Medication::find($medId);
+            if (!$medication) {
+                return null;
+            }
+            
+            $totalQuantity = (int) Stock::where('med_id', $medId)->sum('quantity');
+            $minQuantity = (int) ($medication->minimum_quantity ?? 10);
+            
+            return [
+                'is_low' => $totalQuantity <= $minQuantity,
+                'current_stock' => $totalQuantity,
+                'minimum_quantity' => $minQuantity,
+                'need_order' => max(0, $minQuantity - $totalQuantity),
+                'percentage' => $totalQuantity > 0 ? round(($totalQuantity / $minQuantity) * 100) : 0
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error("Error checking low stock for medication", [
+                'med_id' => $medId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * دریافت آمار کلی موجودی کم
+     */
+    public static function getLowStockSummary()
+    {
+        $lowStockItems = self::getLowStockMedications();
+        
+        return [
+            'total_low_stock_items' => count($lowStockItems),
+            'total_out_of_stock' => count(array_filter($lowStockItems, function($item) {
+                return $item['status'] === 'ناموجود';
+            })),
+            'total_low_stock' => count(array_filter($lowStockItems, function($item) {
+                return $item['status'] === 'موجودی کم';
+            })),
+            'items' => $lowStockItems
+        ];
+    }
+
+    /**
+     * دریافت هشدارهای فوری (موجودی صفر یا بسیار کم)
+     */
+    public static function getCriticalWarnings()
+    {
+        $lowStockItems = self::getLowStockMedications();
+        
+        return array_filter($lowStockItems, function($item) {
+            return $item['current_stock'] <= 0 || $item['current_stock'] <= 5;
+        });
+    }
+
+    /**
+     * دریافت همه داروها به همراه وضعیت موجودی (برای گزارش کامل)
+     */
+    public static function getAllMedicationsStockStatus()
+    {
+        try {
+            $medications = Medication::with(['stocks' => function($q) {
+                $q->select('med_id', DB::raw('SUM(quantity) as total_quantity'))
+                  ->groupBy('med_id');
+            }])->get();
+            
+            $allItems = [];
+            
+            foreach ($medications as $medication) {
+                $totalQuantity = (int) ($medication->stocks->sum('total_quantity') ?? 0);
+                $minQuantity = (int) ($medication->minimum_quantity ?? 10);
+                
+                $allItems[] = [
+                    'med_id' => $medication->med_id,
+                    'med_name' => $medication->gen_name,
+                    'current_stock' => $totalQuantity,
+                    'minimum_quantity' => $minQuantity,
+                    'status' => $totalQuantity <= 0 ? 'ناموجود' : ($totalQuantity <= $minQuantity ? 'موجودی کم' : 'موجود'),
+                    'color' => $totalQuantity <= 0 ? 'red' : ($totalQuantity <= $minQuantity ? 'orange' : 'green'),
+                    'need_order' => max(0, $minQuantity - $totalQuantity),
+                    'percentage' => $totalQuantity > 0 ? round(($totalQuantity / $minQuantity) * 100) : 0
+                ];
+            }
+            
+            return $allItems;
+            
+        } catch (\Exception $e) {
+            Log::error("Error getting all medications stock status", ['error' => $e->getMessage()]);
+            return [];
+        }
     }
 }

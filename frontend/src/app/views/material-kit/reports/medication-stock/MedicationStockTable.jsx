@@ -34,31 +34,44 @@ export default function StockShortageReport() {
   // خواندن پارامترها از URL
   const initialStockRange = searchParams.get("stockRange") || "0-20";
   const initialExpiryFilter = searchParams.get("expiryStatus") || "all";
+  const initialSupplierFilter = searchParams.get("supplier") || "all";
 
   // فیلترها
   const [searchTerm, setSearchTerm] = useState("");
   const [expiryFilter, setExpiryFilter] = useState(initialExpiryFilter);
   const [stockRangeFilter, setStockRangeFilter] = useState(initialStockRange);
+  const [supplierFilter, setSupplierFilter] = useState(initialSupplierFilter);
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // اگر پارامترها در URL تغییر کرد (مثلاً با کلیک روی هشدار)، فیلترها به‌روز شوند
+  // لیست یکتای تأمین‌کنندگان
+  const uniqueSuppliers = useMemo(() => {
+    const suppliers = data.map(item => item.supplier_name).filter(Boolean);
+    return ["all", ...new Set(suppliers)];
+  }, [data]);
+
+  // اگر پارامترها در URL تغییر کرد، فیلترها به‌روز شوند
   useEffect(() => {
     const newStockRange = searchParams.get("stockRange");
     const newExpiry = searchParams.get("expiryStatus");
+    const newSupplier = searchParams.get("supplier");
     if (newStockRange) setStockRangeFilter(newStockRange);
     if (newExpiry) setExpiryFilter(newExpiry);
+    if (newSupplier) setSupplierFilter(newSupplier);
   }, [searchParams]);
 
-  // حذف پارامترها از URL وقتی کاربر فیلترها را دستی تغییر داد (اختیاری)
+  // حذف پارامترها از URL وقتی کاربر فیلترها را دستی تغییر داد
   useEffect(() => {
     const currentStockRange = searchParams.get("stockRange");
     const currentExpiry = searchParams.get("expiryStatus");
-    if (stockRangeFilter !== currentStockRange || expiryFilter !== currentExpiry) {
+    const currentSupplier = searchParams.get("supplier");
+    if (stockRangeFilter !== currentStockRange || 
+        expiryFilter !== currentExpiry || 
+        supplierFilter !== currentSupplier) {
       setSearchParams({});
     }
-  }, [stockRangeFilter, expiryFilter, setSearchParams]);
+  }, [stockRangeFilter, expiryFilter, supplierFilter, setSearchParams]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -81,7 +94,7 @@ export default function StockShortageReport() {
     fetchData();
   }, [api, user, authLoading]);
 
-  useEffect(() => setPage(0), [searchTerm, expiryFilter, stockRangeFilter]);
+  useEffect(() => setPage(0), [searchTerm, expiryFilter, stockRangeFilter, supplierFilter]);
 
   const isStockInRange = (stock, range) => {
     switch (range) {
@@ -97,22 +110,35 @@ export default function StockShortageReport() {
 
   const filteredData = useMemo(() => {
     let filtered = data;
+    
+    // فیلتر بر اساس محدوده موجودی
     filtered = filtered.filter(item => isStockInRange(item.available_stock, stockRangeFilter));
+    
+    // فیلتر بر اساس جستجو
     if (searchTerm.trim()) {
       filtered = filtered.filter(item =>
         item.medication_name?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
+    
+    // فیلتر بر اساس وضعیت انقضا
     if (expiryFilter !== "all") {
       filtered = filtered.filter(item => item.expiry_status === expiryFilter);
     }
+    
+    // ✅ فیلتر بر اساس تأمین‌کننده
+    if (supplierFilter !== "all") {
+      filtered = filtered.filter(item => item.supplier_name === supplierFilter);
+    }
+    
     return filtered;
-  }, [data, searchTerm, expiryFilter, stockRangeFilter]);
+  }, [data, searchTerm, expiryFilter, stockRangeFilter, supplierFilter]);
 
   const handleClearFilters = () => {
     setSearchTerm("");
     setExpiryFilter("all");
     setStockRangeFilter("0-20");
+    setSupplierFilter("all");
     setPage(0);
     setSearchParams({});
   };
@@ -184,7 +210,7 @@ export default function StockShortageReport() {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={2}>
               <FormControl fullWidth>
                 <InputLabel>وضعیت انقضا</InputLabel>
                 <Select
@@ -196,6 +222,22 @@ export default function StockShortageReport() {
                   <MenuItem value="EXPIRED">تاریخ گذشته</MenuItem>
                   <MenuItem value="NEAR_EXPIRY">نزدیک به انقضا</MenuItem>
                   <MenuItem value="VALID">معتبر</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>تأمین‌کننده</InputLabel>
+                <Select
+                  value={supplierFilter}
+                  onChange={(e) => setSupplierFilter(e.target.value)}
+                  label="تأمین‌کننده"
+                >
+                  {uniqueSuppliers.map((supplier) => (
+                    <MenuItem key={supplier} value={supplier}>
+                      {supplier === "all" ? "همه تأمین‌کنندگان" : supplier}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
