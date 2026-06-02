@@ -166,7 +166,7 @@ const DashboardDailyChart = () => {
           yAxisID: "y",
         },
         {
-          label: "فروش کل (تومان)",
+          label: "فروش کل (افغانی)",
           data: salesData,
           borderColor: "rgb(75, 192, 192)",
           backgroundColor: "rgba(75, 192, 192, 0.1)",
@@ -194,7 +194,7 @@ const DashboardDailyChart = () => {
             let label = context.dataset.label || "";
             let value = context.raw;
             if (context.dataset.label.includes("فروش")) {
-              value = value.toLocaleString("fa-IR") + " تومان";
+              value = value.toLocaleString("fa-IR") + " افغانی";
             } else {
               value = value.toLocaleString("fa-IR");
             }
@@ -215,7 +215,7 @@ const DashboardDailyChart = () => {
         type: "linear",
         display: true,
         position: "right",
-        title: { display: true, text: "فروش (تومان)", font: { family: "Vazirmatn" } },
+        title: { display: true, text: "فروش (افغانی)", font: { family: "Vazirmatn" } },
         ticks: { callback: (val) => val.toLocaleString("fa-IR") },
         grid: { drawOnChartArea: false }, // خطوط شبکه را فقط برای محور چپ نشان بده
       },

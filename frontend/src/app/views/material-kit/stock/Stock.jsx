@@ -119,7 +119,6 @@ const Stock = () => {
         }
     };
 
-    // ✅ دریافت هشدارهای موجودی کم بر اساس minimum_quantity
     const fetchLowStockWarnings = async () => {
         try {
             const response = await axios.get('/api/stock/low-stock', getAuthHeaders());
@@ -309,17 +308,20 @@ const Stock = () => {
     const uniqueSuppliers = [...new Set(stocks.map(s => s.supplier_name).filter(Boolean))];
     const uniqueTypes = [...new Set(stocks.map(s => s.type).filter(Boolean))];
 
-    const SummaryCard = ({ title, value, icon, color }) => (
-        <div className="bg-white rounded-xl shadow-md p-4 flex-1 min-w-[160px] border border-gray-100 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between">
-                <div>
-                    <p className="text-gray-500 text-xs mb-1">{title}</p>
-                    <p className="text-2xl font-bold text-gray-800">{value?.toLocaleString() || 0}</p>
+    // کامپوننت SummaryCard با props صحیح
+    const SummaryCard = ({ title, value, icon, color }) => {
+        return (
+            <div className="bg-white rounded-xl shadow-md p-4 flex-1 min-w-[160px] border border-gray-100 hover:shadow-lg transition-shadow">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-gray-500 text-xs mb-1">{title}</p>
+                        <p className="text-2xl font-bold text-gray-800">{value?.toLocaleString() || 0}</p>
+                    </div>
+                    <div className="text-3xl opacity-70" style={{ color: color }}>{icon}</div>
                 </div>
-                <div className="text-3xl opacity-70" style={{ color: color }}>{icon}</div>
             </div>
-        </div>
-    );
+        );
+    };
 
     const getFilteredAndSortedData = () => {
         let data = [];
@@ -443,7 +445,6 @@ const Stock = () => {
                         <p className="text-gray-500 text-sm">مدیریت و نظارت بر موجودی داروها و اقلام انبار</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        {/* ✅ دکمه هشدار موجودی کم */}
                         {lowStockWarnings.length > 0 && (
                             <button
                                 onClick={() => setShowWarnings(!showWarnings)}
@@ -465,7 +466,7 @@ const Stock = () => {
                     </div>
                 </div>
 
-                {/* ✅ پنل هشدار موجودی کم */}
+                {/* پنل هشدار موجودی کم */}
                 {showWarnings && lowStockWarnings.length > 0 && (
                     <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
                         <div className="flex justify-between items-center mb-3">
@@ -529,7 +530,6 @@ const Stock = () => {
                             </button>
                         </div>
                         
-                        {/* Horizontal Form Fields */}
                         <div className="flex flex-wrap gap-4">
                             <div className="flex-1 min-w-[180px]">
                                 <label className="block text-sm font-medium text-gray-700 mb-1">شناسه دارو</label>
@@ -615,7 +615,7 @@ const Stock = () => {
                     </div>
                 )}
 
-                {/* Summary Cards */}
+                {/* Summary Cards - نمایش افقی با flex-wrap */}
                 {summary && (
                     <div className="flex flex-wrap gap-4 mb-6">
                         <SummaryCard 

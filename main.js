@@ -6,8 +6,13 @@ const http = require("http");
 let win;
 let laravelProcess;
 
-const PHP_PATH = path.join(process.cwd(), "php", "php.exe");
-const BACKEND_PATH = path.join(__dirname, "backend");
+const PHP_PATH = app.isPackaged
+  ? path.join(process.resourcesPath, "..", "php", "php.exe")
+  : path.join(process.cwd(), "php", "php.exe");
+
+const BACKEND_PATH = app.isPackaged
+  ? path.join(process.resourcesPath, "backend")
+  : path.join(__dirname, "backend");
 
 function waitForLaravelReady(retries = 40) {
   return new Promise((resolve, reject) => {
