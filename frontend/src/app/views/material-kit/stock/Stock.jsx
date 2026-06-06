@@ -1,7 +1,7 @@
 // src/pages/Stock.jsx
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../../../api';
 import MainLayoutjur from '../../../../components/Mainlayoutjur';
 import { FaBox, FaExclamationTriangle, FaCheckCircle, FaClock, FaChartLine, FaFilter, FaSearch, FaSortAmountDown, FaSortAmountUp, FaTag, FaSignOutAlt, FaPlus, FaEdit, FaTrash, FaSave, FaTimes, FaBell, FaShoppingCart } from 'react-icons/fa';
 
@@ -45,18 +45,6 @@ const Stock = () => {
                localStorage.getItem('sanctum_token');
     };
 
-    const getAuthHeaders = () => {
-        const token = getToken();
-        return {
-            headers: {
-                'Authorization': token ? `Bearer ${token}` : '',
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        };
-    };
-
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('auth_token');
@@ -70,13 +58,14 @@ const Stock = () => {
 
     const fetchStockData = async () => {
         try {
-            const response = await axios.get('/api/stock', getAuthHeaders());
+            const response = await api.get('/stock');
             if (response.data.success) {
                 setStocks(response.data.data || []);
                 setAuthError(false);
                 setErrorMessage('');
             }
         } catch (error) {
+            console.error('Error fetching stock:', error);
             if (error.response?.status === 401) {
                 setAuthError(true);
                 setErrorMessage('احراز هویت ناموفق - لطفاً دوباره وارد شوید');
@@ -92,14 +81,12 @@ const Stock = () => {
                 message: error.message,
                 data: error.response?.data
             });
-        } finally {
-            setLoading(false);
         }
     };
 
     const fetchSummary = async () => {
         try {
-            const response = await axios.get('/api/stock/summary', getAuthHeaders());
+            const response = await api.get('/stock/summary');
             if (response.data.success) {
                 setSummary(response.data.data);
             }
@@ -110,7 +97,7 @@ const Stock = () => {
 
     const fetchExpiringItems = async () => {
         try {
-            const response = await axios.get('/api/stock/expiring', getAuthHeaders());
+            const response = await api.get('/stock/expiring');
             if (response.data.success) {
                 setExpiringItems(response.data.data || []);
             }
@@ -121,7 +108,7 @@ const Stock = () => {
 
     const fetchLowStockWarnings = async () => {
         try {
-            const response = await axios.get('/api/stock/low-stock', getAuthHeaders());
+            const response = await api.get('/stock/low-stock');
             if (response.data.success) {
                 setLowStockWarnings(response.data.data || []);
             }
@@ -145,6 +132,7 @@ const Stock = () => {
         await fetchSummary();
         await fetchExpiringItems();
         await fetchLowStockWarnings();
+        setLoading(false);
     };
 
     useEffect(() => {
@@ -191,9 +179,9 @@ const Stock = () => {
     const handleSubmit = async () => {
         try {
             if (editingStock) {
-                await axios.put(`/api/stock/${editingStock.stock_id}`, formData, getAuthHeaders());
+                await api.put(`/stock/${editingStock.stock_id}`, formData);
             } else {
-                await axios.post('/api/stock', formData, getAuthHeaders());
+                await api.post('/stock', formData);
             }
             setIsFormOpen(false);
             loadAllData();
@@ -206,7 +194,7 @@ const Stock = () => {
     const handleDelete = async (stockId) => {
         if (window.confirm('آیا از حذف این آیتم اطمینان دارید؟')) {
             try {
-                await axios.delete(`/api/stock/${stockId}`, getAuthHeaders());
+                await api.delete(`/stock/${stockId}`);
                 loadAllData();
             } catch (error) {
                 console.error('Error deleting stock:', error);
