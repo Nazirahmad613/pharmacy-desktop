@@ -1,7 +1,10 @@
-const { app, BrowserWindow } = require("electron");
+
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
+const fs = require("fs");
+const archiver = require("archiver");
 
 let win;
 let laravelProcess;
@@ -55,7 +58,8 @@ function createWindow() {
     height: 800,
     webPreferences: {
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+        preload: path.join(__dirname, 'preload.js')
     }
   });
 
@@ -73,7 +77,57 @@ app.whenReady().then(async () => {
     console.error(err);
   }
 });
+ipcMain.handle("create-backup", async () => {
+  try {
 
+    const dbPath = path.join(__dirname, "data", "database.sqlite");
+
+    const result = await dialog.showSaveDialog({
+      title: "Save Backup",
+      defaultPath: `backup-${Date.now()}.zip`,
+      filters: [
+        {
+          name: "ZIP Files",
+          extensions: ["zip"]
+        }
+      ]
+    });
+
+    if (result.canceled) {
+      return {
+        success: false,
+        message: "Backup canceled"
+      };
+    }
+
+    const output = fs.createWriteStream(result.filePath);
+
+    const archive = archiver("zip", {
+      zlib: { level: 9 }
+    });
+
+    archive.pipe(output);
+
+    archive.file(dbPath, {
+      name: "database.sqlite"
+    });
+
+    await archive.finalize();
+
+    return {
+      success: true,
+      file: result.filePath
+    };
+
+  } catch (error) {
+
+    return {
+      success: false,
+      message: error.message
+    };
+
+  }
+});
 app.on("window-all-closed", () => {
   if (laravelProcess) laravelProcess.kill();
   app.quit();

@@ -28,6 +28,11 @@ const UsersPage = Loadable(
   lazy(() => import("app/views/material-kit/users/UsersPage"))
 );
 
+// Settings page
+const Settings = Loadable(
+  lazy(() => import("../app/views/settings/settings"))
+);
+
 // Stock reports
 const MedicationStockTable = Loadable(
   lazy(() =>
@@ -170,6 +175,12 @@ const routes = [
       {
         path: "user/user-profile",
         element: <UserProfile />,
+      },
+
+      // Settings Route
+      {
+        path: "settings",
+        element: <Settings />,
       },
 
       // Reports

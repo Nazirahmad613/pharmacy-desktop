@@ -32,5 +32,8 @@
         "to": "php"
       }
     ]
+  },
+  "dependencies": {
+    "archiver": "^8.0.0"
   }
 }
