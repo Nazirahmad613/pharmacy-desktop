@@ -4,9 +4,11 @@ const path = require("path");
 const http = require("http");
 const fs = require("fs");
 const archiver = require('archiver');
+const schedule = require('node-schedule');
 
 let win;
 let laravelProcess;
+let scheduledBackupJob;
 
 const PHP_PATH = app.isPackaged
   ? path.join(process.resourcesPath, "..", "php", "php.exe")
@@ -15,6 +17,107 @@ const PHP_PATH = app.isPackaged
 const BACKEND_PATH = app.isPackaged
   ? path.join(process.resourcesPath, "backend")
   : path.join(__dirname, "backend");
+
+// تابع کمکی برای ایجاد بکاپ خودکار (بدون دیالوگ)
+async function createAutoBackup() {
+  try {
+    console.log("🤖 در حال اجرای بکاپ خودکار...");
+    
+    const possibleDbPaths = [
+      path.join(__dirname, "data", "database.sqlite"),
+      path.join(__dirname, "database.sqlite"),
+      path.join(BACKEND_PATH, "database.sqlite"),
+      path.join(BACKEND_PATH, "database", "database.sqlite"),
+      path.join(process.cwd(), "database.sqlite")
+    ];
+    
+    let dbPath = null;
+    for (const possiblePath of possibleDbPaths) {
+      if (fs.existsSync(possiblePath)) {
+        dbPath = possiblePath;
+        break;
+      }
+    }
+    
+    if (!dbPath) {
+      console.error("❌ بکاپ خودکار: دیتابیس پیدا نشد");
+      return false;
+    }
+    
+    // ایجاد پوشه بکاپ خودکار اگر وجود ندارد
+    const autoBackupDir = path.join(__dirname, "auto_backups");
+    if (!fs.existsSync(autoBackupDir)) {
+      fs.mkdirSync(autoBackupDir, { recursive: true });
+    }
+    
+    // ایجاد نام فایل با تاریخ
+    const date = new Date();
+    const timestamp = `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2,'0')}-${date.getDate().toString().padStart(2,'0')}_${date.getHours().toString().padStart(2,'0')}-${date.getMinutes().toString().padStart(2,'0')}-${date.getSeconds().toString().padStart(2,'0')}`;
+    const backupPath = path.join(autoBackupDir, `auto_backup_${timestamp}.zip`);
+    
+    // ایجاد فایل ZIP
+    const output = fs.createWriteStream(backupPath);
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    
+    return new Promise((resolve, reject) => {
+      archive.on("error", (err) => {
+        console.error("Archive error:", err);
+        reject(err);
+      });
+      
+      output.on("close", () => {
+        console.log(`✅ بکاپ خودکار با موفقیت ایجاد شد: ${backupPath}`);
+        resolve(true);
+      });
+      
+      archive.pipe(output);
+      archive.file(dbPath, { name: `database_${timestamp}.sqlite` });
+      archive.finalize();
+    });
+    
+  } catch (error) {
+    console.error("❌ خطا در بکاپ خودکار:", error);
+    return false;
+  }
+}
+
+// تابع راه‌اندازی زمانبندی بکاپ
+function setupAutoBackup() {
+  if (scheduledBackupJob) {
+    scheduledBackupJob.cancel();
+  }
+  
+  const settingsPath = path.join(__dirname, 'backup_schedule.json');
+  let backupSchedule = { enabled: false, dayOfWeek: 0, hour: 2, minute: 0 };
+  
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const savedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      backupSchedule = savedSettings;
+    } catch (e) {
+      console.error("خطا در خواندن تنظیمات زمانبندی:", e);
+    }
+  }
+  
+  if (!backupSchedule.enabled) {
+    console.log("⏸️ بکاپ خودکار غیرفعال است");
+    return;
+  }
+  
+  const rule = new schedule.RecurrenceRule();
+  rule.dayOfWeek = backupSchedule.dayOfWeek;
+  rule.hour = backupSchedule.hour;
+  rule.minute = backupSchedule.minute;
+  rule.second = 0;
+  
+  scheduledBackupJob = schedule.scheduleJob(rule, async () => {
+    console.log(`⏰ زمان بکاپ خودکار رسیده! (${new Date().toLocaleString()})`);
+    await createAutoBackup();
+  });
+  
+  const days = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'];
+  console.log(`✅ زمانبندی بکاپ خودکار تنظیم شد: ${days[backupSchedule.dayOfWeek]} ساعت ${backupSchedule.hour}:${backupSchedule.minute}`);
+}
 
 function waitForLaravelReady(retries = 40) {
   return new Promise((resolve, reject) => {
@@ -53,7 +156,6 @@ function startLaravel() {
 function createWindow() {
   const preloadPath = path.join(__dirname, 'preload.js');
   
-  // بررسی وجود فایل preload
   if (!fs.existsSync(preloadPath)) {
     console.error("ERROR: preload.js not found at:", preloadPath);
     process.exit(1);
@@ -71,14 +173,11 @@ function createWindow() {
     }
   });
 
-  // باز کردن DevTools
   win.webContents.openDevTools();
   
-  // تزریق مستقیم API به صفحه (راه حل جایگزین)
   win.webContents.on('did-finish-load', () => {
     console.log("Window loaded, injecting API...");
     
-    // تزریق مستقیم API به window
     win.webContents.executeJavaScript(`
       if (!window.electronAPI) {
         window.electronAPI = {
@@ -86,6 +185,21 @@ function createWindow() {
             console.log("Direct call to createBackup");
             const { ipcRenderer } = require('electron');
             return await ipcRenderer.invoke('create-backup');
+          },
+          restoreBackup: async () => {
+            console.log("Direct call to restoreBackup");
+            const { ipcRenderer } = require('electron');
+            return await ipcRenderer.invoke('restore-backup');
+          },
+          setBackupSchedule: async (config) => {
+            console.log("Direct call to setBackupSchedule");
+            const { ipcRenderer } = require('electron');
+            return await ipcRenderer.invoke('set-backup-schedule', config);
+          },
+          getBackupSchedule: async () => {
+            console.log("Direct call to getBackupSchedule");
+            const { ipcRenderer } = require('electron');
+            return await ipcRenderer.invoke('get-backup-schedule');
           }
         };
         console.log("API injected directly:", window.electronAPI);
@@ -104,6 +218,7 @@ app.whenReady().then(async () => {
     await waitForLaravelReady();
     console.log("Laravel is ready ✅");
     createWindow();
+    setupAutoBackup();
   } catch (err) {
     console.error(err);
   }
@@ -167,16 +282,8 @@ ipcMain.handle("create-backup", async () => {
   }
 });
 
-// فایل main.js - افزودن هندلر جدید برای بازیابی
-
-// ... (بقیه کدهای شما)
-
-// (اینجا کدهای قبلی شما مثل create-backup قرار دارند)
-
-// --- شروع کد جدید برای بازیابی بک‌آپ ---
-ipcMain.handle("restore-backup", async (event) => {
+ipcMain.handle("restore-backup", async () => {
   try {
-    // 1. باز کردن دیالوگ برای انتخاب فایل بک‌آپ (ZIP)
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {
       title: "انتخاب فایل بک‌آپ برای بازیابی",
       properties: ['openFile'],
@@ -193,7 +300,6 @@ ipcMain.handle("restore-backup", async (event) => {
     const backupZipPath = filePaths[0];
     console.log("فایل بک‌آپ انتخاب شد:", backupZipPath);
 
-    // 2. پیدا کردن مسیر دیتابیس فعلی (همان مسیری که در create-backup استفاده می‌کنید)
     const possibleDbPaths = [
       path.join(__dirname, "data", "database.sqlite"),
       path.join(__dirname, "database.sqlite"),
@@ -215,7 +321,6 @@ ipcMain.handle("restore-backup", async (event) => {
       return { success: false, message: "فایل دیتابیس فعلی در سیستم یافت نشد!" };
     }
 
-    // 3. ایجاد یک بک‌آپ خودکار از دیتابیس فعلی (به عنوان یک نقطه امن)
     const backupDir = path.join(__dirname, "auto_backups");
     if (!fs.existsSync(backupDir)) {
       fs.mkdirSync(backupDir);
@@ -225,13 +330,9 @@ ipcMain.handle("restore-backup", async (event) => {
     fs.copyFileSync(currentDbPath, autoBackupPath);
     console.log("یک نسخه پشتیبان خودکار از وضعیت فعلی گرفته شد:", autoBackupPath);
 
-    // 4. خواندن فایل ZIP انتخابی و استخراج فایل SQLite از آن
-    // در اینجا از کتابخانه 'adm-zip' استفاده می‌کنیم. اگر قبلاً نصب نکردید، باید نصبش کنید:
-    // npm install adm-zip
     const AdmZip = require('adm-zip'); 
     const zip = new AdmZip(backupZipPath);
     
-    // پیدا کردن فایل SQLite درون ZIP (فرض می‌کنیم یک فایل با پسوند .sqlite در آن هست)
     const zipEntries = zip.getEntries();
     const dbFileInZip = zipEntries.find(entry => entry.entryName.endsWith('.sqlite'));
 
@@ -239,18 +340,14 @@ ipcMain.handle("restore-backup", async (event) => {
       return { success: false, message: "فایل دیتابیس با فرمت صحیح در بک‌آپ یافت نشد!" };
     }
 
-    // استخراج محتوای فایل دیتابیس از ZIP
     const restoredDbContent = zip.readFile(dbFileInZip.entryName);
-    
-    // 5. جایگزینی فایل دیتابیس فعلی با فایل جدید
     fs.writeFileSync(currentDbPath, restoredDbContent);
     
-    console.log("عملیات بازیابی با موفقیت انجام شد. فایل دیتابیس جایگزین گردید.");
+    console.log("عملیات بازیابی با موفقیت انجام شد.");
     
-    // به کاربر اطلاع بده که نیاز به ریستارت برنامه دارد
     return { 
       success: true, 
-      message: "بازیابی با موفقیت انجام شد. لطفاً برنامه را مجدداً راه‌اندازی کنید تا تغییرات اعمال شود." 
+      message: "بازیابی با موفقیت انجام شد. لطفاً برنامه را مجدداً راه‌اندازی کنید." 
     };
 
   } catch (error) {
@@ -258,23 +355,43 @@ ipcMain.handle("restore-backup", async (event) => {
     return { success: false, message: `خطا در بازیابی: ${error.message}` };
   }
 });
-// --- پایان کد جدید ---
 
-// ... (بقیه کدهای شما مانند app.on("window-all-closed", ...))
+// هندلرهای جدید برای بکاپ خودکار
+ipcMain.handle("set-backup-schedule", async (event, scheduleConfig) => {
+  try {
+    const { enabled, dayOfWeek, hour, minute } = scheduleConfig;
+    
+    const settingsPath = path.join(__dirname, 'backup_schedule.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({ enabled, dayOfWeek, hour, minute }, null, 2));
+    
+    if (scheduledBackupJob) {
+      scheduledBackupJob.cancel();
+      scheduledBackupJob = null;
+    }
+    
+    if (enabled) {
+      setupAutoBackup();
+    }
+    
+    return { success: true, message: enabled ? "بکاپ خودکار فعال شد" : "بکاپ خودکار غیرفعال شد" };
+  } catch (error) {
+    console.error("خطا در تنظیم زمانبندی:", error);
+    return { success: false, message: error.message };
+  }
+});
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+ipcMain.handle("get-backup-schedule", async () => {
+  try {
+    const settingsPath = path.join(__dirname, 'backup_schedule.json');
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      return { success: true, schedule: settings, enabled: !!scheduledBackupJob };
+    }
+    return { success: true, schedule: { enabled: false, dayOfWeek: 0, hour: 2, minute: 0 }, enabled: false };
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+});
 
 app.on("window-all-closed", () => {
   if (laravelProcess) laravelProcess.kill();

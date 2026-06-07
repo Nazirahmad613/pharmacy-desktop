@@ -1,5 +1,5 @@
 // src/views/settings/Settings.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Box,
     Card,
@@ -21,7 +21,8 @@ import {
     IconButton,
     Paper,
     Tab,
-    Tabs
+    Tabs,
+    FormHelperText
 } from '@mui/material';
 import {
     Save as SaveIcon,
@@ -67,6 +68,14 @@ const Settings = () => {
         current_password: '',
         new_password: '',
         confirm_password: ''
+    });
+
+    // اضافه کردن این state ها در ابتدای کامپوننت Settings
+    const [autoBackupSettings, setAutoBackupSettings] = useState({
+        enabled: false,
+        dayOfWeek: 0,
+        hour: 2,
+        minute: 0
     });
 
     const handleSettingChange = (key, value) => {
@@ -344,6 +353,61 @@ const Settings = () => {
         }
     };
 
+    // اضافه کردن این useEffect برای بارگذاری تنظیمات
+    useEffect(() => {
+        const loadAutoBackupSettings = async () => {
+            if (window.electronAPI && window.electronAPI.getBackupSchedule) {
+                const result = await window.electronAPI.getBackupSchedule();
+                if (result.success && result.schedule) {
+                    setAutoBackupSettings({
+                        enabled: result.schedule.enabled || false,
+                        dayOfWeek: result.schedule.dayOfWeek || 0,
+                        hour: result.schedule.hour || 2,
+                        minute: result.schedule.minute || 0
+                    });
+                }
+            }
+        };
+        loadAutoBackupSettings();
+    }, []);
+
+    // اضافه کردن این تابع برای ذخیره تنظیمات بکاپ خودکار
+    const handleSaveAutoBackup = async () => {
+        try {
+            if (!window.electronAPI || !window.electronAPI.setBackupSchedule) {
+                setSnackbar({
+                    open: true,
+                    message: 'سیستم بکاپ خودکار در دسترس نیست',
+                    severity: 'error'
+                });
+                return;
+            }
+            
+            const result = await window.electronAPI.setBackupSchedule(autoBackupSettings);
+            
+            if (result.success) {
+                setSnackbar({
+                    open: true,
+                    message: result.message || 'تنظیمات بکاپ خودکار ذخیره شد',
+                    severity: 'success'
+                });
+            } else {
+                setSnackbar({
+                    open: true,
+                    message: result.message || 'خطا در ذخیره تنظیمات',
+                    severity: 'error'
+                });
+            }
+        } catch (error) {
+            console.error('Error saving auto backup settings:', error);
+            setSnackbar({
+                open: true,
+                message: 'خطا در ذخیره تنظیمات بکاپ خودکار',
+                severity: 'error'
+            });
+        }
+    };
+
     return (
         <Box sx={{ p: 3 }}>
             <Typography variant="h4" gutterBottom fontWeight="bold">
@@ -470,6 +534,94 @@ const Settings = () => {
                                     sx={{ mb: 2 }}
                                 >
                                     بازیابی از بکاپ
+                                </Button>
+
+                                <Divider sx={{ my: 3 }} />
+
+                                <Typography variant="h6" gutterBottom>
+                                    ⏰ بکاپ خودکار هفتگی
+                                </Typography>
+
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    تنظیم زمانبندی خودکار برای پشتیبان‌گیری منظم از دیتابیس (هر هفته در روز و ساعت مشخص)
+                                </Typography>
+
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={autoBackupSettings.enabled}
+                                            onChange={(e) => setAutoBackupSettings(prev => ({ ...prev, enabled: e.target.checked }))}
+                                        />
+                                    }
+                                    label="فعالسازی بکاپ خودکار"
+                                />
+
+                                {autoBackupSettings.enabled && (
+                                    <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                                        <Grid container spacing={2}>
+                                            <Grid item xs={12} sm={4}>
+                                                <FormControl fullWidth>
+                                                    <InputLabel>روز هفته</InputLabel>
+                                                    <Select
+                                                        value={autoBackupSettings.dayOfWeek}
+                                                        onChange={(e) => setAutoBackupSettings(prev => ({ ...prev, dayOfWeek: parseInt(e.target.value) }))}
+                                                        label="روز هفته"
+                                                    >
+                                                        <MenuItem value={0}>یکشنبه</MenuItem>
+                                                        <MenuItem value={1}>دوشنبه</MenuItem>
+                                                        <MenuItem value={2}>سه‌شنبه</MenuItem>
+                                                        <MenuItem value={3}>چهارشنبه</MenuItem>
+                                                        <MenuItem value={4}>پنجشنبه</MenuItem>
+                                                        <MenuItem value={5}>جمعه</MenuItem>
+                                                        <MenuItem value={6}>شنبه</MenuItem>
+                                                    </Select>
+                                                </FormControl>
+                                            </Grid>
+                                            <Grid item xs={12} sm={4}>
+                                                <TextField
+                                                    fullWidth
+                                                    type="number"
+                                                    label="ساعت (0-23)"
+                                                    value={autoBackupSettings.hour}
+                                                    onChange={(e) => {
+                                                        let val = parseInt(e.target.value);
+                                                        if (val >= 0 && val <= 23) {
+                                                            setAutoBackupSettings(prev => ({ ...prev, hour: val }));
+                                                        }
+                                                    }}
+                                                    inputProps={{ min: 0, max: 23 }}
+                                                />
+                                            </Grid>
+                                            <Grid item xs={12} sm={4}>
+                                                <TextField
+                                                    fullWidth
+                                                    type="number"
+                                                    label="دقیقه (0-59)"
+                                                    value={autoBackupSettings.minute}
+                                                    onChange={(e) => {
+                                                        let val = parseInt(e.target.value);
+                                                        if (val >= 0 && val <= 59) {
+                                                            setAutoBackupSettings(prev => ({ ...prev, minute: val }));
+                                                        }
+                                                    }}
+                                                    inputProps={{ min: 0, max: 59 }}
+                                                />
+                                            </Grid>
+                                        </Grid>
+                                        <FormHelperText>
+                                            بکاپ‌های خودکار در پوشه "auto_backups" با نام auto_backup_ تاریخ.zip ذخیره می‌شوند
+                                        </FormHelperText>
+                                    </Box>
+                                )}
+
+                                <Button
+                                    variant="outlined"
+                                    color="primary"
+                                    onClick={handleSaveAutoBackup}
+                                    fullWidth
+                                    sx={{ mt: 2 }}
+                                >
+                                    ذخیره تنظیمات بکاپ خودکار
                                 </Button>
 
                                 <Button

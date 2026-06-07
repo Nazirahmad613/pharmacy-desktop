@@ -2,7 +2,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 console.log("PRELOAD: Script started");
 
-// منتظر بمان تا context isolation آماده شود
 setTimeout(() => {
     console.log("PRELOAD: Exposing API...");
     contextBridge.exposeInMainWorld('electronAPI', {
@@ -17,7 +16,6 @@ setTimeout(() => {
                 throw error;
             }
         },
-        // اضافه شدن متد restoreBackup برای بازیابی بکاپ
         restoreBackup: async () => {
             console.log("PRELOAD: restoreBackup called");
             try {
@@ -26,6 +24,28 @@ setTimeout(() => {
                 return result;
             } catch (error) {
                 console.error("PRELOAD: restoreBackup error:", error);
+                throw error;
+            }
+        },
+        setBackupSchedule: async (scheduleConfig) => {
+            console.log("PRELOAD: setBackupSchedule called", scheduleConfig);
+            try {
+                const result = await ipcRenderer.invoke('set-backup-schedule', scheduleConfig);
+                console.log("PRELOAD: setBackupSchedule result:", result);
+                return result;
+            } catch (error) {
+                console.error("PRELOAD: setBackupSchedule error:", error);
+                throw error;
+            }
+        },
+        getBackupSchedule: async () => {
+            console.log("PRELOAD: getBackupSchedule called");
+            try {
+                const result = await ipcRenderer.invoke('get-backup-schedule');
+                console.log("PRELOAD: getBackupSchedule result:", result);
+                return result;
+            } catch (error) {
+                console.error("PRELOAD: getBackupSchedule error:", error);
                 throw error;
             }
         }
