@@ -33,7 +33,8 @@ import {
     PhotoCamera as PhotoCameraIcon,
     Password as PasswordIcon,
     Delete as DeleteIcon,
-    Settings as SettingsIcon
+    Settings as SettingsIcon,
+    Restore as RestoreIcon
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import useSettings from '../../hooks/useSettings';
@@ -171,33 +172,177 @@ const Settings = () => {
         setActiveTab(newValue);
     };
 
-const handleBackup = async () => {
-    try {
-        console.log(window.electronAPI);
+    const handleBackup = async () => {
+        try {
+            console.log("1. Backup button clicked");
+            console.log("2. Checking window.electronAPI:", window.electronAPI);
+            
+            if (!window.electronAPI) {
+                console.log("3. electronAPI not found, trying to create it...");
+                
+                try {
+                    const { ipcRenderer } = require('electron');
+                    console.log("4. Got ipcRenderer directly");
+                    const result = await ipcRenderer.invoke('create-backup');
+                    console.log("5. Backup result:", result);
+                    
+                    if (result && result.success) {
+                        setSnackbar({
+                            open: true,
+                            message: 'بکاپ با موفقیت ایجاد شد',
+                            severity: 'success'
+                        });
+                    } else {
+                        setSnackbar({
+                            open: true,
+                            message: result?.message || 'خطا در ایجاد بکاپ',
+                            severity: 'error'
+                        });
+                    }
+                    return;
+                } catch (err) {
+                    console.error("Direct ipcRenderer failed:", err);
+                }
+                
+                setSnackbar({
+                    open: true,
+                    message: 'سیستم بکاپ در دسترس نیست. لطفا برنامه را مجددا اجرا کنید.',
+                    severity: 'error'
+                });
+                return;
+            }
 
-    const result = await window.electronAPI.createBackup();
+            console.log("3. electronAPI found, calling createBackup...");
+            const result = await window.electronAPI.createBackup();
+            console.log("4. Backup result:", result);
 
- 
-        setSnackbar({
-            open: true,
-            message: result.success
-                ? 'بکاپ با موفقیت ایجاد شد'
-                : (result.message || 'خطا در ایجاد بکاپ'),
-            severity: result.success ? 'success' : 'error'
-        });
-    } catch (error) {
-            console.error(error);
-         setSnackbar({
-        open: true,
-        message: error.message || 'خطا در ایجاد بکاپ',
-        severity: 'error'
-    });
-    }
-};
+            if (result && result.success) {
+                setSnackbar({
+                    open: true,
+                    message: 'بکاپ با موفقیت ایجاد شد',
+                    severity: 'success'
+                });
+            } else {
+                setSnackbar({
+                    open: true,
+                    message: result?.message || 'خطا در ایجاد بکاپ',
+                    severity: 'error'
+                });
+            }
+        } catch (error) {
+            console.error('Backup error:', error);
+            setSnackbar({
+                open: true,
+                message: error.message || 'خطا در ارتباط با سیستم بکاپ',
+                severity: 'error'
+            });
+        }
+    };
 
-
-
-
+    // تابع جدید برای بازیابی بکاپ
+    const handleRestoreBackup = async () => {
+        try {
+            // تأیید اولیه از کاربر
+            const confirmed = window.confirm(
+                '⚠️ هشدار مهم!\n\n' +
+                'بازیابی بکاپ، تمام اطلاعات فعلی سیستم را با اطلاعات موجود در فایل بکاپ جایگزین خواهد کرد.\n' +
+                'پیشنهاد می‌کنیم ابتدا یک بکاپ جدید از وضعیت فعلی بگیرید.\n\n' +
+                'آیا از انجام این کار مطمئن هستید؟'
+            );
+            
+            if (!confirmed) {
+                console.log("Restore cancelled by user");
+                return;
+            }
+            
+            console.log("1. Restore button clicked");
+            console.log("2. Checking window.electronAPI:", window.electronAPI);
+            
+            if (!window.electronAPI) {
+                console.log("3. electronAPI not found");
+                
+                try {
+                    const { ipcRenderer } = require('electron');
+                    console.log("4. Got ipcRenderer directly for restore");
+                    const result = await ipcRenderer.invoke('restore-backup');
+                    console.log("5. Restore result:", result);
+                    
+                    if (result && result.success) {
+                        setSnackbar({
+                            open: true,
+                            message: result.message || 'بازیابی با موفقیت انجام شد',
+                            severity: 'success'
+                        });
+                        
+                        // پیشنهاد ریستارت برنامه
+                        setTimeout(() => {
+                            if (window.confirm('برای اعمال تغییرات، برنامه نیاز به ریستارت دارد. الان ریستارت شود؟')) {
+                                window.location.reload();
+                            }
+                        }, 2000);
+                    } else {
+                        setSnackbar({
+                            open: true,
+                            message: result?.message || 'خطا در بازیابی بکاپ',
+                            severity: 'error'
+                        });
+                    }
+                    return;
+                } catch (err) {
+                    console.error("Direct ipcRenderer for restore failed:", err);
+                }
+                
+                setSnackbar({
+                    open: true,
+                    message: 'سیستم بازیابی در دسترس نیست. لطفا برنامه را مجددا اجرا کنید.',
+                    severity: 'error'
+                });
+                return;
+            }
+            
+            if (!window.electronAPI.restoreBackup) {
+                console.error("restoreBackup method not found");
+                setSnackbar({
+                    open: true,
+                    message: 'سیستم بازیابی به درستی تنظیم نشده است.',
+                    severity: 'error'
+                });
+                return;
+            }
+            
+            console.log("3. electronAPI found, calling restoreBackup...");
+            const result = await window.electronAPI.restoreBackup();
+            console.log("4. Restore result:", result);
+            
+            if (result && result.success) {
+                setSnackbar({
+                    open: true,
+                    message: result.message || 'بازیابی با موفقیت انجام شد',
+                    severity: 'success'
+                });
+                
+                // پیشنهاد ریستارت برنامه
+                setTimeout(() => {
+                    if (window.confirm('برای اعمال تغییرات، برنامه نیاز به ریستارت دارد. الان ریستارت شود؟')) {
+                        window.location.reload();
+                    }
+                }, 2000);
+            } else {
+                setSnackbar({
+                    open: true,
+                    message: result?.message || 'خطا در بازیابی بکاپ',
+                    severity: 'error'
+                });
+            }
+        } catch (error) {
+            console.error('Restore error:', error);
+            setSnackbar({
+                open: true,
+                message: error.message || 'خطا در ارتباط با سیستم بازیابی',
+                severity: 'error'
+            });
+        }
+    };
 
     return (
         <Box sx={{ p: 3 }}>
@@ -292,31 +437,40 @@ const handleBackup = async () => {
                                     </Select>
                                 </FormControl>
 
-                                    <Divider sx={{ my: 3 }} />
+                                <Divider sx={{ my: 3 }} />
 
-<Typography variant="h6" gutterBottom>
-    پشتیبان‌گیری سیستم
-</Typography>
+                                <Typography variant="h6" gutterBottom>
+                                    پشتیبان‌گیری و بازیابی سیستم
+                                </Typography>
 
-<Typography
-    variant="body2"
-    color="text.secondary"
-    sx={{ mb: 2 }}
->
-    از دیتابیس سیستم نسخه پشتیبان تهیه کنید.
-</Typography>
+                                <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                    sx={{ mb: 2 }}
+                                >
+                                    از دیتابیس سیستم نسخه پشتیبان تهیه کنید یا از روی فایل بکاپ قبلی اطلاعات را بازیابی نمایید.
+                                </Typography>
 
-<Button
-    variant="contained"
-    color="success"
-    onClick={handleBackup}
-    fullWidth
-    sx={{ mb: 2 }}
->
-    ایجاد بکاپ
-</Button>
+                                <Button
+                                    variant="contained"
+                                    color="success"
+                                    onClick={handleBackup}
+                                    fullWidth
+                                    sx={{ mb: 2 }}
+                                >
+                                    ایجاد بکاپ
+                                </Button>
 
-
+                                <Button
+                                    variant="contained"
+                                    color="warning"
+                                    onClick={handleRestoreBackup}
+                                    fullWidth
+                                    startIcon={<RestoreIcon />}
+                                    sx={{ mb: 2 }}
+                                >
+                                    بازیابی از بکاپ
+                                </Button>
 
                                 <Button
                                     variant="contained"
