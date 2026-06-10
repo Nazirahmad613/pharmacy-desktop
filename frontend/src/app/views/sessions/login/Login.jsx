@@ -49,206 +49,216 @@ export default function Login() {
 
   return (
     <div className="login-page" dir="rtl">
-      <div className="glass-card">
-        <div className="logo-container">
-          <FirstLogo />
-        </div>
+      <div className="container">
+        {/* باکس لاگین */}
+        <div className="login-box">
+          <div className="logo-container">
+            <FirstLogo />
+          </div>
 
-        <h2>ورود به سیستم</h2>
+          <h2>ورود به سیستم</h2>
 
-        <Formik
-          initialValues={initialValues}
-          validationSchema={validationSchema}
-          onSubmit={handleFormSubmit}
-        >
-          {({
-            values,
-            errors,
-            touched,
-            handleChange,
-            handleBlur,
-            handleSubmit
-          }) => (
-            <form onSubmit={handleSubmit} noValidate>
-
-              <div className="input-group">
-                <FaUser className="input-icon" />
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="ایمیل"
-                  value={values.email}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-              </div>
-              {touched.email && errors.email && (
-                <div className="error">{errors.email}</div>
-              )}
-
-              <div className="input-group">
-                <FaLock className="input-icon" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  placeholder="رمز عبور"
-                  value={values.password}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                />
-                {values.password && (
-                  <span
-                    className="show-btn"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? "پنهان" : "نمایش"}
-                  </span>
+          <Formik
+            initialValues={initialValues}
+            validationSchema={validationSchema}
+            onSubmit={handleFormSubmit}
+          >
+            {({
+              values,
+              errors,
+              touched,
+              handleChange,
+              handleBlur,
+              handleSubmit
+            }) => (
+              <form onSubmit={handleSubmit} noValidate>
+                <div className="input-group">
+                  <FaUser className="input-icon" />
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="ایمیل"
+                    value={values.email}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                  />
+                </div>
+                {touched.email && errors.email && (
+                  <div className="error">{errors.email}</div>
                 )}
-              </div>
-              {touched.password && errors.password && (
-                <div className="error">{errors.password}</div>
-              )}
 
-              {loginError && <div className="login-error">{loginError}</div>}
+                <div className="input-group">
+                  <FaLock className="input-icon" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    placeholder="رمز عبور"
+                    value={values.password}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                  />
+                  {values.password && (
+                    <span
+                      className="show-btn"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? "پنهان" : "نمایش"}
+                    </span>
+                  )}
+                </div>
+                {touched.password && errors.password && (
+                  <div className="error">{errors.password}</div>
+                )}
 
-              <button
-                type="submit"
-                className="login-btn"
-                disabled={loading}
-              >
-                {loading ? "در حال ورود..." : "ورود"}
-              </button>
-            </form>
-          )}
-        </Formik>
+                {loginError && <div className="login-error">{loginError}</div>}
+
+                <button
+                  type="submit"
+                  className="login-btn"
+                  disabled={loading}
+                >
+                  {loading ? "در حال ورود..." : "ورود"}
+                </button>
+              </form>
+            )}
+          </Formik>
+        </div>
       </div>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600&display=swap');
 
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+
         .login-page {
+          width: 100%;
           height: 100vh;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          background: url('https://images.pexels.com/photos/3735716/pexels-photo-3735716.jpeg?auto=compress&cs=tinysrgb&w=1600&q=100') no-repeat center center/cover;
+          background: #07111f;
+          overflow: hidden;
           font-family: 'Vazirmatn', sans-serif;
           position: relative;
         }
 
-        /* لایه آبی بسیار ملایم */
-        .login-page::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 50, 100, 0.2);
-        }
-
-        .glass-card {
-          width: 390px;
-          padding: 45px;
-          border-radius: 28px;
-          background: rgba(20, 40, 70, 0.25);
-          backdrop-filter: blur(16px);
-          border: 1px solid rgba(0, 150, 255, 0.5);
-          box-shadow: 0 15px 45px rgba(0, 0, 0, 0.4);
-          color: white;
+        .container {
+          width: 100%;
+          height: 100vh;
+          display: flex;
+          justify-content: center;
+          align-items: center;
           position: relative;
           z-index: 1;
+        }
+
+        /* باکس لاگین - همیشه فعال و با افکت نور */
+        .login-box {
+          width: 390px;
+          background: #09111e;
+          border: 2px solid #98ff4c;
+          padding: 35px;
+          border-radius: 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+          opacity: 1;
+          transform: translateX(0);
+          pointer-events: auto;
+          box-shadow: 0 0 15px #98ff4c, 0 0 30px #98ff4c;
+          direction: rtl;
         }
 
         .logo-container {
           display: flex;
           justify-content: center;
-          margin-bottom: 20px;
+          margin-bottom: 10px;
         }
-        
+
         .logo-container svg,
         .logo-container img {
+          filter: brightness(0) invert(1);
           transform: scale(1.08);
         }
 
-        .glass-card h2 {
+        .login-box h2 {
+          color: white;
           text-align: center;
-          margin-bottom: 32px;
+          margin-bottom: 10px;
           font-weight: 600;
-          color: #ffffff;
           letter-spacing: 1px;
-          text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
 
+        /* استایل فرم و اینپوت‌ها */
         .input-group {
           position: relative;
-          margin-bottom: 20px;
+          margin-bottom: 5px;
         }
 
         .input-group input {
           width: 100%;
-          padding: 14px 50px 14px 45px;
-          border-radius: 14px;
+          padding: 12px 45px 12px 40px;
           border: none;
           outline: none;
-          background: rgba(255, 255, 255, 0.9);
-          transition: 0.3s;
+          border-radius: 8px;
+          background: #152133;
+          color: white;
           font-family: inherit;
-          font-size: 15px;
+          font-size: 14px;
+          transition: 0.3s;
         }
 
         .input-group input:focus {
-          box-shadow: 0 0 0 3px rgba(0, 150, 255, 0.5);
-          background: white;
+          box-shadow: 0 0 0 2px #98ff4c;
         }
 
         .input-icon {
           position: absolute;
-          right: 16px;
+          right: 12px;
           top: 50%;
           transform: translateY(-50%);
-          color: #0066cc;
-          font-size: 18px;
+          color: #98ff4c;
+          font-size: 16px;
         }
 
         .show-btn {
           position: absolute;
-          left: 14px;
+          left: 12px;
           top: 50%;
           transform: translateY(-50%);
-          font-size: 12px;
+          font-size: 11px;
           cursor: pointer;
-          color: #0066cc;
+          color: #98ff4c;
           font-weight: bold;
-          background: rgba(200, 230, 255, 0.9);
+          background: rgba(152, 255, 76, 0.2);
           padding: 3px 8px;
           border-radius: 30px;
           transition: 0.2s;
         }
 
         .show-btn:hover {
-          background: #b3d9ff;
+          background: rgba(152, 255, 76, 0.4);
         }
 
         .login-btn {
           width: 100%;
-          padding: 14px;
+          padding: 12px;
           border: none;
-          border-radius: 14px;
-          background: linear-gradient(135deg, #0099ff, #0066cc);
-          color: white;
-          font-weight: 700;
+          border-radius: 8px;
           cursor: pointer;
-          transition: 0.3s;
-          margin-top: 16px;
+          font-weight: bold;
+          background: #98ff4c;
+          color: #07111f;
           font-size: 16px;
-          letter-spacing: 1px;
+          transition: 0.3s;
+          margin-top: 10px;
+          font-family: inherit;
         }
 
         .login-btn:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 10px 28px rgba(0, 100, 200, 0.4);
-          background: linear-gradient(135deg, #0088ee, #0055bb);
+          box-shadow: 0 5px 15px rgba(152, 255, 76, 0.4);
         }
 
         .login-btn:disabled {
@@ -257,33 +267,41 @@ export default function Login() {
         }
 
         .error {
-          font-size: 12px;
-          color: #ffcccc;
-          margin-bottom: 10px;
-          margin-top: -8px;
+          font-size: 11px;
+          color: #ff8888;
+          margin-bottom: 8px;
+          margin-top: -3px;
           padding-right: 10px;
         }
 
         .login-error {
-          font-size: 14px;
+          font-size: 13px;
           color: #ffc9b3;
           font-weight: bold;
-          margin-bottom: 14px;
+          margin-bottom: 10px;
           text-align: center;
-          background: rgba(180, 60, 50, 0.25);
+          background: rgba(180, 60, 50, 0.3);
           padding: 8px;
-          border-radius: 14px;
+          border-radius: 10px;
         }
 
-        @media(max-width: 480px){
-          .glass-card {
+        /* واکنشگرایی */
+        @media (max-width: 900px) {
+          .login-box {
             width: 90%;
-            padding: 32px 24px;
+            padding: 25px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .login-box {
+            width: 95%;
+            padding: 20px;
           }
           
           .logo-container svg,
           .logo-container img {
-            transform: scale(1.04);
+            transform: scale(0.9);
           }
         }
       `}</style>
