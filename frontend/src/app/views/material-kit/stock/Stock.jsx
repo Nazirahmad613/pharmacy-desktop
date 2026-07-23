@@ -842,11 +842,11 @@ const Stock = () => {
                                 {lowStockWarnings.length > 0 && (
                                     <div className="text-red-500 flex items-center gap-1">
                                         <FaExclamationTriangle />
-                                        {lowStockWarnings.length} دارو با موجودی کم
+                                        {lowStockWarnings.length} دوا با موجودی کم
                                     </div>
                                 )}
                             </div>
-                        </div>
+                        </div> 
                     )}
                 </div>
             </div>

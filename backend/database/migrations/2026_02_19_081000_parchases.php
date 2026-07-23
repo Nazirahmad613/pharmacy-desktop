@@ -33,6 +33,6 @@ return new class extends Migration
         Schema::table('parchases', function (Blueprint $table) {
             $table->dropForeign(['supplier_id']);
         });
-        Schema::dropIfExists('parchases');
+        Schema::dropIfExists('parchases'); 
     }
 };

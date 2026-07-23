@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "app/contexts/AuthContext";
-import ReportLayout from "../.../../../../../../components/ReportLayout";
+import ReportLayout from "../../../../../components/ReportLayout";
 import {
   Box,
   TextField,

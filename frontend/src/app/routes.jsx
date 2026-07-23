@@ -30,7 +30,7 @@ const UsersPage = Loadable(
 
 // Settings page
 const Settings = Loadable(
-  lazy(() => import("../app/views/settings/settings"))
+  lazy(() => import("./views/settings/settings"))
 );
 
 // Stock reports

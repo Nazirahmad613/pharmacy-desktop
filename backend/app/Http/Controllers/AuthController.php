@@ -24,16 +24,19 @@ class AuthController extends Controller
             'password' => Hash::make($validated['password']),
         ]);
 
-        // ✅ اختصاص نقش
         $roleName = $validated['role'] ?? 'user';
         $user->assignRole($roleName);
 
-        // ✅ بارگذاری مجدد کاربر با روابط
         $user->load('roles.permissions');
-        
+
+        $user->append([
+            'avatar_url',
+            'role_name'
+        ]);
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        // ✅ ساخت ساختار داده مناسب برای فرانت‌اند
+
         $userData = [
             'id' => $user->id,
             'name' => $user->name,
@@ -41,6 +44,11 @@ class AuthController extends Controller
             'email_verified_at' => $user->email_verified_at,
             'created_at' => $user->created_at,
             'updated_at' => $user->updated_at,
+
+            // اضافه شد
+            'avatar' => $user->avatar,
+            'avatar_url' => $user->avatar_url,
+
             'roles' => $user->roles->map(function($role) {
                 return [
                     'id' => $role->id,
@@ -53,6 +61,7 @@ class AuthController extends Controller
                     })
                 ];
             }),
+
             'permissions' => $user->getAllPermissions()->map(function($permission) {
                 return [
                     'id' => $permission->id,
@@ -60,6 +69,7 @@ class AuthController extends Controller
                 ];
             })
         ];
+
 
         return response()->json([
             'success' => true,
@@ -70,12 +80,14 @@ class AuthController extends Controller
         ], 201);
     }
 
+
     public function login(Request $request)
     {
         $validated = $request->validate([
             'email' => 'required|email',
             'password' => 'required|string',
         ]);
+
 
         if (!Auth::attempt($validated)) {
             return response()->json([
@@ -84,14 +96,22 @@ class AuthController extends Controller
             ], 401);
         }
 
+
         $user = Auth::user();
-        
-        // ✅ بارگذاری مجدد کاربر با روابط
+
+
         $user->load('roles.permissions');
-        
+
+        $user->append([
+            'avatar_url',
+            'role_name'
+        ]);
+
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        // ✅ ساخت ساختار داده مناسب برای فرانت‌اند
+
+
         $userData = [
             'id' => $user->id,
             'name' => $user->name,
@@ -99,6 +119,12 @@ class AuthController extends Controller
             'email_verified_at' => $user->email_verified_at,
             'created_at' => $user->created_at,
             'updated_at' => $user->updated_at,
+
+            // اضافه شد
+            'avatar' => $user->avatar,
+            'avatar_url' => $user->avatar_url,
+
+
             'roles' => $user->roles->map(function($role) {
                 return [
                     'id' => $role->id,
@@ -111,6 +137,7 @@ class AuthController extends Controller
                     })
                 ];
             }),
+
             'permissions' => $user->getAllPermissions()->map(function($permission) {
                 return [
                     'id' => $permission->id,
@@ -118,6 +145,7 @@ class AuthController extends Controller
                 ];
             })
         ];
+
 
         return response()->json([
             'success' => true,
@@ -128,14 +156,22 @@ class AuthController extends Controller
         ]);
     }
 
+
+
     public function me(Request $request)
     {
         $user = $request->user();
-        
-        // ✅ بارگذاری مجدد کاربر با روابط
+
+
         $user->load('roles.permissions');
 
-        // ✅ ساخت ساختار داده مناسب برای فرانت‌اند
+        $user->append([
+            'avatar_url',
+            'role_name'
+        ]);
+
+
+
         $userData = [
             'id' => $user->id,
             'name' => $user->name,
@@ -143,6 +179,12 @@ class AuthController extends Controller
             'email_verified_at' => $user->email_verified_at,
             'created_at' => $user->created_at,
             'updated_at' => $user->updated_at,
+
+            // اضافه شد
+            'avatar' => $user->avatar,
+            'avatar_url' => $user->avatar_url,
+
+
             'roles' => $user->roles->map(function($role) {
                 return [
                     'id' => $role->id,
@@ -155,6 +197,8 @@ class AuthController extends Controller
                     })
                 ];
             }),
+
+
             'permissions' => $user->getAllPermissions()->map(function($permission) {
                 return [
                     'id' => $permission->id,
@@ -163,12 +207,15 @@ class AuthController extends Controller
             })
         ];
 
+
         return response()->json([
             'success' => true,
             'user' => $userData,
         ]);
-    }                   
-    
+    }
+
+
+
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();

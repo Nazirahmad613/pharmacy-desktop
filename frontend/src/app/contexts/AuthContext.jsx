@@ -45,26 +45,24 @@ api.interceptors.response.use(
 const AuthContext = createContext(null);
 
 // ================= GET AVATAR URL =================
+ 
+
 const getAvatarUrl = (userData) => {
   if (!userData) return null;
 
-  // اگر avatar_url آماده از backend آمده باشد
   if (userData.avatar_url) {
     return `${userData.avatar_url}?t=${Date.now()}`;
   }
 
-  // اگر avatar موجود باشد
   if (userData.avatar) {
-    // اگر لینک کامل باشد
-    if (
-      userData.avatar.startsWith("http://") ||
-      userData.avatar.startsWith("https://")
-    ) {
-      return `${userData.avatar}?t=${Date.now()}`;
-    }
-
-    // پاک کردن slash اضافی
     const cleanPath = userData.avatar.replace(/^\/+/, "");
+
+    if (
+      cleanPath.startsWith("http://") ||
+      cleanPath.startsWith("https://")
+    ) {
+      return `${cleanPath}?t=${Date.now()}`;
+    }
 
     return `${API_BASE_URL}/storage/${cleanPath}?t=${Date.now()}`;
   }

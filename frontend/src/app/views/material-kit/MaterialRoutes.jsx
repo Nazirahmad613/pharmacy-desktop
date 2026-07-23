@@ -1,6 +1,6 @@
 import { lazy } from "react";
 import Loadable from "app/components/Loadable";
-import AdminRoute from "../material-kit/AdminRoute"; // ✅ Route Guard
+import AdminRoute from "./AdminRoute"; // ✅ Route Guard
 
 // ===== Material UI Samples =====
 const AppForm = Loadable(lazy(() => import("./forms/AppForm")));

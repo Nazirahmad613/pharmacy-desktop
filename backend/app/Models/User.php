@@ -52,7 +52,7 @@ class User extends Authenticatable
         $avatarPath = ltrim($this->avatar, '/');
 
         // ساخت URL کامل
-        return asset('storage/' . $avatarPath);
+       return asset('storage/avatars/' . $avatarPath);
     }
 
     // ================= ROLE NAME =================

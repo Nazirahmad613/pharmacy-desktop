@@ -56,6 +56,7 @@ export default function UsersPage() {
         setUsers(usersRes.data);
         setRoles(rolesRes.data);
         setLoading(false);
+        console.log("USERS DATA =>", usersRes.data);
       })
       .catch((err) => {
         console.error(err);

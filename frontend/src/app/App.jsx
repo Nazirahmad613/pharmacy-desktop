@@ -1,5 +1,5 @@
 import { CssBaseline } from "@mui/material";
-import AnimatedBackground from "../../../frontend/../frontend/src/components/AnimatedBackground";
+import AnimatedBackground from "../components/AnimatedBackground";
 import routes from "./routes";
 import { MatxTheme } from "./components";
 import SettingsProvider from "./contexts/SettingsContext";

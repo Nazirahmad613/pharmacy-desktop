@@ -78,25 +78,16 @@ const Layout1Topbar = () => {
   const [isAvatarLoaded, setIsAvatarLoaded] = useState(false);
 
   // ====================== ساخت آدرس آواتار ======================
-  const getAvatarUrl = useCallback(() => {
-    if (!user) return "";
-    
-    // اولویت با avatar_url که در AuthContext پردازش شده
-    if (user.avatar_url) {
-      return user.avatar_url;
-    }
-    
-    // اگر avatar مستقیم وجود داشت
-    if (user.avatar) {
-      const cleanPath = user.avatar.replace(/^\/+/, "");
-      if (cleanPath.startsWith("http")) {
-        return cleanPath;
-      }
-      return `http://localhost:8000/storage/${cleanPath}`;
-    }
-    
-    return "";
-  }, [user]);
+ const getAvatarUrl = useCallback(() => {
+  if (!user) return "";
+
+  if (user.avatar) {
+    const fileName = user.avatar.split("/").pop();
+    return `http://127.0.0.1:8000/storage/avatars/${fileName}`;
+  }
+
+  return "";
+}, [user]);
 
   // ====================== بارگذاری آواتار ======================
   useEffect(() => {
@@ -170,6 +161,9 @@ const Layout1Topbar = () => {
 
     updateSidebarMode({ mode });
   };
+  console.log("USER =>", user);
+  console.log("USER AVATAR =>", user?.avatar);
+  console.log("USER AVATAR_URL =>", user?.avatar_url);
 
   // ====================== Render ======================
   return (

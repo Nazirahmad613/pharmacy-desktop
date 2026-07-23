@@ -64,7 +64,7 @@ const SupplierForm = () => {
         <div className="custom-form">
             <div className="form-wrapper">
                 <div className="form-container">
-                    <h2 align="center">فورم ثبت شرکت سازنده دارو</h2>
+                    <h2 align="center">فورم ثبت شرکت سازنده دوا</h2>
                     {message && <p className="error-message">{message}</p>}
 
                     <form onSubmit={handleSubmit}>

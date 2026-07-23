@@ -108,7 +108,7 @@ class PrescriptionController extends Controller
 
                 if (!$isAvailable) {
                     $medication = \App\Models\Medication::find($item['med_id']);
-                    throw new \Exception("موجودی دارو '{$medication->gen_name}' از تأمین‌کننده {$supplier->full_name} کافی نیست");
+                    throw new \Exception("موجودی دوا '{$medication->gen_name}' از تأمین‌کننده {$supplier->full_name} کافی نیست");
                 }
             }
 
@@ -177,12 +177,12 @@ class PrescriptionController extends Controller
                 'user_id'       => Auth::id(),
             ]);
 
-            // ثبت ژورنال (بستانکار - فروش دارو)
+            // ثبت ژورنال (بستانکار - فروش دوا)
             Journal::create([
                 'journal_date'  => $request->pres_date,
                 'entry_type'    => 'credit',
                 'amount'        => $request->net_amount,
-                'description'   => 'فروش دارو بابت نسخه شماره ' . $newPresNum,
+                'description'   => 'فروش دوا بابت نسخه شماره ' . $newPresNum,
                 'ref_type'      => 'pharmacy',
                 'ref_id'        => $prescription->pres_id,
                 'tazkira_number'=> $request->tazkira_number ?? $patient->tazkira_number ?? null,
@@ -271,7 +271,7 @@ class PrescriptionController extends Controller
 
                 if (!$isAvailable) {
                     $medication = \App\Models\Medication::find($item['med_id']);
-                    throw new \Exception("موجودی دارو '{$medication->gen_name}' از تأمین‌کننده {$supplier->full_name} کافی نیست");
+                    throw new \Exception("موجودی دوا '{$medication->gen_name}' از تأمین‌کننده {$supplier->full_name} کافی نیست");
                 }
             }
 
@@ -346,7 +346,7 @@ class PrescriptionController extends Controller
                 'journal_date'  => $request->pres_date,
                 'entry_type'    => 'credit',
                 'amount'        => $request->net_amount,
-                'description'   => 'فروش دارو بابت نسخه شماره ' . $prescription->pres_num,
+                'description'   => 'فروش دوا بابت نسخه شماره ' . $prescription->pres_num,
                 'ref_type'      => 'pharmacy',
                 'ref_id'        => $prescription->pres_id,
                 'tazkira_number'=> $request->tazkira_number ?? $patient->tazkira_number ?? null,

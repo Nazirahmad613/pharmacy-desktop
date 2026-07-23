@@ -12,15 +12,11 @@ class ProfileController extends Controller
     public function getProfile(Request $request)
     {
         $user = $request->user()->load('roles', 'permissions');
-        $user->avatar_url = $user->avatar_url;
-        
         return response()->json($user);
     }
-        
+
     public function updateProfile(Request $request)
     {
- 
-
         $user = $request->user();
 
         $request->validate([
@@ -31,16 +27,16 @@ class ProfileController extends Controller
             'new_password' => 'nullable|min:6|confirmed',
         ]);
 
-        // به‌روزرسانی اطلاعات پایه
-        if ($request->has('name')) {
+        // اطلاعات اصلی
+        if ($request->filled('name')) {
             $user->name = $request->name;
         }
-        
-        if ($request->has('email')) {
+
+        if ($request->filled('email')) {
             $user->email = $request->email;
         }
 
-        // تغییر رمز عبور
+        // تغییر رمز
         if ($request->filled('new_password')) {
             if (!Hash::check($request->current_password, $user->password)) {
                 return response()->json([
@@ -50,19 +46,42 @@ class ProfileController extends Controller
             $user->password = Hash::make($request->new_password);
         }
 
-        // آپدیت عکس
+        // ذخیره عکس - بخش اصلاح‌شده
         if ($request->hasFile('avatar')) {
-            if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
-                Storage::disk('public')->delete($user->avatar);
+            $file = $request->file('avatar');
+            
+            // لاگ برای دیباگ
+            \Log::info('Profile avatar upload', [
+                'user_id' => $user->id,
+                'file_name' => $file->getClientOriginalName(),
+                'file_size' => $file->getSize()
+            ]);
+
+            // حذف عکس قبلی
+            if ($user->avatar) {
+                $oldPath = 'avatars/' . basename($user->avatar);
+                if (Storage::disk('public')->exists($oldPath)) {
+                    Storage::disk('public')->delete($oldPath);
+                    \Log::info('Old avatar deleted: ' . $oldPath);
+                }
             }
-            $avatarPath = $request->file('avatar')->store('avatars', 'public');
-            $user->avatar = $avatarPath;
+
+            // ایجاد نام یکتا برای فایل
+            $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            
+            // ذخیره عکس جدید
+            $path = $file->storeAs('avatars', $filename, 'public');
+            
+            // ذخیره فقط نام فایل در دیتابیس (نه مسیر کامل)
+            $user->avatar = $filename;
+            
+            \Log::info('New avatar saved: ' . $filename);
         }
 
         $user->save();
 
+        // گرفتن اطلاعات کامل
         $user->load('roles', 'permissions');
-        $user->avatar_url = $user->avatar_url;
 
         return response()->json([
             'message' => 'پروفایل با موفقیت به‌روزرسانی شد',

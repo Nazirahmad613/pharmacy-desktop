@@ -247,7 +247,7 @@ class ParchasesController extends Controller
     {
         Journal::create([
             'journal_date' => $parchase->parchase_date,
-            'description'  => "خرید دارو شماره {$parchase->parchase_id} از تأمین‌کننده",
+            'description'  => "خرید دوا شماره {$parchase->parchase_id} از تأمین‌کننده",
             'entry_type'   => Journal::ENTRY_DEBIT,
             'amount'       => $parchase->total_parchase,
             'parchase_id'  => $parchase->parchase_id,  
