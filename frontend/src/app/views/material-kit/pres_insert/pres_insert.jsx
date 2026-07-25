@@ -1,4 +1,4 @@
- import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import MainLayoutjur from "../../../../components/MainLayoutjur";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -48,6 +48,7 @@ export default function PrescriptionForm() {
 
   const [categories, setCategories] = useState([]);
   const [medications, setMedications] = useState([]);
+  const [allSuppliers, setAllSuppliers] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [prescriptionsList, setPrescriptionsList] = useState([]);
   const [formItem, setFormItem] = useState(emptyItem);
@@ -63,11 +64,16 @@ export default function PrescriptionForm() {
   const currentPrescriptions = prescriptionsList.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(prescriptionsList.length / itemsPerPage);
 
-  // ========== حالت جدید: نمایش برگه‌ی نسخه ==========
+  // State برای بررسی موجودی (مشابه فایل فروش)
+  const [stockAvailability, setStockAvailability] = useState({ 
+    available: false, 
+    totalStock: 0, 
+    message: "",
+    checking: false 
+  });
+
   const [showPrescriptionSheet, setShowPrescriptionSheet] = useState(false);
   const [tempPrescriptionData, setTempPrescriptionData] = useState(null);
-  
-  // ========== State for PrescriptionSheet items (moved to parent to persist during print) ==========
   const [sheetItems, setSheetItems] = useState([]);
   const [sheetLocalDiscount, setSheetLocalDiscount] = useState(0);
 
@@ -83,13 +89,16 @@ export default function PrescriptionForm() {
     }
   });
 
+  // ==================== بارگذاری اولیه ====================
   useEffect(() => {
     document.title = ".";
     api.get("/registrations").then(res => {
       const data = res.data.data ?? res.data ?? [];
+      const supplierList = data.filter(r => r.reg_type === "supplier");
       setPatients(data.filter(r => r.reg_type === "patient"));
       setDoctors(data.filter(r => r.reg_type === "doctor"));
-      setSuppliers(data.filter(r => r.reg_type === "supplier"));
+      setAllSuppliers(supplierList);
+      setSuppliers(supplierList);
     });
     api.get("/categories").then(res => setCategories(res.data.data ?? res.data));
     api.get("/medications").then(res => setMedications(res.data.data ?? res.data));
@@ -150,47 +159,163 @@ export default function PrescriptionForm() {
 
   const selectedMedication = medications.find(m => Number(m.med_id) === Number(formItem.med_id));
 
-  const filteredSuppliers = editingId && prescriptionItems.length > 0
-    ? suppliers.filter(s => prescriptionItems.some(item => item.supplier_id == s.reg_id))
-    : selectedMedication
-      ? suppliers.filter(s => s.reg_id == selectedMedication.supplier_id)
-      : [];
+  // فیلتر کردن حمایت‌کنندگان بر اساس supplier_id داروی انتخاب شده (مشابه فایل فروش)
+  useEffect(() => {
+    if (!selectedMedication) {
+      setSuppliers(allSuppliers);
+      return;
+    }
+    
+    const medSupplierId = selectedMedication.supplier_id;
+    
+    if (!medSupplierId) {
+      setSuppliers(allSuppliers);
+      return;
+    }
+    
+    let filtered = [];
+    
+    if (Array.isArray(medSupplierId)) {
+      filtered = allSuppliers.filter(s => 
+        medSupplierId.some(id => Number(id) === Number(s.reg_id))
+      );
+    } else {
+      filtered = allSuppliers.filter(s => 
+        Number(medSupplierId) === Number(s.reg_id) ||
+        String(medSupplierId) === String(s.reg_id)
+      );
+    }
+    
+    if (filtered.length === 0) {
+      setSuppliers(allSuppliers);
+    } else {
+      setSuppliers(filtered);
+    }
+  }, [selectedMedication, allSuppliers]);
+
+  // ✅ بررسی موجودی هنگام تغییر تعداد یا انتخاب حمایت‌کننده (مشابه فایل فروش)
+  useEffect(() => {
+    const checkStockAvailability = async () => {
+      if (!formItem.med_id || !formItem.supplier_id || !formItem.quantity || Number(formItem.quantity) <= 0) {
+        setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+        return;
+      }
+
+      setStockAvailability(prev => ({ ...prev, checking: true }));
+      
+      try {
+        const response = await api.post("/sales/check-stock", {
+          med_id: formItem.med_id,
+          supplier_id: formItem.supplier_id,
+          type: formItem.type || null,
+          quantity: Number(formItem.quantity)
+        });
+        
+        if (response.data.success) {
+          const isAvailable = response.data.available;
+          const totalStock = response.data.total_quantity || 0;
+          
+          setStockAvailability({
+            available: isAvailable,
+            totalStock: totalStock,
+            message: isAvailable 
+              ? `✅ موجودی کافی است (موجودی انبار: ${totalStock})`
+              : `❌ موجودی کافی نیست! موجودی انبار: ${totalStock} - درخواستی: ${formItem.quantity}`,
+            checking: false
+          });
+        }
+      } catch (error) {
+        console.error("Error checking stock:", error);
+        setStockAvailability({
+          available: false,
+          totalStock: 0,
+          message: "⚠️ خطا در بررسی موجودی",
+          checking: false
+        });
+      }
+    };
+    
+    const timer = setTimeout(() => {
+      checkStockAvailability();
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [formItem.med_id, formItem.supplier_id, formItem.quantity, formItem.type, api]);
 
   const handleChange = (field, value) => {
     let updated = { ...formItem, [field]: value };
-
+    
     if (field === "category_id") {
       updated.med_id = "";
       updated.supplier_id = "";
-      updated.unit_price = 0;
       updated.type = "";
+      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
     }
-
+    
     if (field === "med_id") {
-      const med = medications.find(m => m.med_id == value);
+      const med = medications.find(m => Number(m.med_id) === Number(value));
       updated.type = med?.type ?? "";
       updated.unit_price = med?.unit_price ?? 0;
       updated.supplier_id = "";
+      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
     }
-
-    const quantity = Number(updated.quantity) || 0;
-    const unit_price = Number(updated.unit_price) || 0;
-    updated.total_price = quantity * unit_price;
-
+    
+    if (field === "supplier_id") {
+      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+    }
+    
+    const qty = Number(field === "quantity" ? value : updated.quantity || 0);
+    const price = Number(field === "unit_price" ? value : updated.unit_price || 0);
+    updated.total_price = qty * price;
+    
     setFormItem(updated);
   };
 
-  const handleKeyDown = e => {
+  const handleKeyDown = (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (!formItem.category_id || !formItem.med_id || !formItem.supplier_id || Number(formItem.quantity) <= 0) {
-      toast.error("❌ اطلاعات آیتم کامل نیست");
+    
+    // ✅ بررسی موجودی قبل از افزودن
+    if (!stockAvailability.available) {
+      toast.error(`❌ موجودی کافی نیست! ${stockAvailability.message}`);
       return;
     }
-
-    const newItem = { ...formItem, id: Date.now() };
-    setPrescriptionItems(prev => [...prev, newItem]);
-    setFormItem({ ...emptyItem });
+    
+    if (!formItem.supplier_id) {
+      toast.error("❌ لطفاً حمایت‌کننده را انتخاب کنید");
+      return;
+    }
+    
+    if (
+      !formItem.category_id ||
+      !formItem.med_id ||
+      !formItem.quantity ||
+      !formItem.unit_price
+    ) {
+      toast.error("❌ لطفاً تمام فیلدها را درست پر کنید");
+      return;
+    }
+    
+    const med = medications.find(m => Number(m.med_id) === Number(formItem.med_id));
+    const cat = categories.find(c => Number(c.category_id) === Number(formItem.category_id));
+    const sup = allSuppliers.find(s => Number(s.reg_id) === Number(formItem.supplier_id));
+    
+    setPrescriptionItems([
+      ...prescriptionItems,
+      {
+        ...formItem,
+        id: Date.now(),
+        gen_name: med?.gen_name ?? "-",
+        category_name: cat?.category_name ?? "-",
+        supplier_name: sup?.full_name ?? sup?.name ?? "-",
+      }
+    ]);
+    
+    setFormItem({
+      ...emptyItem,
+      category_id: formItem.category_id,
+    });
+    setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
   };
 
   const handleRemoveItem = id => {
@@ -225,10 +350,10 @@ export default function PrescriptionForm() {
     setTempPrescriptionData(null);
     setSheetItems([]);
     setSheetLocalDiscount(0);
+    setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
     toast.info("✏️ ویرایش لغو شد");
   };
 
-  // ========== ذخیره موقت اطلاعات عمومی و رفتن به برگه‌ی نسخه ==========
   const saveHeaderAndShowSheet = () => {
     if (!selectedPatientId || !selectedDoctorId) {
       toast.error("لطفاً مریض و داکتر را انتخاب کنید");
@@ -271,7 +396,6 @@ export default function PrescriptionForm() {
     toast.success("معلومات عمومی ذخیره شد. اکنون می‌توانید آیتم‌ها را اضافه کنید.");
   };
 
-  // ========== ذخیره نهایی نسخه (با آیتم‌ها) از برگه‌ی جدید ==========
   const saveFinalFromSheet = async (items, updatedDiscount) => {
     if (!tempPrescriptionData) return;
 
@@ -328,7 +452,6 @@ export default function PrescriptionForm() {
     }
   };
 
-  // ========== ذخیره نسخه به روش قدیمی (برای ویرایش) ==========
   const handleSavePrescription = async () => {
     if (!selectedPatientId || !selectedDoctorId || prescriptionItems.length === 0) {
       toast.error("❌ اطلاعات نسخه ناقص است");
@@ -480,8 +603,8 @@ export default function PrescriptionForm() {
       ...item,
       category_name: categories.find(c => Number(c.category_id) === Number(item.category_id))?.category_name || "-",
       med_name: medications.find(m => Number(m.med_id) === Number(item.med_id))?.gen_name || "-",
-      supplier_name: suppliers.find(s => Number(s.reg_id) === Number(item.supplier_id))?.full_name ||
-                    suppliers.find(s => Number(s.reg_id) === Number(item.supplier_id))?.name || "-",
+      supplier_name: allSuppliers.find(s => Number(s.reg_id) === Number(item.supplier_id))?.full_name ||
+                    allSuppliers.find(s => Number(s.reg_id) === Number(item.supplier_id))?.name || "-",
     }));
 
     const printData = {
@@ -535,8 +658,8 @@ export default function PrescriptionForm() {
         ...item,
         category_name: categories.find(c => Number(c.category_id) === Number(item.category_id))?.category_name || "-",
         med_name: medications.find(m => Number(m.med_id) === Number(item.med_id))?.gen_name || "-",
-        supplier_name: suppliers.find(s => Number(s.reg_id) === Number(item.supplier_id))?.full_name ||
-                      suppliers.find(s => Number(s.reg_id) === Number(item.supplier_id))?.name || "-",
+        supplier_name: allSuppliers.find(s => Number(s.reg_id) === Number(item.supplier_id))?.full_name ||
+                      allSuppliers.find(s => Number(s.reg_id) === Number(item.supplier_id))?.name || "-",
       }))
     };
   };
@@ -549,10 +672,17 @@ export default function PrescriptionForm() {
     }
   };
 
-  // ========== کامپوننت برگه‌ی نسخه (با منطق مشابه فایل اصلی) ==========
+  // ========== کامپوننت برگه‌ی نسخه ==========
   const PrescriptionSheet = ({ items, setItems, localDiscount, setLocalDiscount }) => {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedMed, setSelectedMed] = useState(null);
+    const [sheetSuppliers, setSheetSuppliers] = useState([]);
+    const [sheetStockAvailability, setSheetStockAvailability] = useState({ 
+      available: false, 
+      totalStock: 0, 
+      message: "",
+      checking: false 
+    });
     const [newItem, setNewItem] = useState({
       dosage: "",
       quantity: "",
@@ -565,20 +695,96 @@ export default function PrescriptionForm() {
       m.gen_name?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const filteredSuppliersForSheet = selectedMed
-      ? suppliers.filter(s => s.reg_id == selectedMed.supplier_id)
-      : [];
+    // فیلتر کردن حمایت‌کنندگان بر اساس داروی انتخاب شده
+    useEffect(() => {
+      if (!selectedMed) {
+        setSheetSuppliers([]);
+        return;
+      }
+      
+      const medSupplierId = selectedMed.supplier_id;
+      
+      if (!medSupplierId) {
+        setSheetSuppliers(allSuppliers);
+        return;
+      }
+      
+      let filtered = [];
+      
+      if (Array.isArray(medSupplierId)) {
+        filtered = allSuppliers.filter(s => 
+          medSupplierId.some(id => Number(id) === Number(s.reg_id))
+        );
+      } else {
+        filtered = allSuppliers.filter(s => 
+          Number(medSupplierId) === Number(s.reg_id) ||
+          String(medSupplierId) === String(s.reg_id)
+        );
+      }
+      
+      setSheetSuppliers(filtered.length > 0 ? filtered : allSuppliers);
+    }, [selectedMed, allSuppliers]);
+
+    // بررسی موجودی در برگه نسخه
+    useEffect(() => {
+      const checkSheetStock = async () => {
+        if (!selectedMed || !newItem.supplier_id || !newItem.quantity || Number(newItem.quantity) <= 0) {
+          setSheetStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+          return;
+        }
+
+        setSheetStockAvailability(prev => ({ ...prev, checking: true }));
+        
+        try {
+          const response = await api.post("/sales/check-stock", {
+            med_id: selectedMed.med_id,
+            supplier_id: newItem.supplier_id,
+            type: selectedMed.type || null,
+            quantity: Number(newItem.quantity)
+          });
+          
+          if (response.data.success) {
+            const isAvailable = response.data.available;
+            const totalStock = response.data.total_quantity || 0;
+            
+            setSheetStockAvailability({
+              available: isAvailable,
+              totalStock: totalStock,
+              message: isAvailable 
+                ? `✅ موجودی کافی است (موجودی انبار: ${totalStock})`
+                : `❌ موجودی کافی نیست! موجودی انبار: ${totalStock} - درخواستی: ${newItem.quantity}`,
+              checking: false
+            });
+          }
+        } catch (error) {
+          console.error("Error checking stock:", error);
+          setSheetStockAvailability({
+            available: false,
+            totalStock: 0,
+            message: "⚠️ خطا در بررسی موجودی",
+            checking: false
+          });
+        }
+      };
+      
+      const timer = setTimeout(() => {
+        checkSheetStock();
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }, [selectedMed, newItem.supplier_id, newItem.quantity, api]);
 
     const handleSelectMed = (med) => {
       setSelectedMed(med);
       setNewItem({
         dosage: "",
         quantity: "",
-        unit_price: med.unit_price,
-        supplier_id: med.supplier_id,
+        unit_price: med.unit_price || 0,
+        supplier_id: "",
         remarks: "",
       });
       setSearchTerm(med.gen_name);
+      setSheetStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
     };
 
     useEffect(() => {
@@ -589,10 +795,17 @@ export default function PrescriptionForm() {
     }, [newItem.quantity, newItem.unit_price]);
 
     const addItem = () => {
+      // بررسی موجودی قبل از افزودن
+      if (!sheetStockAvailability.available) {
+        toast.error(`❌ موجودی کافی نیست! ${sheetStockAvailability.message}`);
+        return;
+      }
+      
       if (!selectedMed || !newItem.quantity || newItem.quantity <= 0 || !newItem.unit_price || !newItem.supplier_id) {
         toast.error("لطفاً دارو، تعداد، قیمت واحد و حمایت‌کننده را انتخاب کنید");
         return;
       }
+      
       const item = {
         id: Date.now(),
         category_id: selectedMed.category_id,
@@ -608,7 +821,10 @@ export default function PrescriptionForm() {
       setItems([...items, item]);
       setSelectedMed(null);
       setSearchTerm("");
+      setSheetSuppliers([]);
+      setSheetStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
       setNewItem({ dosage: "", quantity: "", unit_price: 0, supplier_id: "", remarks: "" });
+      toast.success("آیتم با موفقیت اضافه شد");
     };
 
     const removeItem = (id) => {
@@ -644,7 +860,7 @@ export default function PrescriptionForm() {
           ...item,
           category_name: categories.find(c => Number(c.category_id) === Number(item.category_id))?.category_name || "-",
           med_name: medications.find(m => Number(m.med_id) === Number(item.med_id))?.gen_name || "-",
-          supplier_name: suppliers.find(s => Number(s.reg_id) === Number(item.supplier_id))?.full_name || "-",
+          supplier_name: allSuppliers.find(s => Number(s.reg_id) === Number(item.supplier_id))?.full_name || "-",
         })),
       };
       if (printData.items.length > 0) {
@@ -795,26 +1011,48 @@ export default function PrescriptionForm() {
                     onChange={e => setNewItem({ ...newItem, dosage: e.target.value })}
                   />
                   <input
-                    style={styles.addFormInput}
+                    style={{
+                      ...styles.addFormInput,
+                      borderColor: sheetStockAvailability.message && !sheetStockAvailability.available ? "#dc2626" : 
+                                  sheetStockAvailability.available ? "#10b981" : ""
+                    }}
                     type="number"
                     placeholder="تعداد"
                     value={newItem.quantity}
                     onChange={e => setNewItem({ ...newItem, quantity: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addItem();
+                      }
+                    }}
                   />
-                  <input
-                    style={styles.addFormInput}
-                    type="number"
-                    placeholder="قیمت واحد"
-                    value={newItem.unit_price}
-                    onChange={e => setNewItem({ ...newItem, unit_price: Number(e.target.value) })}
-                  />
+                <input
+  style={styles.addFormInput}
+  type="number"
+  placeholder="قیمت واحد"
+  value={newItem.unit_price === 0 ? "" : newItem.unit_price}
+  onChange={e => setNewItem({ ...newItem, unit_price: Number(e.target.value) })}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addItem();
+    }
+  }}
+/>
                   <select
                     style={styles.addFormInput}
                     value={newItem.supplier_id}
                     onChange={e => setNewItem({ ...newItem, supplier_id: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addItem();
+                      }
+                    }}
                   >
                     <option value="">حمایت‌کننده</option>
-                    {filteredSuppliersForSheet.map(s => (
+                    {sheetSuppliers.map(s => (
                       <option key={s.reg_id} value={s.reg_id}>
                         {s.full_name ?? s.name}
                       </option>
@@ -825,10 +1063,45 @@ export default function PrescriptionForm() {
                     placeholder="ملاحظات"
                     value={newItem.remarks}
                     onChange={e => setNewItem({ ...newItem, remarks: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addItem();
+                      }
+                    }}
                   />
-                  <button style={styles.addButton} onClick={addItem}>
-                    + افزودن
-                  </button>
+                  {sheetStockAvailability.message && (
+                    <small style={{ 
+                      color: sheetStockAvailability.available ? "#10b981" : "#dc2626",
+                      display: "block",
+                      width: "100%",
+                      marginTop: "4px",
+                      fontWeight: "bold"
+                    }}>
+                      {sheetStockAvailability.checking ? "⏳ در حال بررسی موجودی..." : sheetStockAvailability.message}
+                    </small>
+                  )}
+                  {/* نمایش نوع دوا به صورت فیلد در پایین */}
+                  {selectedMed && (
+                    <div style={{ width: "100%", marginTop: "4px" }}>
+                      <label style={{ fontSize: "13px", fontWeight: "bold", color: "#333" }}>نوع دوا:</label>
+                      <input
+                        type="text"
+                        value={selectedMed.type || "نامشخص"}
+                        readOnly
+                        style={{
+                          width: "100%",
+                          padding: "6px",
+                          border: "1px solid #ccc",
+                          borderRadius: "4px",
+                          marginTop: "2px",
+                          background: "#f9f9f9",
+                          color: "#2563eb",
+                          fontWeight: "bold"
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -855,7 +1128,7 @@ export default function PrescriptionForm() {
                 {items.map((item, idx) => {
                   const med = medications.find(m => m.med_id == item.med_id);
                   const cat = categories.find(c => c.category_id == item.category_id);
-                    const sup = suppliers.find(s => s.reg_id == item.supplier_id);
+                  const sup = allSuppliers.find(s => s.reg_id == item.supplier_id);
                   return (
                     <tr key={item.id}>
                       <td style={styles.td}>{idx + 1}</td>
@@ -867,7 +1140,6 @@ export default function PrescriptionForm() {
                       <td style={styles.td}>{item.quantity}</td>
                       <td style={styles.td}>{Number(item.unit_price).toLocaleString()}</td>
                       <td style={styles.td}>{Number(item.total_price).toLocaleString()}</td>
-
                       <td style={styles.td}>{item.remarks || "-"}</td>
                       <td style={styles.td}>
                         <button style={styles.deleteButton} onClick={() => removeItem(item.id)}>
@@ -911,448 +1183,471 @@ export default function PrescriptionForm() {
   };
 
   // ========== رندر اصلی ==========
-  // ========== رندر اصلی ==========
-return (
-  <MainLayoutjur>
-    {!showPrescriptionSheet ? (
-      <>
-        {/* ===== فرم اطلاعات عمومی ===== */}
-        <div className="form-container">
-          <h1>{editingId ? "ویرایش نسخه" : "ثبت نسخه جدید"}</h1>
+  return (
+    <MainLayoutjur>
+      {!showPrescriptionSheet ? (
+        <>
+          {/* ===== فرم اطلاعات عمومی ===== */}
+          <div className="form-container">
+            <h1>{editingId ? "ویرایش نسخه" : "ثبت نسخه جدید"}</h1>
 
-          <div className="form-grid">
-            <div>
-              <label>شماره نسخه</label>
-              <input
-                value={patientInfo.pres_num}
-                onChange={e =>
-                  setPatientInfo({ ...patientInfo, pres_num: e.target.value })
-                }
-              />
+            <div className="form-grid">
+              <div>
+                <label>شماره نسخه</label>
+                <input
+                  value={patientInfo.pres_num}
+                  onChange={e =>
+                    setPatientInfo({ ...patientInfo, pres_num: e.target.value })
+                  }
+                />
+              </div>
+
+              <div>
+                <label>مریض</label>
+                <select
+                  value={selectedPatientId}
+                  onChange={e => setSelectedPatientId(e.target.value)}
+                >
+                  <option value="">انتخاب مریض</option>
+                  {patients.map(p => (
+                    <option key={p.reg_id} value={p.reg_id}>
+                      {p.full_name ?? p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label>سن</label>
+                <input value={patientInfo.age} readOnly />
+              </div>
+
+              <div>
+                <label>جنسیت</label>
+                <input value={patientInfo.gender} readOnly />
+              </div>
+
+              <div>
+                <label>شماره تماس</label>
+                <input value={patientInfo.phone} readOnly />
+              </div>
+
+              <div>
+                <label>آی‌دی مریض</label>
+                <input value={patientInfo.reg_id} readOnly />
+              </div>
+
+              <div>
+                <label>شماره تذکره</label>
+                <input value={patientInfo.tazkira_number} readOnly />
+              </div>
+
+              <div>
+                <label>گروه خون</label>
+                <input value={patientInfo.blood_group} readOnly />
+              </div>
+
+              <div>
+                <label>تشخیص</label>
+                <input value={patientInfo.diagnosis} readOnly />
+              </div>
+
+              <div>
+                <label>وزن (کیلوگرم)</label>
+                <input value={patientInfo.weight} readOnly />
+              </div>
+
+              <div>
+                <label>فشار خون</label>
+                <input value={patientInfo.blood_pressure} readOnly />
+              </div>
+
+              <div>
+                <label>حرارت (درجه سانتی‌گراد)</label>
+                <input value={patientInfo.temperature} readOnly />
+              </div>
+
+              <div>
+                <label>اکسیژن (%)</label>
+                <input value={patientInfo.oxygen} readOnly />
+              </div>
+
+              <div>
+                <label>داکتر</label>
+                <select
+                  value={selectedDoctorId}
+                  onChange={e => setSelectedDoctorId(e.target.value)}
+                >
+                  <option value="">انتخاب داکتر</option>
+                  {doctors.map(d => (
+                    <option key={d.reg_id} value={d.reg_id}>
+                      {d.full_name ?? d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label>تاریخ نسخه</label>
+                <input
+                  type="date"
+                  value={prescriptionDate}
+                  onChange={e => setPrescriptionDate(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label>مجموع</label>
+                <input value={totalAmount} readOnly />
+              </div>
+
+              <div>
+                <label>تخفیف</label>
+                <input
+                  value={discount}
+                  onChange={e => setDiscount(+e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label>خالص</label>
+                <input value={netAmount} readOnly />
+              </div>
             </div>
 
-            <div>
-              <label>مریض</label>
-              <select
-                value={selectedPatientId}
-                onChange={e => setSelectedPatientId(e.target.value)}
-              >
-                <option value="">انتخاب مریض</option>
-                {patients.map(p => (
-                  <option key={p.reg_id} value={p.reg_id}>
-                    {p.full_name ?? p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label>سن</label>
-              <input value={patientInfo.age} readOnly />
-            </div>
-
-            <div>
-              <label>جنسیت</label>
-              <input value={patientInfo.gender} readOnly />
-            </div>
-
-            <div>
-              <label>شماره تماس</label>
-              <input value={patientInfo.phone} readOnly />
-            </div>
-
-            <div>
-              <label>آی‌دی مریض</label>
-              <input value={patientInfo.reg_id} readOnly />
-            </div>
-
-            <div>
-              <label>شماره تذکره</label>
-              <input value={patientInfo.tazkira_number} readOnly />
-            </div>
-
-            <div>
-              <label>گروه خون</label>
-              <input value={patientInfo.blood_group} readOnly />
-            </div>
-
-            <div>
-              <label>تشخیص</label>
-              <input value={patientInfo.diagnosis} readOnly />
-            </div>
-
-            <div>
-              <label>وزن (کیلوگرم)</label>
-              <input value={patientInfo.weight} readOnly />
-            </div>
-
-            <div>
-              <label>فشار خون</label>
-              <input value={patientInfo.blood_pressure} readOnly />
-            </div>
-
-            <div>
-              <label>حرارت (درجه سانتی‌گراد)</label>
-              <input value={patientInfo.temperature} readOnly />
-            </div>
-
-            <div>
-              <label>اکسیژن (%)</label>
-              <input value={patientInfo.oxygen} readOnly />
-            </div>
-
-            <div>
-              <label>داکتر</label>
-              <select
-                value={selectedDoctorId}
-                onChange={e => setSelectedDoctorId(e.target.value)}
-              >
-                <option value="">انتخاب داکتر</option>
-                {doctors.map(d => (
-                  <option key={d.reg_id} value={d.reg_id}>
-                    {d.full_name ?? d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label>تاریخ نسخه</label>
-              <input
-                type="date"
-                value={prescriptionDate}
-                onChange={e => setPrescriptionDate(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label>مجموع</label>
-              <input value={totalAmount} readOnly />
-            </div>
-
-            <div>
-              <label>تخفیف</label>
-              <input
-                value={discount}
-                onChange={e => setDiscount(+e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label>خالص</label>
-              <input value={netAmount} readOnly />
-            </div>
-          </div>
-
-          <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
-            {!editingId && (
+            <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
+              {!editingId && (
+                <button
+                  className="edit"
+                  onClick={saveHeaderAndShowSheet}
+                  style={{ backgroundColor: "#2563eb" }}
+                >
+                  افزودن دوا
+                </button>
+              )}
               <button
                 className="edit"
-                onClick={saveHeaderAndShowSheet}
-                style={{ backgroundColor: "#2563eb" }}
+                onClick={handleCancelEdit}
+                style={{ backgroundColor: "#6c757d" }}
               >
-                افزودن دوا
-              </button>
-            )}
-            <button
-              className="edit"
-              onClick={handleCancelEdit}
-              style={{ backgroundColor: "#6c757d" }}
-            >
-              انصراف
-            </button>
-          </div>
-        </div>
-
-        {/* ===== فرم افزودن آیتم و جدول آیتم‌ها (فقط در حالت ویرایش) ===== */}
-        {editingId && (
-          <>
-            <div className="form-container">
-              <h3>افزودن آیتم</h3>
-              <div className="form-grid">
-                <div>
-                  <label>کتگوری</label>
-                  <select
-                    value={formItem.category_id}
-                    onChange={e => handleChange("category_id", e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  >
-                    <option value="">انتخاب</option>
-                    {categories.map(c => (
-                      <option key={c.category_id} value={c.category_id}>
-                        {c.category_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label>دوا</label>
-                  <select
-                    value={formItem.med_id}
-                    onChange={e => handleChange("med_id", e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  >
-                    <option value="">انتخاب</option>
-                    {filteredMedications.map(m => (
-                      <option key={m.med_id} value={m.med_id}>
-                        {m.gen_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label>حمایت‌کننده</label>
-                  <select
-                    value={formItem.supplier_id}
-                    onChange={e => handleChange("supplier_id", e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  >
-                    <option value="">انتخاب</option>
-                    {filteredSuppliers.map(s => (
-                      <option key={s.reg_id} value={s.reg_id}>
-                        {s.full_name ?? s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label>نوع دوا</label>
-                  <input value={formItem.type} readOnly />
-                </div>
-
-                <div>
-                  <label>مقدار مصرف</label>
-                  <input
-                    value={formItem.dosage}
-                    onChange={e => handleChange("dosage", e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  />
-                </div>
-
-                <div>
-                  <label>تعداد</label>
-                  <input
-                    type="number"
-                    value={formItem.quantity}
-                    onChange={e => handleChange("quantity", e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  />
-                </div>
-
-                <div>
-                  <label>قیمت واحد</label>
-                  <input
-                    type="number"
-                    value={formItem.unit_price}
-                    onChange={e => handleChange("unit_price", e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  />
-                </div>
-
-                <div>
-                  <label>قیمت مجموعی</label>
-                  <input value={formItem.total_price} readOnly />
-                </div>
-
-                <div>
-                  <label>ملاحظات</label>
-                  <input
-                    value={formItem.remarks}
-                    onChange={e => handleChange("remarks", e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {prescriptionItems.length > 0 && (
-              <div className="table-container" style={{ marginTop: "10px" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>ردیف</th>
-                      <th>کتگوری</th>
-                      <th>دوا</th>
-                      <th>حمایت‌کننده</th>
-                      <th>نوع دوا</th>
-                      <th>مقدار مصرف</th>
-                      <th>تعداد</th>
-                      <th>قیمت واحد</th>
-                      <th>قیمت مجموعی</th>
-                      <th>ملاحظات</th>
-                      <th>عملیات</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {prescriptionItems.map((item, idx) => {
-                      const med = medications.find(m => Number(m.med_id) === Number(item.med_id));
-                      const cat = categories.find(c => Number(c.category_id) === Number(item.category_id));
-                      const sup = suppliers.find(s => Number(s.reg_id) === Number(item.supplier_id));
-                      return (
-                        <tr key={item.id}>
-                          <td>{idx + 1}</td>
-                          <td>{cat?.category_name || "-"}</td>
-                          <td>{med?.gen_name || "-"}</td>
-                          <td>{sup?.full_name || sup?.name || "-"}</td>
-                          <td>{item.type || "-"}</td>
-                          <td>{item.dosage || "-"}</td>
-                          <td>{item.quantity}</td>
-                          <td>{Number(item.unit_price).toLocaleString()}</td>
-                          <td>{Number(item.total_price).toLocaleString()}</td>
-                          <td>{item.remarks || "-"}</td>
-                          <td>
-                            <button className="delete" onClick={() => handleRemoveItem(item.id)}>
-                              حذف
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div style={{ marginTop: "10px", display: "flex", gap: "10px" }}>
-              <button className="edit" onClick={handleSavePrescription} style={{ backgroundColor: "#ffc107" }}>
-                ثبت تصحیح نسخه
-              </button>
-              <button className="edit" onClick={handlePrintClick} style={{ backgroundColor: "#4CAF50" }}>
-                پرنت نسخه
+                انصراف
               </button>
             </div>
-          </>
-        )}
+          </div>
 
-        {/* ===== لیست نسخه‌ها ===== */}
-        {prescriptionsList.length > 0 && (
-          <div className="table-container" style={{ marginTop: "20px" }}>
-            <h3>نسخه های ثبت شده</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>شماره</th>
-                  <th>شماره نسخه</th>
-                  <th>مریض</th>
-                  <th>داکتر</th>
-                  <th>تاریخ</th>
-                  <th>مجموع</th>
-                  <th>تخفیف</th>
-                  <th>خالص</th>
-                  <th>عملیات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentPrescriptions.map((p, index) => {
-                  const patient = patients.find(x => Number(x.reg_id) === Number(p.patient_id));
-                  const doctor = doctors.find(x => Number(x.reg_id) === Number(p.doc_id));
-                  return (
-                    <tr key={p.pres_id}>
-                      <td>{indexOfFirstItem + index + 1}</td>
-                      <td>{p.pres_num || p.pres_id || "-"}</td>
-                      <td>{patient?.full_name || patient?.name || "-"}</td>
-                      <td>{doctor?.full_name || doctor?.name || "-"}</td>
-                      <td>{p.pres_date}</td>
-                      <td>{Number(p.total_amount).toLocaleString()}</td>
-                      <td>{Number(p.discount).toLocaleString()}</td>
-                      <td>{Number(p.net_amount).toLocaleString()}</td>
-                      <td>
-                        <button 
-                          style={{ 
-                            backgroundColor: "#dcc215", 
-                            color: "#000",
-                            padding: "5px 12px",
-                            borderRadius: "5px",
-                            border: "none",
-                            cursor: "pointer",
-                            fontSize: "12px",
-                            fontWeight: "bold",
-                            marginLeft: "5px"
-                          }}
-                          onClick={() => handleEditPrescription(p)}
-                        >
-                          تصحیح
-                        </button>
-                        <button 
-                          style={{ 
-                            backgroundColor: "#dc2626", 
-                            color: "#fff",
-                            padding: "5px 12px",
-                            borderRadius: "5px",
-                            border: "none",
-                            cursor: "pointer",
-                            fontSize: "12px",
-                            fontWeight: "bold",
-                            marginLeft: "5px"
-                          }}
-                          onClick={() => handleDeletePrescription(p.pres_id)}
-                        >
-                          حذف
-                        </button>
-                        <button  
-                          style={{ 
-                            backgroundColor: "#0da62f", 
-                            color: "#fff",
-                            padding: "5px 12px",
-                            borderRadius: "5px",
-                            border: "none",
-                            cursor: "pointer",
-                            fontSize: "12px",
-                            fontWeight: "bold"
-                          }}
-                          onClick={() => handlePrintPrescription(p)}
-                        >
-                          پرنت
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          {/* ===== فرم افزودن آیتم (فقط در حالت ویرایش) ===== */}
+          {editingId && (
+            <>
+              <div className="form-container">
+                <h3>افزودن آیتم</h3>
+                <div className="form-grid" onKeyDown={handleKeyDown}>
+                  <div>
+                    <label>کتگوری</label>
+                    <select
+                      value={formItem.category_id}
+                      onChange={e => handleChange("category_id", e.target.value)}
+                    >
+                      <option value="">انتخاب</option>
+                      {categories.map(c => (
+                        <option key={c.category_id} value={c.category_id}>
+                          {c.category_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-            {totalPages > 1 && (
-              <div style={{ marginTop: "10px", textAlign: "center" }}>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  style={{ margin: "0 5px" }}
-                >
-                  قبلی
+                  <div>
+                    <label>دوا</label>
+                    <select
+                      value={formItem.med_id}
+                      onChange={e => handleChange("med_id", e.target.value)}
+                    >
+                      <option value="">انتخاب</option>
+                      {filteredMedications.map(m => (
+                        <option key={m.med_id} value={m.med_id}>
+                          {m.gen_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label>حمایت‌کننده</label>
+                    <select
+                      value={formItem.supplier_id}
+                      onChange={e => handleChange("supplier_id", e.target.value)}
+                      style={{
+                        borderColor: formItem.supplier_id && !stockAvailability.available && formItem.quantity ? "#dc2626" : ""
+                      }}
+                    >
+                      <option value="">انتخاب</option>
+                      {suppliers.map(s => (
+                        <option key={s.reg_id} value={s.reg_id}>
+                          {s.full_name ?? s.name}
+                        </option>
+                      ))}
+                    </select>
+                    {suppliers.length === 0 && formItem.med_id && (
+                      <small style={{ color: "red" }}>هیچ حمایت‌کننده‌ای یافت نشد</small>
+                    )}
+                  </div>
+
+                  <div>
+                    <label>نوع دوا</label>
+                    <input type="text" value={formItem.type} readOnly />
+                  </div>
+
+                  <div>
+                    <label>مقدار مصرف</label>
+                    <input
+                      value={formItem.dosage}
+                      onChange={e => handleChange("dosage", e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label>تعداد</label>
+                    <input
+                      type="number"
+                      value={formItem.quantity}
+                      onChange={e => handleChange("quantity", e.target.value)}
+                      style={{
+                        borderColor: stockAvailability.message && !stockAvailability.available ? "#dc2626" : 
+                                    stockAvailability.available ? "#10b981" : ""
+                      }}
+                    />
+                    {stockAvailability.message && (
+                      <small style={{ 
+                        color: stockAvailability.available ? "#10b981" : "#dc2626",
+                        display: "block",
+                        marginTop: "4px",
+                        fontWeight: "bold"
+                      }}>
+                        {stockAvailability.checking ? "⏳ در حال بررسی موجودی..." : stockAvailability.message}
+                      </small>
+                    )}
+                  </div>
+
+                  <div>
+                    <label>قیمت واحد</label>
+                    <input
+                      type="number"
+                      value={formItem.unit_price}
+                      onChange={e => handleChange("unit_price", e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label>قیمت مجموعی</label>
+                    <input value={formItem.total_price} readOnly />
+                  </div>
+
+                  <div>
+                    <label>ملاحظات</label>
+                    <input
+                      value={formItem.remarks}
+                      onChange={e => handleChange("remarks", e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div style={{ marginTop: "10px", fontSize: "12px", color: "#6b7280", textAlign: "center" }}>
+                  ⚡ برای افزودن آیتم، کلید Enter را بزنید
+                </div>
+              </div>
+
+              {prescriptionItems.length > 0 && (
+                <div className="table-container" style={{ marginTop: "10px" }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ردیف</th>
+                        <th>کتگوری</th>
+                        <th>دوا</th>
+                        <th>حمایت‌کننده</th>
+                        <th>نوع دوا</th>
+                        <th>مقدار مصرف</th>
+                        <th>تعداد</th>
+                        <th>قیمت واحد</th>
+                        <th>قیمت مجموعی</th>
+                        <th>ملاحظات</th>
+                        <th>عملیات</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {prescriptionItems.map((item, idx) => {
+                        const med = medications.find(m => Number(m.med_id) === Number(item.med_id));
+                        const cat = categories.find(c => Number(c.category_id) === Number(item.category_id));
+                        const sup = allSuppliers.find(s => Number(s.reg_id) === Number(item.supplier_id));
+                        return (
+                          <tr key={item.id}>
+                            <td>{idx + 1}</td>
+                            <td>{cat?.category_name || "-"}</td>
+                            <td>{med?.gen_name || "-"}</td>
+                            <td>{sup?.full_name || sup?.name || "-"}</td>
+                            <td>{item.type || "-"}</td>
+                            <td>{item.dosage || "-"}</td>
+                            <td>{item.quantity}</td>
+                            <td>{Number(item.unit_price).toLocaleString()}</td>
+                            <td>{Number(item.total_price).toLocaleString()}</td>
+                            <td>{item.remarks || "-"}</td>
+                            <td>
+                              <button className="delete" onClick={() => handleRemoveItem(item.id)}>
+                                حذف
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan="8" style={{ textAlign: "left", fontWeight: "bold" }}>مجموع کل:</td>
+                        <td colSpan="3" style={{ fontWeight: "bold", color: "#2563eb" }}>
+                          {totalAmount.toLocaleString()} افغانی
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              <div style={{ marginTop: "10px", display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
+                <button className="edit" onClick={handleSavePrescription} style={{ backgroundColor: "#ffc107" }}>
+                  ثبت تصحیح نسخه
                 </button>
-                <span style={{ margin: "0 10px" }}>
-                  صفحه {currentPage} از {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  style={{ margin: "0 5px" }}
-                >
-                  بعدی
+                <button className="edit" onClick={handlePrintClick} style={{ backgroundColor: "#4CAF50" }}>
+                  پرنت نسخه
                 </button>
               </div>
-            )}
-          </div>
-        )}
-      </>
-    ) : (
-      <PrescriptionSheet 
-        items={sheetItems} 
-        setItems={setSheetItems} 
-        localDiscount={sheetLocalDiscount} 
-        setLocalDiscount={setSheetLocalDiscount} 
-      />
-    )}
+            </>
+          )}
 
-    {/* ===== کامپوننت پرنت - همیشه در دسترس ===== */}
-    <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
-      {prescriptionPrintData && (
-        <PrescriptionPrint ref={printRef} data={prescriptionPrintData} />
+          {/* ===== لیست نسخه‌ها ===== */}
+          {prescriptionsList.length > 0 && (
+            <div className="table-container" style={{ marginTop: "20px" }}>
+              <h3>نسخه های ثبت شده</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>شماره</th>
+                    <th>شماره نسخه</th>
+                    <th>مریض</th>
+                    <th>داکتر</th>
+                    <th>تاریخ</th>
+                    <th>مجموع</th>
+                    <th>تخفیف</th>
+                    <th>خالص</th>
+                    <th>عملیات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentPrescriptions.map((p, index) => {
+                    const patient = patients.find(x => Number(x.reg_id) === Number(p.patient_id));
+                    const doctor = doctors.find(x => Number(x.reg_id) === Number(p.doc_id));
+                    return (
+                      <tr key={p.pres_id}>
+                        <td>{indexOfFirstItem + index + 1}</td>
+                        <td>{p.pres_num || p.pres_id || "-"}</td>
+                        <td>{patient?.full_name || patient?.name || "-"}</td>
+                        <td>{doctor?.full_name || doctor?.name || "-"}</td>
+                        <td>{p.pres_date}</td>
+                        <td>{Number(p.total_amount).toLocaleString()}</td>
+                        <td>{Number(p.discount).toLocaleString()}</td>
+                        <td>{Number(p.net_amount).toLocaleString()}</td>
+                        <td>
+                          <button 
+                            style={{ 
+                              backgroundColor: "#dcc215", 
+                              color: "#000",
+                              padding: "5px 12px",
+                              borderRadius: "5px",
+                              border: "none",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                              marginLeft: "5px"
+                            }}
+                            onClick={() => handleEditPrescription(p)}
+                          >
+                            تصحیح
+                          </button>
+                          <button 
+                            style={{ 
+                              backgroundColor: "#dc2626", 
+                              color: "#fff",
+                              padding: "5px 12px",
+                              borderRadius: "5px",
+                              border: "none",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                              marginLeft: "5px"
+                            }}
+                            onClick={() => handleDeletePrescription(p.pres_id)}
+                          >
+                            حذف
+                          </button>
+                          <button  
+                            style={{ 
+                              backgroundColor: "#0da62f", 
+                              color: "#fff",
+                              padding: "5px 12px",
+                              borderRadius: "5px",
+                              border: "none",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              fontWeight: "bold"
+                            }}
+                            onClick={() => handlePrintPrescription(p)}
+                          >
+                            پرنت
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {totalPages > 1 && (
+                <div style={{ marginTop: "10px", textAlign: "center" }}>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    style={{ margin: "0 5px" }}
+                  >
+                    قبلی
+                  </button>
+                  <span style={{ margin: "0 10px" }}>
+                    صفحه {currentPage} از {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    style={{ margin: "0 5px" }}
+                  >
+                    بعدی
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        <PrescriptionSheet 
+          items={sheetItems} 
+          setItems={setSheetItems} 
+          localDiscount={sheetLocalDiscount} 
+          setLocalDiscount={setSheetLocalDiscount} 
+        />
       )}
-    </div>
-  </MainLayoutjur>
-);
+
+      {/* ===== کامپوننت پرنت ===== */}
+      <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
+        {prescriptionPrintData && (
+          <PrescriptionPrint ref={printRef} data={prescriptionPrintData} />
+        )}
+      </div>
+    </MainLayoutjur>
+  );
 }

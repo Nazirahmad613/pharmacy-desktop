@@ -142,10 +142,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/doctors', [DoctorController::class, 'store']);
 
     // ===== Prescriptions =====
-    Route::get('/prescriptions', [PrescriptionController::class, 'index']);
-    Route::post('/prescriptions', [PrescriptionController::class, 'store']);
-    Route::put('/prescriptions/{pres_id}', [PrescriptionController::class, 'update']);
-    Route::delete('/prescriptions/{pres_id}', [PrescriptionController::class, 'destroy']);
+   // ===== Prescriptions =====
+// مسیر دریافت حمایت‌کننده‌ها باید قبل از مسیرهای دیگر قرار گیرد
+Route::get('/prescriptions/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);
+Route::get('/prescriptions', [PrescriptionController::class, 'index']);
+Route::post('/prescriptions', [PrescriptionController::class, 'store']);
+Route::put('/prescriptions/{pres_id}', [PrescriptionController::class, 'update']);
+Route::delete('/prescriptions/{pres_id}', [PrescriptionController::class, 'destroy']);
 
     // ===== Stock & Sales Reports =====
     Route::get('/salesd', [SalesFullDetailsController::class, 'index']);

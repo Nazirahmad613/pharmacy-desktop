@@ -57,7 +57,36 @@ class PrescriptionController extends Controller
             'data' => $prescriptions
         ]);
     }
+   public function getMedicationSuppliers($med_id)
+    {
+        try {
+            $suppliers = DB::table('parchaseitems')
+                ->join('parchases', 'parchases.parchase_id', '=', 'parchaseitems.parchase_id')
+                ->join('registrations', 'registrations.reg_id', '=', 'parchases.supplier_id')
+                ->where('parchaseitems.med_id', $med_id)
+                ->select(
+                    'registrations.reg_id',
+                    'registrations.full_name',
+                    'registrations.name'
+                )
+                ->distinct()
+                ->orderBy('registrations.full_name')
+                ->get();
 
+            // برگرداندن داده با ساختار استاندارد
+            return response()->json([
+                'success' => true,
+                'data' => $suppliers
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in getMedicationSuppliers: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت حمایت‌کننده‌ها',
+                'data' => []
+            ], 500);
+        }
+    }
     // 📥 ثبت نسخه جدید
     public function store(Request $request)
     {
