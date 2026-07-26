@@ -1,4 +1,3 @@
-
 <?php
 
 use Illuminate\Database\Migrations\Migration;
@@ -7,76 +6,263 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+
     public function up(): void
     {
         Schema::create('registrations', function (Blueprint $table) {
+
+
             $table->id('reg_id');
 
+
+            /*
+            |--------------------------------------------------------------------------
+            | نوع ثبت
+            |--------------------------------------------------------------------------
+            */
+
             $table->enum('reg_type', [
-                // 👤 اشخاص
+
                 'patient',
                 'doctor',
                 'visitor',
-                'customer',
-                'staff',
-                'supplier',
-                // 💸 مصارف
-                'rent',
-                'electricity',
-                'water',
-                'internet',
-                'salary',
-                'fuel',
-                'maintenance',
-                // 📄 خدمات
                 'laboratory',
                 'transport',
-                'consultation',
-                // 🔘 سایر
-                'expense',
-                'income',
+                'consultation'
+
+            ])->comment('نوع مراجعه');
+
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | معلومات مراجعه کننده
+            |--------------------------------------------------------------------------
+            */
+
+
+            $table->string('full_name')
+                ->comment('نام مراجعه کننده');
+
+
+            $table->string('father_name')
+                ->nullable();
+
+
+            $table->string('phone',50)
+                ->nullable();
+
+
+            $table->enum('gender',[
+                'male',
+                'female',
                 'other'
-            ])->comment('نوع راجستریشن');
+            ])
+            ->nullable();
 
-            $table->string('full_name')->comment('نام شخص یا عنوان مصرف');
-            $table->string('father_name')->nullable();
-            $table->string('phone', 50)->nullable();
 
-            $table->enum('gender', ['male', 'female', 'other'])->nullable();
-            $table->smallInteger('age')->nullable();
+            $table->smallInteger('age')
+                ->nullable();
 
-            $table->string('blood_group', 10)->nullable();
-            $table->text('address')->nullable();
 
-            $table->date('visit_date')->nullable()->comment('تاریخ مراجعه یا مصرف');
-            $table->text('note')->nullable();
+            $table->string('blood_group',10)
+                ->nullable();
 
-            // ===== ستون جدید: department_id =====
-            $table->unsignedBigInteger('department_id')->nullable()->comment('ارتباط با بخش');
 
-            // ===== ستون جدید: nid_number =====
-            $table->string('tazkira_number', 25)->nullable()->comment('شماره تذکره شخص (فرمت: 1399-1102-30366)');
-            // Add after the 'tazkira_number' column
+            $table->text('address')
+                ->nullable();
 
-$table->text('diagnosis')->nullable()->comment('تشخیص (برای مریض)');
-$table->decimal('weight', 5, 2)->nullable()->comment('وزن به کیلوگرم');
-$table->string('blood_pressure', 20)->nullable()->comment('فشار خون (مثلاً 120/80)');
-$table->decimal('temperature', 4, 1)->nullable()->comment('دمای بدن (درجه سانتی‌گراد)');
-$table->tinyInteger('oxygen')->nullable()->comment('درصد اکسیژن خون');
 
-            $table->tinyInteger('status')->default(1);
+
+            /*
+            |--------------------------------------------------------------------------
+            | ارتباطات سیستم شفاخانه
+            |--------------------------------------------------------------------------
+            */
+
+
+            // بخش مربوطه
+
+            $table->foreignId('department_id')
+                ->nullable()
+                ->constrained('departments')
+                ->nullOnDelete();
+
+
+
+            // مریض اصلی از جدول patients
+
+            $table->foreignId('patient_id')
+                ->nullable()
+                ->constrained('patients')
+                ->nullOnDelete();
+
+
+
+            // داکتر معالج از جدول users
+
+            $table->foreignId('doctor_id')
+                ->nullable()
+                ->constrained('users')
+                ->nullOnDelete();
+
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | معلومات مراجعه
+            |--------------------------------------------------------------------------
+            */
+
+
+            $table->string('visit_number',50)
+                ->nullable()
+                ->unique();
+
+
+
+            $table->enum('visit_type',[
+
+                'OPD',
+                'IPD',
+                'Emergency',
+                'Laboratory',
+                'Radiology',
+                'Pharmacy'
+
+            ])
+            ->nullable();
+
+
+
+            $table->integer('queue_number')
+                ->nullable();
+
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | فیس مراجعه
+            |--------------------------------------------------------------------------
+            */
+
+
+            $table->decimal(
+                'registration_fee',
+                10,
+                2
+            )
+            ->default(0)
+            ->comment('فیس ابتدایی مراجعه');
+
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | گردش مریض
+            |--------------------------------------------------------------------------
+            */
+
+
+            $table->enum('visit_status',[
+
+                'Waiting',
+                'Doctor',
+                'Laboratory',
+                'Radiology',
+                'Pharmacy',
+                'Billing',
+                'Completed',
+                'Cancelled'
+
+            ])
+            ->default('Waiting');
+
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | تاریخ و یادداشت
+            |--------------------------------------------------------------------------
+            */
+
+
+            $table->date('visit_date')
+                ->nullable();
+
+
+            $table->text('note')
+                ->nullable();
+
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | معلومات طبی اولیه
+            |--------------------------------------------------------------------------
+            */
+
+
+            $table->text('diagnosis')
+                ->nullable();
+
+
+
+            $table->decimal(
+                'weight',
+                5,
+                2
+            )
+            ->nullable();
+
+
+
+            $table->string(
+                'blood_pressure',
+                20
+            )
+            ->nullable();
+
+
+
+            $table->decimal(
+                'temperature',
+                4,
+                1
+            )
+            ->nullable();
+
+
+
+            $table->tinyInteger('oxygen')
+                ->nullable();
+
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | وضعیت
+            |--------------------------------------------------------------------------
+            */
+
+
+            $table->tinyInteger('status')
+                ->default(1);
+
+
+
             $table->timestamps();
 
-            // foreign key به جدول departments
-            $table->foreign('department_id')
-                  ->references('id')
-                  ->on('departments')
-                  ->onDelete('set null');
+
         });
+
     }
+
+
 
     public function down(): void
     {
         Schema::dropIfExists('registrations');
     }
+
 };

@@ -10,7 +10,6 @@ export default function RegistrationForm() {
   const [form, setForm] = useState({
     reg_type: "",
     full_name: "",
-    tazkira_number: "",
     father_name: "",
     phone: "",
     gender: "",
@@ -19,9 +18,14 @@ export default function RegistrationForm() {
     address: "",
     visit_date: "",
     note: "",
-    status: 1,
     department_id: "",
-     diagnosis: "",
+    patient_id: "",
+    doctor_id: "",
+    visit_number: "",
+    visit_type: "",
+    queue_number: "",
+    visit_status: "Waiting",
+    diagnosis: "",
     weight: "",
     blood_pressure: "",
     temperature: "",
@@ -29,24 +33,54 @@ export default function RegistrationForm() {
   });
 
   const [departments, setDepartments] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [patients, setPatients] = useState([]);
   const [registrations, setRegistrations] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [editingId, setEditingId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedRegistration, setSelectedRegistration] = useState(null);
+  const [showSendModal, setShowSendModal] = useState(false);
   const ROWS_PER_PAGE = 10;
 
   useEffect(() => {
-    const fetchDepartments = async () => {
+    const fetchInitialData = async () => {
       try {
-        const res = await api.get("/departments");
-        const deps = Array.isArray(res.data) ? res.data : res.data.data || [];
-        setDepartments(deps);
+        const [deptRes, docRes, patientRes] = await Promise.all([
+          api.get("/departments"),
+          api.get("/users/doctors"), // تغییر: endpoint مخصوص داکترها
+          api.get("/patients")
+        ]);
+        
+        setDepartments(Array.isArray(deptRes.data) ? deptRes.data : deptRes.data.data || []);
+        
+        // اطمینان از اینکه فقط داکترها نمایش داده می‌شوند
+        let doctorsData = Array.isArray(docRes.data) ? docRes.data : docRes.data.data || [];
+        // اگر داده‌ها شامل role باشند، فیلتر می‌کنیم
+        if (doctorsData.length > 0 && doctorsData[0].role) {
+          doctorsData = doctorsData.filter(user => user.role === 'doctor' || user.role === 'Doctor');
+        }
+        setDoctors(doctorsData);
+        
+        setPatients(Array.isArray(patientRes.data) ? patientRes.data : patientRes.data.data || []);
       } catch (err) {
-        console.error("خطا در بارگذاری بخش‌ها:", err);
+        console.error("خطا در بارگذاری داده‌ها:", err);
         setDepartments([]);
+        setDoctors([]);
+        setPatients([]);
+        
+        // اگر endpoint اولیه خطا داد، تلاش با endpoint جایگزین
+        try {
+          const fallbackRes = await api.get("/users?role=doctor");
+          const fallbackData = Array.isArray(fallbackRes.data) ? fallbackRes.data : fallbackRes.data.data || [];
+          setDoctors(fallbackData);
+        } catch (fallbackErr) {
+          console.error("خطا در بارگذاری داکترها با endpoint جایگزین:", fallbackErr);
+        }
       }
     };
-    fetchDepartments();
+    fetchInitialData();
     fetchRegistrations();
   }, [api]);
 
@@ -63,35 +97,107 @@ export default function RegistrationForm() {
   };
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setForm({ ...form, [name]: value });
   };
- 
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
+    // Validation based on backend rules
     if (!form.reg_type || !form.full_name) {
-      toast.error("❌ نوع راجستریشن و نام الزامی است");
+      toast.error("❌ نوع راجستریشن و نام کامل الزامی است");
+      setIsSubmitting(false);
       return;
     }
 
-    if (form.tazkira_number && !/^\d{4}-\d{4}-\d{5}$/.test(form.tazkira_number)) {
-      toast.error("❌ فرمت شماره تذکره معتبر نیست");
+    // Reg type validation
+    const validRegTypes = ['patient', 'doctor', 'visitor', 'laboratory', 'transport', 'consultation'];
+    if (!validRegTypes.includes(form.reg_type)) {
+      toast.error("❌ نوع راجستریشن نامعتبر است");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Gender validation
+    if (form.gender && !['male', 'female', 'other'].includes(form.gender)) {
+      toast.error("❌ جنسیت نامعتبر است");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Age validation
+    if (form.age && (parseInt(form.age) < 0 || parseInt(form.age) > 150)) {
+      toast.error("❌ سن باید بین 0 تا 150 باشد");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Weight validation
+    if (form.weight && (parseFloat(form.weight) < 0 || parseFloat(form.weight) > 300)) {
+      toast.error("❌ وزن باید بین 0 تا 300 کیلوگرم باشد");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Temperature validation
+    if (form.temperature && (parseFloat(form.temperature) < 30 || parseFloat(form.temperature) > 45)) {
+      toast.error("❌ حرارت باید بین 30 تا 45 درجه سانتی‌گراد باشد");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Oxygen validation
+    if (form.oxygen && (parseInt(form.oxygen) < 0 || parseInt(form.oxygen) > 100)) {
+      toast.error("❌ اکسیجن باید بین 0 تا 100 درصد باشد");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Visit type validation
+    if (form.visit_type && !['OPD', 'IPD', 'Emergency', 'Laboratory', 'Radiology', 'Pharmacy'].includes(form.visit_type)) {
+      toast.error("❌ نوع مراجعه نامعتبر است");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Visit status validation
+    if (form.visit_status && !['Waiting', 'Doctor', 'Laboratory', 'Radiology', 'Pharmacy', 'Completed', 'Cancelled'].includes(form.visit_status)) {
+      toast.error("❌ وضعیت مراجعه نامعتبر است");
+      setIsSubmitting(false);
       return;
     }
 
     try {
+      const submitData = { ...form };
+      
+      // Convert empty strings to null for optional fields
+      Object.keys(submitData).forEach(key => {
+        if (submitData[key] === '') {
+          submitData[key] = null;
+        }
+      });
+
+      let response;
       if (editingId) {
-        await api.put(`/registrations/${editingId}`, form);
+        response = await api.put(`/registrations/${editingId}`, submitData);
         toast.success("✅ معلومات با موفقیت تصحیح شد");
       } else {
-        await api.post("/registrations", form);
+        response = await api.post("/registrations", submitData);
         toast.success("✅ ثبت موفقانه انجام شد");
+        
+        // اگر نوع مریض باشد و داکتر انتخاب شده باشد، پیشنهاد ارسال به داکتر
+        if (form.reg_type === 'patient' && form.doctor_id) {
+          const newRegistration = response.data.data || response.data;
+          setSelectedRegistration(newRegistration);
+          setShowSendModal(true);
+        }
       }
 
       setForm({
         reg_type: "",
         full_name: "",
-        tazkira_number: "",
         father_name: "",
         phone: "",
         gender: "",
@@ -100,20 +206,86 @@ export default function RegistrationForm() {
         address: "",
         visit_date: "",
         note: "",
-        status: 1,
         department_id: "",
-          diagnosis: "",
-    weight: "",
-    blood_pressure: "",
-    temperature: "",
-    oxygen: "",
+        patient_id: "",
+        doctor_id: "",
+        visit_number: "",
+        visit_type: "",
+        queue_number: "",
+        visit_status: "Waiting",
+        diagnosis: "",
+        weight: "",
+        blood_pressure: "",
+        temperature: "",
+        oxygen: "",
       });
 
       setEditingId(null);
       fetchRegistrations();
     } catch (err) {
       console.error(err);
-      toast.error("❌ خطا در ذخیره معلومات");
+      toast.error(err.response?.data?.message || "❌ خطا در ذخیره معلومات");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // تابع ارسال به داکتر
+  const handleSendToDoctor = async () => {
+    if (!selectedRegistration) return;
+
+    try {
+      // به‌روزرسانی وضعیت به "Doctor"
+      await api.put(`/registrations/${selectedRegistration.reg_id}`, {
+        ...selectedRegistration,
+        visit_status: 'Doctor'
+      });
+
+      // ارسال نوتیفیکیشن به داکتر
+      await api.post('/notifications', {
+        user_id: selectedRegistration.doctor_id,
+        title: 'مریض جدید',
+        message: `مریض جدید با نام ${selectedRegistration.full_name} به شما ارجاع داده شد`,
+        type: 'new_patient',
+        registration_id: selectedRegistration.reg_id
+      });
+
+      toast.success(`✅ معلومات به داکتر مورد نظر ارسال شد`);
+      setShowSendModal(false);
+      setSelectedRegistration(null);
+      fetchRegistrations();
+    } catch (err) {
+      console.error(err);
+      toast.error("❌ خطا در ارسال به داکتر");
+    }
+  };
+
+  // تابع ارسال به داکتر از طریق دکمه در لیست
+  const handleSendToDoctorFromList = async (registration) => {
+    if (!registration.doctor_id) {
+      toast.warning("⚠️ لطفاً ابتدا داکتر معالج را انتخاب کنید");
+      return;
+    }
+
+    try {
+      await api.put(`/registrations/${registration.reg_id}`, {
+        ...registration,
+        visit_status: 'Doctor'
+      });
+
+      await api.post('/notifications', {
+        user_id: registration.doctor_id,
+        title: 'مریض جدید',
+        message: `مریض با نام ${registration.full_name} به شما ارجاع داده شد`,
+        type: 'new_patient',
+        registration_id: registration.reg_id
+      });
+
+      toast.success(`✅ معلومات به داکتر ارسال شد`);
+      fetchRegistrations();
+    } catch (err) {
+      console.error(err);
+      toast.error("❌ خطا در ارسال به داکتر");
     }
   };
 
@@ -136,13 +308,11 @@ export default function RegistrationForm() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // ✅ تابع جدید برای انصراف از ویرایش
   const handleCancelEdit = () => {
     setEditingId(null);
     setForm({
       reg_type: "",
       full_name: "",
-      tazkira_number: "",
       father_name: "",
       phone: "",
       gender: "",
@@ -151,8 +321,18 @@ export default function RegistrationForm() {
       address: "",
       visit_date: "",
       note: "",
-      status: 1,
       department_id: "",
+      patient_id: "",
+      doctor_id: "",
+      visit_number: "",
+      visit_type: "",
+      queue_number: "",
+      visit_status: "Waiting",
+      diagnosis: "",
+      weight: "",
+      blood_pressure: "",
+      temperature: "",
+      oxygen: "",
     });
     toast.info("✏️ ویرایش لغو شد");
   };
@@ -163,8 +343,8 @@ export default function RegistrationForm() {
     return registrations.filter(
       (r) =>
         r.full_name?.toLowerCase().includes(term) ||
-        r.tazkira_number?.toLowerCase().includes(term) ||
-        r.phone?.toLowerCase().includes(term)
+        r.phone?.toLowerCase().includes(term) ||
+        r.visit_number?.toLowerCase().includes(term)
     );
   }, [registrations, searchTerm]);
 
@@ -176,7 +356,6 @@ export default function RegistrationForm() {
 
   return (
     <MainLayoutjur>
-      {/* ✅ ToastContainer با استایل مناسب */}
       <ToastContainer 
         position="top-right"
         autoClose={3000}
@@ -201,6 +380,67 @@ export default function RegistrationForm() {
         }}
       />
 
+      {/* Modal برای ارسال به داکتر */}
+      {showSendModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 999999
+        }}>
+          <div style={{
+            backgroundColor: '#1f2937',
+            padding: '30px',
+            borderRadius: '10px',
+            maxWidth: '500px',
+            width: '90%',
+            color: 'white'
+          }}>
+            <h3 style={{ marginBottom: '20px', textAlign: 'center' }}>ارسال به داکتر</h3>
+            <p style={{ marginBottom: '20px', textAlign: 'center' }}>
+              آیا می‌خواهید اطلاعات {selectedRegistration?.full_name} را به داکتر مربوطه ارسال کنید؟
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button
+                onClick={handleSendToDoctor}
+                style={{
+                  backgroundColor: '#2563eb',
+                  color: 'white',
+                  padding: '10px 30px',
+                  borderRadius: '5px',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                بله، ارسال کن
+              </button>
+              <button
+                onClick={() => {
+                  setShowSendModal(false);
+                  setSelectedRegistration(null);
+                }}
+                style={{
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  padding: '10px 30px',
+                  borderRadius: '5px',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="form-container">
         <h2 style={{ textAlign: "center" }}>
           {editingId ? "ویرایش راجستریشن" : "راجستریشن عمومی شفاخانه"}
@@ -214,36 +454,28 @@ export default function RegistrationForm() {
               value={form.reg_type}
               onChange={handleChange}
               className="form-control"
+              required
             >
               <option value="">-- انتخاب --</option>
-              <optgroup label="اشخاص">
-                <option value="patient">مریض</option>
-                <option value="doctor">داکتر</option>
-                <option value="visitor">مراجع</option>
-                <option value="customer">مشتری</option>
-                <option value="staff">کارمند</option>
-                <option value="supplier">تأمین‌کننده</option>
-              </optgroup>
-              <optgroup label="مصارف">
-                <option value="rent">کرایه</option>
-                <option value="electricity">برق</option>
-                <option value="water">آب</option>
-                <option value="internet">انترنت</option>
-                <option value="salary">معاش</option>
-                <option value="fuel">سوخت</option>
-                <option value="maintenance">ترمیمات</option>
-              </optgroup>
-              <optgroup label="خدمات">
-                <option value="laboratory">لابراتوار</option>
-                <option value="transport">ترانسپورت</option>
-                <option value="consultation">مشاوره</option>
-              </optgroup>
-              <optgroup label="دیگر">
-                <option value="expense">مصرف عمومی</option>
-                <option value="income">درآمد</option>
-                <option value="other">سایر</option>
-              </optgroup>
+              <option value="patient">مریض</option>
+              <option value="doctor">داکتر</option>
+              <option value="visitor">مراجع</option>
+              <option value="laboratory">لابراتوار</option>
+              <option value="transport">ترانسپورت</option>
+              <option value="consultation">مشاوره</option>
             </select>
+          </div>
+
+          <div>
+            <label>نام کامل / عنوان *</label>
+            <input
+              type="text"
+              name="full_name"
+              value={form.full_name}
+              onChange={handleChange}
+              className="form-control"
+              required
+            />
           </div>
 
           <div>
@@ -264,26 +496,37 @@ export default function RegistrationForm() {
           </div>
 
           <div>
-            <label>نام کامل / عنوان *</label>
-            <input
-              type="text"
-              name="full_name"
-              value={form.full_name}
+            <label>داکتر معالج</label>
+            <select
+              name="doctor_id"
+              value={form.doctor_id}
               onChange={handleChange}
               className="form-control"
-            />
+            >
+              <option value="">-- انتخاب داکتر --</option>
+              {doctors.map((doc) => (
+                <option key={doc.id} value={doc.id}>
+                  {doc.name || doc.full_name || `داکتر ${doc.id}`}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
-            <label>شماره تذکره</label>
-            <input
-              type="text"
-              name="tazkira_number"
-              value={form.tazkira_number}
+            <label>مریض</label>
+            <select
+              name="patient_id"
+              value={form.patient_id}
               onChange={handleChange}
-              placeholder="مثال: 1300-1105-0000"
               className="form-control"
-            />
+            >
+              <option value="">-- انتخاب مریض --</option>
+              {patients.map((patient) => (
+                <option key={patient.id} value={patient.id}>
+                  {patient.full_name || patient.name || `مریض ${patient.id}`}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -331,6 +574,8 @@ export default function RegistrationForm() {
               value={form.age}
               onChange={handleChange}
               className="form-control"
+              min="0"
+              max="150"
             />
           </div>
 
@@ -353,76 +598,69 @@ export default function RegistrationForm() {
               <option value="O-">O-</option>
             </select>
           </div>
-          {form.reg_type === "patient" && (
-    <>
-        <div>
-            <label>تشخیص</label>
-            <textarea
-                name="diagnosis"
-                value={form.diagnosis}
-                onChange={handleChange}
-                className="form-control"
-                rows="2"
-                placeholder="تشخیص اولیه (اختیاری)"
-            />
-        </div>
-
-        <div>
-            <label>وزن (کیلوگرم)</label>
-            <input
-                type="number"
-                step="0.1"
-                name="weight"
-                value={form.weight}
-                onChange={handleChange}
-                className="form-control"
-                placeholder="مثلاً 70.5"
-            />
-        </div>
-
-        <div>
-            <label>فشار خون</label>
-            <input
-                type="text"
-                name="blood_pressure"
-                value={form.blood_pressure}
-                onChange={handleChange}
-                className="form-control"
-                placeholder="مثلاً 120/80"
-            />
-        </div>
-
-        <div>
-            <label>حرارت (درجه سانتی‌گراد)</label>
-            <input
-                type="number"
-                step="0.1"
-                name="temperature"
-                value={form.temperature}
-                onChange={handleChange}
-                className="form-control"
-                placeholder="مثلاً 36.5"
-            />
-        </div>
-
-        <div>
-            <label>اکسیجن (%)</label>
-            <input
-                type="number"
-                name="oxygen"
-                value={form.oxygen}
-                onChange={handleChange}
-                className="form-control"
-                placeholder="مثلاً 98"
-                min="0"
-                max="100"
-            />
-        </div>
-    </>
-)}
 
           <div>
-            <label>تاریخ مراجعه / مصرف</label>
+            <label>شماره مراجعه</label>
+            <input
+              type="text"
+              name="visit_number"
+              value={form.visit_number}
+              onChange={handleChange}
+              className="form-control"
+              placeholder="شماره مراجعه"
+            />
+          </div>
+
+          <div>
+            <label>نوع مراجعه</label>
+            <select
+              name="visit_type"
+              value={form.visit_type}
+              onChange={handleChange}
+              className="form-control"
+            >
+              <option value="">-- انتخاب --</option>
+              <option value="OPD">OPD</option>
+              <option value="IPD">IPD</option>
+              <option value="Emergency">Emergency</option>
+              <option value="Laboratory">Laboratory</option>
+              <option value="Radiology">Radiology</option>
+              <option value="Pharmacy">Pharmacy</option>
+            </select>
+          </div>
+
+          <div>
+            <label>شماره صف</label>
+            <input
+              type="number"
+              name="queue_number"
+              value={form.queue_number}
+              onChange={handleChange}
+              className="form-control"
+              min="1"
+            />
+          </div>
+
+          <div>
+            <label>وضعیت مراجعه</label>
+            <select
+              name="visit_status"
+              value={form.visit_status}
+              onChange={handleChange}
+              className="form-control"
+            >
+              <option value="Waiting">در انتظار</option>
+              <option value="Doctor">نزد داکتر</option>
+              <option value="Laboratory">لابراتوار</option>
+              <option value="Radiology">رادیولوژی</option>
+              <option value="Pharmacy">دواخانه</option>
+              <option value="Completed">تکمیل شده</option>
+              <option value="Cancelled">لغو شده</option>
+            </select>
+          </div>
+
+          <div>
+            <label>تاریخ مراجعه</label>
             <input
               type="date"
               name="visit_date"
@@ -431,6 +669,79 @@ export default function RegistrationForm() {
               className="form-control"
             />
           </div>
+
+          {/* Medical fields - conditionally shown for patients */}
+          {(form.reg_type === "patient") && (
+            <>
+              <div>
+                <label>تشخیص</label>
+                <textarea
+                  name="diagnosis"
+                  value={form.diagnosis}
+                  onChange={handleChange}
+                  className="form-control"
+                  rows="2"
+                  placeholder="تشخیص اولیه (اختیاری)"
+                />
+              </div>
+
+              <div>
+                <label>وزن (کیلوگرم)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  name="weight"
+                  value={form.weight}
+                  onChange={handleChange}
+                  className="form-control"
+                  placeholder="مثلاً 70.5"
+                  min="0"
+                  max="300"
+                />
+              </div>
+
+              <div>
+                <label>فشار خون</label>
+                <input
+                  type="text"
+                  name="blood_pressure"
+                  value={form.blood_pressure}
+                  onChange={handleChange}
+                  className="form-control"
+                  placeholder="مثلاً 120/80"
+                />
+              </div>
+
+              <div>
+                <label>حرارت (درجه سانتی‌گراد)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  name="temperature"
+                  value={form.temperature}
+                  onChange={handleChange}
+                  className="form-control"
+                  placeholder="مثلاً 36.5"
+                  min="30"
+                  max="45"
+                />
+              </div>
+
+              <div>
+                <label>اکسیجن (%)</label>
+                <input
+                  type="number"
+                  name="oxygen"
+                  value={form.oxygen}
+                  onChange={handleChange}
+                  className="form-control"
+                  placeholder="مثلاً 98"
+                  min="0"
+                  max="100"
+                />
+              </div>
+            </>
+          )}
 
           <div className="full-width">
             <label>آدرس</label>
@@ -455,11 +766,15 @@ export default function RegistrationForm() {
           </div>
 
           <div className="full-width center" style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
-            <button type="submit" className="edit" style={{ backgroundColor: editingId ? "#ffc107" : "#2563eb" }}>
-              {editingId ? "تصحیح" : "ثبت راجستریشن"}
+            <button 
+              type="submit" 
+              className="edit" 
+              style={{ backgroundColor: editingId ? "#ffc107" : "#2563eb" }}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "در حال ثبت..." : (editingId ? "تصحیح" : "ثبت راجستریشن")}
             </button>
-            
-            {/* ✅ دکمه انصراف - فقط در حالت ویرایش نمایش داده می‌شود */}
+
             {editingId && (
               <button 
                 type="button" 
@@ -482,11 +797,11 @@ export default function RegistrationForm() {
       </div>
 
       <div className="form-container mt-10">
-        <h3 style={{ textAlign: "center" }}>لیست حساب‌های ثبت شده</h3>
+        <h3 style={{ textAlign: "center" }}>لیست مراجعه‌های ثبت شده</h3>
         <div className="mb-3">
           <input
             type="text"
-            placeholder="جستجو..."
+            placeholder="جستجو بر اساس نام، شماره تماس یا شماره مراجعه..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="form-control"
@@ -495,11 +810,11 @@ export default function RegistrationForm() {
         <table className="w-full text-white border-collapse">
           <thead>
             <tr className="bg-gray-700">
-              <th>/ عنوان نام کامل</th>
-              <th>شماره تذکره</th>
+              <th>نام کامل</th>
               <th>نوع</th>
               <th>شماره تماس</th>
               <th>بخش</th>
+              <th>وضعیت</th>
               <th>عملیات</th>
             </tr>
           </thead>
@@ -508,13 +823,27 @@ export default function RegistrationForm() {
               currentRows.map((r) => (
                 <tr key={r.reg_id} className="hover:bg-gray-800 transition-colors">
                   <td>{r.full_name || "-"}</td>
-                  <td>{r.tazkira_number || "-"}</td>
                   <td>{r.reg_type || "-"}</td>
                   <td>{r.phone || "-"}</td>
                   <td>
                     {departments.find((d) => d.id === r.department_id)?.name || "-"}
                   </td>
-                  <td className="flex gap-1">
+                  <td>
+                    <span style={{
+                      backgroundColor: 
+                        r.visit_status === 'Completed' ? '#22c55e' :
+                        r.visit_status === 'Cancelled' ? '#dc2626' :
+                        r.visit_status === 'Doctor' ? '#8b5cf6' :
+                        r.visit_status === 'Waiting' ? '#f59e0b' : '#3b82f6',
+                      padding: '3px 8px',
+                      borderRadius: '4px',
+                      color: '#fff',
+                      fontSize: '12px'
+                    }}>
+                      {r.visit_status || "-"}
+                    </span>
+                  </td>
+                  <td className="flex gap-1" style={{ flexWrap: 'wrap', gap: '5px' }}>
                     <button
                       onClick={() => handleEdit(r)}
                       style={{
@@ -524,6 +853,7 @@ export default function RegistrationForm() {
                         borderRadius: "5px",
                         border: "none",
                         cursor: "pointer",
+                        fontSize: "12px"
                       }}
                     >
                       تصحیح
@@ -538,10 +868,29 @@ export default function RegistrationForm() {
                         borderRadius: "5px",
                         border: "none",
                         cursor: "pointer",
+                        fontSize: "12px"
                       }}
                     >
                       حذف
                     </button>
+
+                    {/* دکمه ارسال به داکتر - فقط برای مریض‌ها */}
+                    {r.reg_type === 'patient' && r.visit_status !== 'Doctor' && r.visit_status !== 'Completed' && (
+                      <button
+                        onClick={() => handleSendToDoctorFromList(r)}
+                        style={{
+                          backgroundColor: "#8b5cf6",
+                          color: "#fff",
+                          padding: "5px 10px",
+                          borderRadius: "5px",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: "12px"
+                        }}
+                      >
+                        ارسال به داکتر
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
