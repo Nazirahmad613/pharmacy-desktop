@@ -27,7 +27,7 @@ export default function RegistrationForm() {
     search_tazkira: "",
     search_name: "",
     search_phone: "",
-    // فیلدهای ثبت مریض جدید
+    // فیلدهای ثبت مریض جدید - اینها برای ارسال به بک‌اند هستند
     new_first_name: "",
     new_last_name: "",
     new_father_name: "",
@@ -53,7 +53,7 @@ export default function RegistrationForm() {
   const [currentPage, setCurrentPage] = useState(1);
   const [editingId, setEditingId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSubmittingPatient, setIsSubmittingPatient] = useState(false);
+  
   const [selectedRegistration, setSelectedRegistration] = useState(null);
   const [showSendModal, setShowSendModal] = useState(false);
   const [statistics, setStatistics] = useState(null);
@@ -141,7 +141,6 @@ export default function RegistrationForm() {
     }
   };
 
-  // جستجوی مریض‌های قبلی از لیست patients
   const searchExistingPatients = () => {
     const { search_tazkira, search_name, search_phone } = form;
 
@@ -155,7 +154,10 @@ export default function RegistrationForm() {
     setSearching(true);
 
     try {
-      const results = patients.filter((patient) => {
+      const resultPatients = [];
+      const seenPatientIds = new Set();
+
+      patients.forEach((patient) => {
         let match = true;
 
         if (search_tazkira) {
@@ -176,16 +178,77 @@ export default function RegistrationForm() {
           if (!phoneMatch) match = false;
         }
 
-        return match;
+        if (match && !seenPatientIds.has(patient.id)) {
+          resultPatients.push(patient);
+          seenPatientIds.add(patient.id);
+        }
       });
 
-      setSearchResults(results);
-      setShowSearchResults(results.length > 0);
+      const regSearchFields = ['visit_number', 'visit_type', 'queue_number', 'diagnosis', 'note'];
 
-      if (results.length === 0) {
+      registrations.forEach((reg) => {
+        const patient = reg.patient;
+        if (!patient) return;
+
+        let match = false;
+
+        if (search_tazkira) {
+          for (const field of regSearchFields) {
+            const value = reg[field] || '';
+            if (value.toLowerCase().includes(search_tazkira.toLowerCase())) {
+              match = true;
+              break;
+            }
+          }
+          if (!match && patient.national_id?.toLowerCase().includes(search_tazkira.toLowerCase())) {
+            match = true;
+          }
+        }
+
+        if (search_name && !match) {
+          for (const field of regSearchFields) {
+            const value = reg[field] || '';
+            if (value.toLowerCase().includes(search_name.toLowerCase())) {
+              match = true;
+              break;
+            }
+          }
+          const fullName = (patient.first_name || '') + ' ' + (patient.last_name || '');
+          if (!match && (
+            fullName.toLowerCase().includes(search_name.toLowerCase()) ||
+            patient.first_name?.toLowerCase().includes(search_name.toLowerCase()) ||
+            patient.last_name?.toLowerCase().includes(search_name.toLowerCase())
+          )) {
+            match = true;
+          }
+        }
+
+        if (search_phone && !match) {
+          for (const field of regSearchFields) {
+            const value = reg[field] || '';
+            if (value.toLowerCase().includes(search_phone.toLowerCase())) {
+              match = true;
+              break;
+            }
+          }
+          if (!match && patient.mobile?.toLowerCase().includes(search_phone.toLowerCase())) {
+            match = true;
+          }
+        }
+
+        if (match && !seenPatientIds.has(patient.id)) {
+          resultPatients.push(patient);
+          seenPatientIds.add(patient.id);
+        }
+      });
+
+      setSearchResults(resultPatients);
+      setShowSearchResults(resultPatients.length > 0);
+
+      if (resultPatients.length === 0) {
         toast.info("ℹ️ هیچ مریضی با این مشخصات یافت نشد");
       } else {
-        toast.success(`✅ ${results.length} مریض پیدا شد`);
+        toast.success(`✅ ${resultPatients.length} مریض پیدا شد`);
       }
 
     } catch (err) {
@@ -198,7 +261,6 @@ export default function RegistrationForm() {
     }
   };
 
-  // جستجوی خودکار با تغییر فیلدها (با تاخیر)
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       const { search_tazkira, search_name, search_phone } = form;
@@ -213,7 +275,6 @@ export default function RegistrationForm() {
     return () => clearTimeout(delayDebounceFn);
   }, [form.search_tazkira, form.search_name, form.search_phone]);
 
-  // انتخاب مریض از نتایج جستجو
   const selectExistingPatient = (patient) => {
     setSelectedPatient(patient);
     setForm(prev => ({
@@ -232,75 +293,6 @@ export default function RegistrationForm() {
     toast.success(`✅ مریض ${fullName} انتخاب شد`);
   };
 
-  // ثبت مریض جدید
-  const handleNewPatientSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmittingPatient(true);
-
-    // Validation
-    if (!form.new_first_name || !form.new_last_name) {
-      toast.error("❌ نام و نام خانوادگی الزامی است");
-      setIsSubmittingPatient(false);
-      return;
-    }
-
-    try {
-      const patientData = {
-        first_name: form.new_first_name,
-        last_name: form.new_last_name,
-        father_name: form.new_father_name || null,
-        mobile: form.new_mobile || null,
-        national_id: form.new_national_id || null,
-        gender: form.new_gender || null,
-        age: form.new_age || null,
-        blood_group: form.new_blood_group || null,
-        address: form.new_address || null,
-      };
-
-      const response = await api.post("/patients", patientData);
-      const newPatient = response.data?.data || response.data;
-      
-      // اضافه کردن مریض جدید به لیست patients
-      setPatients(prev => [newPatient, ...prev]);
-      
-      // انتخاب خودکار مریض جدید
-      setSelectedPatient(newPatient);
-      setForm(prev => ({
-        ...prev,
-        patient_id: newPatient.id,
-        search_tazkira: newPatient.national_id || '',
-        search_name: (newPatient.first_name || '') + ' ' + (newPatient.last_name || ''),
-        search_phone: newPatient.mobile || '',
-        // پاک کردن فیلدهای ثبت مریض جدید
-        new_first_name: "",
-        new_last_name: "",
-        new_father_name: "",
-        new_mobile: "",
-        new_national_id: "",
-        new_gender: "",
-        new_age: "",
-        new_blood_group: "",
-        new_address: "",
-      }));
-      
-      setShowNewPatientForm(false);
-      toast.success(`✅ مریض جدید ${newPatient.first_name} ${newPatient.last_name} با موفقیت ثبت شد`);
-      
-    } catch (err) {
-      console.error("خطا در ثبت مریض جدید:", err);
-      if (err.response?.status === 422 && err.response?.data?.errors) {
-        Object.entries(err.response.data.errors).forEach(([field, messages]) => {
-          toast.error(`❌ ${messages[0]}`);
-        });
-      } else {
-        toast.error(err.response?.data?.message || "❌ خطا در ثبت مریض جدید");
-      }
-    } finally {
-      setIsSubmittingPatient(false);
-    }
-  };
-
-  // پاک کردن فیلدهای جستجو
   const clearSearchFields = () => {
     setForm(prev => ({
       ...prev,
@@ -314,7 +306,6 @@ export default function RegistrationForm() {
     setShowNewPatientForm(false);
   };
 
-  // پاک کردن فرم (برای ثبت جدید)
   const clearForm = () => {
     setForm({
       patient_id: "",
@@ -361,53 +352,102 @@ export default function RegistrationForm() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Validation
-    if (!form.patient_id) {
-      toast.error("❌ لطفاً یک مریض را انتخاب کنید");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (!form.registration_fee || parseFloat(form.registration_fee) < 0) {
-      toast.error("❌ لطفاً مبلغ فیس مراجعه را وارد کنید");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (form.weight && (parseFloat(form.weight) < 0 || parseFloat(form.weight) > 300)) {
-      toast.error("❌ وزن باید بین 0 تا 300 کیلوگرم باشد");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (form.temperature && (parseFloat(form.temperature) < 30 || parseFloat(form.temperature) > 45)) {
-      toast.error("❌ حرارت باید بین 30 تا 45 درجه سانتی‌گراد باشد");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (form.oxygen && (parseInt(form.oxygen) < 0 || parseInt(form.oxygen) > 100)) {
-      toast.error("❌ اکسیجن باید بین 0 تا 100 درصد باشد");
-      setIsSubmitting(false);
-      return;
-    }
-
     try {
+      // Validation
+      if (!form.patient_id && !showNewPatientForm) {
+        toast.error("❌ لطفاً یک مریض را انتخاب کنید یا مریض جدید ثبت کنید");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // اگر مریض جدید است، فیلدهای الزامی را بررسی کن
+      if (showNewPatientForm) {
+        if (!form.new_first_name || !form.new_last_name) {
+          toast.error("❌ نام و نام خانوادگی مریض جدید الزامی است");
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      if (!form.registration_fee || parseFloat(form.registration_fee) < 0) {
+        toast.error("❌ لطفاً مبلغ فیس مراجعه را وارد کنید");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (form.weight && (parseFloat(form.weight) < 0 || parseFloat(form.weight) > 300)) {
+        toast.error("❌ وزن باید بین 0 تا 300 کیلوگرم باشد");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (form.temperature && (parseFloat(form.temperature) < 30 || parseFloat(form.temperature) > 45)) {
+        toast.error("❌ حرارت باید بین 30 تا 45 درجه سانتی‌گراد باشد");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (form.oxygen && (parseInt(form.oxygen) < 0 || parseInt(form.oxygen) > 100)) {
+        toast.error("❌ اکسیجن باید بین 0 تا 100 درصد باشد");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // ============================================================
+      // ساخت داده برای ارسال به بک‌اند
+      // ============================================================
       const submitData = { ...form };
-      // حذف فیلدهای جستجو و فیلدهای مریض جدید از داده‌های ارسالی
+      
+      // حذف فیلدهای جستجو از داده‌های ارسالی
       delete submitData.search_tazkira;
       delete submitData.search_name;
       delete submitData.search_phone;
-      delete submitData.new_first_name;
-      delete submitData.new_last_name;
-      delete submitData.new_father_name;
-      delete submitData.new_mobile;
-      delete submitData.new_national_id;
-      delete submitData.new_gender;
-      delete submitData.new_age;
-      delete submitData.new_blood_group;
-      delete submitData.new_address;
       
+      // اگر مریض جدید است:
+      // 1. patient_id را حذف می‌کنیم تا بک‌اند متوجه شود مریض جدید است
+      // 2. فیلدهای new_* را با نام اصلی به بک‌اند می‌فرستیم
+      if (showNewPatientForm) {
+        delete submitData.patient_id;
+        
+        // تبدیل فیلدهای new_* به فیلدهای اصلی برای بک‌اند
+        submitData.first_name = submitData.new_first_name;
+        submitData.last_name = submitData.new_last_name;
+        submitData.father_name = submitData.new_father_name || null;
+        submitData.mobile = submitData.new_mobile || null;
+        submitData.national_id = submitData.new_national_id || null;
+        submitData.gender = submitData.new_gender || null;
+        submitData.age = submitData.new_age || null;
+        submitData.blood_group = submitData.new_blood_group || null;
+        submitData.address = submitData.new_address || null;
+        
+        // حذف فیلدهای new_* از داده ارسالی
+        delete submitData.new_first_name;
+        delete submitData.new_last_name;
+        delete submitData.new_father_name;
+        delete submitData.new_mobile;
+        delete submitData.new_national_id;
+        delete submitData.new_gender;
+        delete submitData.new_age;
+        delete submitData.new_blood_group;
+        delete submitData.new_address;
+        
+        // اضافه کردن flag برای تشخیص مریض جدید در بک‌اند
+        submitData.is_new_patient = true;
+      } else {
+        // اگر مریض قبلی انتخاب شده، فیلدهای مریض جدید را حذف می‌کنیم
+        delete submitData.new_first_name;
+        delete submitData.new_last_name;
+        delete submitData.new_father_name;
+        delete submitData.new_mobile;
+        delete submitData.new_national_id;
+        delete submitData.new_gender;
+        delete submitData.new_age;
+        delete submitData.new_blood_group;
+        delete submitData.new_address;
+        submitData.is_new_patient = false;
+      }
+      
+      // تبدیل رشته‌های خالی به null
       Object.keys(submitData).forEach(key => {
         if (submitData[key] === '') {
           submitData[key] = null;
@@ -415,35 +455,69 @@ export default function RegistrationForm() {
       });
 
       let response;
+      let newRegistration = null;
+
       if (editingId) {
         response = await api.put(`/registrations/${editingId}`, submitData);
         toast.success("✅ معلومات با موفقیت تصحیح شد");
+        newRegistration = response.data?.data || response.data;
       } else {
-        response = await api.post("/registrations", submitData);
-        toast.success("✅ مراجعه با موفقیت ثبت شد");
         
+        console.log("NEW PATIENT MODE:", showNewPatientForm);
+
+console.log("NEW PATIENT DATA:", {
+    first_name: submitData.new_first_name,
+    last_name: submitData.new_last_name,
+    mobile: submitData.new_mobile,
+    gender: submitData.new_gender
+});
+
+console.log("FINAL DATA SEND:", submitData);
+        toast.success("✅ مراجعه با موفقیت ثبت شد");
+        newRegistration = response.data?.data || response.data;
+
+        // اگر مریض جدید ثبت شده، آن را به لیست اضافه کن
+        if (showNewPatientForm && newRegistration?.patient) {
+          setPatients(prev => [newRegistration.patient, ...prev]);
+          setSelectedPatient(newRegistration.patient);
+          setForm(prev => ({
+            ...prev,
+            patient_id: newRegistration.patient.id,
+            search_tazkira: newRegistration.patient.national_id || '',
+            search_name: (newRegistration.patient.first_name || '') + ' ' + (newRegistration.patient.last_name || ''),
+            search_phone: newRegistration.patient.mobile || '',
+          }));
+          toast.success(`✅ مریض جدید ${newRegistration.patient.first_name} ${newRegistration.patient.last_name} با موفقیت ثبت شد`);
+        }
+
+        if (newRegistration?.registration_fee > 0) {
+          toast.info(`💰 فیس مراجعه به مبلغ ${parseFloat(newRegistration.registration_fee).toFixed(2)} افغانی در ژورنال ثبت شد`);
+        }
+
         if (form.doctor_id) {
-          const newRegistration = response.data?.data || response.data;
-          setSelectedRegistration(newRegistration);
+          const regRes = await api.get(`/registrations/${newRegistration.reg_id}`);
+          const fullReg = regRes.data?.data || regRes.data;
+          setSelectedRegistration(fullReg);
           setShowSendModal(true);
         }
       }
 
+      await fetchRegistrations();
+      await fetchStatistics();
       clearForm();
-      fetchRegistrations();
-      fetchStatistics();
-    }  
-    catch (err) {
+      
+    } catch (err) {
       console.log("STATUS:", err.response?.status);
       console.log("DATA:", err.response?.data);
 
       if (err.response?.status === 422 && err.response?.data?.errors) {
         Object.entries(err.response.data.errors).forEach(([field, messages]) => {
           console.log(field, messages);
+          toast.error(`❌ ${messages[0]}`);
         });
+      } else {
+        toast.error(err.response?.data?.message || "❌ خطا در ذخیره معلومات");
       }
-
-      toast.error(err.response?.data?.message || "❌ خطا در ذخیره معلومات");
     } finally {
       setIsSubmitting(false);
     }
@@ -577,7 +651,7 @@ export default function RegistrationForm() {
     if (fee === 0) return <span style={{ color: '#9ca3af' }}>رایگان</span>;
     
     const journalAmount = registration.journals?.reduce((sum, j) => {
-      if (j.entry_type === 'credit') {
+      if (j.entry_type === 'credit' || j.entry_type === 'debit') {
         return sum + parseFloat(j.amount || 0);
       }
       return sum;
@@ -665,7 +739,6 @@ export default function RegistrationForm() {
         }}
       />
 
-      {/* Modal برای ارسال به داکتر */}
       {showSendModal && (
         <div style={{
           position: 'fixed',
@@ -726,7 +799,6 @@ export default function RegistrationForm() {
         </div>
       )}
 
-      {/* آمار */}
       {statistics && (
         <div style={{
           display: 'grid',
@@ -766,7 +838,6 @@ export default function RegistrationForm() {
         </h2>
 
         <form onSubmit={handleSubmit} className="form-grid">
-          {/* بخش جستجوی مریض از سیستم */}
           <div style={{ 
             gridColumn: '1 / -1', 
             marginBottom: '15px',
@@ -798,7 +869,6 @@ export default function RegistrationForm() {
               </button>
             </div>
 
-            {/* فرم ثبت مریض جدید */}
             {showNewPatientForm && (
               <div style={{
                 marginBottom: '15px',
@@ -931,51 +1001,8 @@ export default function RegistrationForm() {
                     />
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button
-                    type="button"
-                    onClick={handleNewPatientSubmit}
-                    disabled={isSubmittingPatient}
-                    style={{
-                      backgroundColor: '#22c55e',
-                      color: 'white',
-                      padding: '8px 25px',
-                      borderRadius: '5px',
-                      border: 'none',
-                      cursor: isSubmittingPatient ? 'not-allowed' : 'pointer',
-                      opacity: isSubmittingPatient ? 0.6 : 1
-                    }}
-                  >
-                    {isSubmittingPatient ? 'در حال ثبت...' : 'ثبت مریض'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowNewPatientForm(false);
-                      setForm(prev => ({
-                        ...prev,
-                        new_first_name: "",
-                        new_last_name: "",
-                        new_father_name: "",
-                        new_mobile: "",
-                        new_national_id: "",
-                        new_gender: "",
-                        new_age: "",
-                        new_blood_group: "",
-                        new_address: "",
-                      }));
-                    }}
-                    style={{
-                      backgroundColor: '#6b7280',
-                      color: 'white',
-                      padding: '8px 20px',
-                      borderRadius: '5px',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    انصراف
-                  </button>
+                <div style={{ fontSize: '12px', color: '#fbbf24', marginTop: '8px' }}>
+                  ⚠️ با کلیک روی دکمه "ثبت مراجعه"، هم مریض جدید و هم مراجعه در یک تراکنش ثبت می‌شود
                 </div>
               </div>
             )}
@@ -1051,7 +1078,6 @@ export default function RegistrationForm() {
               </button>
             </div>
 
-            {/* نتایج جستجو - با زمینه سفید برای خوانایی */}
             {showSearchResults && searchResults.length > 0 && (
               <div style={{
                 marginTop: '10px',
@@ -1107,10 +1133,9 @@ export default function RegistrationForm() {
               </div>
             )}
             <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
-              💡 با وارد کردن یکی از فیلدهای بالا، جستجو به صورت خودکار انجام می‌شود
+              💡 جستجو در هر دو جدول مریض‌ها و رجستریشن‌ها انجام می‌شود
             </div>
             
-            {/* نمایش اطلاعات مریض انتخاب شده */}
             {selectedPatient && (
               <div style={{
                 marginTop: '10px',
@@ -1153,7 +1178,6 @@ export default function RegistrationForm() {
             )}
           </div>
 
-          {/* اطلاعات مراجعه جدید */}
           <div style={{ gridColumn: '1 / -1', marginBottom: '10px' }}>
             <hr style={{ borderColor: '#374151' }} />
             <h4 style={{ margin: '10px 0', color: '#60a5fa' }}>🔄 اطلاعات مراجعه جدید</h4>
@@ -1388,6 +1412,19 @@ export default function RegistrationForm() {
                 انصراف
               </button>
             )}
+          </div>
+
+          <div style={{ 
+            gridColumn: '1 / -1', 
+            fontSize: '13px', 
+            color: '#9ca3af', 
+            textAlign: 'center',
+            padding: '10px',
+            backgroundColor: '#1e293b',
+            borderRadius: '5px',
+            marginTop: '5px'
+          }}>
+            ℹ️ تمام اطلاعات (مریض جدید و مراجعه) در یک تراکنش از طریق دکمه "ثبت مراجعه" ارسال می‌شود
           </div>
         </form>
       </div>

@@ -10,19 +10,17 @@ use App\Services\LogService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class RegistrationsController extends Controller
 {
 
-    /*
-    |--------------------------------------------------------------------------
-    | ثبت مراجعه جدید مریض
-    |--------------------------------------------------------------------------
-    */
     public function store(Request $request)
     {
 
+
         $validated = $request->validate([
+
 
             /*
             |--------------------------------------------------------------------------
@@ -30,22 +28,87 @@ class RegistrationsController extends Controller
             |--------------------------------------------------------------------------
             */
 
-            'patient_id' => [
-                'required',
+
+            'patient_id'=>[
+                'nullable',
                 'exists:patients,id'
             ],
 
 
-            'department_id' => [
+            'is_new_patient'=>[
                 'nullable',
-                'exists:departments,id'
+                'boolean'
             ],
 
 
-            'doctor_id' => [
-                'nullable',
-                'exists:users,id'
+
+            /*
+            |--------------------------------------------------------------------------
+            | معلومات مریض جدید
+            |--------------------------------------------------------------------------
+            */
+
+
+            'first_name'=>[
+                'required_without:patient_id',
+                'string',
+                'max:255'
             ],
+
+
+            'last_name'=>[
+                'nullable',
+                'string',
+                'max:255'
+            ],
+
+
+            'father_name'=>[
+                'nullable',
+                'string',
+                'max:255'
+            ],
+
+
+            'mobile'=>[
+                'nullable',
+                'string',
+                'max:30'
+            ],
+
+
+            'national_id'=>[
+                'nullable',
+                'string',
+                'max:255'
+            ],
+
+
+            'gender'=>[
+                'required_without:patient_id',
+                'in:Male,Female,other'
+            ],
+
+
+            'age'=>[
+                'nullable',
+                'integer',
+                'min:0',
+                'max:150'
+            ],
+
+
+            'blood_group'=>[
+                'nullable',
+                'string'
+            ],
+
+
+            'address'=>[
+                'nullable',
+                'string'
+            ],
+
 
 
 
@@ -56,32 +119,36 @@ class RegistrationsController extends Controller
             */
 
 
-            'visit_number' => [
+            'department_id'=>[
+                'nullable',
+                'exists:departments,id'
+            ],
+
+
+            'doctor_id'=>[
+                'nullable',
+                'exists:users,id'
+            ],
+
+
+            'visit_number'=>[
                 'nullable',
                 'string',
                 'max:50'
             ],
 
 
-            'visit_type' => [
+            'visit_type'=>[
                 'nullable',
                 'in:OPD,IPD,Emergency,Laboratory,Radiology,Pharmacy'
             ],
 
 
-            'queue_number' => [
+            'queue_number'=>[
                 'nullable',
                 'integer',
                 'min:1'
             ],
-
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | فیس مراجعه
-            |--------------------------------------------------------------------------
-            */
 
 
             'registration_fee'=>[
@@ -91,14 +158,6 @@ class RegistrationsController extends Controller
             ],
 
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | وضعیت مراجعه
-            |--------------------------------------------------------------------------
-            */
-
-
             'visit_status'=>[
                 'nullable',
                 'in:Waiting,Doctor,Laboratory,Radiology,Pharmacy,Billing,Completed,Cancelled'
@@ -106,14 +165,8 @@ class RegistrationsController extends Controller
 
 
 
-            /*
-            |--------------------------------------------------------------------------
-            | معلومات طبی
-            |--------------------------------------------------------------------------
-            */
-
-
             'diagnosis'=>'nullable|string',
+
 
             'weight'=>[
                 'nullable',
@@ -142,15 +195,8 @@ class RegistrationsController extends Controller
             ],
 
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | تاریخ
-            |--------------------------------------------------------------------------
-            */
-
-
             'visit_date'=>'nullable|date',
+
 
             'note'=>'nullable|string',
 
@@ -159,10 +205,90 @@ class RegistrationsController extends Controller
 
 
 
+
         DB::beginTransaction();
 
 
+
         try {
+
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | ایجاد مریض جدید
+            |--------------------------------------------------------------------------
+            */
+
+
+            if(!$request->patient_id){
+
+
+
+                $gender = $request->gender;
+
+
+                if($gender === 'other'){
+                    $gender='Male';
+                }
+
+
+
+                $patient = Patient::create([
+
+
+                    'uuid'=>Str::uuid(),
+
+
+                    'patient_code'=>'P-'.time(),
+
+
+                    'first_name'=>$request->first_name,
+
+
+                    'last_name'=>$request->last_name,
+
+
+                    'father_name'=>$request->father_name,
+
+
+                    'mobile'=>$request->mobile,
+
+
+                    'national_id'=>$request->national_id,
+
+
+                    'gender'=>$gender,
+
+
+                    'age'=>$request->age,
+
+
+                    'blood_group'=>$request->blood_group,
+
+
+                    'address'=>$request->address,
+
+
+                    'created_by'=>Auth::id(),
+
+                ]);
+
+
+
+                $patient_id=$patient->id;
+
+
+
+            }else{
+
+
+                $patient_id=$request->patient_id;
+
+
+            }
+
+
 
 
             /*
@@ -172,80 +298,60 @@ class RegistrationsController extends Controller
             */
 
 
+            $validated['patient_id']=$patient_id;
+
+
             $validated['reg_type']='patient';
 
 
-            $registration = Registrations::create($validated);
+
+            $registration=Registrations::create($validated);
+
+
 
 
 
             /*
             |--------------------------------------------------------------------------
-            | ثبت حساب فیس در ژورنال
+            | ثبت ژورنال
             |--------------------------------------------------------------------------
             */
 
 
-            $patient = Patient::findOrFail(
-                $registration->patient_id
-            );
+            $journal=Journal::create([
 
 
-
-            $journal = Journal::create([
-
-
-                'journal_date' =>
-                    $registration->visit_date ?? now(),
+                'journal_date'=>$registration->visit_date ?? now(),
 
 
-
-                'description' =>
-                    "فیس مراجعه مریض - ID: {$registration->reg_id}",
-
+                'description'=>"فیس مراجعه مریض - ID: {$registration->reg_id}",
 
 
                 'entry_type'=>'debit',
 
 
+                'amount'=>$registration->registration_fee,
 
-                'amount'=>
-                    $registration->registration_fee,
-
-
-
-                /*
-                | مهم:
-                | حساب مربوط به مراجعه است
-                */
 
                 'ref_type'=>'patient',
 
 
-                'ref_id'=>
-                    $registration->reg_id,
+                'ref_id'=>$registration->reg_id,
 
 
-                'registration_id'=>
-                    $registration->reg_id,
+                'registration_id'=>$registration->reg_id,
 
 
-                'user_id'=>
-                    Auth::id(),
+                'user_id'=>Auth::id(),
+
 
             ]);
 
 
 
 
-            /*
-            |--------------------------------------------------------------------------
-            | ثبت لاگ
-            |--------------------------------------------------------------------------
-            */
+            try{
 
-
-            try {
 
                 LogService::create(
 
@@ -262,19 +368,21 @@ class RegistrationsController extends Controller
                 );
 
 
-            } catch(\Exception $e){
+            }catch(\Exception $e){
 
 
                 Log::error(
                     "Registration log failed: ".$e->getMessage()
                 );
 
+
             }
 
 
 
 
-            try {
+            try{
+
 
                 LogService::create(
 
@@ -291,7 +399,7 @@ class RegistrationsController extends Controller
                 );
 
 
-            } catch(\Exception $e){
+            }catch(\Exception $e){
 
 
                 Log::error(
@@ -303,37 +411,41 @@ class RegistrationsController extends Controller
 
 
 
+
             DB::commit();
 
 
 
             return response()->json([
 
-                'message'=>
-                    'مراجعه مریض موفقانه ثبت شد',
+
+                'message'=>'مراجعه مریض موفقانه ثبت شد',
 
 
-                'data'=>
-                    $registration->load([
+                'data'=>$registration->load([
 
-                        'patient',
+                    'patient',
 
-                        'department',
+                    'department',
 
-                        'doctor',
+                    'doctor',
 
-                        'journals'
+                    'journals'
 
-                    ])
+                ])
+
 
             ],201);
 
 
 
-        } catch(\Exception $e){
+
+        }catch(\Exception $e){
+
 
 
             DB::rollBack();
+
 
 
             Log::error(
@@ -344,17 +456,16 @@ class RegistrationsController extends Controller
 
             return response()->json([
 
-                'message'=>
-                    'خطا در ثبت مراجعه مریض',
+                'message'=>'خطا در ثبت مراجعه مریض',
 
-
-                'error'=>
-                    $e->getMessage()
+                'error'=>$e->getMessage()
 
             ],500);
+
 
         }
 
 
     }
+
 }
