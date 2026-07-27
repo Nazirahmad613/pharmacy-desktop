@@ -43,29 +43,6 @@ class Registrations extends Model
 
         /*
         |--------------------------------------------------------------------------
-        | اطلاعات عمومی مراجعه
-        |--------------------------------------------------------------------------
-        */
-
-        'full_name',
-
-        'father_name',
-
-        'phone',
-
-        'gender',
-
-        'age',
-
-        'blood_group',
-
-        'address',
-
-
-
-
-        /*
-        |--------------------------------------------------------------------------
         | ارتباطات HIS
         |--------------------------------------------------------------------------
         */
@@ -82,7 +59,7 @@ class Registrations extends Model
 
         /*
         |--------------------------------------------------------------------------
-        | گردش مریض
+        | معلومات مراجعه
         |--------------------------------------------------------------------------
         */
 
@@ -93,6 +70,28 @@ class Registrations extends Model
 
         'queue_number',
 
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | فیس مراجعه
+        |--------------------------------------------------------------------------
+        */
+
+
+        'registration_fee',
+
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | گردش مریض
+        |--------------------------------------------------------------------------
+        */
+
+
         'visit_status',
 
 
@@ -100,7 +99,7 @@ class Registrations extends Model
 
         /*
         |--------------------------------------------------------------------------
-        | زمان مراجعه
+        | تاریخ و یادداشت
         |--------------------------------------------------------------------------
         */
 
@@ -114,7 +113,7 @@ class Registrations extends Model
 
         /*
         |--------------------------------------------------------------------------
-        | اطلاعات طبی اولیه برای ارسال به داکتر
+        | معلومات طبی اولیه
         |--------------------------------------------------------------------------
         */
 
@@ -138,7 +137,23 @@ class Registrations extends Model
         |--------------------------------------------------------------------------
         */
 
+
         'status',
+
+    ];
+
+
+
+
+    protected $casts = [
+
+        'visit_date' => 'date',
+
+        'registration_fee' => 'decimal:2',
+
+        'weight' => 'decimal:2',
+
+        'temperature' => 'decimal:1',
 
     ];
 
@@ -153,7 +168,8 @@ class Registrations extends Model
     */
 
 
-    // مریض
+
+    // اطلاعات کامل مریض از جدول patients
     public function patient()
     {
         return $this->belongsTo(
@@ -180,7 +196,6 @@ class Registrations extends Model
 
 
     // داکتر معالج
-    // User دارای Role Doctor
     public function doctor()
     {
         return $this->belongsTo(
@@ -188,6 +203,8 @@ class Registrations extends Model
             'doctor_id'
         );
     }
+
+
 
 
 
@@ -204,14 +221,11 @@ class Registrations extends Model
     {
         return $this->hasMany(
             Journal::class,
-            'ref_id',
+            'registration_id',
             'reg_id'
-        )
-        ->whereColumn(
-            'journals.ref_type',
-            'registrations.reg_type'
         );
     }
+
 
 
 
@@ -219,22 +233,29 @@ class Registrations extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | Accessor
+    | Accessors
     |--------------------------------------------------------------------------
     */
 
 
     public function getRegNameAttribute(): string
     {
-        return trim(
-            $this->full_name .
-            (
-                $this->father_name
-                ? ' / '.$this->father_name
-                : ''
-            )
-        );
+
+        if ($this->patient) {
+
+            return trim(
+                $this->patient->first_name .
+                ' ' .
+                $this->patient->last_name
+            );
+
+        }
+
+
+        return '';
+
     }
+
 
 
 
@@ -257,7 +278,9 @@ class Registrations extends Model
 
 
 
-    public function scopeByType($query,string $type)
+
+
+    public function scopeByType($query, string $type)
     {
         return $query->where(
             'reg_type',

@@ -24,53 +24,8 @@ return new class extends Migration
             $table->enum('reg_type', [
 
                 'patient',
-                'doctor',
-                'visitor',
-                'laboratory',
-                'transport',
-                'consultation'
 
             ])->comment('نوع مراجعه');
-
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | معلومات مراجعه کننده
-            |--------------------------------------------------------------------------
-            */
-
-
-            $table->string('full_name')
-                ->comment('نام مراجعه کننده');
-
-
-            $table->string('father_name')
-                ->nullable();
-
-
-            $table->string('phone',50)
-                ->nullable();
-
-
-            $table->enum('gender',[
-                'male',
-                'female',
-                'other'
-            ])
-            ->nullable();
-
-
-            $table->smallInteger('age')
-                ->nullable();
-
-
-            $table->string('blood_group',10)
-                ->nullable();
-
-
-            $table->text('address')
-                ->nullable();
 
 
 
@@ -79,6 +34,14 @@ return new class extends Migration
             | ارتباطات سیستم شفاخانه
             |--------------------------------------------------------------------------
             */
+
+
+            // مریض اصلی از جدول patients
+
+            $table->foreignId('patient_id')
+                ->constrained('patients')
+                ->cascadeOnDelete();
+
 
 
             // بخش مربوطه
@@ -90,21 +53,13 @@ return new class extends Migration
 
 
 
-            // مریض اصلی از جدول patients
-
-            $table->foreignId('patient_id')
-                ->nullable()
-                ->constrained('patients')
-                ->nullOnDelete();
-
-
-
-            // داکتر معالج از جدول users
+            // داکتر معالج
 
             $table->foreignId('doctor_id')
                 ->nullable()
                 ->constrained('users')
                 ->nullOnDelete();
+
 
 
 
@@ -140,6 +95,7 @@ return new class extends Migration
 
 
 
+
             /*
             |--------------------------------------------------------------------------
             | فیس مراجعه
@@ -154,6 +110,8 @@ return new class extends Migration
             )
             ->default(0)
             ->comment('فیس ابتدایی مراجعه');
+
+
 
 
 
@@ -180,6 +138,8 @@ return new class extends Migration
 
 
 
+
+
             /*
             |--------------------------------------------------------------------------
             | تاریخ و یادداشت
@@ -191,8 +151,11 @@ return new class extends Migration
                 ->nullable();
 
 
+
             $table->text('note')
                 ->nullable();
+
+
 
 
 
@@ -236,6 +199,8 @@ return new class extends Migration
 
             $table->tinyInteger('oxygen')
                 ->nullable();
+
+
 
 
 

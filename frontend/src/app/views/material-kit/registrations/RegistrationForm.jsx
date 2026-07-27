@@ -8,40 +8,57 @@ export default function RegistrationForm() {
   const { api } = useAuth();
 
   const [form, setForm] = useState({
-    reg_type: "",
-    full_name: "",
-    father_name: "",
-    phone: "",
-    gender: "",
-    age: "",
-    blood_group: "",
-    address: "",
-    visit_date: "",
-    note: "",
-    department_id: "",
     patient_id: "",
+    department_id: "",
     doctor_id: "",
     visit_number: "",
     visit_type: "",
     queue_number: "",
+    registration_fee: "",
     visit_status: "Waiting",
     diagnosis: "",
     weight: "",
     blood_pressure: "",
     temperature: "",
     oxygen: "",
+    visit_date: "",
+    note: "",
+    // فیلدهای جستجو
+    search_tazkira: "",
+    search_name: "",
+    search_phone: "",
+    // فیلدهای ثبت مریض جدید
+    new_first_name: "",
+    new_last_name: "",
+    new_father_name: "",
+    new_mobile: "",
+    new_national_id: "",
+    new_gender: "",
+    new_age: "",
+    new_blood_group: "",
+    new_address: "",
   });
+
+  // اطلاعات مریض انتخاب شده برای نمایش در فرم
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [showNewPatientForm, setShowNewPatientForm] = useState(false);
 
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [patients, setPatients] = useState([]);
   const [registrations, setRegistrations] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [editingId, setEditingId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingPatient, setIsSubmittingPatient] = useState(false);
   const [selectedRegistration, setSelectedRegistration] = useState(null);
   const [showSendModal, setShowSendModal] = useState(false);
+  const [statistics, setStatistics] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const ROWS_PER_PAGE = 10;
 
   useEffect(() => {
@@ -49,51 +66,290 @@ export default function RegistrationForm() {
       try {
         const [deptRes, docRes, patientRes] = await Promise.all([
           api.get("/departments"),
-          api.get("/users/doctors"), // تغییر: endpoint مخصوص داکترها
+          api.get("/users?role=doctor"),
           api.get("/patients")
         ]);
         
-        setDepartments(Array.isArray(deptRes.data) ? deptRes.data : deptRes.data.data || []);
+        const deptData = Array.isArray(deptRes.data) ? deptRes.data : (deptRes.data?.data || []);
+        setDepartments(deptData);
         
-        // اطمینان از اینکه فقط داکترها نمایش داده می‌شوند
-        let doctorsData = Array.isArray(docRes.data) ? docRes.data : docRes.data.data || [];
-        // اگر داده‌ها شامل role باشند، فیلتر می‌کنیم
-        if (doctorsData.length > 0 && doctorsData[0].role) {
-          doctorsData = doctorsData.filter(user => user.role === 'doctor' || user.role === 'Doctor');
+        let doctorsData = [];
+        if (Array.isArray(docRes.data)) {
+          doctorsData = docRes.data;
+        } else if (docRes.data?.data && Array.isArray(docRes.data.data)) {
+          doctorsData = docRes.data.data;
+        }
+        
+        if (doctorsData.length > 0) {
+          doctorsData = doctorsData.filter(user =>
+            user.roles?.some(role => 
+              role.name?.toLowerCase() === 'doctor'
+            ) || user.role?.toLowerCase() === 'doctor'
+          );
         }
         setDoctors(doctorsData);
         
-        setPatients(Array.isArray(patientRes.data) ? patientRes.data : patientRes.data.data || []);
+        let patientsData = [];
+        if (Array.isArray(patientRes.data)) {
+          patientsData = patientRes.data;
+        } else if (patientRes.data?.data && Array.isArray(patientRes.data.data)) {
+          patientsData = patientRes.data.data;
+        }
+        setPatients(patientsData);
+        
       } catch (err) {
         console.error("خطا در بارگذاری داده‌ها:", err);
         setDepartments([]);
         setDoctors([]);
         setPatients([]);
-        
-        // اگر endpoint اولیه خطا داد، تلاش با endpoint جایگزین
-        try {
-          const fallbackRes = await api.get("/users?role=doctor");
-          const fallbackData = Array.isArray(fallbackRes.data) ? fallbackRes.data : fallbackRes.data.data || [];
-          setDoctors(fallbackData);
-        } catch (fallbackErr) {
-          console.error("خطا در بارگذاری داکترها با endpoint جایگزین:", fallbackErr);
-        }
       }
     };
     fetchInitialData();
     fetchRegistrations();
+    fetchStatistics();
   }, [api]);
 
   const fetchRegistrations = async () => {
+    setLoading(true);
     try {
       const res = await api.get("/registrations");
-      const regs = Array.isArray(res.data) ? res.data : res.data.data || [];
-      setRegistrations(regs.reverse());
+      let regs = [];
+      if (Array.isArray(res.data)) {
+        regs = res.data;
+      } else if (res.data?.data && Array.isArray(res.data.data)) {
+        regs = res.data.data;
+      } else if (res.data?.data && typeof res.data.data === 'object') {
+        regs = res.data.data.data || [];
+      }
+      setRegistrations(regs);
       setCurrentPage(1);
     } catch (err) {
-      console.error("خطا در دریافت رجستریشن‌ها:", err);
+      console.error("خطا در دریافت مریض‌ها:", err);
       setRegistrations([]);
+      toast.error("خطا در دریافت لیست مریض‌ها");
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const fetchStatistics = async () => {
+    try {
+      const res = await api.get("/registrations/statistics");
+      setStatistics(res.data);
+    } catch (err) {
+      console.error("خطا در دریافت آمار:", err);
+    }
+  };
+
+  // جستجوی مریض‌های قبلی از لیست patients
+  const searchExistingPatients = () => {
+    const { search_tazkira, search_name, search_phone } = form;
+
+    if (!search_tazkira && !search_name && !search_phone) {
+      toast.warning("⚠️ لطفاً حداقل یکی از فیلدهای جستجو را پر کنید");
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    setSearching(true);
+
+    try {
+      const results = patients.filter((patient) => {
+        let match = true;
+
+        if (search_tazkira) {
+          const tazkiraMatch = patient.national_id?.toLowerCase().includes(search_tazkira.toLowerCase());
+          if (!tazkiraMatch) match = false;
+        }
+
+        if (search_name && match) {
+          const fullName = (patient.first_name || '') + ' ' + (patient.last_name || '');
+          const nameMatch = fullName.toLowerCase().includes(search_name.toLowerCase()) ||
+                           patient.first_name?.toLowerCase().includes(search_name.toLowerCase()) ||
+                           patient.last_name?.toLowerCase().includes(search_name.toLowerCase());
+          if (!nameMatch) match = false;
+        }
+
+        if (search_phone && match) {
+          const phoneMatch = patient.mobile?.toLowerCase().includes(search_phone.toLowerCase());
+          if (!phoneMatch) match = false;
+        }
+
+        return match;
+      });
+
+      setSearchResults(results);
+      setShowSearchResults(results.length > 0);
+
+      if (results.length === 0) {
+        toast.info("ℹ️ هیچ مریضی با این مشخصات یافت نشد");
+      } else {
+        toast.success(`✅ ${results.length} مریض پیدا شد`);
+      }
+
+    } catch (err) {
+      console.error(err);
+      setSearchResults([]);
+      setShowSearchResults(false);
+      toast.error("❌ خطا در جستجو");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // جستجوی خودکار با تغییر فیلدها (با تاخیر)
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      const { search_tazkira, search_name, search_phone } = form;
+      if (search_tazkira || search_name || search_phone) {
+        searchExistingPatients();
+      } else {
+        setSearchResults([]);
+        setShowSearchResults(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [form.search_tazkira, form.search_name, form.search_phone]);
+
+  // انتخاب مریض از نتایج جستجو
+  const selectExistingPatient = (patient) => {
+    setSelectedPatient(patient);
+    setForm(prev => ({
+      ...prev,
+      patient_id: patient.id,
+      search_tazkira: patient.national_id || '',
+      search_name: (patient.first_name || '') + ' ' + (patient.last_name || ''),
+      search_phone: patient.mobile || '',
+    }));
+    
+    setSearchResults([]);
+    setShowSearchResults(false);
+    setShowNewPatientForm(false);
+    
+    const fullName = (patient.first_name || '') + ' ' + (patient.last_name || '');
+    toast.success(`✅ مریض ${fullName} انتخاب شد`);
+  };
+
+  // ثبت مریض جدید
+  const handleNewPatientSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmittingPatient(true);
+
+    // Validation
+    if (!form.new_first_name || !form.new_last_name) {
+      toast.error("❌ نام و نام خانوادگی الزامی است");
+      setIsSubmittingPatient(false);
+      return;
+    }
+
+    try {
+      const patientData = {
+        first_name: form.new_first_name,
+        last_name: form.new_last_name,
+        father_name: form.new_father_name || null,
+        mobile: form.new_mobile || null,
+        national_id: form.new_national_id || null,
+        gender: form.new_gender || null,
+        age: form.new_age || null,
+        blood_group: form.new_blood_group || null,
+        address: form.new_address || null,
+      };
+
+      const response = await api.post("/patients", patientData);
+      const newPatient = response.data?.data || response.data;
+      
+      // اضافه کردن مریض جدید به لیست patients
+      setPatients(prev => [newPatient, ...prev]);
+      
+      // انتخاب خودکار مریض جدید
+      setSelectedPatient(newPatient);
+      setForm(prev => ({
+        ...prev,
+        patient_id: newPatient.id,
+        search_tazkira: newPatient.national_id || '',
+        search_name: (newPatient.first_name || '') + ' ' + (newPatient.last_name || ''),
+        search_phone: newPatient.mobile || '',
+        // پاک کردن فیلدهای ثبت مریض جدید
+        new_first_name: "",
+        new_last_name: "",
+        new_father_name: "",
+        new_mobile: "",
+        new_national_id: "",
+        new_gender: "",
+        new_age: "",
+        new_blood_group: "",
+        new_address: "",
+      }));
+      
+      setShowNewPatientForm(false);
+      toast.success(`✅ مریض جدید ${newPatient.first_name} ${newPatient.last_name} با موفقیت ثبت شد`);
+      
+    } catch (err) {
+      console.error("خطا در ثبت مریض جدید:", err);
+      if (err.response?.status === 422 && err.response?.data?.errors) {
+        Object.entries(err.response.data.errors).forEach(([field, messages]) => {
+          toast.error(`❌ ${messages[0]}`);
+        });
+      } else {
+        toast.error(err.response?.data?.message || "❌ خطا در ثبت مریض جدید");
+      }
+    } finally {
+      setIsSubmittingPatient(false);
+    }
+  };
+
+  // پاک کردن فیلدهای جستجو
+  const clearSearchFields = () => {
+    setForm(prev => ({
+      ...prev,
+      search_tazkira: "",
+      search_name: "",
+      search_phone: "",
+    }));
+    setSearchResults([]);
+    setShowSearchResults(false);
+    setSelectedPatient(null);
+    setShowNewPatientForm(false);
+  };
+
+  // پاک کردن فرم (برای ثبت جدید)
+  const clearForm = () => {
+    setForm({
+      patient_id: "",
+      department_id: "",
+      doctor_id: "",
+      visit_number: "",
+      visit_type: "",
+      queue_number: "",
+      registration_fee: "",
+      visit_status: "Waiting",
+      diagnosis: "",
+      weight: "",
+      blood_pressure: "",
+      temperature: "",
+      oxygen: "",
+      visit_date: "",
+      note: "",
+      search_tazkira: "",
+      search_name: "",
+      search_phone: "",
+      new_first_name: "",
+      new_last_name: "",
+      new_father_name: "",
+      new_mobile: "",
+      new_national_id: "",
+      new_gender: "",
+      new_age: "",
+      new_blood_group: "",
+      new_address: "",
+    });
+    setSelectedPatient(null);
+    setSearchResults([]);
+    setShowSearchResults(false);
+    setShowNewPatientForm(false);
+    setEditingId(null);
   };
 
   const handleChange = (e) => {
@@ -105,74 +361,53 @@ export default function RegistrationForm() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Validation based on backend rules
-    if (!form.reg_type || !form.full_name) {
-      toast.error("❌ نوع راجستریشن و نام کامل الزامی است");
+    // Validation
+    if (!form.patient_id) {
+      toast.error("❌ لطفاً یک مریض را انتخاب کنید");
       setIsSubmitting(false);
       return;
     }
 
-    // Reg type validation
-    const validRegTypes = ['patient', 'doctor', 'visitor', 'laboratory', 'transport', 'consultation'];
-    if (!validRegTypes.includes(form.reg_type)) {
-      toast.error("❌ نوع راجستریشن نامعتبر است");
+    if (!form.registration_fee || parseFloat(form.registration_fee) < 0) {
+      toast.error("❌ لطفاً مبلغ فیس مراجعه را وارد کنید");
       setIsSubmitting(false);
       return;
     }
 
-    // Gender validation
-    if (form.gender && !['male', 'female', 'other'].includes(form.gender)) {
-      toast.error("❌ جنسیت نامعتبر است");
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Age validation
-    if (form.age && (parseInt(form.age) < 0 || parseInt(form.age) > 150)) {
-      toast.error("❌ سن باید بین 0 تا 150 باشد");
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Weight validation
     if (form.weight && (parseFloat(form.weight) < 0 || parseFloat(form.weight) > 300)) {
       toast.error("❌ وزن باید بین 0 تا 300 کیلوگرم باشد");
       setIsSubmitting(false);
       return;
     }
 
-    // Temperature validation
     if (form.temperature && (parseFloat(form.temperature) < 30 || parseFloat(form.temperature) > 45)) {
       toast.error("❌ حرارت باید بین 30 تا 45 درجه سانتی‌گراد باشد");
       setIsSubmitting(false);
       return;
     }
 
-    // Oxygen validation
     if (form.oxygen && (parseInt(form.oxygen) < 0 || parseInt(form.oxygen) > 100)) {
       toast.error("❌ اکسیجن باید بین 0 تا 100 درصد باشد");
       setIsSubmitting(false);
       return;
     }
 
-    // Visit type validation
-    if (form.visit_type && !['OPD', 'IPD', 'Emergency', 'Laboratory', 'Radiology', 'Pharmacy'].includes(form.visit_type)) {
-      toast.error("❌ نوع مراجعه نامعتبر است");
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Visit status validation
-    if (form.visit_status && !['Waiting', 'Doctor', 'Laboratory', 'Radiology', 'Pharmacy', 'Completed', 'Cancelled'].includes(form.visit_status)) {
-      toast.error("❌ وضعیت مراجعه نامعتبر است");
-      setIsSubmitting(false);
-      return;
-    }
-
     try {
       const submitData = { ...form };
+      // حذف فیلدهای جستجو و فیلدهای مریض جدید از داده‌های ارسالی
+      delete submitData.search_tazkira;
+      delete submitData.search_name;
+      delete submitData.search_phone;
+      delete submitData.new_first_name;
+      delete submitData.new_last_name;
+      delete submitData.new_father_name;
+      delete submitData.new_mobile;
+      delete submitData.new_national_id;
+      delete submitData.new_gender;
+      delete submitData.new_age;
+      delete submitData.new_blood_group;
+      delete submitData.new_address;
       
-      // Convert empty strings to null for optional fields
       Object.keys(submitData).forEach(key => {
         if (submitData[key] === '') {
           submitData[key] = null;
@@ -185,72 +420,53 @@ export default function RegistrationForm() {
         toast.success("✅ معلومات با موفقیت تصحیح شد");
       } else {
         response = await api.post("/registrations", submitData);
-        toast.success("✅ ثبت موفقانه انجام شد");
+        toast.success("✅ مراجعه با موفقیت ثبت شد");
         
-        // اگر نوع مریض باشد و داکتر انتخاب شده باشد، پیشنهاد ارسال به داکتر
-        if (form.reg_type === 'patient' && form.doctor_id) {
-          const newRegistration = response.data.data || response.data;
+        if (form.doctor_id) {
+          const newRegistration = response.data?.data || response.data;
           setSelectedRegistration(newRegistration);
           setShowSendModal(true);
         }
       }
 
-      setForm({
-        reg_type: "",
-        full_name: "",
-        father_name: "",
-        phone: "",
-        gender: "",
-        age: "",
-        blood_group: "",
-        address: "",
-        visit_date: "",
-        note: "",
-        department_id: "",
-        patient_id: "",
-        doctor_id: "",
-        visit_number: "",
-        visit_type: "",
-        queue_number: "",
-        visit_status: "Waiting",
-        diagnosis: "",
-        weight: "",
-        blood_pressure: "",
-        temperature: "",
-        oxygen: "",
-      });
-
-      setEditingId(null);
+      clearForm();
       fetchRegistrations();
-    } catch (err) {
-      console.error(err);
+      fetchStatistics();
+    }  
+    catch (err) {
+      console.log("STATUS:", err.response?.status);
+      console.log("DATA:", err.response?.data);
+
+      if (err.response?.status === 422 && err.response?.data?.errors) {
+        Object.entries(err.response.data.errors).forEach(([field, messages]) => {
+          console.log(field, messages);
+        });
+      }
+
       toast.error(err.response?.data?.message || "❌ خطا در ذخیره معلومات");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // تابع ارسال به داکتر
   const handleSendToDoctor = async () => {
     if (!selectedRegistration) return;
 
     try {
-      // به‌روزرسانی وضعیت به "Doctor"
       await api.put(`/registrations/${selectedRegistration.reg_id}`, {
         ...selectedRegistration,
         visit_status: 'Doctor'
       });
 
-      // ارسال نوتیفیکیشن به داکتر
       await api.post('/notifications', {
         user_id: selectedRegistration.doctor_id,
         title: 'مریض جدید',
-        message: `مریض جدید با نام ${selectedRegistration.full_name} به شما ارجاع داده شد`,
+        message: `مریض جدید با نام ${selectedRegistration.patient?.first_name || ''} ${selectedRegistration.patient?.last_name || ''} به شما ارجاع داده شد`,
         type: 'new_patient',
         registration_id: selectedRegistration.reg_id
       });
 
-      toast.success(`✅ معلومات به داکتر مورد نظر ارسال شد`);
+      toast.success(`✅ معلومات به داکتر ارسال شد`);
       setShowSendModal(false);
       setSelectedRegistration(null);
       fetchRegistrations();
@@ -260,7 +476,6 @@ export default function RegistrationForm() {
     }
   };
 
-  // تابع ارسال به داکتر از طریق دکمه در لیست
   const handleSendToDoctorFromList = async (registration) => {
     if (!registration.doctor_id) {
       toast.warning("⚠️ لطفاً ابتدا داکتر معالج را انتخاب کنید");
@@ -276,7 +491,7 @@ export default function RegistrationForm() {
       await api.post('/notifications', {
         user_id: registration.doctor_id,
         title: 'مریض جدید',
-        message: `مریض با نام ${registration.full_name} به شما ارجاع داده شد`,
+        message: `مریض با نام ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''} به شما ارجاع داده شد`,
         type: 'new_patient',
         registration_id: registration.reg_id
       });
@@ -290,61 +505,131 @@ export default function RegistrationForm() {
   };
 
   const handleDelete = async (reg_id) => {
-    if (!window.confirm("آیا مطمئن هستید که می‌خواهید این رجستریشن را حذف کنید؟")) return;
+    if (!window.confirm("آیا مطمئن هستید که می‌خواهید این مراجعه را حذف کنید؟")) return;
 
     try {
       await api.delete(`/registrations/${reg_id}`);
       toast.success("✅ حذف موفقانه انجام شد");
       fetchRegistrations();
+      fetchStatistics();
     } catch (err) {
       console.error(err);
-      toast.error("❌ خطا در حذف رجستریشن");
+      toast.error("❌ خطا در حذف مراجعه");
     }
   };
 
   const handleEdit = (reg) => {
-    setForm({ ...reg });
+    setForm({ 
+      patient_id: reg.patient_id || "",
+      department_id: reg.department_id || "",
+      doctor_id: reg.doctor_id || "",
+      visit_number: reg.visit_number || "",
+      visit_type: reg.visit_type || "",
+      queue_number: reg.queue_number || "",
+      registration_fee: reg.registration_fee || "",
+      visit_status: reg.visit_status || "Waiting",
+      diagnosis: reg.diagnosis || "",
+      weight: reg.weight || "",
+      blood_pressure: reg.blood_pressure || "",
+      temperature: reg.temperature || "",
+      oxygen: reg.oxygen || "",
+      visit_date: reg.visit_date || "",
+      note: reg.note || "",
+      search_tazkira: "",
+      search_name: "",
+      search_phone: "",
+      new_first_name: "",
+      new_last_name: "",
+      new_father_name: "",
+      new_mobile: "",
+      new_national_id: "",
+      new_gender: "",
+      new_age: "",
+      new_blood_group: "",
+      new_address: "",
+    });
+    setSelectedPatient(reg.patient || null);
     setEditingId(reg.reg_id);
+    setSearchResults([]);
+    setShowSearchResults(false);
+    setShowNewPatientForm(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleCancelEdit = () => {
-    setEditingId(null);
-    setForm({
-      reg_type: "",
-      full_name: "",
-      father_name: "",
-      phone: "",
-      gender: "",
-      age: "",
-      blood_group: "",
-      address: "",
-      visit_date: "",
-      note: "",
-      department_id: "",
-      patient_id: "",
-      doctor_id: "",
-      visit_number: "",
-      visit_type: "",
-      queue_number: "",
-      visit_status: "Waiting",
-      diagnosis: "",
-      weight: "",
-      blood_pressure: "",
-      temperature: "",
-      oxygen: "",
-    });
+    clearForm();
     toast.info("✏️ ویرایش لغو شد");
+  };
+
+  const getDoctorName = (doctorId) => {
+    if (!doctorId) return "-";
+    const doctor = doctors.find(d => d.id === doctorId);
+    return doctor ? (doctor.name || doctor.full_name || `داکتر ${doctor.id}`) : "-";
+  };
+
+  const getPatientFullName = (patient) => {
+    if (!patient) return "-";
+    return (patient.first_name || '') + ' ' + (patient.last_name || '');
+  };
+
+  const getPaymentStatus = (registration) => {
+    const fee = parseFloat(registration.registration_fee) || 0;
+    if (fee === 0) return <span style={{ color: '#9ca3af' }}>رایگان</span>;
+    
+    const journalAmount = registration.journals?.reduce((sum, j) => {
+      if (j.entry_type === 'credit') {
+        return sum + parseFloat(j.amount || 0);
+      }
+      return sum;
+    }, 0) || 0;
+    
+    if (journalAmount >= fee) {
+      return <span style={{ color: '#22c55e' }}>پرداخت شده</span>;
+    } else if (journalAmount > 0 && journalAmount < fee) {
+      return <span style={{ color: '#f59e0b' }}>ناقص ({(fee - journalAmount).toFixed(2)} باقیمانده)</span>;
+    } else {
+      return <span style={{ color: '#dc2626' }}>پرداخت نشده</span>;
+    }
+  };
+
+  const getStatusText = (status) => {
+    const statusMap = {
+      'Waiting': 'در انتظار',
+      'Doctor': 'نزد داکتر',
+      'Laboratory': 'لابراتوار',
+      'Radiology': 'رادیولوژی',
+      'Pharmacy': 'دواخانه',
+      'Billing': 'حسابداری',
+      'Completed': 'تکمیل شده',
+      'Cancelled': 'لغو شده'
+    };
+    return statusMap[status] || status || '-';
+  };
+
+  const getStatusColor = (status) => {
+    const colorMap = {
+      'Waiting': '#f59e0b',
+      'Doctor': '#8b5cf6',
+      'Laboratory': '#3b82f6',
+      'Radiology': '#06b6d4',
+      'Pharmacy': '#10b981',
+      'Billing': '#ec4899',
+      'Completed': '#22c55e',
+      'Cancelled': '#dc2626'
+    };
+    return colorMap[status] || '#6b7280';
   };
 
   const filteredRows = useMemo(() => {
     if (!searchTerm.trim()) return registrations;
     const term = searchTerm.toLowerCase();
     return registrations.filter(
-      (r) =>
-        r.full_name?.toLowerCase().includes(term) ||
-        r.phone?.toLowerCase().includes(term) ||
-        r.visit_number?.toLowerCase().includes(term)
+      (r) => {
+        const fullName = getPatientFullName(r.patient).toLowerCase();
+        const mobile = r.patient?.mobile?.toLowerCase() || '';
+        const visitNum = r.visit_number?.toLowerCase() || '';
+        return fullName.includes(term) || mobile.includes(term) || visitNum.includes(term);
+      }
     );
   }, [registrations, searchTerm]);
 
@@ -404,7 +689,7 @@ export default function RegistrationForm() {
           }}>
             <h3 style={{ marginBottom: '20px', textAlign: 'center' }}>ارسال به داکتر</h3>
             <p style={{ marginBottom: '20px', textAlign: 'center' }}>
-              آیا می‌خواهید اطلاعات {selectedRegistration?.full_name} را به داکتر مربوطه ارسال کنید؟
+              آیا می‌خواهید اطلاعات {selectedRegistration?.patient ? getPatientFullName(selectedRegistration.patient) : ''} را به داکتر مربوطه ارسال کنید؟
             </p>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
               <button
@@ -441,41 +726,437 @@ export default function RegistrationForm() {
         </div>
       )}
 
+      {/* آمار */}
+      {statistics && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '15px',
+          marginBottom: '20px',
+          padding: '15px',
+          backgroundColor: '#1f2937',
+          borderRadius: '8px'
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#3b82f6' }}>{statistics.total_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>مجموع مراجعات</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#22c55e' }}>{statistics.today_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>مراجعات امروز</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f59e0b' }}>{statistics.waiting_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>در انتظار</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#8b5cf6' }}>{statistics.completed_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>تکمیل شده</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ec4899' }}>{statistics.total_fees?.toFixed(2) || '0'}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>مجموع فیس (افغانی)</div>
+          </div>
+        </div>
+      )}
+
       <div className="form-container">
         <h2 style={{ textAlign: "center" }}>
-          {editingId ? "ویرایش راجستریشن" : "راجستریشن عمومی شفاخانه"}
+          {editingId ? "ویرایش مراجعه" : "ثبت مراجعه جدید"}
         </h2>
 
         <form onSubmit={handleSubmit} className="form-grid">
-          <div>
-            <label>نوع راجستریشن *</label>
-            <select
-              name="reg_type"
-              value={form.reg_type}
-              onChange={handleChange}
-              className="form-control"
-              required
-            >
-              <option value="">-- انتخاب --</option>
-              <option value="patient">مریض</option>
-              <option value="doctor">داکتر</option>
-              <option value="visitor">مراجع</option>
-              <option value="laboratory">لابراتوار</option>
-              <option value="transport">ترانسپورت</option>
-              <option value="consultation">مشاوره</option>
-            </select>
+          {/* بخش جستجوی مریض از سیستم */}
+          <div style={{ 
+            gridColumn: '1 / -1', 
+            marginBottom: '15px',
+            padding: '15px',
+            backgroundColor: '#1f2937',
+            borderRadius: '8px',
+            border: '1px solid #374151'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <h4 style={{ color: '#60a5fa' }}>🔍 جستجوی مریض از سیستم</h4>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewPatientForm(!showNewPatientForm);
+                  setSearchResults([]);
+                  setShowSearchResults(false);
+                }}
+                style={{
+                  backgroundColor: showNewPatientForm ? '#dc2626' : '#22c55e',
+                  color: 'white',
+                  padding: '5px 15px',
+                  borderRadius: '5px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '13px'
+                }}
+              >
+                {showNewPatientForm ? '✕ بستن' : '+ ثبت مریض جدید'}
+              </button>
+            </div>
+
+            {/* فرم ثبت مریض جدید */}
+            {showNewPatientForm && (
+              <div style={{
+                marginBottom: '15px',
+                padding: '15px',
+                backgroundColor: '#1a2a3a',
+                borderRadius: '8px',
+                border: '1px solid #374151'
+              }}>
+                <h5 style={{ color: '#34d399', marginBottom: '10px' }}>📝 ثبت مریض جدید</h5>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#9ca3af' }}>نام *</label>
+                    <input
+                      type="text"
+                      name="new_first_name"
+                      value={form.new_first_name}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="نام..."
+                      style={{ fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#9ca3af' }}>نام خانوادگی *</label>
+                    <input
+                      type="text"
+                      name="new_last_name"
+                      value={form.new_last_name}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="نام خانوادگی..."
+                      style={{ fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#9ca3af' }}>نام پدر</label>
+                    <input
+                      type="text"
+                      name="new_father_name"
+                      value={form.new_father_name}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="نام پدر..."
+                      style={{ fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#9ca3af' }}>شماره تماس</label>
+                    <input
+                      type="text"
+                      name="new_mobile"
+                      value={form.new_mobile}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="شماره تماس..."
+                      style={{ fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#9ca3af' }}>شماره تذکره</label>
+                    <input
+                      type="text"
+                      name="new_national_id"
+                      value={form.new_national_id}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="شماره تذکره..."
+                      style={{ fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#9ca3af' }}>جنسیت</label>
+                    <select
+                      name="new_gender"
+                      value={form.new_gender}
+                      onChange={handleChange}
+                      className="form-control"
+                      style={{ fontSize: '14px' }}
+                    >
+                      <option value="">-- انتخاب --</option>
+                      <option value="male">مرد</option>
+                      <option value="female">زن</option>
+                      <option value="other">دیگر</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#9ca3af' }}>سن</label>
+                    <input
+                      type="number"
+                      name="new_age"
+                      value={form.new_age}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="سن..."
+                      style={{ fontSize: '14px' }}
+                      min="0"
+                      max="150"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#9ca3af' }}>گروه خون</label>
+                    <select
+                      name="new_blood_group"
+                      value={form.new_blood_group}
+                      onChange={handleChange}
+                      className="form-control"
+                      style={{ fontSize: '14px' }}
+                    >
+                      <option value="">-- انتخاب --</option>
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                      <option value="B+">B+</option>
+                      <option value="B-">B-</option>
+                      <option value="AB+">AB+</option>
+                      <option value="AB-">AB-</option>
+                      <option value="O+">O+</option>
+                      <option value="O-">O-</option>
+                    </select>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ fontSize: '12px', color: '#9ca3af' }}>آدرس</label>
+                    <textarea
+                      name="new_address"
+                      value={form.new_address}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="آدرس کامل..."
+                      style={{ fontSize: '14px' }}
+                      rows="2"
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={handleNewPatientSubmit}
+                    disabled={isSubmittingPatient}
+                    style={{
+                      backgroundColor: '#22c55e',
+                      color: 'white',
+                      padding: '8px 25px',
+                      borderRadius: '5px',
+                      border: 'none',
+                      cursor: isSubmittingPatient ? 'not-allowed' : 'pointer',
+                      opacity: isSubmittingPatient ? 0.6 : 1
+                    }}
+                  >
+                    {isSubmittingPatient ? 'در حال ثبت...' : 'ثبت مریض'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewPatientForm(false);
+                      setForm(prev => ({
+                        ...prev,
+                        new_first_name: "",
+                        new_last_name: "",
+                        new_father_name: "",
+                        new_mobile: "",
+                        new_national_id: "",
+                        new_gender: "",
+                        new_age: "",
+                        new_blood_group: "",
+                        new_address: "",
+                      }));
+                    }}
+                    style={{
+                      backgroundColor: '#6b7280',
+                      color: 'white',
+                      padding: '8px 20px',
+                      borderRadius: '5px',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    انصراف
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: '#9ca3af' }}>شماره تذکره</label>
+                <input
+                  type="text"
+                  name="search_tazkira"
+                  value={form.search_tazkira}
+                  onChange={handleChange}
+                  className="form-control"
+                  placeholder="شماره تذکره..."
+                  style={{ fontSize: '14px' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: '#9ca3af' }}>نام کامل</label>
+                <input
+                  type="text"
+                  name="search_name"
+                  value={form.search_name}
+                  onChange={handleChange}
+                  className="form-control"
+                  placeholder="نام کامل..."
+                  style={{ fontSize: '14px' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: '#9ca3af' }}>شماره تماس</label>
+                <input
+                  type="text"
+                  name="search_phone"
+                  value={form.search_phone}
+                  onChange={handleChange}
+                  className="form-control"
+                  placeholder="شماره تماس..."
+                  style={{ fontSize: '14px' }}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <button
+                type="button"
+                onClick={searchExistingPatients}
+                disabled={searching}
+                style={{
+                  backgroundColor: '#2563eb',
+                  color: 'white',
+                  padding: '8px 20px',
+                  borderRadius: '5px',
+                  border: 'none',
+                  cursor: searching ? 'not-allowed' : 'pointer',
+                  opacity: searching ? 0.6 : 1
+                }}
+              >
+                {searching ? 'در حال جستجو...' : 'جستجو'}
+              </button>
+              <button
+                type="button"
+                onClick={clearSearchFields}
+                style={{
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  padding: '8px 20px',
+                  borderRadius: '5px',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                پاک کردن
+              </button>
+            </div>
+
+            {/* نتایج جستجو - با زمینه سفید برای خوانایی */}
+            {showSearchResults && searchResults.length > 0 && (
+              <div style={{
+                marginTop: '10px',
+                backgroundColor: '#ffffff',
+                borderRadius: '5px',
+                maxHeight: '250px',
+                overflowY: 'auto',
+                border: '1px solid #d1d5db'
+              }}>
+                <table style={{ width: '100%', fontSize: '14px' }}>
+                  <thead style={{ backgroundColor: '#f3f4f6', borderBottom: '2px solid #d1d5db' }}>
+                    <tr>
+                      <th style={{ padding: '8px', textAlign: 'right', color: '#1f2937' }}>نام</th>
+                      <th style={{ padding: '8px', textAlign: 'right', color: '#1f2937' }}>شماره تذکره</th>
+                      <th style={{ padding: '8px', textAlign: 'right', color: '#1f2937' }}>شماره تماس</th>
+                      <th style={{ padding: '8px', textAlign: 'right', color: '#1f2937' }}>عملیات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {searchResults.map((patient) => (
+                      <tr key={patient.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                        <td style={{ padding: '8px', color: '#1f2937' }}>
+                          {patient.first_name} {patient.last_name}
+                        </td>
+                        <td style={{ padding: '8px', color: '#1f2937' }}>{patient.national_id || '-'}</td>
+                        <td style={{ padding: '8px', color: '#1f2937' }}>{patient.mobile || '-'}</td>
+                        <td style={{ padding: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => selectExistingPatient(patient)}
+                            style={{
+                              backgroundColor: '#22c55e',
+                              color: 'white',
+                              padding: '4px 12px',
+                              borderRadius: '4px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            انتخاب
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {showSearchResults && searchResults.length === 0 && (
+              <div style={{ marginTop: '10px', color: '#9ca3af', textAlign: 'center' }}>
+                هیچ مریضی یافت نشد
+              </div>
+            )}
+            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
+              💡 با وارد کردن یکی از فیلدهای بالا، جستجو به صورت خودکار انجام می‌شود
+            </div>
+            
+            {/* نمایش اطلاعات مریض انتخاب شده */}
+            {selectedPatient && (
+              <div style={{
+                marginTop: '10px',
+                padding: '10px',
+                backgroundColor: '#065f46',
+                borderRadius: '5px',
+                border: '1px solid #22c55e'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong style={{ color: '#22c55e' }}>مریض انتخاب شده:</strong>
+                    <span style={{ color: 'white', marginRight: '10px' }}>
+                      {selectedPatient.first_name} {selectedPatient.last_name}
+                    </span>
+                    <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+                      {selectedPatient.national_id && `| تذکره: ${selectedPatient.national_id}`}
+                      {selectedPatient.mobile && `| تماس: ${selectedPatient.mobile}`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPatient(null);
+                      setForm(prev => ({ ...prev, patient_id: "" }));
+                    }}
+                    style={{
+                      backgroundColor: '#dc2626',
+                      color: 'white',
+                      padding: '2px 10px',
+                      borderRadius: '4px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div>
-            <label>نام کامل / عنوان *</label>
-            <input
-              type="text"
-              name="full_name"
-              value={form.full_name}
-              onChange={handleChange}
-              className="form-control"
-              required
-            />
+          {/* اطلاعات مراجعه جدید */}
+          <div style={{ gridColumn: '1 / -1', marginBottom: '10px' }}>
+            <hr style={{ borderColor: '#374151' }} />
+            <h4 style={{ margin: '10px 0', color: '#60a5fa' }}>🔄 اطلاعات مراجعه جدید</h4>
           </div>
 
           <div>
@@ -509,93 +1190,6 @@ export default function RegistrationForm() {
                   {doc.name || doc.full_name || `داکتر ${doc.id}`}
                 </option>
               ))}
-            </select>
-          </div>
-
-          <div>
-            <label>مریض</label>
-            <select
-              name="patient_id"
-              value={form.patient_id}
-              onChange={handleChange}
-              className="form-control"
-            >
-              <option value="">-- انتخاب مریض --</option>
-              {patients.map((patient) => (
-                <option key={patient.id} value={patient.id}>
-                  {patient.full_name || patient.name || `مریض ${patient.id}`}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label>نام پدر</label>
-            <input
-              type="text"
-              name="father_name"
-              value={form.father_name}
-              onChange={handleChange}
-              className="form-control"
-            />
-          </div>
-
-          <div>
-            <label>شماره تماس</label>
-            <input
-              type="text"
-              name="phone"
-              value={form.phone}
-              onChange={handleChange}
-              className="form-control"
-            />
-          </div>
-
-          <div>
-            <label>جنسیت</label>
-            <select
-              name="gender"
-              value={form.gender}
-              onChange={handleChange}
-              className="form-control"
-            >
-              <option value="">-- انتخاب --</option>
-              <option value="male">مرد</option>
-              <option value="female">زن</option>
-              <option value="other">دیگر</option>
-            </select>
-          </div>
-
-          <div>
-            <label>سن</label>
-            <input
-              type="number"
-              name="age"
-              value={form.age}
-              onChange={handleChange}
-              className="form-control"
-              min="0"
-              max="150"
-            />
-          </div>
-
-          <div>
-            <label>گروه خون</label>
-            <select
-              name="blood_group"
-              value={form.blood_group}
-              onChange={handleChange}
-              className="form-control"
-            >
-              <option value="">-- انتخاب گروه خون --</option>
-              <option value="A+">A+</option>
-              <option value="A-">A-</option>
-              <option value="B+">B+</option>
-              <option value="B-">B-</option>
-              <option value="AB+">AB+</option>
-              <option value="AB-">AB-</option>
-              <option value="O+">O+</option>
-              <option value="O-">O-</option>
             </select>
           </div>
 
@@ -638,6 +1232,7 @@ export default function RegistrationForm() {
               onChange={handleChange}
               className="form-control"
               min="1"
+              placeholder="شماره صف"
             />
           </div>
 
@@ -654,6 +1249,7 @@ export default function RegistrationForm() {
               <option value="Laboratory">لابراتوار</option>
               <option value="Radiology">رادیولوژی</option>
               <option value="Pharmacy">دواخانه</option>
+              <option value="Billing">حسابداری</option>
               <option value="Completed">تکمیل شده</option>
               <option value="Cancelled">لغو شده</option>
             </select>
@@ -670,87 +1266,86 @@ export default function RegistrationForm() {
             />
           </div>
 
-          {/* Medical fields - conditionally shown for patients */}
-          {(form.reg_type === "patient") && (
-            <>
-              <div>
-                <label>تشخیص</label>
-                <textarea
-                  name="diagnosis"
-                  value={form.diagnosis}
-                  onChange={handleChange}
-                  className="form-control"
-                  rows="2"
-                  placeholder="تشخیص اولیه (اختیاری)"
-                />
-              </div>
-
-              <div>
-                <label>وزن (کیلوگرم)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  name="weight"
-                  value={form.weight}
-                  onChange={handleChange}
-                  className="form-control"
-                  placeholder="مثلاً 70.5"
-                  min="0"
-                  max="300"
-                />
-              </div>
-
-              <div>
-                <label>فشار خون</label>
-                <input
-                  type="text"
-                  name="blood_pressure"
-                  value={form.blood_pressure}
-                  onChange={handleChange}
-                  className="form-control"
-                  placeholder="مثلاً 120/80"
-                />
-              </div>
-
-              <div>
-                <label>حرارت (درجه سانتی‌گراد)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  name="temperature"
-                  value={form.temperature}
-                  onChange={handleChange}
-                  className="form-control"
-                  placeholder="مثلاً 36.5"
-                  min="30"
-                  max="45"
-                />
-              </div>
-
-              <div>
-                <label>اکسیجن (%)</label>
-                <input
-                  type="number"
-                  name="oxygen"
-                  value={form.oxygen}
-                  onChange={handleChange}
-                  className="form-control"
-                  placeholder="مثلاً 98"
-                  min="0"
-                  max="100"
-                />
-              </div>
-            </>
-          )}
-
-          <div className="full-width">
-            <label>آدرس</label>
-            <textarea
-              name="address"
-              value={form.address}
+          <div>
+            <label>فیس مراجعه (افغانی) *</label>
+            <input
+              type="number"
+              step="0.01"
+              name="registration_fee"
+              value={form.registration_fee}
               onChange={handleChange}
               className="form-control"
-              rows="3"
+              placeholder="مبلغ فیس مراجعه"
+              min="0"
+              required
+            />
+          </div>
+
+          <div>
+            <label>تشخیص</label>
+            <textarea
+              name="diagnosis"
+              value={form.diagnosis}
+              onChange={handleChange}
+              className="form-control"
+              rows="2"
+              placeholder="تشخیص اولیه"
+            />
+          </div>
+
+          <div>
+            <label>وزن (کیلوگرم)</label>
+            <input
+              type="number"
+              step="0.1"
+              name="weight"
+              value={form.weight}
+              onChange={handleChange}
+              className="form-control"
+              placeholder="مثلاً 70.5"
+              min="0"
+              max="300"
+            />
+          </div>
+
+          <div>
+            <label>فشار خون</label>
+            <input
+              type="text"
+              name="blood_pressure"
+              value={form.blood_pressure}
+              onChange={handleChange}
+              className="form-control"
+              placeholder="مثلاً 120/80"
+            />
+          </div>
+
+          <div>
+            <label>حرارت (درجه سانتی‌گراد)</label>
+            <input
+              type="number"
+              step="0.1"
+              name="temperature"
+              value={form.temperature}
+              onChange={handleChange}
+              className="form-control"
+              placeholder="مثلاً 36.5"
+              min="30"
+              max="45"
+            />
+          </div>
+
+          <div>
+            <label>اکسیجن (%)</label>
+            <input
+              type="number"
+              name="oxygen"
+              value={form.oxygen}
+              onChange={handleChange}
+              className="form-control"
+              placeholder="مثلاً 98"
+              min="0"
+              max="100"
             />
           </div>
 
@@ -762,6 +1357,7 @@ export default function RegistrationForm() {
               onChange={handleChange}
               className="form-control"
               rows="3"
+              placeholder="یادداشت‌های اضافی"
             />
           </div>
 
@@ -772,7 +1368,7 @@ export default function RegistrationForm() {
               style={{ backgroundColor: editingId ? "#ffc107" : "#2563eb" }}
               disabled={isSubmitting}
             >
-              {isSubmitting ? "در حال ثبت..." : (editingId ? "تصحیح" : "ثبت راجستریشن")}
+              {isSubmitting ? "در حال ثبت..." : (editingId ? "تصحیح" : "ثبت مراجعه")}
             </button>
 
             {editingId && (
@@ -797,112 +1393,138 @@ export default function RegistrationForm() {
       </div>
 
       <div className="form-container mt-10">
-        <h3 style={{ textAlign: "center" }}>لیست مراجعه‌های ثبت شده</h3>
+        <h3 style={{ textAlign: "center" }}>لیست مراجعات ثبت شده</h3>
         <div className="mb-3">
           <input
             type="text"
-            placeholder="جستجو بر اساس نام، شماره تماس یا شماره مراجعه..."
+            placeholder="جستجو بر اساس نام مریض، شماره تماس یا شماره مراجعه..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="form-control"
           />
         </div>
-        <table className="w-full text-white border-collapse">
-          <thead>
-            <tr className="bg-gray-700">
-              <th>نام کامل</th>
-              <th>نوع</th>
-              <th>شماره تماس</th>
-              <th>بخش</th>
-              <th>وضعیت</th>
-              <th>عملیات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currentRows.length ? (
-              currentRows.map((r) => (
-                <tr key={r.reg_id} className="hover:bg-gray-800 transition-colors">
-                  <td>{r.full_name || "-"}</td>
-                  <td>{r.reg_type || "-"}</td>
-                  <td>{r.phone || "-"}</td>
-                  <td>
-                    {departments.find((d) => d.id === r.department_id)?.name || "-"}
-                  </td>
-                  <td>
-                    <span style={{
-                      backgroundColor: 
-                        r.visit_status === 'Completed' ? '#22c55e' :
-                        r.visit_status === 'Cancelled' ? '#dc2626' :
-                        r.visit_status === 'Doctor' ? '#8b5cf6' :
-                        r.visit_status === 'Waiting' ? '#f59e0b' : '#3b82f6',
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      color: '#fff',
-                      fontSize: '12px'
-                    }}>
-                      {r.visit_status || "-"}
-                    </span>
-                  </td>
-                  <td className="flex gap-1" style={{ flexWrap: 'wrap', gap: '5px' }}>
-                    <button
-                      onClick={() => handleEdit(r)}
-                      style={{
-                        backgroundColor: "#cba81b",
-                        color: "#000",
-                        padding: "5px 10px",
-                        borderRadius: "5px",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "12px"
-                      }}
-                    >
-                      تصحیح
-                    </button>
-
-                    <button
-                      onClick={() => handleDelete(r.reg_id)}
-                      style={{
-                        backgroundColor: "#dc2626",
-                        color: "#fff",
-                        padding: "5px 10px",
-                        borderRadius: "5px",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "12px"
-                      }}
-                    >
-                      حذف
-                    </button>
-
-                    {/* دکمه ارسال به داکتر - فقط برای مریض‌ها */}
-                    {r.reg_type === 'patient' && r.visit_status !== 'Doctor' && r.visit_status !== 'Completed' && (
-                      <button
-                        onClick={() => handleSendToDoctorFromList(r)}
-                        style={{
-                          backgroundColor: "#8b5cf6",
-                          color: "#fff",
-                          padding: "5px 10px",
-                          borderRadius: "5px",
-                          border: "none",
-                          cursor: "pointer",
-                          fontSize: "12px"
-                        }}
-                      >
-                        ارسال به داکتر
-                      </button>
-                    )}
+        <div style={{ overflowX: 'auto' }}>
+          <table className="w-full text-white border-collapse" style={{ minWidth: '1200px' }}>
+            <thead>
+              <tr className="bg-gray-700">
+                <th className="px-3 py-2 text-right" style={{ minWidth: '80px' }}>شناسه</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '150px' }}>نام مریض</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>نام پدر</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>شماره تماس</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>بخش</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>داکتر معالج</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '100px' }}>وضعیت</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '100px' }}>نوع مراجعه</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '100px' }}>فیس (افغانی)</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>وضعیت پرداخت</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '180px' }}>عملیات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan="11" style={{ textAlign: 'center', padding: '20px' }}>
+                    در حال بارگذاری...
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="6" style={{ textAlign: "center" }}>
-                  نتیجه‌ای یافت نشد
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              ) : currentRows.length > 0 ? (
+                currentRows.map((r) => (
+                  <tr key={r.reg_id} className="hover:bg-gray-800 transition-colors border-t border-gray-700">
+                    <td className="px-3 py-2 text-center">{r.reg_id}</td>
+                    <td className="px-3 py-2">{getPatientFullName(r.patient)}</td>
+                    <td className="px-3 py-2">{r.patient?.father_name || "-"}</td>
+                    <td className="px-3 py-2 dir-ltr">{r.patient?.mobile || "-"}</td>
+                    <td className="px-3 py-2">
+                      {departments.find((d) => d.id === r.department_id)?.name || "-"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {r.doctor_id ? getDoctorName(r.doctor_id) : "-"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span style={{
+                        backgroundColor: getStatusColor(r.visit_status),
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        color: '#fff',
+                        fontSize: '12px',
+                        display: 'inline-block',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {getStatusText(r.visit_status)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {r.visit_type || "-"}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {Number(r.registration_fee || 0).toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2">
+                      {getPaymentStatus(r)}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                        <button
+                          onClick={() => handleEdit(r)}
+                          style={{
+                            backgroundColor: "#cba81b",
+                            color: "#000",
+                            padding: "4px 10px",
+                            borderRadius: "4px",
+                            border: "none",
+                            cursor: "pointer",
+                            fontSize: "12px"
+                          }}
+                        >
+                          تصحیح
+                        </button>
+
+                        <button
+                          onClick={() => handleDelete(r.reg_id)}
+                          style={{
+                            backgroundColor: "#dc2626",
+                            color: "#fff",
+                            padding: "4px 10px",
+                            borderRadius: "4px",
+                            border: "none",
+                            cursor: "pointer",
+                            fontSize: "12px"
+                          }}
+                        >
+                          حذف
+                        </button>
+
+                        {r.visit_status !== 'Doctor' && r.visit_status !== 'Completed' && r.visit_status !== 'Cancelled' && (
+                          <button
+                            onClick={() => handleSendToDoctorFromList(r)}
+                            style={{
+                              backgroundColor: "#8b5cf6",
+                              color: "#fff",
+                              padding: "4px 10px",
+                              borderRadius: "4px",
+                              border: "none",
+                              cursor: "pointer",
+                              fontSize: "12px"
+                            }}
+                          >
+                            ارسال به داکتر
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="11" style={{ textAlign: 'center', padding: '20px' }}>
+                    هیچ مراجعه‌ای ثبت نشده است
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        
         {totalPages > 1 && (
           <div className="flex justify-center gap-3 mt-4">
             <button

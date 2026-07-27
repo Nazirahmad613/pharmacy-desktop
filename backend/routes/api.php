@@ -207,6 +207,8 @@ Route::delete('/prescriptions/{pres_id}', [PrescriptionController::class, 'destr
         return DB::table('view_dashboard_daily')->get();
     });
     Route::get('/benefits', [BenefitController::class, 'index']);
+    Route::get('/patients/search', [RegistrationsController::class, 'searchPatients']);
+Route::get('/patients/{patient_id}/info', [RegistrationsController::class, 'getPatientInfo']);
 });
 
 // مسیرهای عمومی (بدون نیاز به احراز هویت)
