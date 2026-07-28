@@ -18,6 +18,8 @@ import MenuBookIcon from "@mui/icons-material/MenuBook";
 import InventoryIcon from "@mui/icons-material/Inventory"; // ✅ آیکون استاک
 import WarningIcon from "@mui/icons-material/Warning"; // ✅ آیکون هشدار
 import SummarizeIcon from "@mui/icons-material/Summarize"; // ✅ آیکون گزارش
+import ScienceIcon from "@mui/icons-material/Science";
+import AssignmentIcon from "@mui/icons-material/Assignment";
 
 const navigations = [
   {
@@ -39,78 +41,9 @@ const navigations = [
     ],
   },
 
-  { label: "ثبت معلومات", type: "label" },
-
-  {
-    name: "ثبت معلومات جدید",
-    icon: <AppRegistrationIcon />,
-    children: [
-      {
-        name: "RegistationForm",
-        path: "/material/registrations",
-        icon: <AppRegistrationIcon />,
-      },
-      {
-        name: "addmedication",
-        path: "/material/addinformation",
-        icon: <VaccinesIcon />,
-      },
-      {
-        name: "addchanges",
-        path: "/material/changes",
-        icon: <ChangeCircleIcon />,
-      },
-      {
-        name: "pres_insert",
-        path: "/material/pres_insert",
-        icon: <DescriptionIcon />,
-      },
-      {
-        name: "sales_insert",
-        path: "/material/sales_insert",
-        icon: <PointOfSaleIcon />,
-      },
-      {
-        name: "parchases",
-        path: "/material/parchases",
-        icon: <ShoppingCartIcon />,
-      },
-      {
-        name: "addcatagory",
-        path: "/material/addcatagory",
-        icon: <CategoryIcon />,
-      },
-      {
-        name: "logs",
-        path: "/material/logs",
-        icon: <DescriptionIcon />,
-      },
-      {
-        name: "PaymentForm",
-        path: "/material/payment",
-        icon: <PaymentIcon />,
-      },
-    ],
-  },
-
-  // ==================== ✅ منوی جدید استاک ====================
-  {
-    label: "مدیریت موجودی (استاک)",
-    type: "label",
-  },
-
-  {
-    name: "مدیریت استاک",
-    icon: <InventoryIcon />,
-    children: [
-      {
-        name: "لیست موجودی",
-        path: "/material/stock",
-        icon: <InventoryIcon />,
-      },
  
-    ],
-  },
+  // ==================== ✅ منوی جدید استاک ====================
+ 
 
   {
     label: "کاربران",
@@ -138,76 +71,256 @@ const navigations = [
     ],
   },
 
-  { label: "نمایش اطلاعات", type: "label" },
-
   {
-    name: "گزارش ها",
-    icon: <AssessmentIcon />,
-    children: [
-      {
-        name: "hospital_Report",
-        path: "/material/hospital-report",
-        icon: <LocalHospitalIcon />,
-      },
-      {
-        name: "AccountSummaryPage",
-        path: "/material/AcountSummaryPage",
-        icon: <AccountBalanceIcon />,
-      },
-      {
-        name: "MedicationStockTable",
-        path: "/material/MedicationStockTable",
-        icon: <BarChartIcon />,
-      },
-      {
-        name: "SalesTable",
-        path: "/material/SalesTable",
-        icon: <BarChartIcon />,
-      },
-      {
-        name: "گزارش روزانه (جدول)",
-        path: "/material/dashboard-daily-table",
-        icon: <BarChartIcon />,
-      },
-      {
-        name: "گزارشات مالی",
-        icon: <BarChartIcon />,
-        children: [
-          {
-            name: "فواید (جدول)",
-            path: "/reports/benefits",
-          },
-        ],
-      },
-    ],
-  },
+  label: "ثبت نام",
+  type: "label",
+},
 
-  {
-    name: "charts",
-    icon: <BarChartIcon />,
-    children: [
-      {
-        name: "فواید (گراف)",
-        path: "/reports/benefits-chart",
-        icon: <BarChartIcon />,
-      },
-      {
-        name: "گزارش روزانه (چارت)",
-        path: "/material/dashboard-daily-chart",
-        icon: <BarChartIcon />,
-      },
-      {
-        name: "SalesChart",
-        path: "/material/SalesChart",
-        icon: <BarChartIcon />,
-      },
-      {
-        name: "MedicationStockChart",
-        path: "/material/MedicationStockChart",
-        icon: <BarChartIcon />,
-      },
-    ],
-  },
+{
+  name: "ثبت نام",
+  icon: <AppRegistrationIcon />,
+  children: [
+    {
+      name: "RegistationForm",
+      path: "/material/registrations",
+      icon: <AppRegistrationIcon />,
+    },
+  ],
+},
+
+
+{
+  label: "مدیریت مالی",
+  type: "label",
+},
+
+{
+  name: "مدیریت مالی",
+  icon: <PaymentIcon />,
+  children: [
+    {
+      name: "parchases",
+      path: "/material/parchases",
+      icon: <ShoppingCartIcon />,
+    },
+    {
+      name: "sales_insert",
+      path: "/material/sales_insert",
+      icon: <PointOfSaleIcon />,
+    },
+    {
+      name: "addchanges",
+      path: "/material/changes",
+      icon: <ChangeCircleIcon />,
+    },
+    {
+      name: "PaymentForm",
+      path: "/material/payment",
+      icon: <PaymentIcon />,
+    },
+  ],
+},
+
+{
+  label: "تنظیمات",
+  type: "label",
+},
+
+{
+  name: "تنظیمات",
+  icon: <CategoryIcon />,
+  children: [
+    {
+      name: "addmedication",
+      path: "/material/addinformation",
+      icon: <VaccinesIcon />,
+    },
+    {
+      name: "addcatagory",
+      path: "/material/addcatagory",
+      icon: <CategoryIcon />,
+    },
+    {
+      name: "logs",
+      path: "/material/logs",
+      icon: <DescriptionIcon />,
+    },
+  ],
+},
+    {
+  label: "مدیریت سیستم",
+  type: "label",
+},
+
+{
+  name: "مدیریت سیستم",
+  icon: <DashboardIcon />,
+  children: [
+    {
+      name: "مدیریت استاک",
+      icon: <InventoryIcon />,
+      children: [
+        {
+          name: "لیست موجودی",
+          path: "/material/stock",
+          icon: <InventoryIcon />,
+        },
+      ],
+    },
+
+    {
+      name: "گزارش ها",
+      icon: <AssessmentIcon />,
+      children: [
+        {
+          name: "hospital_Report",
+          path: "/material/hospital-report",
+          icon: <LocalHospitalIcon />,
+        },
+        {
+          name: "AccountSummaryPage",
+          path: "/material/AcountSummaryPage",
+          icon: <AccountBalanceIcon />,
+        },
+        {
+          name: "MedicationStockTable",
+          path: "/material/MedicationStockTable",
+          icon: <BarChartIcon />,
+        },
+        {
+          name: "SalesTable",
+          path: "/material/SalesTable",
+          icon: <BarChartIcon />,
+        },
+        {
+          name: "گزارش روزانه (جدول)",
+          path: "/material/dashboard-daily-table",
+          icon: <BarChartIcon />,
+        },
+        {
+          name: "گزارشات مالی",
+          icon: <BarChartIcon />,
+          children: [
+            {
+              name: "فواید (جدول)",
+              path: "/reports/benefits",
+            },
+          ],
+        },
+      ],
+    },
+
+    {
+      name: "charts",
+      icon: <BarChartIcon />,
+      children: [
+        {
+          name: "فواید (گراف)",
+          path: "/reports/benefits-chart",
+          icon: <BarChartIcon />,
+        },
+        {
+          name: "گزارش روزانه (چارت)",
+          path: "/material/dashboard-daily-chart",
+          icon: <BarChartIcon />,
+        },
+        {
+          name: "SalesChart",
+          path: "/material/SalesChart",
+          icon: <BarChartIcon />,
+        },
+        {
+          name: "MedicationStockChart",
+          path: "/material/MedicationStockChart",
+          icon: <BarChartIcon />,
+        },
+      ],
+    },
+  ],
+},
+
+{
+  name: "لابراتوار",
+  icon: <ScienceIcon />,
+  children: [
+    {
+      name: "ثبت درخواست لابراتوار",
+      path: "/material/lab-request",
+      icon: <AssignmentIcon />,
+    },
+    {
+      name: "هماتولوژی (CBC)",
+      path: "/material/lab-hematology",
+      icon: <ScienceIcon />,
+    },
+    {
+      name: "بیوشیمی خون",
+      path: "/material/lab-biochemistry",
+      icon: <ScienceIcon />,
+    },
+    {
+      name: "قند خون (Blood Sugar)",
+      path: "/material/lab-blood-sugar",
+      icon: <ScienceIcon />,
+    },
+    {
+      name: "تست HIV / AIDS",
+      path: "/material/lab-hiv",
+      icon: <ScienceIcon />,
+    },
+    {
+      name: "تست هپاتیت B",
+      path: "/material/lab-hepatitis-b",
+      icon: <ScienceIcon />,
+    },
+    {
+      name: "تست هپاتیت C",
+      path: "/material/lab-hepatitis-c",
+      icon: <ScienceIcon />,
+    },
+    {
+      name: "تست مالاریا",
+      path: "/material/lab-malaria",
+      icon: <ScienceIcon />,
+    },
+    {
+      name: "آنالیز ادرار",
+      path: "/material/lab-urine",
+      icon: <ScienceIcon />,
+    },
+    
+    {
+      name: "گروپ خون",
+      path: "/material/lab-blood-group",
+      icon: <ScienceIcon />,
+    },
+    {
+      name: "ثبت نتایج آزمایش",
+      path: "/material/lab-results",
+      icon: <DescriptionIcon />,
+    },
+  ],
+},
+{
+  name: "معالجه",
+  icon: <LocalHospitalIcon />,
+  children: [
+    {
+      name: "ایجاد نسخه",
+      path: "/material/pres_insert",
+      icon: <DescriptionIcon />,
+    },
+    {
+      name: "معاینات",
+      path: "/material/examinations",
+      icon: <LocalHospitalIcon />,
+    },
+  ],
+},
+
+
+
+
 
   {
     name: "documentation",

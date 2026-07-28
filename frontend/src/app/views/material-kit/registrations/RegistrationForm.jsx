@@ -6,14 +6,126 @@ import { useAuth } from "app/contexts/AuthContext";
 
 export default function RegistrationForm() {
   const { api } = useAuth();
+ const departmentNames = {
+    Emergency: "اورژانس",
+
+    "Out Patient Department": "مریضان سرپایی",
+    OPD: "مریضان سرپایی",
+
+    "In Patient Department": "بخش بستر",
+    IPD: "بخش بستر",
+
+    Laboratory: "لابراتوار",
+    "Clinical Laboratory": "لابراتوار کلینیکی",
+    "Pathology Laboratory": "لابراتوار پتالوژی",
+
+    Radiology: "رادیولوژی",
+    Imaging: "تصویربرداری",
+
+    Pharmacy: "فارماسی",
+    "Inpatient Pharmacy": "فارماسی بستر",
+    "Outpatient Pharmacy": "فارماسی سرپایی",
+
+    Surgery: "جراحی",
+    "General Surgery": "جراحی عمومی",
+    "Orthopedic Surgery": "جراحی ارتوپیدی",
+    "Neurosurgery": "جراحی اعصاب",
+    "Cardiac Surgery": "جراحی قلب",
+
+    Internal: "داخله",
+    "Internal Medicine": "داخله عمومی",
+
+    Pediatrics: "اطفال",
+    "Pediatric": "اطفال",
+
+    "Obstetrics": "نسایی ولادی",
+    "Gynecology": "نسایی",
+    "Obstetrics and Gynecology": "نسایی ولادی",
+
+    Cardiology: "قلب",
+    Neurology: "اعصاب",
+    Neuroscience: "علوم عصبی",
+
+    Dermatology: "جلدی",
+    "Skin Department": "بخش جلدی",
+
+    "ENT": "گوش، حلق و بینی",
+    "Otolaryngology": "گوش، حلق و بینی",
+
+    Ophthalmology: "چشم",
+    "Eye Department": "بخش چشم",
+
+    Urology: "ارولوژی",
+    Nephrology: "امراض کلیه",
+
+    Oncology: "سرطان شناسی",
+    Hematology: "خون شناسی",
+
+    Psychiatry: "روان پزشکی",
+    "Mental Health": "صحت روان",
+
+    Dentistry: "دندان",
+    Dental: "دندان پزشکی",
+
+    Physiotherapy: "فیزیوتراپی",
+    Rehabilitation: "توانبخشی",
+
+    "Nutrition": "تغذیه",
+    Dietetics: "رژیم غذایی",
+
+    "Anesthesia": "بیهوشی",
+    "Anesthesiology": "بیهوشی",
+
+    ICU: "بخش مراقبت‌های ویژه",
+    "Intensive Care Unit": "بخش مراقبت‌های ویژه",
+
+    NICU: "مراقبت ویژه نوزادان",
+    "Neonatal ICU": "مراقبت ویژه نوزادان",
+
+    "CCU": "بخش مراقبت قلبی",
+
+    "Operation Theater": "اتاق عملیات",
+    "Operating Room": "اتاق عملیات",
+
+    "Blood Bank": "بانک خون",
+
+    "Emergency Room": "اتاق عاجل",
+
+    "Medical Records": "آرشیف و ثبت اسناد طبی",
+
+    "Registration": "پذیرش و ثبت مریضان",
+
+    "Billing": "حسابداری",
+
+    "Admission": "پذیرش بستر",
+
+    "Discharge": "ترخیص",
+
+    "Mortuary": "مرده‌شوی‌خانه",
+
+    "House Keeping": "خدمات تنظیف",
+
+    "Security": "امنیت",
+
+    "Administration": "اداره",
+
+    "Human Resource": "منابع بشری",
+
+    "Finance": "مالی",
+
+    "Store": "گدام مرکزی",
+
+    "CSSD": "مرکز سترون‌سازی وسایل طبی",
+
+    "Ambulance": "آمبولانس"
+};
+
 
   const [form, setForm] = useState({
     patient_id: "",
     department_id: "",
     doctor_id: "",
-    visit_number: "",
     visit_type: "",
-    queue_number: "",
     registration_fee: "",
     visit_status: "Waiting",
     diagnosis: "",
@@ -27,7 +139,7 @@ export default function RegistrationForm() {
     search_tazkira: "",
     search_name: "",
     search_phone: "",
-    // فیلدهای ثبت مریض جدید - اینها برای ارسال به بک‌اند هستند
+    // فیلدهای ثبت مریض جدید
     new_first_name: "",
     new_last_name: "",
     new_father_name: "",
@@ -39,7 +151,6 @@ export default function RegistrationForm() {
     new_address: "",
   });
 
-  // اطلاعات مریض انتخاب شده برای نمایش در فرم
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showNewPatientForm, setShowNewPatientForm] = useState(false);
 
@@ -56,7 +167,20 @@ export default function RegistrationForm() {
   
   const [selectedRegistration, setSelectedRegistration] = useState(null);
   const [showSendModal, setShowSendModal] = useState(false);
-  const [statistics, setStatistics] = useState(null);
+  const [statistics, setStatistics] = useState({
+    total_patients: 0,
+    today_patients: 0,
+    waiting_patients: 0,
+    completed_patients: 0,
+    total_fees: 0,
+    today_fees: 0,
+    doctor_patients: 0,
+    laboratory_patients: 0,
+    radiology_patients: 0,
+    pharmacy_patients: 0,
+    billing_patients: 0,
+    cancelled_patients: 0
+  });
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const ROWS_PER_PAGE = 10;
@@ -123,6 +247,10 @@ export default function RegistrationForm() {
       }
       setRegistrations(regs);
       setCurrentPage(1);
+      
+      // محاسبه آمار از داده‌های دریافت شده
+      calculateStatisticsFromData(regs);
+      
     } catch (err) {
       console.error("خطا در دریافت مریض‌ها:", err);
       setRegistrations([]);
@@ -132,16 +260,66 @@ export default function RegistrationForm() {
     }
   };
 
+  // تابع محاسبه آمار از داده‌های مراجعات
+  const calculateStatisticsFromData = (regs) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const total = regs.length;
+    
+    const todayRegs = regs.filter(r => {
+      const visitDate = r.visit_date ? new Date(r.visit_date).toISOString().split('T')[0] : null;
+      const createdDate = r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : null;
+      return visitDate === today || createdDate === today;
+    });
+    
+    const waiting = regs.filter(r => r.visit_status === 'Waiting').length;
+    const completed = regs.filter(r => r.visit_status === 'Completed').length;
+    const doctor = regs.filter(r => r.visit_status === 'Doctor').length;
+    const laboratory = regs.filter(r => r.visit_status === 'Laboratory').length;
+    const radiology = regs.filter(r => r.visit_status === 'Radiology').length;
+    const pharmacy = regs.filter(r => r.visit_status === 'Pharmacy').length;
+    const billing = regs.filter(r => r.visit_status === 'Billing').length;
+    const cancelled = regs.filter(r => r.visit_status === 'Cancelled').length;
+    
+    const totalFees = regs.reduce((sum, r) => sum + (parseFloat(r.registration_fee) || 0), 0);
+    const todayFees = todayRegs.reduce((sum, r) => sum + (parseFloat(r.registration_fee) || 0), 0);
+    
+    setStatistics({
+      total_patients: total,
+      today_patients: todayRegs.length,
+      waiting_patients: waiting,
+      completed_patients: completed,
+      total_fees: totalFees,
+      today_fees: todayFees,
+      doctor_patients: doctor,
+      laboratory_patients: laboratory,
+      radiology_patients: radiology,
+      pharmacy_patients: pharmacy,
+      billing_patients: billing,
+      cancelled_patients: cancelled
+    });
+  };
+
   const fetchStatistics = async () => {
     try {
       const res = await api.get("/registrations/statistics");
-      setStatistics(res.data);
+      if (res.data) {
+        setStatistics(prev => ({
+          ...prev,
+          ...res.data
+        }));
+      }
     } catch (err) {
       console.error("خطا در دریافت آمار:", err);
+      // در صورت خطا، از داده‌های موجود استفاده می‌کنیم
+      if (registrations.length > 0) {
+        calculateStatisticsFromData(registrations);
+      }
     }
   };
 
-  const searchExistingPatients = () => {
+  // تابع جستجو با استفاده از API
+  const searchExistingPatients = async () => {
     const { search_tazkira, search_name, search_phone } = form;
 
     if (!search_tazkira && !search_name && !search_phone) {
@@ -154,113 +332,43 @@ export default function RegistrationForm() {
     setSearching(true);
 
     try {
-      const resultPatients = [];
-      const seenPatientIds = new Set();
+      // ساخت پارامترهای جستجو
+      const params = new URLSearchParams();
+      if (search_tazkira) params.append('q', search_tazkira);
+      if (search_name) params.append('q', search_name);
+      if (search_phone) params.append('q', search_phone);
+      params.append('type', 'all');
 
-      patients.forEach((patient) => {
-        let match = true;
+      // ارسال درخواست به API جستجو
+      const response = await api.get(`/patients/search?${params.toString()}`);
+      
+      let results = [];
+      if (Array.isArray(response.data)) {
+        results = response.data;
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        results = response.data.data;
+      }
 
-        if (search_tazkira) {
-          const tazkiraMatch = patient.national_id?.toLowerCase().includes(search_tazkira.toLowerCase());
-          if (!tazkiraMatch) match = false;
-        }
+      setSearchResults(results);
+      setShowSearchResults(results.length > 0);
 
-        if (search_name && match) {
-          const fullName = (patient.first_name || '') + ' ' + (patient.last_name || '');
-          const nameMatch = fullName.toLowerCase().includes(search_name.toLowerCase()) ||
-                           patient.first_name?.toLowerCase().includes(search_name.toLowerCase()) ||
-                           patient.last_name?.toLowerCase().includes(search_name.toLowerCase());
-          if (!nameMatch) match = false;
-        }
-
-        if (search_phone && match) {
-          const phoneMatch = patient.mobile?.toLowerCase().includes(search_phone.toLowerCase());
-          if (!phoneMatch) match = false;
-        }
-
-        if (match && !seenPatientIds.has(patient.id)) {
-          resultPatients.push(patient);
-          seenPatientIds.add(patient.id);
-        }
-      });
-
-      const regSearchFields = ['visit_number', 'visit_type', 'queue_number', 'diagnosis', 'note'];
-
-      registrations.forEach((reg) => {
-        const patient = reg.patient;
-        if (!patient) return;
-
-        let match = false;
-
-        if (search_tazkira) {
-          for (const field of regSearchFields) {
-            const value = reg[field] || '';
-            if (value.toLowerCase().includes(search_tazkira.toLowerCase())) {
-              match = true;
-              break;
-            }
-          }
-          if (!match && patient.national_id?.toLowerCase().includes(search_tazkira.toLowerCase())) {
-            match = true;
-          }
-        }
-
-        if (search_name && !match) {
-          for (const field of regSearchFields) {
-            const value = reg[field] || '';
-            if (value.toLowerCase().includes(search_name.toLowerCase())) {
-              match = true;
-              break;
-            }
-          }
-          const fullName = (patient.first_name || '') + ' ' + (patient.last_name || '');
-          if (!match && (
-            fullName.toLowerCase().includes(search_name.toLowerCase()) ||
-            patient.first_name?.toLowerCase().includes(search_name.toLowerCase()) ||
-            patient.last_name?.toLowerCase().includes(search_name.toLowerCase())
-          )) {
-            match = true;
-          }
-        }
-
-        if (search_phone && !match) {
-          for (const field of regSearchFields) {
-            const value = reg[field] || '';
-            if (value.toLowerCase().includes(search_phone.toLowerCase())) {
-              match = true;
-              break;
-            }
-          }
-          if (!match && patient.mobile?.toLowerCase().includes(search_phone.toLowerCase())) {
-            match = true;
-          }
-        }
-
-        if (match && !seenPatientIds.has(patient.id)) {
-          resultPatients.push(patient);
-          seenPatientIds.add(patient.id);
-        }
-      });
-
-      setSearchResults(resultPatients);
-      setShowSearchResults(resultPatients.length > 0);
-
-      if (resultPatients.length === 0) {
+      if (results.length === 0) {
         toast.info("ℹ️ هیچ مریضی با این مشخصات یافت نشد");
       } else {
-        toast.success(`✅ ${resultPatients.length} مریض پیدا شد`);
+        toast.success(`✅ ${results.length} مریض پیدا شد`);
       }
 
     } catch (err) {
-      console.error(err);
+      console.error("خطا در جستجو:", err);
       setSearchResults([]);
       setShowSearchResults(false);
-      toast.error("❌ خطا در جستجو");
+      toast.error("❌ خطا در جستجوی مریض");
     } finally {
       setSearching(false);
     }
   };
 
+  // جستجوی خودکار با تاخیر (Debounce)
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       const { search_tazkira, search_name, search_phone } = form;
@@ -275,6 +383,7 @@ export default function RegistrationForm() {
     return () => clearTimeout(delayDebounceFn);
   }, [form.search_tazkira, form.search_name, form.search_phone]);
 
+  // انتخاب مریض از نتایج جستجو
   const selectExistingPatient = (patient) => {
     setSelectedPatient(patient);
     setForm(prev => ({
@@ -283,6 +392,16 @@ export default function RegistrationForm() {
       search_tazkira: patient.national_id || '',
       search_name: (patient.first_name || '') + ' ' + (patient.last_name || ''),
       search_phone: patient.mobile || '',
+      // پر کردن اطلاعات مریض در فیلدهای جدید در صورت نیاز
+      new_first_name: patient.first_name || '',
+      new_last_name: patient.last_name || '',
+      new_father_name: patient.father_name || '',
+      new_mobile: patient.mobile || '',
+      new_national_id: patient.national_id || '',
+      new_gender: patient.gender || '',
+      new_age: patient.age || '',
+      new_blood_group: patient.blood_group || '',
+      new_address: patient.address || '',
     }));
     
     setSearchResults([]);
@@ -311,9 +430,7 @@ export default function RegistrationForm() {
       patient_id: "",
       department_id: "",
       doctor_id: "",
-      visit_number: "",
       visit_type: "",
-      queue_number: "",
       registration_fee: "",
       visit_status: "Waiting",
       diagnosis: "",
@@ -360,7 +477,6 @@ export default function RegistrationForm() {
         return;
       }
 
-      // اگر مریض جدید است، فیلدهای الزامی را بررسی کن
       if (showNewPatientForm) {
         if (!form.new_first_name || !form.new_last_name) {
           toast.error("❌ نام و نام خانوادگی مریض جدید الزامی است");
@@ -393,9 +509,7 @@ export default function RegistrationForm() {
         return;
       }
 
-      // ============================================================
       // ساخت داده برای ارسال به بک‌اند
-      // ============================================================
       const submitData = { ...form };
       
       // حذف فیلدهای جستجو از داده‌های ارسالی
@@ -403,9 +517,7 @@ export default function RegistrationForm() {
       delete submitData.search_name;
       delete submitData.search_phone;
       
-      // اگر مریض جدید است:
-      // 1. patient_id را حذف می‌کنیم تا بک‌اند متوجه شود مریض جدید است
-      // 2. فیلدهای new_* را با نام اصلی به بک‌اند می‌فرستیم
+      // اگر مریض جدید است
       if (showNewPatientForm) {
         delete submitData.patient_id;
         
@@ -431,10 +543,8 @@ export default function RegistrationForm() {
         delete submitData.new_blood_group;
         delete submitData.new_address;
         
-        // اضافه کردن flag برای تشخیص مریض جدید در بک‌اند
         submitData.is_new_patient = true;
       } else {
-        // اگر مریض قبلی انتخاب شده، فیلدهای مریض جدید را حذف می‌کنیم
         delete submitData.new_first_name;
         delete submitData.new_last_name;
         delete submitData.new_father_name;
@@ -462,23 +572,18 @@ export default function RegistrationForm() {
         toast.success("✅ معلومات با موفقیت تصحیح شد");
         newRegistration = response.data?.data || response.data;
       } else {
-        
-        console.log("NEW PATIENT MODE:", showNewPatientForm);
-
-console.log("NEW PATIENT DATA:", {
-    first_name: submitData.new_first_name,
-    last_name: submitData.new_last_name,
-    mobile: submitData.new_mobile,
-    gender: submitData.new_gender
-});
-
-console.log("FINAL DATA SEND:", submitData);
+        console.log("FINAL DATA SEND:", submitData);
+        response = await api.post("/registrations", submitData);
         toast.success("✅ مراجعه با موفقیت ثبت شد");
         newRegistration = response.data?.data || response.data;
 
         // اگر مریض جدید ثبت شده، آن را به لیست اضافه کن
         if (showNewPatientForm && newRegistration?.patient) {
-          setPatients(prev => [newRegistration.patient, ...prev]);
+          setPatients(prev => {
+            const exists = prev.some(p => p.id === newRegistration.patient.id);
+            if (exists) return prev;
+            return [newRegistration.patient, ...prev];
+          });
           setSelectedPatient(newRegistration.patient);
           setForm(prev => ({
             ...prev,
@@ -504,6 +609,8 @@ console.log("FINAL DATA SEND:", submitData);
 
       await fetchRegistrations();
       await fetchStatistics();
+      
+      // ریست کامل فرم پس از ثبت موفق
       clearForm();
       
     } catch (err) {
@@ -512,7 +619,6 @@ console.log("FINAL DATA SEND:", submitData);
 
       if (err.response?.status === 422 && err.response?.data?.errors) {
         Object.entries(err.response.data.errors).forEach(([field, messages]) => {
-          console.log(field, messages);
           toast.error(`❌ ${messages[0]}`);
         });
       } else {
@@ -597,9 +703,7 @@ console.log("FINAL DATA SEND:", submitData);
       patient_id: reg.patient_id || "",
       department_id: reg.department_id || "",
       doctor_id: reg.doctor_id || "",
-      visit_number: reg.visit_number || "",
       visit_type: reg.visit_type || "",
-      queue_number: reg.queue_number || "",
       registration_fee: reg.registration_fee || "",
       visit_status: reg.visit_status || "Waiting",
       diagnosis: reg.diagnosis || "",
@@ -822,12 +926,40 @@ console.log("FINAL DATA SEND:", submitData);
             <div style={{ fontSize: '14px', color: '#9ca3af' }}>در انتظار</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#8b5cf6' }}>{statistics.completed_patients || 0}</div>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#8b5cf6' }}>{statistics.doctor_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>نزد داکتر</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#3b82f6' }}>{statistics.laboratory_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>لابراتوار</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#06b6d4' }}>{statistics.radiology_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>رادیولوژی</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#10b981' }}>{statistics.pharmacy_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>دواخانه</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ec4899' }}>{statistics.billing_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>حسابداری</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#22c55e' }}>{statistics.completed_patients || 0}</div>
             <div style={{ fontSize: '14px', color: '#9ca3af' }}>تکمیل شده</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#dc2626' }}>{statistics.cancelled_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>لغو شده</div>
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ec4899' }}>{statistics.total_fees?.toFixed(2) || '0'}</div>
             <div style={{ fontSize: '14px', color: '#9ca3af' }}>مجموع فیس (افغانی)</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f59e0b' }}>{statistics.today_fees?.toFixed(2) || '0'}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>فیس امروز (افغانی)</div>
           </div>
         </div>
       )}
@@ -949,8 +1081,8 @@ console.log("FINAL DATA SEND:", submitData);
                       style={{ fontSize: '14px' }}
                     >
                       <option value="">-- انتخاب --</option>
-                      <option value="male">مرد</option>
-                      <option value="female">زن</option>
+                      <option value="Male">مرد</option>
+                      <option value="Female">زن</option>
                       <option value="other">دیگر</option>
                     </select>
                   </div>
@@ -1192,11 +1324,11 @@ console.log("FINAL DATA SEND:", submitData);
               className="form-control"
             >
               <option value="">-- انتخاب بخش --</option>
-              {departments.map((dep) => (
-                <option key={dep.id} value={dep.id}>
-                  {dep.name}
-                </option>
-              ))}
+            {departments.map((dep) => (
+    <option key={dep.id} value={dep.id}>
+        {departmentNames[dep.name] || dep.name}
+    </option>
+))}
             </select>
           </div>
 
@@ -1218,18 +1350,6 @@ console.log("FINAL DATA SEND:", submitData);
           </div>
 
           <div>
-            <label>شماره مراجعه</label>
-            <input
-              type="text"
-              name="visit_number"
-              value={form.visit_number}
-              onChange={handleChange}
-              className="form-control"
-              placeholder="شماره مراجعه"
-            />
-          </div>
-
-          <div>
             <label>نوع مراجعه</label>
             <select
               name="visit_type"
@@ -1245,19 +1365,6 @@ console.log("FINAL DATA SEND:", submitData);
               <option value="Radiology">Radiology</option>
               <option value="Pharmacy">Pharmacy</option>
             </select>
-          </div>
-
-          <div>
-            <label>شماره صف</label>
-            <input
-              type="number"
-              name="queue_number"
-              value={form.queue_number}
-              onChange={handleChange}
-              className="form-control"
-              min="1"
-              placeholder="شماره صف"
-            />
           </div>
 
           <div>
@@ -1448,6 +1555,7 @@ console.log("FINAL DATA SEND:", submitData);
                 <th className="px-3 py-2 text-right" style={{ minWidth: '150px' }}>نام مریض</th>
                 <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>نام پدر</th>
                 <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>شماره تماس</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>شماره مراجعه</th>
                 <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>بخش</th>
                 <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>داکتر معالج</th>
                 <th className="px-3 py-2 text-right" style={{ minWidth: '100px' }}>وضعیت</th>
@@ -1460,82 +1568,62 @@ console.log("FINAL DATA SEND:", submitData);
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="11" style={{ textAlign: 'center', padding: '20px' }}>
+                  <td colSpan="12" style={{ textAlign: 'center', padding: '20px' }}>
                     در حال بارگذاری...
                   </td>
                 </tr>
               ) : currentRows.length > 0 ? (
-                currentRows.map((r) => (
-                  <tr key={r.reg_id} className="hover:bg-gray-800 transition-colors border-t border-gray-700">
-                    <td className="px-3 py-2 text-center">{r.reg_id}</td>
-                    <td className="px-3 py-2">{getPatientFullName(r.patient)}</td>
-                    <td className="px-3 py-2">{r.patient?.father_name || "-"}</td>
-                    <td className="px-3 py-2 dir-ltr">{r.patient?.mobile || "-"}</td>
-                    <td className="px-3 py-2">
-                      {departments.find((d) => d.id === r.department_id)?.name || "-"}
-                    </td>
-                    <td className="px-3 py-2">
-                      {r.doctor_id ? getDoctorName(r.doctor_id) : "-"}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span style={{
-                        backgroundColor: getStatusColor(r.visit_status),
-                        padding: '3px 8px',
-                        borderRadius: '4px',
-                        color: '#fff',
-                        fontSize: '12px',
-                        display: 'inline-block',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {getStatusText(r.visit_status)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      {r.visit_type || "-"}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      {Number(r.registration_fee || 0).toFixed(2)}
-                    </td>
-                    <td className="px-3 py-2">
-                      {getPaymentStatus(r)}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                        <button
-                          onClick={() => handleEdit(r)}
-                          style={{
-                            backgroundColor: "#cba81b",
-                            color: "#000",
-                            padding: "4px 10px",
-                            borderRadius: "4px",
-                            border: "none",
-                            cursor: "pointer",
-                            fontSize: "12px"
-                          }}
-                        >
-                          تصحیح
-                        </button>
-
-                        <button
-                          onClick={() => handleDelete(r.reg_id)}
-                          style={{
-                            backgroundColor: "#dc2626",
-                            color: "#fff",
-                            padding: "4px 10px",
-                            borderRadius: "4px",
-                            border: "none",
-                            cursor: "pointer",
-                            fontSize: "12px"
-                          }}
-                        >
-                          حذف
-                        </button>
-
-                        {r.visit_status !== 'Doctor' && r.visit_status !== 'Completed' && r.visit_status !== 'Cancelled' && (
+                currentRows.map((r) => {
+                  const patient = r.patient || {};
+                  const department = departments.find((d) => d.id === r.department_id);
+                  const doctorName = r.doctor_id ? getDoctorName(r.doctor_id) : "-";
+                  
+                  return (
+                    <tr key={r.reg_id} className="hover:bg-gray-800 transition-colors border-t border-gray-700">
+                      <td className="px-3 py-2 text-center">{r.reg_id}</td>
+                      <td className="px-3 py-2">{getPatientFullName(patient)}</td>
+                      <td className="px-3 py-2">{patient.father_name || "-"}</td>
+                      <td className="px-3 py-2 dir-ltr">{patient.mobile || "-"}</td>
+                      <td className="px-3 py-2 text-center">{r.visit_number || "-"}</td>
+                      <td className="px-3 py-2">{department?.name || "-"}</td>
+                      <td className="px-3 py-2">{doctorName}</td>
+                      <td className="px-3 py-2">
+                        <span style={{
+                          backgroundColor: getStatusColor(r.visit_status),
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          color: '#fff',
+                          fontSize: '12px',
+                          display: 'inline-block',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {getStatusText(r.visit_status)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center">{r.visit_type || "-"}</td>
+                      <td className="px-3 py-2 text-center">{Number(r.registration_fee || 0).toFixed(2)}</td>
+                      <td className="px-3 py-2">{getPaymentStatus(r)}</td>
+                      <td className="px-3 py-2">
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                           <button
-                            onClick={() => handleSendToDoctorFromList(r)}
+                            onClick={() => handleEdit(r)}
                             style={{
-                              backgroundColor: "#8b5cf6",
+                              backgroundColor: "#cba81b",
+                              color: "#000",
+                              padding: "4px 10px",
+                              borderRadius: "4px",
+                              border: "none",
+                              cursor: "pointer",
+                              fontSize: "12px"
+                            }}
+                          >
+                            تصحیح
+                          </button>
+
+                          <button
+                            onClick={() => handleDelete(r.reg_id)}
+                            style={{
+                              backgroundColor: "#dc2626",
                               color: "#fff",
                               padding: "4px 10px",
                               borderRadius: "4px",
@@ -1544,16 +1632,33 @@ console.log("FINAL DATA SEND:", submitData);
                               fontSize: "12px"
                             }}
                           >
-                            ارسال به داکتر
+                            حذف
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+
+                          {r.visit_status !== 'Doctor' && r.visit_status !== 'Completed' && r.visit_status !== 'Cancelled' && (
+                            <button
+                              onClick={() => handleSendToDoctorFromList(r)}
+                              style={{
+                                backgroundColor: "#8b5cf6",
+                                color: "#fff",
+                                padding: "4px 10px",
+                                borderRadius: "4px",
+                                border: "none",
+                                cursor: "pointer",
+                                fontSize: "12px"
+                              }}
+                            >
+                              ارسال به داکتر
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan="11" style={{ textAlign: 'center', padding: '20px' }}>
+                  <td colSpan="12" style={{ textAlign: 'center', padding: '20px' }}>
                     هیچ مراجعه‌ای ثبت نشده است
                   </td>
                 </tr>

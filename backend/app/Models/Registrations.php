@@ -217,14 +217,15 @@ class Registrations extends Model
     */
 
 
-    public function journals()
-    {
-        return $this->hasMany(
-            Journal::class,
-            'registration_id',
-            'reg_id'
-        );
-    }
+   public function journals()
+{
+    return $this->hasMany(
+        Journal::class,
+        'ref_id',
+        'reg_id'
+    )
+    ->where('ref_type', 'patient');
+}
 
 
 

@@ -181,6 +181,36 @@ Route::delete('/prescriptions/{pres_id}', [PrescriptionController::class, 'destr
 
     // ===== Notifications =====
     Route::get('/notifications', [NotificationController::class, 'index']);
+ 
+
+// ============================================================
+// مسیرهای مدیریت مراجعات
+// ============================================================
+Route::post('/registrations', [RegistrationsController::class, 'store']);
+Route::get('/registrations', [RegistrationsController::class, 'index']);
+Route::get('/registrations/{reg_id}', [RegistrationsController::class, 'show']);
+Route::put('/registrations/{reg_id}', [RegistrationsController::class, 'update']);
+Route::delete('/registrations/{reg_id}', [RegistrationsController::class, 'destroy']);
+Route::get('/registrations/statistics', [RegistrationsController::class, 'statistics']);
+Route::get('/registrations/today', [RegistrationsController::class, 'todayRegistrations']);
+Route::put('/registrations/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
+
+// ============================================================
+// مسیرهای مدیریت دیپارتمنت‌ها (از طریق کنترلر رجستریشن)
+// ============================================================
+Route::get('/departments', [RegistrationsController::class, 'getDepartments']);
+Route::get('/departments/active', [RegistrationsController::class, 'getActiveDepartments']);
+Route::get('/departments/{id}', [RegistrationsController::class, 'getDepartment']);
+Route::post('/departments', [RegistrationsController::class, 'createDepartment']);
+Route::put('/departments/{id}', [RegistrationsController::class, 'updateDepartment']);
+Route::delete('/departments/{id}', [RegistrationsController::class, 'deleteDepartment']);
+Route::get('/departments/statistics', [RegistrationsController::class, 'departmentStatistics']);
+Route::get('/departments/search', [RegistrationsController::class, 'searchDepartments']);
+Route::patch('/departments/{id}/toggle-status', [RegistrationsController::class, 'toggleDepartmentStatus']);
+
+
+
+
 
     // ===== Sales CRUD =====
     Route::get('/sales', [SalesController::class, 'index']);
