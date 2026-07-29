@@ -88,7 +88,17 @@ return new class extends Migration
             ])
             ->nullable();
 
+        $table->timestamp('sent_to_doctor_at')
+    ->nullable()
+    ->comment('زمان ارسال مریض به داکتر');
 
+
+
+// زمان شروع معاینه توسط داکتر
+
+$table->timestamp('doctor_started_at')
+    ->nullable()
+    ->comment('زمان شروع معاینه توسط داکتر');
 
             $table->integer('queue_number')
                 ->nullable();

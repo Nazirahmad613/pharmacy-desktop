@@ -194,6 +194,8 @@ Route::delete('/registrations/{reg_id}', [RegistrationsController::class, 'destr
 Route::get('/registrations/statistics', [RegistrationsController::class, 'statistics']);
 Route::get('/registrations/today', [RegistrationsController::class, 'todayRegistrations']);
 Route::put('/registrations/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
+Route::get('/doctor/queue', [RegistrationsController::class, 'doctorQueue']);
+Route::get('/doctor/queue/{reg_id}', [RegistrationsController::class, 'doctorShow']);
 
 // ============================================================
 // مسیرهای مدیریت دیپارتمنت‌ها (از طریق کنترلر رجستریشن)

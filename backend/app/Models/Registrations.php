@@ -140,12 +140,19 @@ class Registrations extends Model
 
         'status',
 
+        'sent_to_doctor_at',
+
+'doctor_started_at',
+
     ];
 
 
 
 
     protected $casts = [
+'sent_to_doctor_at' => 'datetime',
+
+    'doctor_started_at' => 'datetime',
 
         'visit_date' => 'date',
 
