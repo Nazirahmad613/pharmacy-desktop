@@ -1,11 +1,15 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import MainLayoutjur from "../../../../components/MainLayoutjur";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useAuth } from "app/contexts/AuthContext";
+import { useReactToPrint } from "react-to-print";
 
 export default function RegistrationForm() {
   const { api } = useAuth();
+  const printRef = useRef();
+  const [printData, setPrintData] = useState(null);
+
  const departmentNames = {
     Emergency: "اورژانس",
 
@@ -120,7 +124,6 @@ export default function RegistrationForm() {
     "Ambulance": "آمبولانس"
 };
 
-
   const [form, setForm] = useState({
     patient_id: "",
     department_id: "",
@@ -135,11 +138,9 @@ export default function RegistrationForm() {
     oxygen: "",
     visit_date: "",
     note: "",
-    // فیلدهای جستجو
     search_tazkira: "",
     search_name: "",
     search_phone: "",
-    // فیلدهای ثبت مریض جدید
     new_first_name: "",
     new_last_name: "",
     new_father_name: "",
@@ -153,7 +154,6 @@ export default function RegistrationForm() {
 
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showNewPatientForm, setShowNewPatientForm] = useState(false);
-
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [patients, setPatients] = useState([]);
@@ -164,7 +164,6 @@ export default function RegistrationForm() {
   const [currentPage, setCurrentPage] = useState(1);
   const [editingId, setEditingId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
   const [selectedRegistration, setSelectedRegistration] = useState(null);
   const [showSendModal, setShowSendModal] = useState(false);
   const [statistics, setStatistics] = useState({
@@ -185,6 +184,29 @@ export default function RegistrationForm() {
   const [searching, setSearching] = useState(false);
   const ROWS_PER_PAGE = 10;
 
+ // تابع پرینت با استفاده از useReactToPrint
+const handlePrint = useReactToPrint({
+  contentRef: printRef,
+  documentTitle: "receipt",
+  onAfterPrint: () => {
+    setPrintData(null);
+  },
+  onPrintError: (error) => {
+    console.error("Print error:", error);
+    toast.error("خطا در چاپ رسید");
+    setPrintData(null);
+  }
+});
+
+const openPrintModal = (registration) => {
+  setPrintData(registration);
+};
+
+useEffect(() => {
+  if (printData && printRef.current) {
+    handlePrint();
+  }
+}, [printData, handlePrint]);
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
@@ -247,10 +269,7 @@ export default function RegistrationForm() {
       }
       setRegistrations(regs);
       setCurrentPage(1);
-      
-      // محاسبه آمار از داده‌های دریافت شده
       calculateStatisticsFromData(regs);
-      
     } catch (err) {
       console.error("خطا در دریافت مریض‌ها:", err);
       setRegistrations([]);
@@ -260,12 +279,9 @@ export default function RegistrationForm() {
     }
   };
 
-  // تابع محاسبه آمار از داده‌های مراجعات
   const calculateStatisticsFromData = (regs) => {
     const today = new Date().toISOString().split('T')[0];
-    
     const total = regs.length;
-    
     const todayRegs = regs.filter(r => {
       const visitDate = r.visit_date ? new Date(r.visit_date).toISOString().split('T')[0] : null;
       const createdDate = r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : null;
@@ -311,14 +327,12 @@ export default function RegistrationForm() {
       }
     } catch (err) {
       console.error("خطا در دریافت آمار:", err);
-      // در صورت خطا، از داده‌های موجود استفاده می‌کنیم
       if (registrations.length > 0) {
         calculateStatisticsFromData(registrations);
       }
     }
   };
 
-  // تابع جستجو با استفاده از API
   const searchExistingPatients = async () => {
     const { search_tazkira, search_name, search_phone } = form;
 
@@ -332,14 +346,12 @@ export default function RegistrationForm() {
     setSearching(true);
 
     try {
-      // ساخت پارامترهای جستجو
       const params = new URLSearchParams();
       if (search_tazkira) params.append('q', search_tazkira);
       if (search_name) params.append('q', search_name);
       if (search_phone) params.append('q', search_phone);
       params.append('type', 'all');
 
-      // ارسال درخواست به API جستجو
       const response = await api.get(`/patients/search?${params.toString()}`);
       
       let results = [];
@@ -368,7 +380,6 @@ export default function RegistrationForm() {
     }
   };
 
-  // جستجوی خودکار با تاخیر (Debounce)
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       const { search_tazkira, search_name, search_phone } = form;
@@ -383,7 +394,6 @@ export default function RegistrationForm() {
     return () => clearTimeout(delayDebounceFn);
   }, [form.search_tazkira, form.search_name, form.search_phone]);
 
-  // انتخاب مریض از نتایج جستجو
   const selectExistingPatient = (patient) => {
     setSelectedPatient(patient);
     setForm(prev => ({
@@ -392,7 +402,6 @@ export default function RegistrationForm() {
       search_tazkira: patient.national_id || '',
       search_name: (patient.first_name || '') + ' ' + (patient.last_name || ''),
       search_phone: patient.mobile || '',
-      // پر کردن اطلاعات مریض در فیلدهای جدید در صورت نیاز
       new_first_name: patient.first_name || '',
       new_last_name: patient.last_name || '',
       new_father_name: patient.father_name || '',
@@ -470,7 +479,6 @@ export default function RegistrationForm() {
     setIsSubmitting(true);
 
     try {
-      // Validation
       if (!form.patient_id && !showNewPatientForm) {
         toast.error("❌ لطفاً یک مریض را انتخاب کنید یا مریض جدید ثبت کنید");
         setIsSubmitting(false);
@@ -509,19 +517,13 @@ export default function RegistrationForm() {
         return;
       }
 
-      // ساخت داده برای ارسال به بک‌اند
       const submitData = { ...form };
-      
-      // حذف فیلدهای جستجو از داده‌های ارسالی
       delete submitData.search_tazkira;
       delete submitData.search_name;
       delete submitData.search_phone;
       
-      // اگر مریض جدید است
       if (showNewPatientForm) {
         delete submitData.patient_id;
-        
-        // تبدیل فیلدهای new_* به فیلدهای اصلی برای بک‌اند
         submitData.first_name = submitData.new_first_name;
         submitData.last_name = submitData.new_last_name;
         submitData.father_name = submitData.new_father_name || null;
@@ -531,8 +533,6 @@ export default function RegistrationForm() {
         submitData.age = submitData.new_age || null;
         submitData.blood_group = submitData.new_blood_group || null;
         submitData.address = submitData.new_address || null;
-        
-        // حذف فیلدهای new_* از داده ارسالی
         delete submitData.new_first_name;
         delete submitData.new_last_name;
         delete submitData.new_father_name;
@@ -542,7 +542,6 @@ export default function RegistrationForm() {
         delete submitData.new_age;
         delete submitData.new_blood_group;
         delete submitData.new_address;
-        
         submitData.is_new_patient = true;
       } else {
         delete submitData.new_first_name;
@@ -557,7 +556,6 @@ export default function RegistrationForm() {
         submitData.is_new_patient = false;
       }
       
-      // تبدیل رشته‌های خالی به null
       Object.keys(submitData).forEach(key => {
         if (submitData[key] === '') {
           submitData[key] = null;
@@ -569,15 +567,42 @@ export default function RegistrationForm() {
 
       if (editingId) {
         response = await api.put(`/registrations/${editingId}`, submitData);
-        toast.success("✅ معلومات با موفقیت تصحیح شد");
+        toast.success("✅ معلومات مراجعه و مریض با موفقیت تصحیح شد");
         newRegistration = response.data?.data || response.data;
+        
+        if (newRegistration?.patient) {
+          setPatients(prev => {
+            const index = prev.findIndex(p => p.id === newRegistration.patient.id);
+            if (index !== -1) {
+              const updated = [...prev];
+              updated[index] = newRegistration.patient;
+              return updated;
+            }
+            return prev;
+          });
+          setSelectedPatient(newRegistration.patient);
+          setForm(prev => ({
+            ...prev,
+            search_tazkira: newRegistration.patient.national_id || '',
+            search_name: (newRegistration.patient.first_name || '') + ' ' + (newRegistration.patient.last_name || ''),
+            search_phone: newRegistration.patient.mobile || '',
+            new_first_name: newRegistration.patient.first_name || '',
+            new_last_name: newRegistration.patient.last_name || '',
+            new_father_name: newRegistration.patient.father_name || '',
+            new_mobile: newRegistration.patient.mobile || '',
+            new_national_id: newRegistration.patient.national_id || '',
+            new_gender: newRegistration.patient.gender || '',
+            new_age: newRegistration.patient.age || '',
+            new_blood_group: newRegistration.patient.blood_group || '',
+            new_address: newRegistration.patient.address || '',
+          }));
+        }
       } else {
         console.log("FINAL DATA SEND:", submitData);
         response = await api.post("/registrations", submitData);
         toast.success("✅ مراجعه با موفقیت ثبت شد");
         newRegistration = response.data?.data || response.data;
 
-        // اگر مریض جدید ثبت شده، آن را به لیست اضافه کن
         if (showNewPatientForm && newRegistration?.patient) {
           setPatients(prev => {
             const exists = prev.some(p => p.id === newRegistration.patient.id);
@@ -609,8 +634,6 @@ export default function RegistrationForm() {
 
       await fetchRegistrations();
       await fetchStatistics();
-      
-      // ریست کامل فرم پس از ثبت موفق
       clearForm();
       
     } catch (err) {
@@ -688,8 +711,49 @@ export default function RegistrationForm() {
     if (!window.confirm("آیا مطمئن هستید که می‌خواهید این مراجعه را حذف کنید؟")) return;
 
     try {
+      const regToDelete = registrations.find(r => r.reg_id === reg_id);
       await api.delete(`/registrations/${reg_id}`);
-      toast.success("✅ حذف موفقانه انجام شد");
+      toast.success("✅ مراجعه با موفقیت حذف شد");
+      
+      if (regToDelete?.patient_id) {
+        const hasOtherRegistrations = registrations.some(r => 
+          r.patient_id === regToDelete.patient_id && r.reg_id !== reg_id
+        );
+        
+        if (!hasOtherRegistrations) {
+          try {
+            await api.delete(`/patients/${regToDelete.patient_id}`);
+            toast.info(`ℹ️ مریض ${getPatientFullName(regToDelete.patient)} نیز حذف شد زیرا هیچ مراجعه دیگری ندارد`);
+            setPatients(prev => prev.filter(p => p.id !== regToDelete.patient_id));
+            
+            if (selectedPatient?.id === regToDelete.patient_id) {
+              setSelectedPatient(null);
+              setForm(prev => ({ 
+                ...prev, 
+                patient_id: "",
+                search_tazkira: "",
+                search_name: "",
+                search_phone: "",
+                new_first_name: "",
+                new_last_name: "",
+                new_father_name: "",
+                new_mobile: "",
+                new_national_id: "",
+                new_gender: "",
+                new_age: "",
+                new_blood_group: "",
+                new_address: "",
+              }));
+            }
+          } catch (patientErr) {
+            console.error("خطا در حذف مریض:", patientErr);
+            toast.warning("⚠️ مراجعه حذف شد اما مریض به دلیل محدودیت‌های سیستمی حذف نشد");
+          }
+        } else {
+          toast.info(`ℹ️ مریض ${getPatientFullName(regToDelete.patient)} همچنان دارای مراجعات دیگر است و حذف نشد`);
+        }
+      }
+      
       fetchRegistrations();
       fetchStatistics();
     } catch (err) {
@@ -699,6 +763,8 @@ export default function RegistrationForm() {
   };
 
   const handleEdit = (reg) => {
+    const patient = reg.patient || null;
+    
     setForm({ 
       patient_id: reg.patient_id || "",
       department_id: reg.department_id || "",
@@ -713,25 +779,28 @@ export default function RegistrationForm() {
       oxygen: reg.oxygen || "",
       visit_date: reg.visit_date || "",
       note: reg.note || "",
-      search_tazkira: "",
-      search_name: "",
-      search_phone: "",
-      new_first_name: "",
-      new_last_name: "",
-      new_father_name: "",
-      new_mobile: "",
-      new_national_id: "",
-      new_gender: "",
-      new_age: "",
-      new_blood_group: "",
-      new_address: "",
+      search_tazkira: patient?.national_id || "",
+      search_name: patient ? (patient.first_name || '') + ' ' + (patient.last_name || '') : "",
+      search_phone: patient?.mobile || "",
+      new_first_name: patient?.first_name || "",
+      new_last_name: patient?.last_name || "",
+      new_father_name: patient?.father_name || "",
+      new_mobile: patient?.mobile || "",
+      new_national_id: patient?.national_id || "",
+      new_gender: patient?.gender || "",
+      new_age: patient?.age || "",
+      new_blood_group: patient?.blood_group || "",
+      new_address: patient?.address || "",
     });
-    setSelectedPatient(reg.patient || null);
+    
+    setSelectedPatient(patient);
     setEditingId(reg.reg_id);
     setSearchResults([]);
     setShowSearchResults(false);
-    setShowNewPatientForm(false);
+    setShowNewPatientForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
+    
+    toast.info(`✏️ در حال ویرایش مراجعه ${reg.visit_number} و اطلاعات مریض ${getPatientFullName(patient)}`);
   };
 
   const handleCancelEdit = () => {
@@ -817,6 +886,226 @@ export default function RegistrationForm() {
     currentPage * ROWS_PER_PAGE
   );
 
+  // کامپوننت پرینت مخفی
+  const PrintContent = () => {
+    if (!printData) return null;
+    const patient = printData.patient || {};
+    const department = departments.find(d => d.id === printData.department_id);
+    const doctorName = printData.doctor_id ? getDoctorName(printData.doctor_id) : "-";
+    
+    return (
+     <div ref={printRef} style={{
+  padding: '20px',
+  fontFamily: 'Arial, sans-serif',
+  direction: 'rtl',
+  backgroundColor: '#ffffff',
+  color: '#1a1a2e',
+  width: '280px',
+  fontSize: '11px',
+  position: 'fixed',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  zIndex: 9999,
+  borderRadius: '12px',
+  boxShadow: '0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(37, 99, 235, 0.1)',
+  border: '2px solid #2563eb',
+  background: 'linear-gradient(145deg, #ffffff 0%, #f8faff 100%)',
+  maxHeight: '90vh',
+  overflowY: 'auto'
+}}>
+  {/* هدر با رنگ آبی */}
+  <div style={{
+    textAlign: 'center',
+    borderBottom: '3px solid #2563eb',
+    paddingBottom: '12px',
+    marginBottom: '12px',
+    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+    margin: '-20px -20px 12px -20px',
+    padding: '16px 20px 12px 20px',
+    borderRadius: '10px 10px 0 0',
+    color: 'white'
+  }}>
+    <h3 style={{
+      margin: '0',
+      fontSize: '16px',
+      fontWeight: '700',
+      letterSpacing: '0.5px',
+      color: 'white',
+      textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+    }}>
+      🏥 رسید مراجعه
+    </h3>
+    <p style={{
+      margin: '4px 0 0 0',
+      fontSize: '10px',
+      color: 'rgba(255,255,255,0.85)',
+      fontWeight: '500'
+    }}>
+      شماره: {printData.visit_number || '-'}
+    </p>
+  </div>
+  
+  {/* اطلاعات مریض */}
+  <div style={{
+    marginBottom: '10px',
+    padding: '10px 12px',
+    backgroundColor: '#f0f5ff',
+    borderRadius: '8px',
+    border: '1px solid #dbeafe'
+  }}>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>نام مریض:</strong>
+      <span style={{ color: '#1a1a2e' }}>{getPatientFullName(patient)}</span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>نام پدر:</strong>
+      <span>{patient.father_name || '-'}</span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>شماره تماس:</strong>
+      <span dir="ltr">{patient.mobile || '-'}</span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>شماره تذکره:</strong>
+      <span>{patient.national_id || '-'}</span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>جنسیت:</strong>
+      <span>{patient.gender === 'Male' ? 'مرد' : patient.gender === 'Female' ? 'زن' : patient.gender || '-'}</span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>سن:</strong>
+      <span>{patient.age || '-'}</span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>گروه خون:</strong>
+      <span>{patient.blood_group || '-'}</span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>آدرس:</strong>
+      <span style={{ textAlign: 'left' }}>{patient.address || '-'}</span>
+    </p>
+  </div>
+  
+  {/* اطلاعات مراجعه */}
+  <div style={{
+    borderTop: '2px dashed #2563eb',
+    paddingTop: '10px',
+    marginTop: '8px',
+    padding: '10px 12px',
+    backgroundColor: '#f8faff',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0'
+  }}>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>بخش:</strong>
+      <span>{department ? (departmentNames[department.name] || department.name) : '-'}</span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>داکتر معالج:</strong>
+      <span>{doctorName}</span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>نوع مراجعه:</strong>
+      <span>{printData.visit_type || '-'}</span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>وضعیت:</strong>
+      <span style={{
+        backgroundColor: getStatusColor(printData.visit_status),
+        color: 'white',
+        padding: '1px 10px',
+        borderRadius: '12px',
+        fontSize: '10px',
+        fontWeight: '600'
+      }}>
+        {getStatusText(printData.visit_status)}
+      </span>
+    </p>
+    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+      <strong style={{ color: '#2563eb' }}>تاریخ مراجعه:</strong>
+      <span>{printData.visit_date ? new Date(printData.visit_date).toLocaleDateString('fa-IR') : '-'}</span>
+    </p>
+    <p style={{
+      margin: '6px 0 3px 0',
+      display: 'flex',
+      justifyContent: 'space-between',
+      backgroundColor: '#dbeafe',
+      padding: '6px 10px',
+      borderRadius: '6px',
+      fontWeight: 'bold'
+    }}>
+      <strong style={{ color: '#1d4ed8' }}>💰 فیس مراجعه:</strong>
+      <span style={{ color: '#1d4ed8', fontSize: '13px' }}>
+        {Number(printData.registration_fee || 0).toFixed(2)} افغانی
+      </span>
+    </p>
+    {printData.diagnosis && (
+      <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+        <strong style={{ color: '#2563eb' }}>تشخیص:</strong>
+        <span style={{ textAlign: 'left' }}>{printData.diagnosis}</span>
+      </p>
+    )}
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: '3px 10px',
+      marginTop: '4px'
+    }}>
+      {printData.weight && (
+        <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>وزن:</strong>
+          <span>{printData.weight} کیلوگرم</span>
+        </p>
+      )}
+      {printData.blood_pressure && (
+        <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>فشار خون:</strong>
+          <span>{printData.blood_pressure}</span>
+        </p>
+      )}
+      {printData.temperature && (
+        <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>حرارت:</strong>
+          <span>{printData.temperature}°</span>
+        </p>
+      )}
+      {printData.oxygen && (
+        <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>اکسیجن:</strong>
+          <span>{printData.oxygen}%</span>
+        </p>
+      )}
+    </div>
+    {printData.note && (
+      <p style={{ margin: '4px 0 0 0', display: 'flex', justifyContent: 'space-between' }}>
+        <strong style={{ color: '#2563eb' }}>یادداشت:</strong>
+        <span style={{ textAlign: 'left' }}>{printData.note}</span>
+      </p>
+    )}
+  </div>
+  
+  {/* فوتر */}
+  <div style={{
+    textAlign: 'center',
+    borderTop: '2px solid #2563eb',
+    paddingTop: '8px',
+    marginTop: '10px',
+    fontSize: '8px',
+    color: '#64748b'
+  }}>
+    <p style={{ margin: '0' }}>
+      🖨️ تاریخ چاپ: {new Date().toLocaleDateString('fa-IR')} - {new Date().toLocaleTimeString('fa-IR')}
+    </p>
+    <p style={{ margin: '2px 0 0 0', fontSize: '7px', color: '#94a3b8' }}>
+      سیستم مدیریت بهداشت و درمان
+    </p>
+  </div>
+</div>
+    );
+  };
+
   return (
     <MainLayoutjur>
       <ToastContainer 
@@ -842,6 +1131,9 @@ export default function RegistrationForm() {
           transform: 'none'
         }}
       />
+
+      {/* کامپوننت مخفی پرینت */}
+      <PrintContent />
 
       {showSendModal && (
         <div style={{
@@ -966,7 +1258,7 @@ export default function RegistrationForm() {
 
       <div className="form-container">
         <h2 style={{ textAlign: "center" }}>
-          {editingId ? "ویرایش مراجعه" : "ثبت مراجعه جدید"}
+          {editingId ? "ویرایش مراجعه و اطلاعات مریض" : "ثبت مراجعه جدید"}
         </h2>
 
         <form onSubmit={handleSubmit} className="form-grid">
@@ -983,9 +1275,13 @@ export default function RegistrationForm() {
               <button
                 type="button"
                 onClick={() => {
-                  setShowNewPatientForm(!showNewPatientForm);
-                  setSearchResults([]);
-                  setShowSearchResults(false);
+                  if (!editingId) {
+                    setShowNewPatientForm(!showNewPatientForm);
+                    setSearchResults([]);
+                    setShowSearchResults(false);
+                  } else {
+                    toast.warning("⚠️ در حالت ویرایش نمی‌توان مریض جدید ثبت کرد");
+                  }
                 }}
                 style={{
                   backgroundColor: showNewPatientForm ? '#dc2626' : '#22c55e',
@@ -993,9 +1289,11 @@ export default function RegistrationForm() {
                   padding: '5px 15px',
                   borderRadius: '5px',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: editingId ? 'not-allowed' : 'pointer',
+                  opacity: editingId ? 0.5 : 1,
                   fontSize: '13px'
                 }}
+                disabled={editingId}
               >
                 {showNewPatientForm ? '✕ بستن' : '+ ثبت مریض جدید'}
               </button>
@@ -1009,7 +1307,9 @@ export default function RegistrationForm() {
                 borderRadius: '8px',
                 border: '1px solid #374151'
               }}>
-                <h5 style={{ color: '#34d399', marginBottom: '10px' }}>📝 ثبت مریض جدید</h5>
+                <h5 style={{ color: '#34d399', marginBottom: '10px' }}>
+                  {editingId ? "✏️ ویرایش اطلاعات مریض" : "📝 ثبت مریض جدید"}
+                </h5>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
                   <div>
                     <label style={{ fontSize: '12px', color: '#9ca3af' }}>نام *</label>
@@ -1134,7 +1434,10 @@ export default function RegistrationForm() {
                   </div>
                 </div>
                 <div style={{ fontSize: '12px', color: '#fbbf24', marginTop: '8px' }}>
-                  ⚠️ با کلیک روی دکمه "ثبت مراجعه"، هم مریض جدید و هم مراجعه در یک تراکنش ثبت می‌شود
+                  {editingId ? 
+                    "✏️ با کلیک روی دکمه \"تصحیح\"، اطلاعات مریض و مراجعه هر دو بروزرسانی می‌شوند" :
+                    "⚠️ با کلیک روی دکمه \"ثبت مراجعه\"، هم مریض جدید و هم مراجعه در یک تراکنش ثبت می‌شود"
+                  }
                 </div>
               </div>
             )}
@@ -1150,6 +1453,7 @@ export default function RegistrationForm() {
                   className="form-control"
                   placeholder="شماره تذکره..."
                   style={{ fontSize: '14px' }}
+                  disabled={editingId}
                 />
               </div>
               <div>
@@ -1162,6 +1466,7 @@ export default function RegistrationForm() {
                   className="form-control"
                   placeholder="نام کامل..."
                   style={{ fontSize: '14px' }}
+                  disabled={editingId}
                 />
               </div>
               <div>
@@ -1174,6 +1479,7 @@ export default function RegistrationForm() {
                   className="form-control"
                   placeholder="شماره تماس..."
                   style={{ fontSize: '14px' }}
+                  disabled={editingId}
                 />
               </div>
             </div>
@@ -1181,15 +1487,15 @@ export default function RegistrationForm() {
               <button
                 type="button"
                 onClick={searchExistingPatients}
-                disabled={searching}
+                disabled={searching || editingId}
                 style={{
                   backgroundColor: '#2563eb',
                   color: 'white',
                   padding: '8px 20px',
                   borderRadius: '5px',
                   border: 'none',
-                  cursor: searching ? 'not-allowed' : 'pointer',
-                  opacity: searching ? 0.6 : 1
+                  cursor: (searching || editingId) ? 'not-allowed' : 'pointer',
+                  opacity: (searching || editingId) ? 0.6 : 1
                 }}
               >
                 {searching ? 'در حال جستجو...' : 'جستجو'}
@@ -1205,12 +1511,13 @@ export default function RegistrationForm() {
                   border: 'none',
                   cursor: 'pointer'
                 }}
+                disabled={editingId}
               >
                 پاک کردن
               </button>
             </div>
 
-            {showSearchResults && searchResults.length > 0 && (
+            {showSearchResults && searchResults.length > 0 && !editingId && (
               <div style={{
                 marginTop: '10px',
                 backgroundColor: '#ffffff',
@@ -1259,13 +1566,16 @@ export default function RegistrationForm() {
                 </table>
               </div>
             )}
-            {showSearchResults && searchResults.length === 0 && (
+            {showSearchResults && searchResults.length === 0 && !editingId && (
               <div style={{ marginTop: '10px', color: '#9ca3af', textAlign: 'center' }}>
                 هیچ مریضی یافت نشد
               </div>
             )}
             <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
-              💡 جستجو در هر دو جدول مریض‌ها و رجستریشن‌ها انجام می‌شود
+              {editingId ? 
+                "✏️ در حالت ویرایش، اطلاعات مریض از فیلدهای زیر قابل تغییر است" :
+                "💡 جستجو در هر دو جدول مریض‌ها و رجستریشن‌ها انجام می‌شود"
+              }
             </div>
             
             {selectedPatient && (
@@ -1287,24 +1597,26 @@ export default function RegistrationForm() {
                       {selectedPatient.mobile && `| تماس: ${selectedPatient.mobile}`}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedPatient(null);
-                      setForm(prev => ({ ...prev, patient_id: "" }));
-                    }}
-                    style={{
-                      backgroundColor: '#dc2626',
-                      color: 'white',
-                      padding: '2px 10px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '12px'
-                    }}
-                  >
-                    ✕
-                  </button>
+                  {!editingId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPatient(null);
+                        setForm(prev => ({ ...prev, patient_id: "" }));
+                      }}
+                      style={{
+                        backgroundColor: '#dc2626',
+                        color: 'white',
+                        padding: '2px 10px',
+                        borderRadius: '4px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -1312,7 +1624,7 @@ export default function RegistrationForm() {
 
           <div style={{ gridColumn: '1 / -1', marginBottom: '10px' }}>
             <hr style={{ borderColor: '#374151' }} />
-            <h4 style={{ margin: '10px 0', color: '#60a5fa' }}>🔄 اطلاعات مراجعه جدید</h4>
+            <h4 style={{ margin: '10px 0', color: '#60a5fa' }}>🔄 اطلاعات مراجعه</h4>
           </div>
 
           <div>
@@ -1499,7 +1811,7 @@ export default function RegistrationForm() {
               style={{ backgroundColor: editingId ? "#ffc107" : "#2563eb" }}
               disabled={isSubmitting}
             >
-              {isSubmitting ? "در حال ثبت..." : (editingId ? "تصحیح" : "ثبت مراجعه")}
+              {isSubmitting ? "در حال ثبت..." : (editingId ? "تصحیح مراجعه و مریض" : "ثبت مراجعه")}
             </button>
 
             {editingId && (
@@ -1531,7 +1843,10 @@ export default function RegistrationForm() {
             borderRadius: '5px',
             marginTop: '5px'
           }}>
-            ℹ️ تمام اطلاعات (مریض جدید و مراجعه) در یک تراکنش از طریق دکمه "ثبت مراجعه" ارسال می‌شود
+            {editingId ? 
+              "✏️ با کلیک روی دکمه \"تصحیح مراجعه و مریض\"، هم اطلاعات مراجعه و هم اطلاعات مریض بروزرسانی می‌شوند" :
+              "ℹ️ تمام اطلاعات (مریض جدید و مراجعه) در یک تراکنش از طریق دکمه \"ثبت مراجعه\" ارسال می‌شود"
+            }
           </div>
         </form>
       </div>
@@ -1562,7 +1877,7 @@ export default function RegistrationForm() {
                 <th className="px-3 py-2 text-right" style={{ minWidth: '100px' }}>نوع مراجعه</th>
                 <th className="px-3 py-2 text-right" style={{ minWidth: '100px' }}>فیس (افغانی)</th>
                 <th className="px-3 py-2 text-right" style={{ minWidth: '120px' }}>وضعیت پرداخت</th>
-                <th className="px-3 py-2 text-right" style={{ minWidth: '180px' }}>عملیات</th>
+                <th className="px-3 py-2 text-right" style={{ minWidth: '240px' }}>عملیات</th>
               </tr>
             </thead>
             <tbody>
@@ -1633,6 +1948,21 @@ export default function RegistrationForm() {
                             }}
                           >
                             حذف
+                          </button>
+
+                          <button
+                            onClick={() => openPrintModal(r)}
+                            style={{
+                              backgroundColor: "#059669",
+                              color: "#fff",
+                              padding: "4px 10px",
+                              borderRadius: "4px",
+                              border: "none",
+                              cursor: "pointer",
+                              fontSize: "12px"
+                            }}
+                          >
+                            🖨️ پرینت
                           </button>
 
                           {r.visit_status !== 'Doctor' && r.visit_status !== 'Completed' && r.visit_status !== 'Cancelled' && (
