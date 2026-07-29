@@ -17,7 +17,452 @@ use Illuminate\Validation\Rule;
 class RegistrationsController extends Controller
 {
 
+  public function store(Request $request)
+{
+    $validated = $request->validate([
 
+        // ارتباط مریض
+        'patient_id' => [
+            'nullable',
+            'exists:patients,id'
+        ],
+
+        'is_new_patient' => [
+            'nullable',
+            'boolean'
+        ],
+
+
+        // معلومات مریض جدید
+        'first_name' => 'nullable|string|max:255',
+        'last_name' => 'nullable|string|max:255',
+        'father_name' => 'nullable|string|max:255',
+        'mobile' => 'nullable|string|max:30',
+        'national_id' => 'nullable|string|max:255',
+
+        'gender' => 'nullable|string|max:50',
+
+        'age' => [
+            'nullable',
+            'integer',
+            'min:0',
+            'max:150'
+        ],
+
+        'blood_group' => 'nullable|string',
+        'address' => 'nullable|string',
+
+
+        // معلومات مراجعه
+        'department_id' => [
+            'nullable',
+            'exists:departments,id'
+        ],
+
+        'doctor_id' => [
+            'nullable',
+            'exists:users,id'
+        ],
+
+
+        'visit_type' => [
+            'nullable',
+            'in:OPD,IPD,Emergency,Laboratory,Radiology,Pharmacy'
+        ],
+
+
+        'registration_fee' => [
+            'required',
+            'numeric',
+            'min:0'
+        ],
+
+
+        'visit_status' => [
+            'nullable',
+            'in:Waiting,Doctor,Laboratory,Radiology,Pharmacy,Billing,Completed,Cancelled'
+        ],
+
+
+        'diagnosis' => 'nullable|string',
+
+        'weight' => [
+            'nullable',
+            'numeric',
+            'min:0',
+            'max:300'
+        ],
+
+        'blood_pressure' => 'nullable|string|max:20',
+
+        'temperature' => [
+            'nullable',
+            'numeric',
+            'min:30',
+            'max:45'
+        ],
+
+        'oxygen' => [
+            'nullable',
+            'integer',
+            'min:0',
+            'max:100'
+        ],
+
+
+        'visit_date' => 'nullable|date',
+
+        'note' => 'nullable|string',
+
+    ]);
+
+
+    DB::beginTransaction();
+
+
+    try {
+
+
+        $patient_id = null;
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | ایجاد مریض جدید یا انتخاب مریض موجود
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->boolean('is_new_patient') || !$request->patient_id) {
+
+
+            $gender = $request->gender;
+
+
+            if (
+                $gender == 'male' ||
+                $gender == 'Male' ||
+                $gender == 'other'
+            ) {
+
+                $gender = 'Male';
+
+            } elseif (
+                $gender == 'female' ||
+                $gender == 'Female'
+            ) {
+
+                $gender = 'Female';
+            }
+
+
+
+            $patient = Patient::create([
+
+                'uuid' => Str::uuid(),
+
+                'patient_code' => 'P-' . time(),
+
+                'first_name' => $request->first_name,
+
+                'last_name' => $request->last_name,
+
+                'father_name' => $request->father_name,
+
+                'mobile' => $request->mobile,
+
+                'national_id' => $request->national_id,
+
+                'gender' => $gender,
+
+                'age' => $request->age,
+
+                'blood_group' => $request->blood_group,
+
+                'address' => $request->address,
+
+                'created_by' => Auth::id(),
+
+            ]);
+
+
+            $patient_id = $patient->id;
+
+
+        } else {
+
+
+            $patient_id = $request->patient_id;
+
+        }
+
+
+
+
+        if (!$patient_id) {
+
+
+            DB::rollBack();
+
+
+            return response()->json([
+
+                'message' => 'اطلاعات مریض موجود نیست'
+
+            ],422);
+
+        }
+
+
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | تولید خودکار شماره مراجعه و شماره صف
+        |--------------------------------------------------------------------------
+        */
+
+
+        $validated['patient_id'] = $patient_id;
+
+
+        $validated['reg_type'] = 'patient';
+
+
+
+        // شماره مراجعه کل سیستم
+
+        $validated['visit_number'] =
+            (Registrations::max('visit_number') ?? 0) + 1;
+
+
+
+
+        // تاریخ مراجعه
+
+        $visitDate =
+            $validated['visit_date'] ?? now()->toDateString();
+
+
+        $validated['visit_date'] = $visitDate;
+
+
+
+
+        // شماره صف روزانه
+
+        $validated['queue_number'] =
+            Registrations::whereDate(
+                'visit_date',
+                $visitDate
+            )->count() + 1;
+
+
+
+        // وضعیت پیش فرض
+
+        $validated['visit_status'] =
+            $validated['visit_status'] ?? 'Waiting';
+
+
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | ثبت مراجعه
+        |--------------------------------------------------------------------------
+        */
+
+
+        $registration = Registrations::create($validated);
+
+
+
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | ثبت فیس در ژورنال
+        |--------------------------------------------------------------------------
+        */
+
+
+        if ($registration->registration_fee > 0) {
+
+
+            $journal = Journal::create([
+
+
+                'journal_date' =>
+                    $registration->visit_date,
+
+
+                'description' =>
+                    "فیس مراجعه مریض - ID: {$registration->reg_id}",
+
+
+                'entry_type' =>
+                    'debit',
+
+
+                'amount' =>
+                    $registration->registration_fee,
+
+
+                'ref_type' =>
+                    'patient',
+
+
+                'ref_id' =>
+                    $registration->reg_id,
+
+
+                'user_id' =>
+                    Auth::id(),
+
+            ]);
+
+
+
+
+            try {
+
+
+                LogService::create(
+
+                    'create',
+
+                    'journals',
+
+                    $journal->id,
+
+                    'Registration fee journal created',
+
+                    $journal->toArray()
+
+                );
+
+
+            } catch(\Exception $e){
+
+
+                Log::error(
+                    "Journal log failed: ".$e->getMessage()
+                );
+
+            }
+
+        }
+
+
+
+
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | ثبت لاگ مراجعه
+        |--------------------------------------------------------------------------
+        */
+
+
+        try {
+
+
+            LogService::create(
+
+                'create',
+
+                'registrations',
+
+                $registration->reg_id,
+
+                'Patient registration created',
+
+                $registration->toArray()
+
+            );
+
+
+        } catch(\Exception $e){
+
+
+            Log::error(
+                "Registration log failed: ".$e->getMessage()
+            );
+
+        }
+
+
+
+
+
+
+
+        DB::commit();
+
+
+
+
+
+        return response()->json([
+
+            'message'=>'مراجعه مریض موفقانه ثبت شد',
+
+            'data'=>$registration->load([
+
+                'patient',
+
+                'department',
+
+                'doctor',
+
+                'journals'
+
+            ])
+
+        ],201);
+
+
+
+
+    } catch(\Exception $e){
+
+
+
+        DB::rollBack();
+
+
+
+        Log::error(
+
+            'Registration store error: '
+
+            .$e->getMessage()
+
+            ."\n"
+
+            .$e->getTraceAsString()
+
+        );
+
+
+
+        return response()->json([
+
+            'message'=>'خطا در ثبت مراجعه مریض',
+
+            'error'=>$e->getMessage()
+
+        ],500);
+
+
+
+    }
+}
     /**
      * دریافت لیست تمام مراجعات
      */
