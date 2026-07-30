@@ -28,40 +28,59 @@ class NotificationController extends Controller
         }
     }
 
-    public function store(Request $request)
-    {
-        try {
-            $validated = $request->validate([
-                'user_id' => 'required|exists:users,id',
-                'title' => 'required|string|max:255',
-                'message' => 'required|string',
-                'type' => 'nullable|string|max:50',
-                'registration_id' => 'nullable|integer',
-            ]);
+   public function store(Request $request)
+{
+    try {
+        $validated = $request->validate([
+            'user_id'        => 'required|exists:users,id',
+            'title'          => 'required|string|max:255',
+            'message'        => 'required|string',
+            'type'           => 'nullable|string|max:100',
 
-            $notification = Notification::create([
-                'user_id' => $validated['user_id'],
-                'title' => $validated['title'],
-                'message' => $validated['message'],
-                'type' => $validated['type'] ?? 'general',
-                'registration_id' => $validated['registration_id'] ?? null,
-                'is_read' => false,
-                'created_by' => Auth::id(),
-            ]);
+            'reference_type' => 'nullable|string|max:100',
+            'reference_id'   => 'nullable|integer',
 
-            return response()->json([
-                'message' => 'اعلان با موفقیت ارسال شد',
-                'data' => $notification
-            ], 201);
+            'priority'       => 'nullable|in:Low,Normal,High,Urgent',
+            'action_url'     => 'nullable|string|max:255',
+            'data'           => 'nullable|array',
+            'expires_at'     => 'nullable|date',
+        ]);
 
-        } catch (\Exception $e) {
-            Log::error('Error creating notification: ' . $e->getMessage());
-            return response()->json([
-                'message' => 'خطا در ارسال اعلان',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        $notification = Notification::create([
+            'user_id'        => $validated['user_id'],
+            'sender_id'      => Auth::id(),
+
+            'title'          => $validated['title'],
+            'message'        => $validated['message'],
+
+            'type'           => $validated['type'] ?? 'general',
+
+            'reference_type' => $validated['reference_type'] ?? null,
+            'reference_id'   => $validated['reference_id'] ?? null,
+
+            'priority'       => $validated['priority'] ?? 'Normal',
+            'action_url'     => $validated['action_url'] ?? null,
+            'data'           => $validated['data'] ?? null,
+            'expires_at'     => $validated['expires_at'] ?? null,
+
+            'is_read'        => false,
+            'created_by'     => Auth::id(),
+        ]);
+
+        return response()->json([
+            'message' => 'اعلان با موفقیت ارسال شد',
+            'data'    => $notification
+        ], 201);
+
+    } catch (\Exception $e) {
+        Log::error('Error creating notification: ' . $e->getMessage());
+
+        return response()->json([
+            'message' => 'خطا در ارسال اعلان',
+            'error'   => $e->getMessage()
+        ], 500);
     }
+}
 
     public function update(Request $request, $id)
     {

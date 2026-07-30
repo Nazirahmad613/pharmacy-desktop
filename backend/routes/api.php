@@ -138,6 +138,14 @@ Route::post('/doctor/laboratory/{reg_id}', [DoctorTreatmentController::class, 's
 Route::post('/doctor/complete/{reg_id}', [DoctorTreatmentController::class, 'complete']);
 Route::post('/doctor/return-to-treatment/{history_id}', [DoctorTreatmentController::class, 'returnToTreatment']);
 Route::get('/doctor/treatment-history', [DoctorTreatmentController::class, 'treatmentHistory']);
+    Route::post('/doctor/radiology-request', [DoctorTreatmentController::class, 'storeRadiologyRequest']);
+      // Follow Up
+    Route::post('/doctor/follow-up', [DoctorTreatmentController::class, 'storeFollowUp']);
+    
+    // بستری
+    Route::get('/doctor/wards', [DoctorTreatmentController::class, 'getWards']);
+    Route::post('/doctor/admission', [DoctorTreatmentController::class, 'storeAdmission']);
+
     // ===== Prescriptions =====
     Route::get('/prescriptions/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);
     Route::get('/prescriptions', [PrescriptionController::class, 'index']);

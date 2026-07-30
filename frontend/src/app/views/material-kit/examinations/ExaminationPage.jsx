@@ -7,6 +7,10 @@ import PatientQueue from "./patientsqueue/PatientQueue";
 import ExaminationForm from "./examinate/ExaminationForm";
 import LaboratoryRequest from "./laborate/LaboratoryRequest";
 import PrescriptionForm from "../pres_insert/pres_insert";
+import HistoryList from "./historytreanment/HistoryList";
+import RadiologyRequest from "./radiology/RadiologyRequest";
+import FollowUp from "./follow/FollowUp";
+import Admission from "./admission/Admission";
 
 export default function TreatmentPage() {
   const { api } = useAuth();
@@ -15,6 +19,7 @@ export default function TreatmentPage() {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  
 
   // دریافت صف مریضان
   const fetchQueue = async () => {
@@ -57,14 +62,21 @@ export default function TreatmentPage() {
       return;
     }
     setSelectedRegistration(registration);
+    setSelectedHistory(null);
     setActiveTab("examination");
     toast.info(`👨‍⚕️ مریض ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''} انتخاب شد`);
   };
 
   const goBackToQueue = () => {
     setSelectedRegistration(null);
+    setSelectedHistory(null);
     setActiveTab("queue");
     refreshData();
+  };
+
+  const handleSelectHistory = (historyItem) => {
+    setSelectedHistory(historyItem);
+    toast.info(`📜 مشاهده تاریخچه ${historyItem.patient?.first_name || ''} ${historyItem.patient?.last_name || ''}`);
   };
 
   const hasValidRegistration = selectedRegistration && selectedRegistration.reg_id;
@@ -155,8 +167,12 @@ export default function TreatmentPage() {
             flexWrap: "wrap",
           }}
         >
+          {/* تب صف انتظار */}
           <button
-            onClick={() => setActiveTab("queue")}
+            onClick={() => {
+              setActiveTab("queue");
+              setSelectedHistory(null);
+            }}
             style={{
               padding: "12px 25px",
               border: "none",
@@ -185,6 +201,7 @@ export default function TreatmentPage() {
             )}
           </button>
 
+          {/* تب معاینه */}
           <button
             onClick={() => {
               if (!hasValidRegistration) {
@@ -192,6 +209,7 @@ export default function TreatmentPage() {
                 return;
               }
               setActiveTab("examination");
+              setSelectedHistory(null);
             }}
             style={{
               padding: "12px 25px",
@@ -212,6 +230,7 @@ export default function TreatmentPage() {
             معاینه
           </button>
 
+          {/* تب لابراتوار */}
           <button
             onClick={() => {
               if (!hasValidRegistration) {
@@ -219,6 +238,7 @@ export default function TreatmentPage() {
                 return;
               }
               setActiveTab("laboratory");
+              setSelectedHistory(null);
             }}
             style={{
               padding: "12px 25px",
@@ -239,6 +259,36 @@ export default function TreatmentPage() {
             لابراتوار
           </button>
 
+          {/* تب رادیولوژی */}
+          <button
+            onClick={() => {
+              if (!hasValidRegistration) {
+                toast.warning("⚠️ لطفاً ابتدا یک مریض را از صف انتخاب کنید");
+                return;
+              }
+              setActiveTab("radiology");
+              setSelectedHistory(null);
+            }}
+            style={{
+              padding: "12px 25px",
+              border: "none",
+              borderRadius: "8px",
+              cursor: hasValidRegistration ? "pointer" : "not-allowed",
+              fontWeight: "bold",
+              background: activeTab === "radiology" ? "#8b5cf6" : "#374151",
+              color: "#fff",
+              opacity: hasValidRegistration ? 1 : 0.5,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            disabled={!hasValidRegistration}
+          >
+            <span>📷</span>
+            رادیولوژی
+          </button>
+
+          {/* تب نسخه */}
           <button
             onClick={() => {
               if (!hasValidRegistration) {
@@ -246,6 +296,7 @@ export default function TreatmentPage() {
                 return;
               }
               setActiveTab("pres_insert");
+              setSelectedHistory(null);
             }}
             style={{
               padding: "12px 25px",
@@ -265,6 +316,88 @@ export default function TreatmentPage() {
             <span>📝</span>
             نسخه
           </button>
+
+          {/* تب Follow Up */}
+          <button
+            onClick={() => {
+              if (!hasValidRegistration) {
+                toast.warning("⚠️ لطفاً ابتدا یک مریض را از صف انتخاب کنید");
+                return;
+              }
+              setActiveTab("followup");
+              setSelectedHistory(null);
+            }}
+            style={{
+              padding: "12px 25px",
+              border: "none",
+              borderRadius: "8px",
+              cursor: hasValidRegistration ? "pointer" : "not-allowed",
+              fontWeight: "bold",
+              background: activeTab === "followup" ? "#10b981" : "#374151",
+              color: "#fff",
+              opacity: hasValidRegistration ? 1 : 0.5,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            disabled={!hasValidRegistration}
+          >
+            <span>📅</span>
+            ملاقات بعدی
+          </button>
+
+          {/* تب بستری */}
+          <button
+            onClick={() => {
+              if (!hasValidRegistration) {
+                toast.warning("⚠️ لطفاً ابتدا یک مریض را از صف انتخاب کنید");
+                return;
+              }
+              setActiveTab("admission");
+              setSelectedHistory(null);
+            }}
+            style={{
+              padding: "12px 25px",
+              border: "none",
+              borderRadius: "8px",
+              cursor: hasValidRegistration ? "pointer" : "not-allowed",
+              fontWeight: "bold",
+              background: activeTab === "admission" ? "#ef4444" : "#374151",
+              color: "#fff",
+              opacity: hasValidRegistration ? 1 : 0.5,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            disabled={!hasValidRegistration}
+          >
+            <span>🏥</span>
+            بستری
+          </button>
+
+          {/* تب تاریخچه معالجه */}
+          <button
+            onClick={() => {
+              setActiveTab("history");
+              setSelectedRegistration(null);
+              setSelectedHistory(null);
+            }}
+            style={{
+              padding: "12px 25px",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontWeight: "bold",
+              background: activeTab === "history" ? "#8b5cf6" : "#374151",
+              color: "#fff",
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <span>📜</span>
+            تاریخچه معالجه
+          </button>
         </div>
 
         {/* Content */}
@@ -277,6 +410,7 @@ export default function TreatmentPage() {
             color: "#fff",
           }}
         >
+          {/* صف انتظار */}
           {activeTab === "queue" && (
             <PatientQueue 
               queue={queue}
@@ -286,6 +420,7 @@ export default function TreatmentPage() {
             />
           )}
 
+          {/* معاینه */}
           {activeTab === "examination" && hasValidRegistration && (
             <ExaminationForm 
               registration={selectedRegistration}
@@ -295,6 +430,7 @@ export default function TreatmentPage() {
             />
           )}
 
+          {/* لابراتوار */}
           {activeTab === "laboratory" && hasValidRegistration && (
             <LaboratoryRequest 
               registration={selectedRegistration}
@@ -304,12 +440,51 @@ export default function TreatmentPage() {
             />
           )}
 
+          {/* رادیولوژی */}
+          {activeTab === "radiology" && hasValidRegistration && (
+            <RadiologyRequest 
+              registration={selectedRegistration}
+              onComplete={goBackToQueue}
+              onRefresh={refreshData}
+              api={api}
+            />
+          )}
+
+          {/* نسخه */}
           {activeTab === "pres_insert" && hasValidRegistration && (
             <PrescriptionForm 
               registration={selectedRegistration}
               onComplete={goBackToQueue}
               onRefresh={refreshData}
               api={api}
+            />
+          )}
+
+          {/* Follow Up */}
+          {activeTab === "followup" && hasValidRegistration && (
+            <FollowUp 
+              registration={selectedRegistration}
+              onComplete={goBackToQueue}
+              onRefresh={refreshData}
+              api={api}
+            />
+          )}
+
+          {/* بستری */}
+          {activeTab === "admission" && hasValidRegistration && (
+            <Admission 
+              registration={selectedRegistration}
+              onComplete={goBackToQueue}
+              onRefresh={refreshData}
+              api={api}
+            />
+          )}
+
+          {/* تاریخچه معالجه */}
+          {activeTab === "history" && (
+            <HistoryList 
+              api={api}
+              onSelectHistory={handleSelectHistory}
             />
           )}
         </div>
