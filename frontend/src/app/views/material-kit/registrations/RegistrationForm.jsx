@@ -12,115 +12,75 @@ export default function RegistrationForm() {
 
  const departmentNames = {
     Emergency: "اورژانس",
-
     "Out Patient Department": "مریضان سرپایی",
     OPD: "مریضان سرپایی",
-
     "In Patient Department": "بخش بستر",
     IPD: "بخش بستر",
-
     Laboratory: "لابراتوار",
     "Clinical Laboratory": "لابراتوار کلینیکی",
     "Pathology Laboratory": "لابراتوار پتالوژی",
-
     Radiology: "رادیولوژی",
     Imaging: "تصویربرداری",
-
     Pharmacy: "فارماسی",
     "Inpatient Pharmacy": "فارماسی بستر",
     "Outpatient Pharmacy": "فارماسی سرپایی",
-
     Surgery: "جراحی",
     "General Surgery": "جراحی عمومی",
     "Orthopedic Surgery": "جراحی ارتوپیدی",
     "Neurosurgery": "جراحی اعصاب",
     "Cardiac Surgery": "جراحی قلب",
-
     Internal: "داخله",
     "Internal Medicine": "داخله عمومی",
-
     Pediatrics: "اطفال",
-    "Pediatric": "اطفال",
-
+    Pediatric: "اطفال",
     "Obstetrics": "نسایی ولادی",
-    "Gynecology": "نسایی",
+    Gynecology: "نسایی",
     "Obstetrics and Gynecology": "نسایی ولادی",
-
     Cardiology: "قلب",
     Neurology: "اعصاب",
     Neuroscience: "علوم عصبی",
-
     Dermatology: "جلدی",
     "Skin Department": "بخش جلدی",
-
     "ENT": "گوش، حلق و بینی",
-    "Otolaryngology": "گوش، حلق و بینی",
-
+    Otolaryngology: "گوش، حلق و بینی",
     Ophthalmology: "چشم",
     "Eye Department": "بخش چشم",
-
     Urology: "ارولوژی",
     Nephrology: "امراض کلیه",
-
     Oncology: "سرطان شناسی",
     Hematology: "خون شناسی",
-
     Psychiatry: "روان پزشکی",
     "Mental Health": "صحت روان",
-
     Dentistry: "دندان",
     Dental: "دندان پزشکی",
-
     Physiotherapy: "فیزیوتراپی",
     Rehabilitation: "توانبخشی",
-
     "Nutrition": "تغذیه",
     Dietetics: "رژیم غذایی",
-
     "Anesthesia": "بیهوشی",
-    "Anesthesiology": "بیهوشی",
-
+    Anesthesiology: "بیهوشی",
     ICU: "بخش مراقبت‌های ویژه",
     "Intensive Care Unit": "بخش مراقبت‌های ویژه",
-
     NICU: "مراقبت ویژه نوزادان",
     "Neonatal ICU": "مراقبت ویژه نوزادان",
-
     "CCU": "بخش مراقبت قلبی",
-
     "Operation Theater": "اتاق عملیات",
     "Operating Room": "اتاق عملیات",
-
     "Blood Bank": "بانک خون",
-
     "Emergency Room": "اتاق عاجل",
-
     "Medical Records": "آرشیف و ثبت اسناد طبی",
-
     "Registration": "پذیرش و ثبت مریضان",
-
     "Billing": "حسابداری",
-
     "Admission": "پذیرش بستر",
-
     "Discharge": "ترخیص",
-
     "Mortuary": "مرده‌شوی‌خانه",
-
     "House Keeping": "خدمات تنظیف",
-
     "Security": "امنیت",
-
     "Administration": "اداره",
-
     "Human Resource": "منابع بشری",
-
     "Finance": "مالی",
-
     "Store": "گدام مرکزی",
-
     "CSSD": "مرکز سترون‌سازی وسایل طبی",
-
     "Ambulance": "آمبولانس"
 };
 
@@ -207,6 +167,7 @@ useEffect(() => {
     handlePrint();
   }
 }, [printData, handlePrint]);
+
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
@@ -652,12 +613,12 @@ useEffect(() => {
     }
   };
 
+  // ✅ اصلاح شده: استفاده از مسیر صحیح status
   const handleSendToDoctor = async () => {
     if (!selectedRegistration) return;
 
     try {
-      await api.put(`/registrations/${selectedRegistration.reg_id}`, {
-        ...selectedRegistration,
+      await api.put(`/registrations/${selectedRegistration.reg_id}/status`, {
         visit_status: 'Doctor'
       });
 
@@ -673,12 +634,18 @@ useEffect(() => {
       setShowSendModal(false);
       setSelectedRegistration(null);
       fetchRegistrations();
+      fetchStatistics();
     } catch (err) {
-      console.error(err);
-      toast.error("❌ خطا در ارسال به داکتر");
+      console.error("خطا در ارسال به داکتر:", err);
+      if (err.response?.data?.message) {
+        toast.error(`❌ ${err.response.data.message}`);
+      } else {
+        toast.error("❌ خطا در ارسال به داکتر");
+      }
     }
   };
 
+  // ✅ اصلاح شده: استفاده از مسیر صحیح status با متد PUT
   const handleSendToDoctorFromList = async (registration) => {
     if (!registration.doctor_id) {
       toast.warning("⚠️ لطفاً ابتدا داکتر معالج را انتخاب کنید");
@@ -686,8 +653,7 @@ useEffect(() => {
     }
 
     try {
-      await api.put(`/registrations/${registration.reg_id}`, {
-        ...registration,
+      await api.put(`/registrations/${registration.reg_id}/status`, {
         visit_status: 'Doctor'
       });
 
@@ -701,9 +667,14 @@ useEffect(() => {
 
       toast.success(`✅ معلومات به داکتر ارسال شد`);
       fetchRegistrations();
+      fetchStatistics();
     } catch (err) {
-      console.error(err);
-      toast.error("❌ خطا در ارسال به داکتر");
+      console.error("خطا در ارسال به داکتر:", err);
+      if (err.response?.data?.message) {
+        toast.error(`❌ ${err.response.data.message}`);
+      } else {
+        toast.error("❌ خطا در ارسال به داکتر");
+      }
     }
   };
 
@@ -886,225 +857,254 @@ useEffect(() => {
     currentPage * ROWS_PER_PAGE
   );
 
-  // کامپوننت پرینت مخفی
-  const PrintContent = () => {
-    if (!printData) return null;
-    const patient = printData.patient || {};
-    const department = departments.find(d => d.id === printData.department_id);
-    const doctorName = printData.doctor_id ? getDoctorName(printData.doctor_id) : "-";
-    
-    return (
-     <div ref={printRef} style={{
-  padding: '20px',
-  fontFamily: 'Arial, sans-serif',
-  direction: 'rtl',
-  backgroundColor: '#ffffff',
-  color: '#1a1a2e',
-  width: '280px',
-  fontSize: '11px',
-  position: 'fixed',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  zIndex: 9999,
-  borderRadius: '12px',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(37, 99, 235, 0.1)',
-  border: '2px solid #2563eb',
-  background: 'linear-gradient(145deg, #ffffff 0%, #f8faff 100%)',
-  maxHeight: '90vh',
-  overflowY: 'auto'
-}}>
-  {/* هدر با رنگ آبی */}
-  <div style={{
-    textAlign: 'center',
-    borderBottom: '3px solid #2563eb',
-    paddingBottom: '12px',
-    marginBottom: '12px',
-    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-    margin: '-20px -20px 12px -20px',
-    padding: '16px 20px 12px 20px',
-    borderRadius: '10px 10px 0 0',
-    color: 'white'
-  }}>
-    <h3 style={{
-      margin: '0',
-      fontSize: '16px',
-      fontWeight: '700',
-      letterSpacing: '0.5px',
-      color: 'white',
-      textShadow: '0 1px 2px rgba(0,0,0,0.1)'
-    }}>
-      🏥 رسید مراجعه
-    </h3>
-    <p style={{
-      margin: '4px 0 0 0',
-      fontSize: '10px',
-      color: 'rgba(255,255,255,0.85)',
-      fontWeight: '500'
-    }}>
-      شماره: {printData.visit_number || '-'}
-    </p>
-  </div>
+ const PrintContent = () => {
+  if (!printData) return null;
+  const patient = printData.patient || {};
+  const department = departments.find(d => d.id === printData.department_id);
+  const doctorName = printData.doctor_id ? getDoctorName(printData.doctor_id) : "-";
   
-  {/* اطلاعات مریض */}
-  <div style={{
-    marginBottom: '10px',
-    padding: '10px 12px',
-    backgroundColor: '#f0f5ff',
-    borderRadius: '8px',
-    border: '1px solid #dbeafe'
-  }}>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>نام مریض:</strong>
-      <span style={{ color: '#1a1a2e' }}>{getPatientFullName(patient)}</span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>نام پدر:</strong>
-      <span>{patient.father_name || '-'}</span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>شماره تماس:</strong>
-      <span dir="ltr">{patient.mobile || '-'}</span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>شماره تذکره:</strong>
-      <span>{patient.national_id || '-'}</span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>جنسیت:</strong>
-      <span>{patient.gender === 'Male' ? 'مرد' : patient.gender === 'Female' ? 'زن' : patient.gender || '-'}</span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>سن:</strong>
-      <span>{patient.age || '-'}</span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>گروه خون:</strong>
-      <span>{patient.blood_group || '-'}</span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>آدرس:</strong>
-      <span style={{ textAlign: 'left' }}>{patient.address || '-'}</span>
-    </p>
-  </div>
-  
-  {/* اطلاعات مراجعه */}
-  <div style={{
-    borderTop: '2px dashed #2563eb',
-    paddingTop: '10px',
-    marginTop: '8px',
-    padding: '10px 12px',
-    backgroundColor: '#f8faff',
-    borderRadius: '8px',
-    border: '1px solid #e2e8f0'
-  }}>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>بخش:</strong>
-      <span>{department ? (departmentNames[department.name] || department.name) : '-'}</span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>داکتر معالج:</strong>
-      <span>{doctorName}</span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>نوع مراجعه:</strong>
-      <span>{printData.visit_type || '-'}</span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>وضعیت:</strong>
-      <span style={{
-        backgroundColor: getStatusColor(printData.visit_status),
-        color: 'white',
-        padding: '1px 10px',
-        borderRadius: '12px',
-        fontSize: '10px',
-        fontWeight: '600'
+  return (
+    <div ref={printRef} style={{
+      padding: '20px',
+      fontFamily: 'Arial, sans-serif',
+      direction: 'rtl',
+      backgroundColor: '#ffffff',
+      color: '#1a1a2e',
+      width: '280px',
+      fontSize: '11px',
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      zIndex: 9999,
+      borderRadius: '12px',
+      boxShadow: '0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(37, 99, 235, 0.1)',
+      border: '2px solid #2563eb',
+      background: 'linear-gradient(145deg, #ffffff 0%, #f8faff 100%)',
+      maxHeight: '90vh',
+      overflowY: 'auto'
+    }}>
+      {/* هدر با رنگ آبی */}
+      <div style={{
+        textAlign: 'center',
+        borderBottom: '3px solid #2563eb',
+        paddingBottom: '12px',
+        marginBottom: '12px',
+        background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+        margin: '-20px -20px 12px -20px',
+        padding: '16px 20px 12px 20px',
+        borderRadius: '10px 10px 0 0',
+        color: 'white'
       }}>
-        {getStatusText(printData.visit_status)}
-      </span>
-    </p>
-    <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-      <strong style={{ color: '#2563eb' }}>تاریخ مراجعه:</strong>
-      <span>{printData.visit_date ? new Date(printData.visit_date).toLocaleDateString('fa-IR') : '-'}</span>
-    </p>
-    <p style={{
-      margin: '6px 0 3px 0',
-      display: 'flex',
-      justifyContent: 'space-between',
-      backgroundColor: '#dbeafe',
-      padding: '6px 10px',
-      borderRadius: '6px',
-      fontWeight: 'bold'
-    }}>
-      <strong style={{ color: '#1d4ed8' }}>💰 فیس مراجعه:</strong>
-      <span style={{ color: '#1d4ed8', fontSize: '13px' }}>
-        {Number(printData.registration_fee || 0).toFixed(2)} افغانی
-      </span>
-    </p>
-    {printData.diagnosis && (
-      <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-        <strong style={{ color: '#2563eb' }}>تشخیص:</strong>
-        <span style={{ textAlign: 'left' }}>{printData.diagnosis}</span>
-      </p>
-    )}
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gap: '3px 10px',
-      marginTop: '4px'
-    }}>
-      {printData.weight && (
-        <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
-          <strong style={{ color: '#2563eb' }}>وزن:</strong>
-          <span>{printData.weight} کیلوگرم</span>
+        <h3 style={{
+          margin: '0',
+          fontSize: '16px',
+          fontWeight: '700',
+          letterSpacing: '0.5px',
+          color: 'white',
+          textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+        }}>
+          🏥 رسید مراجعه
+        </h3>
+        <p style={{
+          margin: '4px 0 0 0',
+          fontSize: '10px',
+          color: 'rgba(255,255,255,0.85)',
+          fontWeight: '500'
+        }}>
+          شماره: {printData.visit_number || '-'}
         </p>
-      )}
-      {printData.blood_pressure && (
-        <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
-          <strong style={{ color: '#2563eb' }}>فشار خون:</strong>
-          <span>{printData.blood_pressure}</span>
+        {printData.queue_number && (
+          <p style={{
+            margin: '2px 0 0 0',
+            fontSize: '11px',
+            color: '#fcd34d',
+            fontWeight: 'bold',
+            backgroundColor: 'rgba(0,0,0,0.2)',
+            display: 'inline-block',
+            padding: '2px 12px',
+            borderRadius: '12px'
+          }}>
+            🎫 شماره صف: {printData.queue_number}
+          </p>
+        )}
+      </div>
+      
+      {/* اطلاعات مریض */}
+      <div style={{
+        marginBottom: '10px',
+        padding: '10px 12px',
+        backgroundColor: '#f0f5ff',
+        borderRadius: '8px',
+        border: '1px solid #dbeafe'
+      }}>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>نام مریض:</strong>
+          <span style={{ color: '#1a1a2e' }}>{getPatientFullName(patient)}</span>
         </p>
-      )}
-      {printData.temperature && (
-        <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
-          <strong style={{ color: '#2563eb' }}>حرارت:</strong>
-          <span>{printData.temperature}°</span>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>نام پدر:</strong>
+          <span>{patient.father_name || '-'}</span>
         </p>
-      )}
-      {printData.oxygen && (
-        <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
-          <strong style={{ color: '#2563eb' }}>اکسیجن:</strong>
-          <span>{printData.oxygen}%</span>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>شماره تماس:</strong>
+          <span dir="ltr">{patient.mobile || '-'}</span>
         </p>
-      )}
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>شماره تذکره:</strong>
+          <span>{patient.national_id || '-'}</span>
+        </p>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>جنسیت:</strong>
+          <span>{patient.gender === 'Male' ? 'مرد' : patient.gender === 'Female' ? 'زن' : patient.gender || '-'}</span>
+        </p>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>سن:</strong>
+          <span>{patient.age || '-'}</span>
+        </p>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>گروه خون:</strong>
+          <span>{patient.blood_group || '-'}</span>
+        </p>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>آدرس:</strong>
+          <span style={{ textAlign: 'left' }}>{patient.address || '-'}</span>
+        </p>
+      </div>
+      
+      {/* اطلاعات مراجعه */}
+      <div style={{
+        borderTop: '2px dashed #2563eb',
+        paddingTop: '10px',
+        marginTop: '8px',
+        padding: '10px 12px',
+        backgroundColor: '#f8faff',
+        borderRadius: '8px',
+        border: '1px solid #e2e8f0'
+      }}>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>بخش:</strong>
+          <span>{department ? (departmentNames[department.name] || department.name) : '-'}</span>
+        </p>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>داکتر معالج:</strong>
+          <span>{doctorName}</span>
+        </p>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>نوع مراجعه:</strong>
+          <span>{printData.visit_type || '-'}</span>
+        </p>
+        {printData.queue_number && (
+          <p style={{ 
+            margin: '3px 0', 
+            display: 'flex', 
+            justifyContent: 'space-between',
+            backgroundColor: '#fef3c7',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            border: '1px solid #f59e0b'
+          }}>
+            <strong style={{ color: '#92400e' }}>🎫 شماره صف:</strong>
+            <span style={{ color: '#92400e', fontWeight: 'bold', fontSize: '13px' }}>
+              {printData.queue_number}
+            </span>
+          </p>
+        )}
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>وضعیت:</strong>
+          <span style={{
+            backgroundColor: getStatusColor(printData.visit_status),
+            color: 'white',
+            padding: '1px 10px',
+            borderRadius: '12px',
+            fontSize: '10px',
+            fontWeight: '600'
+          }}>
+            {getStatusText(printData.visit_status)}
+          </span>
+        </p>
+        <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+          <strong style={{ color: '#2563eb' }}>تاریخ مراجعه:</strong>
+          <span>{printData.visit_date ? new Date(printData.visit_date).toLocaleDateString('fa-IR') : '-'}</span>
+        </p>
+        <p style={{
+          margin: '6px 0 3px 0',
+          display: 'flex',
+          justifyContent: 'space-between',
+          backgroundColor: '#dbeafe',
+          padding: '6px 10px',
+          borderRadius: '6px',
+          fontWeight: 'bold'
+        }}>
+          <strong style={{ color: '#1d4ed8' }}>💰 فیس مراجعه:</strong>
+          <span style={{ color: '#1d4ed8', fontSize: '13px' }}>
+            {Number(printData.registration_fee || 0).toFixed(2)} افغانی
+          </span>
+        </p>
+        {printData.diagnosis && (
+          <p style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+            <strong style={{ color: '#2563eb' }}>تشخیص:</strong>
+            <span style={{ textAlign: 'left' }}>{printData.diagnosis}</span>
+          </p>
+        )}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '3px 10px',
+          marginTop: '4px'
+        }}>
+          {printData.weight && (
+            <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
+              <strong style={{ color: '#2563eb' }}>وزن:</strong>
+              <span>{printData.weight} کیلوگرم</span>
+            </p>
+          )}
+          {printData.blood_pressure && (
+            <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
+              <strong style={{ color: '#2563eb' }}>فشار خون:</strong>
+              <span>{printData.blood_pressure}</span>
+            </p>
+          )}
+          {printData.temperature && (
+            <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
+              <strong style={{ color: '#2563eb' }}>حرارت:</strong>
+              <span>{printData.temperature}°</span>
+            </p>
+          )}
+          {printData.oxygen && (
+            <p style={{ margin: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
+              <strong style={{ color: '#2563eb' }}>اکسیجن:</strong>
+              <span>{printData.oxygen}%</span>
+            </p>
+          )}
+        </div>
+        {printData.note && (
+          <p style={{ margin: '4px 0 0 0', display: 'flex', justifyContent: 'space-between' }}>
+            <strong style={{ color: '#2563eb' }}>یادداشت:</strong>
+            <span style={{ textAlign: 'left' }}>{printData.note}</span>
+          </p>
+        )}
+      </div>
+      
+      {/* فوتر */}
+      <div style={{
+        textAlign: 'center',
+        borderTop: '2px solid #2563eb',
+        paddingTop: '8px',
+        marginTop: '10px',
+        fontSize: '8px',
+        color: '#64748b'
+      }}>
+        <p style={{ margin: '0' }}>
+          🖨️ تاریخ چاپ: {new Date().toLocaleDateString('fa-IR')} - {new Date().toLocaleTimeString('fa-IR')}
+        </p>
+        <p style={{ margin: '2px 0 0 0', fontSize: '7px', color: '#94a3b8' }}>
+          سیستم مدیریت بهداشت و درمان
+        </p>
+      </div>
     </div>
-    {printData.note && (
-      <p style={{ margin: '4px 0 0 0', display: 'flex', justifyContent: 'space-between' }}>
-        <strong style={{ color: '#2563eb' }}>یادداشت:</strong>
-        <span style={{ textAlign: 'left' }}>{printData.note}</span>
-      </p>
-    )}
-  </div>
-  
-  {/* فوتر */}
-  <div style={{
-    textAlign: 'center',
-    borderTop: '2px solid #2563eb',
-    paddingTop: '8px',
-    marginTop: '10px',
-    fontSize: '8px',
-    color: '#64748b'
-  }}>
-    <p style={{ margin: '0' }}>
-      🖨️ تاریخ چاپ: {new Date().toLocaleDateString('fa-IR')} - {new Date().toLocaleTimeString('fa-IR')}
-    </p>
-    <p style={{ margin: '2px 0 0 0', fontSize: '7px', color: '#94a3b8' }}>
-      سیستم مدیریت بهداشت و درمان
-    </p>
-  </div>
-</div>
-    );
-  };
+  );
+};
 
   return (
     <MainLayoutjur>
@@ -1132,7 +1132,6 @@ useEffect(() => {
         }}
       />
 
-      {/* کامپوننت مخفی پرینت */}
       <PrintContent />
 
       {showSendModal && (

@@ -6,49 +6,29 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
-    public function up(): void
+    public function up()
     {
         Schema::create('notifications', function (Blueprint $table) {
-    $table->id();
+            $table->id();
+            $table->unsignedBigInteger('user_id');
+            $table->string('title');
+            $table->text('message');
+            $table->string('type')->nullable();
+            $table->unsignedBigInteger('registration_id')->nullable();
+            $table->boolean('is_read')->default(false);
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->timestamps();
 
-    $table->foreignId('user_id')
-          ->nullable()
-          ->constrained()
-          ->onDelete('cascade');
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('registration_id')->references('reg_id')->on('registrations')->onDelete('cascade');
+            $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');
 
-    $table->string('title');
-    $table->text('message');
-
-    $table->enum('type', [
-        'success',
-        'info',
-        'warning',
-        'error'
-    ])->default('info');
-
-    $table->string('icon')->nullable();
-
-    $table->string('module')->nullable();
-
-    $table->unsignedBigInteger('reference_id')->nullable();
-
-    $table->string('url')->nullable();
-
-    $table->boolean('is_read')->default(false);
-
-    $table->timestamp('read_at')->nullable();
-
-    $table->timestamps();
-});
+            $table->index(['user_id', 'is_read']);
+            $table->index(['user_id', 'created_at']);
+        });
     }
 
-    /**
-     * Reverse the migrations.
-     */
-    public function down(): void
+    public function down()
     {
         Schema::dropIfExists('notifications');
     }

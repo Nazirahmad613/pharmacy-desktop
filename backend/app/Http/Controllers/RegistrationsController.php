@@ -159,30 +159,44 @@ class RegistrationsController extends Controller
             $validated['visit_number'] = (Registrations::max('visit_number') ?? 0) + 1;
 
             // تاریخ مراجعه
-            $visitDate = $validated['visit_date'] ?? now()->toDateString();
-            $validated['visit_date'] = $visitDate;
+          // تاریخ واقعی مراجعه امروز
+$visitDate = now()->toDateString();
 
+$validated['visit_date'] = $visitDate;
+// تاریخ مخصوص صف داکتر (هر روز صفر می‌شود)
+$queueDate = now()->toDateString();
+
+$validated['queue_date'] = $queueDate;
             /*
             |--------------------------------------------------------------------------
             | شماره صف بر اساس داکتر و تاریخ
             |--------------------------------------------------------------------------
             */
             
-           $doctorId = $validated['doctor_id'] ?? null;
+    /*
+|--------------------------------------------------------------------------
+| شماره صف داکتر
+| هر داکتر روزانه از 1 شروع می‌شود
+|--------------------------------------------------------------------------
+*/
 
-if ($doctorId) {
-    // شماره صف برای داکتر خاص در تاریخ امروز
+$doctorId = $validated['doctor_id'] ?? null;
+
+ if ($doctorId) {
+
     $lastQueue = Registrations::where('doctor_id', $doctorId)
-        ->whereDate('visit_date', $visitDate)
+        ->whereDate('queue_date', $queueDate)
         ->max('queue_number');
 
     $validated['queue_number'] = ($lastQueue ?? 0) + 1;
+
 } else {
-    // اگر داکتر انتخاب نشده، شماره صف عمومی
-    $lastQueue = Registrations::whereDate('visit_date', $visitDate)
+
+    $lastQueue = Registrations::whereDate('queue_date', $queueDate)
         ->max('queue_number');
 
     $validated['queue_number'] = ($lastQueue ?? 0) + 1;
+
 }
 
             // اگر وضعیت Doctor باشد، زمان ارسال را ثبت کن

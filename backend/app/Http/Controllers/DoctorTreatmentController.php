@@ -14,385 +14,76 @@ class DoctorTreatmentController extends Controller
 {
 
 
-    /*
-    |--------------------------------------------------------------------------
-    | صف مریضان داکتر
-    |--------------------------------------------------------------------------
-    */
-
-    public function doctorQueue()
+       public function doctorQueue()
     {
-
         try {
-
-
             $doctorId = Auth::id();
 
+        $registrations = Registrations::with([
+    'patient',
+    'department'
+])
+->where('doctor_id', $doctorId)
+->where('visit_status', 'Doctor')
+->whereNotNull('sent_to_doctor_at')
+->whereDate('queue_date', now()->toDateString())
+->orderBy('sent_to_doctor_at', 'asc')
+->orderBy('queue_number', 'asc')
+->get();
 
-            $registrations = Registrations::with([
-
-                'patient',
-                'department'
-
-            ])
-            ->where('doctor_id',$doctorId)
-            ->where('visit_status','Doctor')
-            ->orderBy('sent_to_doctor_at','asc')
-            ->get();
-
-
-
+            // تبدیل داده‌ها به فرمت مناسب برای فرانت‌اند
+            $formattedData = $registrations->map(function($registration) {
+                return [
+                    'reg_id' => $registration->reg_id,
+                     'queue_number' => $registration->queue_number,
+                     'queue_date' => $registration->queue_date,
+                     'visit_date' => $registration->visit_date,
+                    'visit_date' => $registration->visit_date,
+                    'queue_date' => $registration->queue_date,
+                    'visit_status' => $registration->visit_status,
+                    'registration_fee' => $registration->registration_fee,
+                    'sent_to_doctor_at' => $registration->sent_to_doctor_at,
+                    'diagnosis' => $registration->diagnosis,
+                    'weight' => $registration->weight,
+                    'blood_pressure' => $registration->blood_pressure,
+                    'temperature' => $registration->temperature,
+                    'oxygen' => $registration->oxygen,
+                    'note' => $registration->note,
+                    'patient' => $registration->patient ? [
+                        'id' => $registration->patient->id,
+                        'first_name' => $registration->patient->first_name,
+                        'last_name' => $registration->patient->last_name,
+                        'father_name' => $registration->patient->father_name,
+                        'mobile' => $registration->patient->mobile,
+                        'national_id' => $registration->patient->national_id,
+                        'gender' => $registration->patient->gender,
+                        'age' => $registration->patient->age,
+                        'blood_group' => $registration->patient->blood_group,
+                        'address' => $registration->patient->address,
+                    ] : null,
+                    'department' => $registration->department ? [
+                        'id' => $registration->department->id,
+                        'name' => $registration->department->name,
+                        'code' => $registration->department->code,
+                    ] : null,
+                ];
+            });
+            
             return response()->json([
-
-                'data'=>$registrations,
-
-                'count'=>$registrations->count()
-
+                'data' => $formattedData,
+                'count' => $registrations->count()
             ]);
 
-
-        }catch(\Exception $e){
-
-
+        } catch (\Exception $e) {
+            \Log::error('Doctor queue error: ' . $e->getMessage());
             return response()->json([
-
-                'message'=>'خطا در دریافت صف داکتر',
-
-                'error'=>$e->getMessage()
-
-            ],500);
-
-
+                'message' => 'خطا در دریافت صف داکتر',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
     }
 
-
-
-
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | دریافت معلومات کامل مریض برای معاینه
-    |--------------------------------------------------------------------------
-    */
-
-    public function show($reg_id)
-    {
-
-
-        $registration = Registrations::with([
-
-            'patient',
-            'department',
-            'doctor'
-
-        ])
-        ->where('reg_id',$reg_id)
-        ->first();
-
-
-
-        if(!$registration){
-
-
-            return response()->json([
-
-                'message'=>'مراجعه مریض یافت نشد'
-
-            ],404);
-
-
-        }
-
-
-
-        return response()->json([
-
-            'data'=>$registration
-
-        ]);
-
-
-    }
-
-
-
-
-
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | ثبت تشخیص و معلومات معالجه
-    |--------------------------------------------------------------------------
-    */
-
-    public function treatment(Request $request,$reg_id)
-    {
-
-
-        $validated=$request->validate([
-
-
-            'diagnosis'=>'nullable|string',
-
-
-            'note'=>'nullable|string',
-
-
-            'weight'=>'nullable|numeric',
-
-
-            'blood_pressure'=>'nullable|string',
-
-
-            'temperature'=>'nullable|numeric',
-
-
-            'oxygen'=>'nullable|integer',
-
-
-        ]);
-
-
-
-
-        $registration=Registrations::find($reg_id);
-
-
-
-        if(!$registration){
-
-
-            return response()->json([
-
-                'message'=>'مریض یافت نشد'
-
-            ],404);
-
-        }
-
-
-
-
-
-        $old=$registration->toArray();
-
-
-
-        $registration->update([
-
-
-            'diagnosis'=>$validated['diagnosis'] ?? null,
-
-
-            'note'=>$validated['note'] ?? null,
-
-
-            'weight'=>$validated['weight'] ?? null,
-
-
-            'blood_pressure'=>$validated['blood_pressure'] ?? null,
-
-
-            'temperature'=>$validated['temperature'] ?? null,
-
-
-            'oxygen'=>$validated['oxygen'] ?? null,
-
-
-            'visit_status'=>'Doctor'
-
-
-        ]);
-
-
-
-
-
-        LogService::create(
-
-            'update',
-
-            'registrations',
-
-            $registration->reg_id,
-
-            'Doctor treatment updated',
-
-            [
-
-                'old'=>$old,
-
-                'new'=>$registration->toArray()
-
-            ]
-
-        );
-
-
-
-
-
-        return response()->json([
-
-            'message'=>'معلومات معالجه ثبت شد',
-
-            'data'=>$registration
-
-        ]);
-
-
-    }
-
-
-
-
-
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | ارسال به لابراتوار
-    |--------------------------------------------------------------------------
-    */
-
-    public function sendToLaboratory(Request $request,$reg_id)
-    {
-
-
-
-        $registration=Registrations::find($reg_id);
-
-
-
-        if(!$registration){
-
-
-            return response()->json([
-
-                'message'=>'مریض یافت نشد'
-
-            ],404);
-
-        }
-
-
-
-
-        $registration->update([
-
-
-            'visit_status'=>'Laboratory'
-
-
-        ]);
-
-
-
-
-        LogService::create(
-
-            'update',
-
-            'registrations',
-
-            $registration->reg_id,
-
-            'Patient sent to laboratory',
-
-            $registration->toArray()
-
-        );
-
-
-
-
-        return response()->json([
-
-            'message'=>'مریض به لابراتوار ارسال شد',
-
-            'data'=>$registration
-
-        ]);
-
-
-
-    }
-
-
-
-
-
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | ختم معالجه
-    |--------------------------------------------------------------------------
-    */
-
-    public function complete($reg_id)
-    {
-
-
-        $registration=Registrations::find($reg_id);
-
-
-
-        if(!$registration){
-
-
-            return response()->json([
-
-                'message'=>'مریض یافت نشد'
-
-            ],404);
-
-        }
-
-
-
-
-        $registration->update([
-
-            'visit_status'=>'Completed'
-
-        ]);
-
-
-
-
-        LogService::create(
-
-            'update',
-
-            'registrations',
-
-            $registration->reg_id,
-
-            'Doctor treatment completed',
-
-            $registration->toArray()
-
-        );
-
-
-
-
-        return response()->json([
-
-            'message'=>'معالجه ختم شد',
-
-            'data'=>$registration
-
-        ]);
-
-
-    }
-
-
-
+    // ... بقیه متدها
 }
+
+

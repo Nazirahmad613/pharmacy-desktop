@@ -36,7 +36,9 @@ const AppSalesTable = Loadable(lazy(() => import("./reports/sales/SalesTable")))
 const AppSalesChart = Loadable(lazy(() => import("./reports/sales/SalesChart")));
 const AppDashboardDailyChart = Loadable(lazy(() => import("./reports/dashboard/DashboardDailyChart")));
 const AppDashboardDailyTable = Loadable(lazy(() => import("./reports/dashboard/DashboardDailyTable")));
-
+const ExaminationPage = Loadable(
+  lazy(() => import("./examinations/ExaminationPage"))
+);
 // ===== ✅ صفحه استاک (مدیریت موجودی انبار) =====
 const AppStock = Loadable(lazy(() => import("./stock/Stock")));
 
@@ -54,6 +56,10 @@ const materialRoutes = [
   { path: "/material/expansion-panel", element: <AppExpansionPanel /> },
   { path: "/material/dialog", element: <AppDialog /> },
   { path: "/material/snackbar", element: <AppSnackbar /> },
+  {
+  path: "/material/examinations",
+  element: <ExaminationPage />,
+},
 
   // ===== Forms & Data Entry =====
   { path: "/material/addinformation", element: <AppAddmedication /> },

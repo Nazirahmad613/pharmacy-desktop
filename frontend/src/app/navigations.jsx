@@ -301,17 +301,12 @@ const navigations = [
     },
   ],
 },
-{
+ {
   name: "معالجه",
   icon: <LocalHospitalIcon />,
   children: [
     {
-      name: "ایجاد نسخه",
-      path: "/material/pres_insert",
-      icon: <DescriptionIcon />,
-    },
-    {
-      name: "معاینات",
+      name: "معالجه داکتر",
       path: "/material/examinations",
       icon: <LocalHospitalIcon />,
     },

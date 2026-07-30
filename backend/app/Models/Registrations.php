@@ -105,6 +105,7 @@ class Registrations extends Model
 
 
         'visit_date',
+        'queue_date',
 
         'note',
 
@@ -149,20 +150,17 @@ class Registrations extends Model
 
 
 
-    protected $casts = [
-'sent_to_doctor_at' => 'datetime',
-
+  protected $casts = [
+    'sent_to_doctor_at' => 'datetime',
     'doctor_started_at' => 'datetime',
 
-        'visit_date' => 'date',
+    'visit_date' => 'date',
+    'queue_date' => 'date',
 
-        'registration_fee' => 'decimal:2',
-
-        'weight' => 'decimal:2',
-
-        'temperature' => 'decimal:1',
-
-    ];
+    'registration_fee' => 'decimal:2',
+    'weight' => 'decimal:2',
+    'temperature' => 'decimal:1',
+];
 
 
 
