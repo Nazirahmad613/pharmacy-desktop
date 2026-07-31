@@ -18,19 +18,19 @@ class DepartmentController extends Controller
     public function index()
     {
         try {
-            // فقط بخش‌های فعال را برمی‌گرداند و بر اساس نام مرتب می‌کند
             $departments = Department::where('status', 'Active')
                 ->orderBy('name')
                 ->get();
 
-            // برگرداندن داده در فرمت استاندارد برای فرانت‌اند
             return response()->json([
+                'success' => true,
                 'data' => $departments
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error fetching departments: ' . $e->getMessage());
             return response()->json([
+                'success' => false,
                 'message' => 'خطا در دریافت لیست بخش‌ها',
                 'error' => $e->getMessage()
             ], 500);
@@ -46,7 +46,6 @@ class DepartmentController extends Controller
     public function store(Request $request)
     {
         try {
-            // اعتبارسنجی داده‌ها
             $validated = $request->validate([
                 'name' => 'required|string|max:255|unique:departments,name',
                 'code' => 'required|string|max:20|unique:departments,code',
@@ -54,7 +53,6 @@ class DepartmentController extends Controller
                 'status' => ['nullable', Rule::in(['Active', 'Inactive'])],
             ]);
 
-            // ایجاد بخش جدید
             $department = Department::create([
                 'uuid' => Str::uuid(),
                 'code' => $validated['code'],
@@ -64,22 +62,24 @@ class DepartmentController extends Controller
                 'created_by' => auth()->id(),
             ]);
 
-            // لاگ عملیات
-            Log::info('Department created: ' . $department->id);
+            Log::info('Department created: ' . ($department->id ?? 'unknown'));
 
             return response()->json([
+                'success' => true,
                 'message' => 'بخش با موفقیت ایجاد شد',
                 'data' => $department
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'خطا در اعتبارسنجی اطلاعات',
                 'errors' => $e->errors()
             ], 422);
         } catch (\Exception $e) {
             Log::error('Error creating department: ' . $e->getMessage());
             return response()->json([
+                'success' => false,
                 'message' => 'خطا در ایجاد بخش',
                 'error' => $e->getMessage()
             ], 500);
@@ -89,19 +89,30 @@ class DepartmentController extends Controller
     /**
      * نمایش یک بخش خاص
      * 
-     * @param Department $department
+     * @param int $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function show(Department $department)
+    public function show($id)
     {
         try {
+            $department = Department::find($id);
+            
+            if (!$department) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'بخش مورد نظر یافت نشد'
+                ], 404);
+            }
+
             return response()->json([
+                'success' => true,
                 'data' => $department
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error showing department: ' . $e->getMessage());
             return response()->json([
+                'success' => false,
                 'message' => 'خطا در دریافت اطلاعات بخش',
                 'error' => $e->getMessage()
             ], 500);
@@ -112,13 +123,21 @@ class DepartmentController extends Controller
      * به‌روزرسانی بخش
      * 
      * @param Request $request
-     * @param Department $department
+     * @param int $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function update(Request $request, Department $department)
+    public function update(Request $request, $id)
     {
         try {
-            // اعتبارسنجی داده‌ها
+            $department = Department::find($id);
+            
+            if (!$department) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'بخش مورد نظر یافت نشد'
+                ], 404);
+            }
+
             $validated = $request->validate([
                 'name' => [
                     'required',
@@ -136,7 +155,6 @@ class DepartmentController extends Controller
                 'status' => ['nullable', Rule::in(['Active', 'Inactive'])],
             ]);
 
-            // به‌روزرسانی بخش
             $department->update([
                 'name' => $validated['name'],
                 'code' => $validated['code'],
@@ -145,22 +163,24 @@ class DepartmentController extends Controller
                 'updated_by' => auth()->id(),
             ]);
 
-            // لاگ عملیات
             Log::info('Department updated: ' . $department->id);
 
             return response()->json([
+                'success' => true,
                 'message' => 'بخش با موفقیت به‌روزرسانی شد',
                 'data' => $department
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'خطا در اعتبارسنجی اطلاعات',
                 'errors' => $e->errors()
             ], 422);
         } catch (\Exception $e) {
             Log::error('Error updating department: ' . $e->getMessage());
             return response()->json([
+                'success' => false,
                 'message' => 'خطا در به‌روزرسانی بخش',
                 'error' => $e->getMessage()
             ], 500);
@@ -171,41 +191,49 @@ class DepartmentController extends Controller
      * حذف بخش (سخت یا نرم)
      * 
      * @param Request $request
-     * @param Department $department
+     * @param int $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function destroy(Request $request, Department $department)
+    public function destroy(Request $request, $id)
     {
         try {
-            // بررسی اینکه آیا بخش در مراجعات استفاده شده است
+            $department = Department::find($id);
+            
+            if (!$department) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'بخش مورد نظر یافت نشد'
+                ], 404);
+            }
+
             $hasRegistrations = $department->registrations()->exists();
             
             if ($hasRegistrations) {
-                // اگر بخش در مراجعات استفاده شده، فقط غیرفعال می‌کنیم
                 $department->update([
                     'status' => 'Inactive',
                     'updated_by' => auth()->id(),
                 ]);
 
                 return response()->json([
+                    'success' => true,
                     'message' => 'بخش به دلیل استفاده در مراجعات، غیرفعال شد',
                     'data' => $department
                 ]);
             }
 
-            // اگر استفاده نشده، حذف فیزیکی (سخت)
             $department->delete();
 
-            // لاگ عملیات
             Log::info('Department deleted: ' . $department->id);
 
             return response()->json([
+                'success' => true,
                 'message' => 'بخش با موفقیت حذف شد'
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error deleting department: ' . $e->getMessage());
             return response()->json([
+                'success' => false,
                 'message' => 'خطا در حذف بخش',
                 'error' => $e->getMessage()
             ], 500);
@@ -226,12 +254,14 @@ class DepartmentController extends Controller
                 ->get();
 
             return response()->json([
+                'success' => true,
                 'data' => $departments
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error fetching active departments: ' . $e->getMessage());
             return response()->json([
+                'success' => false,
                 'message' => 'خطا در دریافت بخش‌های فعال',
                 'error' => $e->getMessage()
             ], 500);
@@ -251,6 +281,7 @@ class DepartmentController extends Controller
             $inactive = Department::where('status', 'Inactive')->count();
 
             return response()->json([
+                'success' => true,
                 'total' => $total,
                 'active' => $active,
                 'inactive' => $inactive
@@ -259,6 +290,7 @@ class DepartmentController extends Controller
         } catch (\Exception $e) {
             Log::error('Error fetching department statistics: ' . $e->getMessage());
             return response()->json([
+                'success' => false,
                 'message' => 'خطا در دریافت آمار بخش‌ها',
                 'error' => $e->getMessage()
             ], 500);

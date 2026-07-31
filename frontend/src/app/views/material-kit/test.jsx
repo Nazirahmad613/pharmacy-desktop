@@ -1,7 +1,19 @@
-import { useState, useEffect } from "react";
+React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?    import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 
 export default function ExaminationForm({ registration, onComplete, onRefresh, api }) {
+  if (!registration || !registration.reg_id) {
+    return (
+      <div style={{ textAlign: 'center', padding: '50px', color: '#ef4444' }}>
+        <div style={{ fontSize: '60px', marginBottom: '20px' }}>⚠️</div>
+        <div style={{ fontSize: '18px' }}>اطلاعات مریض معتبر نیست</div>
+        <div style={{ fontSize: '14px', color: '#9ca3af', marginTop: '10px' }}>
+          لطفاً یک مریض را از صف انتخاب کنید
+        </div>
+      </div>
+    );
+  }
+
   const [formData, setFormData] = useState({
     diagnosis: '',
     weight: '',
@@ -20,64 +32,36 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
   });
   const [loading, setLoading] = useState(false);
   const [patientInfo, setPatientInfo] = useState(null);
-  const [isExamined, setIsExamined] = useState(false); // وضعیت معاینه
-  const [isCompleted, setIsCompleted] = useState(false); // وضعیت ختم معالجه
 
   useEffect(() => {
-    if (!registration || !registration.reg_id) {
-      return;
-    }
-
     const fetchPatientInfo = async () => {
       try {
         const response = await api.get(`/doctor/patient/${registration.reg_id}`);
         const data = response.data?.data || response.data;
         setPatientInfo(data);
-        
-        // بررسی اینکه آیا قبلاً معاینه ثبت شده است
-        if (data.previous_examination) {
-          setIsExamined(true);
-          setFormData({
-            diagnosis: data.previous_examination.diagnosis || '',
-            weight: data.previous_examination.weight || '',
-            blood_pressure: data.previous_examination.blood_pressure || '',
-            temperature: data.previous_examination.temperature || '',
-            oxygen: data.previous_examination.oxygen || '',
-            pulse: data.previous_examination.pulse || '',
-            respiratory_rate: data.previous_examination.respiratory_rate || '',
-            height: data.previous_examination.height || '',
-            bmi: data.previous_examination.bmi || '',
-            chief_complaint: data.previous_examination.chief_complaint || '',
-            history_of_present_illness: data.previous_examination.history_of_present_illness || '',
-            past_medical_history: data.previous_examination.past_medical_history || '',
-            physical_examination: data.previous_examination.physical_examination || '',
-            note: data.previous_examination.note || ''
-          });
-        }
-        
-        // بررسی وضعیت ثبت
-        if (data.registration?.status === 'completed') {
-          setIsCompleted(true);
-        }
+        setFormData({
+          diagnosis: data.diagnosis || '',
+          weight: data.weight || '',
+          blood_pressure: data.blood_pressure || '',
+          temperature: data.temperature || '',
+          oxygen: data.oxygen || '',
+          pulse: data.pulse || '',
+          respiratory_rate: data.respiratory_rate || '',
+          height: data.height || '',
+          bmi: data.bmi || '',
+          chief_complaint: data.chief_complaint || '',
+          history_of_present_illness: data.history_of_present_illness || '',
+          past_medical_history: data.past_medical_history || '',
+          physical_examination: data.physical_examination || '',
+          note: data.note || ''
+        });
       } catch (err) {
         console.error("خطا در دریافت اطلاعات مریض:", err);
         toast.error("❌ خطا در دریافت اطلاعات مریض");
       }
     };
     fetchPatientInfo();
-  }, [registration?.reg_id, api]);
-
-  if (!registration || !registration.reg_id) {
-    return (
-      <div style={{ textAlign: 'center', padding: '50px', color: '#ef4444' }}>
-        <div style={{ fontSize: '60px', marginBottom: '20px' }}>⚠️</div>
-        <div style={{ fontSize: '18px' }}>اطلاعات مریض معتبر نیست</div>
-        <div style={{ fontSize: '14px', color: '#9ca3af', marginTop: '10px' }}>
-          لطفاً یک مریض را از صف انتخاب کنید
-        </div>
-      </div>
-    );
-  }
+  }, [registration.reg_id]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -86,30 +70,15 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // اعتبارسنجی فیلدهای ضروری
-    if (!formData.chief_complaint) {
-      toast.warning("⚠️ لطفاً شکایت اصلی را وارد کنید");
-      return;
-    }
-    if (!formData.diagnosis) {
-      toast.warning("⚠️ لطفاً تشخیص را وارد کنید");
-      return;
-    }
-
     setLoading(true);
 
     try {
       await api.post(`/doctor/treatment/${registration.reg_id}`, formData);
       toast.success("✅ معلومات معاینه با موفقیت ثبت شد");
-      setIsExamined(true); // فعال کردن دکمه ختم معالجه
       onRefresh();
-      
-      // به روز رسانی اطلاعات مریض
-      const response = await api.get(`/doctor/patient/${registration.reg_id}`);
-      const data = response.data?.data || response.data;
-      setPatientInfo(data);
-      
+      setTimeout(() => {
+        onComplete();
+      }, 1500);
     } catch (err) {
       console.error("خطا در ثبت معاینه:", err);
       if (err.response?.data?.message) {
@@ -123,64 +92,22 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
   };
 
   const handleComplete = async () => {
-    // بررسی اینکه آیا معاینه ثبت شده است
-    if (!isExamined) {
-      toast.warning("⚠️ لطفاً ابتدا معاینه را ثبت کنید");
-      return;
-    }
-
     if (!window.confirm("آیا مطمئن هستید که می‌خواهید معالجه این مریض را ختم کنید؟")) return;
-
-    setLoading(true);
 
     try {
       await api.post(`/doctor/complete/${registration.reg_id}`);
       toast.success("✅ معالجه با موفقیت ختم شد");
-      setIsCompleted(true);
       onRefresh();
-      
-      // بعد از 2 ثانیه به صف برگرد
       setTimeout(() => {
         onComplete();
-      }, 2000);
+      }, 1000);
     } catch (err) {
       console.error("خطا در ختم معالجه:", err);
-      if (err.response?.data?.message) {
-        toast.error(`❌ ${err.response.data.message}`);
-      } else {
-        toast.error("❌ خطا در ختم معالجه");
-      }
-    } finally {
-      setLoading(false);
+      toast.error("❌ خطا در ختم معالجه");
     }
   };
 
   const patient = patientInfo?.patient || registration.patient || {};
-
-  const getGenderText = (gender) => {
-    if (!gender) return '-';
-    const genderMap = {
-      'male': '♂️ مرد',
-      'female': '♀️ زن',
-      'other': '⚧️ دیگر'
-    };
-    return genderMap[gender] || gender;
-  };
-
-  const getBloodGroupText = (bloodGroup) => {
-    if (!bloodGroup) return '-';
-    const bloodMap = {
-      'A+': 'A+',
-      'A-': 'A-',
-      'B+': 'B+',
-      'B-': 'B-',
-      'AB+': 'AB+',
-      'AB-': 'AB-',
-      'O+': 'O+',
-      'O-': 'O-'
-    };
-    return bloodMap[bloodGroup] || bloodGroup;
-  };
 
   return (
     <div>
@@ -188,98 +115,42 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
         🩺 معاینه مریض
       </h3>
 
-      {/* وضعیت معالجه */}
-      <div style={{
-        display: 'flex',
-        gap: '15px',
-        marginBottom: '20px',
-        padding: '10px 15px',
-        backgroundColor: '#1a2a3a',
-        borderRadius: '8px',
-        flexWrap: 'wrap'
-      }}>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px' }}>وضعیت معاینه:</span>
-          <span style={{
-            color: isExamined ? '#22c55e' : '#f59e0b',
-            fontWeight: 'bold',
-            marginRight: '8px'
-          }}>
-            {isExamined ? '✅ ثبت شده' : '⏳ ثبت نشده'}
-          </span>
-        </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px' }}>وضعیت معالجه:</span>
-          <span style={{
-            color: isCompleted ? '#22c55e' : '#f59e0b',
-            fontWeight: 'bold',
-            marginRight: '8px'
-          }}>
-            {isCompleted ? '✅ ختم شده' : '⏳ در حال 진행'}
-          </span>
-        </div>
-      </div>
-
       {/* اطلاعات مریض */}
       <div style={{
         backgroundColor: '#1a2a3a',
-        padding: '15px 20px',
+        padding: '15px',
         borderRadius: '8px',
         marginBottom: '25px',
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-        gap: '12px 20px'
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '12px'
       }}>
         <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>نام کامل</span>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>نام مریض</span>
           <div style={{ color: 'white', fontWeight: 'bold', fontSize: '15px' }}>
             {patient.first_name || ''} {patient.last_name || ''}
           </div>
         </div>
-        
         <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>سن</span>
-          <div style={{ color: 'white', fontWeight: 'bold' }}>
-            {patient.age ? `${patient.age} سال` : '-'}
-          </div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>شماره مراجعه</span>
+          <div style={{ color: 'white', fontWeight: 'bold' }}>{registration.visit_number || '-'}</div>
         </div>
-        
         <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>جنسیت</span>
-          <div style={{ color: 'white', fontWeight: 'bold' }}>
-            {getGenderText(patient.gender)}
-          </div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>شماره صف</span>
+          <div style={{ color: '#fcd34d', fontWeight: 'bold' }}>#{registration.queue_number || '-'}</div>
         </div>
-        
         <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>گروه خونی</span>
-          <div style={{ color: '#fcd34d', fontWeight: 'bold' }}>
-            {getBloodGroupText(patient.blood_group)}
-          </div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>بخش</span>
+          <div style={{ color: 'white' }}>{registration.department?.name || '-'}</div>
         </div>
-        
         <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>شماره تماس</span>
-          <div style={{ color: 'white', fontWeight: 'bold' }} dir="ltr">
-            {patient.mobile || '-'}
-          </div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>شماره تماس</span>
+          <div style={{ color: 'white' }} dir="ltr">{patient.mobile || '-'}</div>
         </div>
-        
         <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>بخش</span>
-          <div style={{ color: 'white', fontWeight: 'bold' }}>
-            {registration.department?.name || '-'}
-          </div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>سن</span>
+          <div style={{ color: 'white' }}>{patient.age || '-'}</div>
         </div>
-
-        {patient.address && (
-          <div style={{ gridColumn: 'span 2' }}>
-            <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>آدرس</span>
-            <div style={{ color: 'white' }}>
-              {patient.address}
-            </div>
-          </div>
-        )}
       </div>
 
       <form onSubmit={handleSubmit}>
@@ -302,14 +173,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 70.5"
                 min="0"
                 max="300"
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
 
@@ -327,14 +191,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 175"
                 min="50"
                 max="250"
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
 
@@ -352,14 +209,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="محاسبه خودکار"
                 min="10"
                 max="60"
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
 
@@ -374,14 +224,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 onChange={handleChange}
                 className="form-control"
                 placeholder="مثلاً 120/80"
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
 
@@ -399,14 +242,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 36.5"
                 min="30"
                 max="45"
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
 
@@ -423,14 +259,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 72"
                 min="30"
                 max="200"
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
 
@@ -447,14 +276,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 16"
                 min="5"
                 max="60"
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
 
@@ -471,14 +293,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 98"
                 min="0"
                 max="100"
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
           </div>
@@ -498,14 +313,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="شکایت اصلی مریض را وارد کنید..."
-                disabled={isCompleted || isExamined}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: (isCompleted || isExamined) ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
                 required
               />
             </div>
@@ -521,14 +329,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="تاریخچه بیماری فعلی..."
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
 
@@ -543,14 +344,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="سابقه پزشکی قبلی..."
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
 
@@ -565,14 +359,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="نتایج معاینه فیزیکی..."
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
 
@@ -587,14 +374,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="تشخیص اولیه..."
-                disabled={isCompleted || isExamined}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: (isCompleted || isExamined) ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
                 required
               />
             </div>
@@ -610,14 +390,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="یادداشت‌های اضافی..."
-                disabled={isCompleted}
-                style={{ 
-                  backgroundColor: '#1a1a2e', 
-                  color: 'white', 
-                  borderColor: '#374151', 
-                  width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
-                }}
+                style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%' }}
               />
             </div>
           </div>
@@ -634,53 +407,49 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
         }}>
           <button
             type="submit"
-            disabled={loading || isCompleted || isExamined}
-            style={{
-              backgroundColor: (isCompleted || isExamined) ? '#6b7280' : '#3b82f6',
-              color: 'white',
-              padding: '12px 40px',
-              borderRadius: '5px',
-              border: 'none',
-              cursor: (loading || isCompleted || isExamined) ? 'not-allowed' : 'pointer',
-              opacity: (loading || isCompleted || isExamined) ? 0.6 : 1,
-              fontSize: '15px',
-              fontWeight: 'bold'
-            }}
-          >
-            {loading ? '⏳ در حال ثبت...' : isCompleted ? '✅ معالجه ختم شده' : isExamined ? '✅ معاینه ثبت شده' : '💾 ثبت معاینه'}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleComplete}
-            disabled={!isExamined || isCompleted || loading}
-            style={{
-              backgroundColor: (!isExamined || isCompleted) ? '#6b7280' : '#22c55e',
-              color: 'white',
-              padding: '12px 40px',
-              borderRadius: '5px',
-              border: 'none',
-              cursor: (!isExamined || isCompleted || loading) ? 'not-allowed' : 'pointer',
-              opacity: (!isExamined || isCompleted || loading) ? 0.6 : 1,
-              fontSize: '15px',
-              fontWeight: 'bold'
-            }}
-          >
-            {isCompleted ? '✅ معالجه ختم شد' : '✅ ختم معالجه'}
-          </button>
-
-          <button
-            type="button"
-            onClick={onComplete}
             disabled={loading}
             style={{
-              backgroundColor: '#6b7280',
+              backgroundColor: '#3b82f6',
               color: 'white',
               padding: '12px 40px',
               borderRadius: '5px',
               border: 'none',
               cursor: loading ? 'not-allowed' : 'pointer',
               opacity: loading ? 0.6 : 1,
+              fontSize: '15px',
+              fontWeight: 'bold'
+            }}
+          >
+            {loading ? '⏳ در حال ثبت...' : '💾 ثبت معاینه'}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleComplete}
+            style={{
+              backgroundColor: '#22c55e',
+              color: 'white',
+              padding: '12px 40px',
+              borderRadius: '5px',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '15px',
+              fontWeight: 'bold'
+            }}
+          >
+            ✅ ختم معالجه
+          </button>
+
+          <button
+            type="button"
+            onClick={onComplete}
+            style={{
+              backgroundColor: '#6b7280',
+              color: 'white',
+              padding: '12px 40px',
+              borderRadius: '5px',
+              border: 'none',
+              cursor: 'pointer',
               fontSize: '15px'
             }}
           >
@@ -690,4 +459,4 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
       </form>
     </div>
   );
-}
+}     

@@ -16,12 +16,11 @@ export default function TreatmentPage() {
   const { api } = useAuth();
   const [activeTab, setActiveTab] = useState("queue");
   const [selectedRegistration, setSelectedRegistration] = useState(null);
+ 
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  
 
-  // دریافت صف مریضان
   const fetchQueue = async () => {
     setLoading(true);
     try {
@@ -167,7 +166,6 @@ export default function TreatmentPage() {
             flexWrap: "wrap",
           }}
         >
-          {/* تب صف انتظار */}
           <button
             onClick={() => {
               setActiveTab("queue");
@@ -201,7 +199,6 @@ export default function TreatmentPage() {
             )}
           </button>
 
-          {/* تب معاینه */}
           <button
             onClick={() => {
               if (!hasValidRegistration) {
@@ -230,7 +227,6 @@ export default function TreatmentPage() {
             معاینه
           </button>
 
-          {/* تب لابراتوار */}
           <button
             onClick={() => {
               if (!hasValidRegistration) {
@@ -259,7 +255,6 @@ export default function TreatmentPage() {
             لابراتوار
           </button>
 
-          {/* تب رادیولوژی */}
           <button
             onClick={() => {
               if (!hasValidRegistration) {
@@ -288,7 +283,6 @@ export default function TreatmentPage() {
             رادیولوژی
           </button>
 
-          {/* تب نسخه */}
           <button
             onClick={() => {
               if (!hasValidRegistration) {
@@ -317,7 +311,6 @@ export default function TreatmentPage() {
             نسخه
           </button>
 
-          {/* تب Follow Up */}
           <button
             onClick={() => {
               if (!hasValidRegistration) {
@@ -346,7 +339,6 @@ export default function TreatmentPage() {
             ملاقات بعدی
           </button>
 
-          {/* تب بستری */}
           <button
             onClick={() => {
               if (!hasValidRegistration) {
@@ -375,7 +367,6 @@ export default function TreatmentPage() {
             بستری
           </button>
 
-          {/* تب تاریخچه معالجه */}
           <button
             onClick={() => {
               setActiveTab("history");
@@ -410,7 +401,6 @@ export default function TreatmentPage() {
             color: "#fff",
           }}
         >
-          {/* صف انتظار */}
           {activeTab === "queue" && (
             <PatientQueue 
               queue={queue}
@@ -420,7 +410,6 @@ export default function TreatmentPage() {
             />
           )}
 
-          {/* معاینه */}
           {activeTab === "examination" && hasValidRegistration && (
             <ExaminationForm 
               registration={selectedRegistration}
@@ -430,7 +419,6 @@ export default function TreatmentPage() {
             />
           )}
 
-          {/* لابراتوار */}
           {activeTab === "laboratory" && hasValidRegistration && (
             <LaboratoryRequest 
               registration={selectedRegistration}
@@ -440,7 +428,6 @@ export default function TreatmentPage() {
             />
           )}
 
-          {/* رادیولوژی */}
           {activeTab === "radiology" && hasValidRegistration && (
             <RadiologyRequest 
               registration={selectedRegistration}
@@ -450,7 +437,6 @@ export default function TreatmentPage() {
             />
           )}
 
-          {/* نسخه */}
           {activeTab === "pres_insert" && hasValidRegistration && (
             <PrescriptionForm 
               registration={selectedRegistration}
@@ -460,7 +446,6 @@ export default function TreatmentPage() {
             />
           )}
 
-          {/* Follow Up */}
           {activeTab === "followup" && hasValidRegistration && (
             <FollowUp 
               registration={selectedRegistration}
@@ -470,7 +455,6 @@ export default function TreatmentPage() {
             />
           )}
 
-          {/* بستری */}
           {activeTab === "admission" && hasValidRegistration && (
             <Admission 
               registration={selectedRegistration}
@@ -480,7 +464,6 @@ export default function TreatmentPage() {
             />
           )}
 
-          {/* تاریخچه معالجه */}
           {activeTab === "history" && (
             <HistoryList 
               api={api}

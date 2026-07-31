@@ -33,6 +33,7 @@ use App\Http\Controllers\DepartementController;
 use App\Http\Controllers\BenefitController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ViewInventoryController;
+use App\Http\Controllers\Doctor\ExaminationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -129,22 +130,39 @@ Route::middleware('auth:sanctum')->group(function () {
     // ============================================================
     // ✅ مسیرهای داکتر برای معالجه (DoctorTreatmentController)
     // ============================================================
-   // ============================================================
-Route::get('/doctor/queue', [DoctorTreatmentController::class, 'doctorQueue']);
-Route::get('/doctor/patient/{reg_id}', [DoctorTreatmentController::class, 'show']);
-Route::post('/doctor/treatment/{reg_id}', [DoctorTreatmentController::class, 'treatment']);
-Route::post('/doctor/start-treatment/{reg_id}', [DoctorTreatmentController::class, 'startTreatment']);
-Route::post('/doctor/laboratory/{reg_id}', [DoctorTreatmentController::class, 'sendToLaboratory']);
-Route::post('/doctor/complete/{reg_id}', [DoctorTreatmentController::class, 'complete']);
-Route::post('/doctor/return-to-treatment/{history_id}', [DoctorTreatmentController::class, 'returnToTreatment']);
-Route::get('/doctor/treatment-history', [DoctorTreatmentController::class, 'treatmentHistory']);
-    Route::post('/doctor/radiology-request', [DoctorTreatmentController::class, 'storeRadiologyRequest']);
-      // Follow Up
-    Route::post('/doctor/follow-up', [DoctorTreatmentController::class, 'storeFollowUp']);
-    
-    // بستری
-    Route::get('/doctor/wards', [DoctorTreatmentController::class, 'getWards']);
-    Route::post('/doctor/admission', [DoctorTreatmentController::class, 'storeAdmission']);
+    Route::prefix('doctor')->group(function () {
+        // مسیرهای درمانی قبلی
+        Route::get('/queue', [DoctorTreatmentController::class, 'doctorQueue']);
+        Route::get('/patient/{reg_id}', [DoctorTreatmentController::class, 'show']);
+        Route::post('/treatment/{reg_id}', [DoctorTreatmentController::class, 'treatment']);
+        Route::post('/start-treatment/{reg_id}', [DoctorTreatmentController::class, 'startTreatment']);
+        Route::post('/laboratory/{reg_id}', [DoctorTreatmentController::class, 'sendToLaboratory']);
+        Route::post('/complete/{reg_id}', [DoctorTreatmentController::class, 'complete']);
+        Route::post('/return-to-treatment/{history_id}', [DoctorTreatmentController::class, 'returnToTreatment']);
+        Route::get('/treatment-history', [DoctorTreatmentController::class, 'treatmentHistory']);
+        Route::post('/radiology-request', [DoctorTreatmentController::class, 'storeRadiologyRequest']);
+        Route::post('/follow-up', [DoctorTreatmentController::class, 'storeFollowUp']);
+        Route::get('/wards', [DoctorTreatmentController::class, 'getWards']);
+        Route::post('/admission', [DoctorTreatmentController::class, 'storeAdmission']);
+
+        // ===== مسیرهای معاینات (ExaminationController) =====
+        Route::middleware(['role:doctor'])->group(function () {
+            Route::post('/treatment/{registrationId}', [ExaminationController::class, 'store']);
+            Route::get('/examination/{registrationId}', [ExaminationController::class, 'show']);
+            Route::get('/examination-by-id/{id}', [ExaminationController::class, 'getById']);
+            Route::get('/patient-history/{patientId}', [ExaminationController::class, 'history']);
+            Route::get('/patient-history-filter/{patientId}', [ExaminationController::class, 'historyWithDateFilter']);
+            Route::get('/my-examinations', [ExaminationController::class, 'myExaminations']);
+            Route::get('/my-statistics', [ExaminationController::class, 'getStatistics']);
+            Route::get('/my-latest', [ExaminationController::class, 'getLatest']);
+            Route::get('/today-summary', [ExaminationController::class, 'getTodaySummary']);
+            Route::post('/complete-examination/{registrationId}', [ExaminationController::class, 'complete']);
+            Route::put('/examination/{id}', [ExaminationController::class, 'update']);
+            Route::delete('/examination/{id}', [ExaminationController::class, 'destroy']);
+            Route::get('/search-examinations', [ExaminationController::class, 'search']);
+            Route::get('/date-range', [ExaminationController::class, 'getByDateRange']);
+        });
+    });
 
     // ===== Prescriptions =====
     Route::get('/prescriptions/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);
@@ -187,41 +205,49 @@ Route::get('/doctor/treatment-history', [DoctorTreatmentController::class, 'trea
     // ============================================================
     // مسیرهای مدیریت مراجعات (RegistrationsController)
     // ============================================================
-    Route::post('/registrations', [RegistrationsController::class, 'store']);
-    Route::get('/registrations', [RegistrationsController::class, 'index']);
-    Route::get('/registrations/{reg_id}', [RegistrationsController::class, 'show']);
-    Route::put('/registrations/{reg_id}', [RegistrationsController::class, 'update']);
-    Route::delete('/registrations/{reg_id}', [RegistrationsController::class, 'destroy']);
-    Route::get('/registrations/statistics', [RegistrationsController::class, 'statistics']);
-    Route::get('/registrations/today', [RegistrationsController::class, 'todayRegistrations']);
-    Route::put('/registrations/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
-    Route::post('/registrations/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
+    Route::prefix('registrations')->group(function () {
+        Route::post('/', [RegistrationsController::class, 'store']);
+        Route::get('/', [RegistrationsController::class, 'index']);
+        Route::get('/{reg_id}', [RegistrationsController::class, 'show']);
+        Route::put('/{reg_id}', [RegistrationsController::class, 'update']);
+        Route::delete('/{reg_id}', [RegistrationsController::class, 'destroy']);
+        Route::get('/statistics', [RegistrationsController::class, 'statistics']);
+        Route::get('/today', [RegistrationsController::class, 'todayRegistrations']);
+        Route::put('/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
+        Route::post('/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
+    });
 
     // ============================================================
     // مسیرهای مدیریت دیپارتمنت‌ها
     // ============================================================
-    Route::get('/departments', [RegistrationsController::class, 'getDepartments']);
-    Route::get('/departments/active', [RegistrationsController::class, 'getActiveDepartments']);
-    Route::get('/departments/{id}', [RegistrationsController::class, 'getDepartment']);
-    Route::post('/departments', [RegistrationsController::class, 'createDepartment']);
-    Route::put('/departments/{id}', [RegistrationsController::class, 'updateDepartment']);
-    Route::delete('/departments/{id}', [RegistrationsController::class, 'deleteDepartment']);
-    Route::get('/departments/statistics', [RegistrationsController::class, 'departmentStatistics']);
-    Route::get('/departments/search', [RegistrationsController::class, 'searchDepartments']);
-    Route::patch('/departments/{id}/toggle-status', [RegistrationsController::class, 'toggleDepartmentStatus']);
+    Route::prefix('departments')->group(function () {
+        Route::get('/', [RegistrationsController::class, 'getDepartments']);
+        Route::get('/active', [RegistrationsController::class, 'getActiveDepartments']);
+        Route::get('/{id}', [RegistrationsController::class, 'getDepartment']);
+        Route::post('/', [RegistrationsController::class, 'createDepartment']);
+        Route::put('/{id}', [RegistrationsController::class, 'updateDepartment']);
+        Route::delete('/{id}', [RegistrationsController::class, 'deleteDepartment']);
+        Route::get('/statistics', [RegistrationsController::class, 'departmentStatistics']);
+        Route::get('/search', [RegistrationsController::class, 'searchDepartments']);
+        Route::patch('/{id}/toggle-status', [RegistrationsController::class, 'toggleDepartmentStatus']);
+    });
 
     // ===== Sales CRUD =====
-    Route::get('/sales', [SalesController::class, 'index']);
-    Route::post('/sales', [SalesController::class, 'store']);
-    Route::put('/sales/{sales_id}', [SalesController::class, 'update']);
-    Route::delete('/sales/{sales_id}', [SalesController::class, 'destroy']);
+    Route::prefix('sales')->group(function () {
+        Route::get('/', [SalesController::class, 'index']);
+        Route::post('/', [SalesController::class, 'store']);
+        Route::put('/{sales_id}', [SalesController::class, 'update']);
+        Route::delete('/{sales_id}', [SalesController::class, 'destroy']);
+    });
 
     // ===== Journals =====
-    Route::get('/journals', [JournalController::class, 'index']);
-    Route::get('/journals/{id}', [JournalController::class, 'show']);
-    Route::post('/journals', [JournalController::class, 'store']);
-    Route::put('/journals/{id}', [JournalController::class, 'update']);
-    Route::post('journals/upsert/{id?}', [JournalController::class, 'upsert']);
+    Route::prefix('journals')->group(function () {
+        Route::get('/', [JournalController::class, 'index']);
+        Route::get('/{id}', [JournalController::class, 'show']);
+        Route::post('/', [JournalController::class, 'store']);
+        Route::put('/{id}', [JournalController::class, 'update']);
+        Route::post('/upsert/{id?}', [JournalController::class, 'upsert']);
+    });
 
     // ===== Reports / Views =====
     Route::get('/view-inventory', [ViewInventoryController::class, 'index']);
@@ -238,7 +264,11 @@ Route::get('/doctor/treatment-history', [DoctorTreatmentController::class, 'trea
     Route::get('/patients/{patient_id}/info', [RegistrationsController::class, 'getPatientInfo']);
 });
 
-// مسیرهای عمومی (بدون نیاز به احراز هویت)
+/*
+|--------------------------------------------------------------------------
+| Public Routes (بدون نیاز به احراز هویت)
+|--------------------------------------------------------------------------
+*/
 Route::get('/sales-report', function (Request $request) {
     $type = $request->get('type', 'daily');
     $query = DB::table('view_sales_summary');
