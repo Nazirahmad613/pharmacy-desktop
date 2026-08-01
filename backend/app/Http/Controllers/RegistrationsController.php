@@ -72,7 +72,7 @@ class RegistrationsController extends Controller
 
             'visit_status' => [
                 'nullable',
-                'in:Waiting,Doctor,Laboratory,Radiology,Pharmacy,Billing,Completed,Cancelled'
+               'in:Waiting,Doctor,Examining,Laboratory,Radiology,Admission,Ward,Operation,Pharmacy,Billing,Completed,Cancelled,Discharged'
             ],
 
             'diagnosis' => 'nullable|string',
@@ -158,15 +158,10 @@ class RegistrationsController extends Controller
             // شماره مراجعه کل سیستم
             $validated['visit_number'] = (Registrations::max('visit_number') ?? 0) + 1;
 
-            // تاریخ مراجعه
-          // تاریخ واقعی مراجعه امروز
-$visitDate = now()->toDateString();
+          $visitDate = $request->visit_date ?? now()->toDateString();
 
 $validated['visit_date'] = $visitDate;
-// تاریخ مخصوص صف داکتر (هر روز صفر می‌شود)
-$queueDate = now()->toDateString();
-
-$validated['queue_date'] = $queueDate;
+ 
             /*
             |--------------------------------------------------------------------------
             | شماره صف بر اساس داکتر و تاریخ
@@ -180,29 +175,36 @@ $validated['queue_date'] = $queueDate;
 |--------------------------------------------------------------------------
 */
 
-$doctorId = $validated['doctor_id'] ?? null;
+ /*
+|--------------------------------------------------------------------------
+| شماره صف
+| فقط هنگام ارسال به داکتر ساخته می‌شود
+|--------------------------------------------------------------------------
+*/
 
- if ($doctorId) {
+$validated['queue_number'] = null;
+$validated['queue_date'] = null;
 
-    $lastQueue = Registrations::where('doctor_id', $doctorId)
+         // اگر مریض مستقیم به داکتر ارسال شد
+if (
+    isset($validated['visit_status']) &&
+    $validated['visit_status'] === 'Doctor' &&
+    !empty($validated['doctor_id'])
+) {
+
+    $validated['sent_to_doctor_at'] = now();
+
+    $queueDate = now()->toDateString();
+
+    $lastQueue = Registrations::where('doctor_id', $validated['doctor_id'])
         ->whereDate('queue_date', $queueDate)
         ->max('queue_number');
 
-    $validated['queue_number'] = ($lastQueue ?? 0) + 1;
-
-} else {
-
-    $lastQueue = Registrations::whereDate('queue_date', $queueDate)
-        ->max('queue_number');
 
     $validated['queue_number'] = ($lastQueue ?? 0) + 1;
 
+    $validated['queue_date'] = $queueDate;
 }
-
-            // اگر وضعیت Doctor باشد، زمان ارسال را ثبت کن
-            if (isset($validated['visit_status']) && $validated['visit_status'] === 'Doctor') {
-                $validated['sent_to_doctor_at'] = now();
-            }
 
             /*
             |--------------------------------------------------------------------------
@@ -391,7 +393,7 @@ $doctorId = $validated['doctor_id'] ?? null;
             ],
             'visit_status' => [
                 'nullable',
-                'in:Waiting,Doctor,Laboratory,Radiology,Pharmacy,Billing,Completed,Cancelled'
+                 'in:Waiting,Doctor,Examining,Laboratory,Radiology,Admission,Ward,Operation,Pharmacy,Billing,Completed,Cancelled,Discharged'
             ],
             'diagnosis' => 'nullable|string',
             'weight' => [
@@ -577,10 +579,7 @@ $doctorId = $validated['doctor_id'] ?? null;
                 ->where('ref_id', $registration->reg_id)
                 ->delete();
 
-            // حذف مریض مربوطه
-            if ($registration->patient) {
-                $registration->patient->delete();
-            }
+            
 
             // حذف مراجعه
             $registration->delete();
@@ -801,8 +800,21 @@ $doctorId = $validated['doctor_id'] ?? null;
     public function getByStatus($status)
     {
         try {
-            $validStatuses = ['Waiting', 'Doctor', 'Laboratory', 'Radiology', 'Pharmacy', 'Billing', 'Completed', 'Cancelled'];
-            
+           $validStatuses = [
+    'Waiting',
+    'Doctor',
+    'Examining',
+    'Laboratory',
+    'Radiology',
+    'Admission',
+    'Ward',
+    'Operation',
+    'Pharmacy',
+    'Billing',
+    'Completed',
+    'Cancelled',
+    'Discharged'
+];
             if (!in_array($status, $validStatuses)) {
                 return response()->json([
                     'message' => 'وضعیت نامعتبر است'
@@ -979,64 +991,111 @@ $doctorId = $validated['doctor_id'] ?? null;
     /**
      * به‌روزرسانی وضعیت مراجعه (سریع)
      */
-    public function updateStatus(Request $request, $reg_id)
-    {
-        try {
-            $validated = $request->validate([
-                'visit_status' => [
-                    'required',
-                    'in:Waiting,Doctor,Laboratory,Radiology,Pharmacy,Billing,Completed,Cancelled'
-                ]
-            ]);
+  /**
+ * به‌روزرسانی وضعیت مراجعه (سریع)
+ */
+public function updateStatus(Request $request, $reg_id)
+{
+    try {
+        $validated = $request->validate([
+            'visit_status' => [
+                'required',
+                'in:Waiting,Doctor,Examining,Laboratory,Radiology,Admission,Ward,Operation,Pharmacy,Billing,Completed,Cancelled,Discharged'
+            ]
+        ]);
 
-            $registration = Registrations::find($reg_id);
+        $registration = Registrations::find($reg_id);
 
-            if (!$registration) {
-                return response()->json([
-                    'message' => 'مراجعه مورد نظر یافت نشد'
-                ], 404);
-            }
-
-            $oldStatus = $registration->visit_status;
-            $registration->visit_status = $request->visit_status;
-            
-            // اگر وضعیت به Doctor تغییر کرد، زمان ارسال را ثبت کن
-            if ($request->visit_status === 'Doctor' && $oldStatus !== 'Doctor') {
-                $registration->sent_to_doctor_at = now();
-            }
-            
-            $registration->save();
-
-            try {
-                LogService::create(
-                    'update',
-                    'registrations',
-                    $registration->reg_id,
-                    "وضعیت مراجعه از {$oldStatus} به {$request->visit_status} تغییر یافت",
-                    [
-                        'old_status' => $oldStatus,
-                        'new_status' => $request->visit_status,
-                        'changed_by' => Auth::id()
-                    ]
-                );
-            } catch (\Exception $e) {
-                Log::error("Status update log failed: " . $e->getMessage());
-            }
-
+        if (!$registration) {
             return response()->json([
-                'message' => 'وضعیت مراجعه موفقانه به‌روزرسانی شد',
-                'data' => $registration->load(['patient', 'department', 'doctor'])
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Update status error: ' . $e->getMessage());
-            return response()->json([
-                'message' => 'خطا در به‌روزرسانی وضعیت',
-                'error' => $e->getMessage()
-            ], 500);
+                'message' => 'مراجعه مورد نظر یافت نشد'
+            ], 404);
         }
-    }
 
+        $oldStatus = $registration->visit_status;
+        
+        // ============================================================
+        // اصلاح: تصحیح مقدار visit_status اگر اشتباه ارسال شده باشد
+        // ============================================================
+        $newStatus = $validated['visit_status'];
+        
+        // اگر مقدار به اشتباه 'examined' ارسال شده بود، به 'Examining' تبدیل کن
+        if (strtolower($newStatus) === 'Examining') {
+            $newStatus = 'Examining';
+        }
+        
+        // اگر مقدار 'Examining' ارسال شده، مطمئن شو که با حرف بزرگ E است
+        if (strtolower($newStatus) === 'examining') {
+            $newStatus = 'Examining';
+        }
+        
+        // مطمئن شو که مقدار در لیست مجاز است
+        $allowedStatuses = [
+            'Waiting', 'Doctor', 'Examining', 'Laboratory', 'Radiology',
+            'Admission', 'Ward', 'Operation', 'Pharmacy', 'Billing',
+            'Completed', 'Cancelled', 'Discharged'
+        ];
+        
+        if (!in_array($newStatus, $allowedStatuses)) {
+            return response()->json([
+                'message' => 'وضعیت نامعتبر است',
+                'received' => $newStatus,
+                'allowed' => $allowedStatuses
+            ], 422);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | ارسال به داکتر = ساخت شماره صف
+        |--------------------------------------------------------------------------
+        */
+        if ($newStatus === 'Doctor' &&
+            $registration->visit_status !== 'Doctor' &&
+            $registration->doctor_id) {
+
+            $queueDate = now()->toDateString();
+            $lastQueue = Registrations::where('doctor_id', $registration->doctor_id)
+                ->whereDate('queue_date', $queueDate)
+                ->max('queue_number');
+
+            $registration->queue_number = ($lastQueue ?? 0) + 1;
+            $registration->queue_date = $queueDate;
+            $registration->sent_to_doctor_at = now();
+        }
+        
+        // به‌روزرسانی وضعیت با مقدار اصلاح شده
+        $registration->visit_status = $newStatus;
+        $registration->save();
+
+        try {
+            LogService::create(
+                'update',
+                'registrations',
+                $registration->reg_id,
+                "وضعیت مراجعه از {$oldStatus} به {$newStatus} تغییر یافت",
+                [
+                    'old_status' => $oldStatus,
+                    'new_status' => $newStatus,
+                    'changed_by' => Auth::id()
+                ]
+            );
+        } catch (\Exception $e) {
+            Log::error("Status update log failed: " . $e->getMessage());
+        }
+
+        return response()->json([
+            'message' => 'وضعیت مراجعه موفقانه به‌روزرسانی شد',
+            'data' => $registration->load(['patient', 'department', 'doctor'])
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Update status error: ' . $e->getMessage());
+        return response()->json([
+            'message' => 'خطا در به‌روزرسانی وضعیت',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
     /**
      * دریافت مراجعات امروز برای داشبورد
      */
@@ -1507,7 +1566,8 @@ $doctorId = $validated['doctor_id'] ?? null;
                     'doctor'
                 ])
                 ->where('sent_to_doctor_at', '!=', null)
-                ->where('visit_status', 'Doctor')
+               ->where('visit_status', 'Doctor')
+               ->where('queue_date', today())
                 ->where('doctor_id', Auth::id())
                 ->orderBy('sent_to_doctor_at', 'asc')
                 ->orderBy('queue_number', 'asc')

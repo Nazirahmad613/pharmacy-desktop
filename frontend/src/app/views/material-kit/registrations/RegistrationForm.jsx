@@ -138,7 +138,11 @@ export default function RegistrationForm() {
     radiology_patients: 0,
     pharmacy_patients: 0,
     billing_patients: 0,
-    cancelled_patients: 0
+    cancelled_patients: 0,
+    examining_patients: 0,
+    admission_patients: 0,
+    ward_patients: 0,
+    operation_patients: 0
   });
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -257,6 +261,10 @@ useEffect(() => {
     const pharmacy = regs.filter(r => r.visit_status === 'Pharmacy').length;
     const billing = regs.filter(r => r.visit_status === 'Billing').length;
     const cancelled = regs.filter(r => r.visit_status === 'Cancelled').length;
+    const examining = regs.filter(r => r.visit_status === 'Examining').length;
+    const admission = regs.filter(r => r.visit_status === 'Admission').length;
+    const ward = regs.filter(r => r.visit_status === 'Ward').length;
+    const operation = regs.filter(r => r.visit_status === 'Operation').length;
     
     const totalFees = regs.reduce((sum, r) => sum + (parseFloat(r.registration_fee) || 0), 0);
     const todayFees = todayRegs.reduce((sum, r) => sum + (parseFloat(r.registration_fee) || 0), 0);
@@ -273,7 +281,11 @@ useEffect(() => {
       radiology_patients: radiology,
       pharmacy_patients: pharmacy,
       billing_patients: billing,
-      cancelled_patients: cancelled
+      cancelled_patients: cancelled,
+      examining_patients: examining,
+      admission_patients: admission,
+      ward_patients: ward,
+      operation_patients: operation
     });
   };
 
@@ -613,7 +625,6 @@ useEffect(() => {
     }
   };
 
-  // ✅ اصلاح شده: استفاده از مسیر صحیح status
   const handleSendToDoctor = async () => {
     if (!selectedRegistration) return;
 
@@ -645,7 +656,6 @@ useEffect(() => {
     }
   };
 
-  // ✅ اصلاح شده: استفاده از مسیر صحیح status با متد PUT
   const handleSendToDoctorFromList = async (registration) => {
     if (!registration.doctor_id) {
       toast.warning("⚠️ لطفاً ابتدا داکتر معالج را انتخاب کنید");
@@ -810,12 +820,17 @@ useEffect(() => {
     }
   };
 
+  // لیست کامل وضعیت‌ها با ترجمه فارسی
   const getStatusText = (status) => {
     const statusMap = {
       'Waiting': 'در انتظار',
       'Doctor': 'نزد داکتر',
+      'Examining': 'در حال معاینه',
       'Laboratory': 'لابراتوار',
       'Radiology': 'رادیولوژی',
+      'Admission': 'بستری',
+      'Ward': 'بخش بستری',
+      'Operation': 'اتاق عمل',
       'Pharmacy': 'دواخانه',
       'Billing': 'حسابداری',
       'Completed': 'تکمیل شده',
@@ -824,16 +839,21 @@ useEffect(() => {
     return statusMap[status] || status || '-';
   };
 
+  // رنگ‌بندی کامل وضعیت‌ها
   const getStatusColor = (status) => {
     const colorMap = {
       'Waiting': '#f59e0b',
       'Doctor': '#8b5cf6',
-      'Laboratory': '#3b82f6',
+      'Examining': '#3b82f6',
+      'Laboratory': '#ec4899',
       'Radiology': '#06b6d4',
+      'Admission': '#ef4444',
+      'Ward': '#f97316',
+      'Operation': '#dc2626',
       'Pharmacy': '#10b981',
-      'Billing': '#ec4899',
+      'Billing': '#6366f1',
       'Completed': '#22c55e',
-      'Cancelled': '#dc2626'
+      'Cancelled': '#6b7280'
     };
     return colorMap[status] || '#6b7280';
   };
@@ -1221,7 +1241,11 @@ useEffect(() => {
             <div style={{ fontSize: '14px', color: '#9ca3af' }}>نزد داکتر</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#3b82f6' }}>{statistics.laboratory_patients || 0}</div>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#3b82f6' }}>{statistics.examining_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>در حال معاینه</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ec4899' }}>{statistics.laboratory_patients || 0}</div>
             <div style={{ fontSize: '14px', color: '#9ca3af' }}>لابراتوار</div>
           </div>
           <div style={{ textAlign: 'center' }}>
@@ -1229,11 +1253,23 @@ useEffect(() => {
             <div style={{ fontSize: '14px', color: '#9ca3af' }}>رادیولوژی</div>
           </div>
           <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ef4444' }}>{statistics.admission_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>بستری</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f97316' }}>{statistics.ward_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>بخش بستری</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#dc2626' }}>{statistics.operation_patients || 0}</div>
+            <div style={{ fontSize: '14px', color: '#9ca3af' }}>اتاق عمل</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#10b981' }}>{statistics.pharmacy_patients || 0}</div>
             <div style={{ fontSize: '14px', color: '#9ca3af' }}>دواخانه</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ec4899' }}>{statistics.billing_patients || 0}</div>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#6366f1' }}>{statistics.billing_patients || 0}</div>
             <div style={{ fontSize: '14px', color: '#9ca3af' }}>حسابداری</div>
           </div>
           <div style={{ textAlign: 'center' }}>
@@ -1688,8 +1724,12 @@ useEffect(() => {
             >
               <option value="Waiting">در انتظار</option>
               <option value="Doctor">نزد داکتر</option>
+              <option value="Examining">در حال معاینه</option>
               <option value="Laboratory">لابراتوار</option>
               <option value="Radiology">رادیولوژی</option>
+              <option value="Admission">بستری</option>
+              <option value="Ward">بخش بستری</option>
+              <option value="Operation">اتاق عمل</option>
               <option value="Pharmacy">دواخانه</option>
               <option value="Billing">حسابداری</option>
               <option value="Completed">تکمیل شده</option>

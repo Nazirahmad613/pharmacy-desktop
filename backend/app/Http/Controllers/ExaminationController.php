@@ -84,10 +84,11 @@ class ExaminationController extends Controller
                 'examination_date' => now()
             ]);
 
-            // بروزرسانی وضعیت ثبت
+            // ============================================================
+            // اصلاح: بروزرسانی visit_status به 'Examining'
+            // ============================================================
             $registration->update([
-                'status' => 'examined',
-                'examined_at' => now()
+                'visit_status' => 'Examining'  // مقدار صحیح از enum
             ]);
 
             DB::commit();
@@ -154,10 +155,6 @@ class ExaminationController extends Controller
                     'message' => 'معاینه یافت نشد'
                 ], 404);
             }
-
-            // بررسی دسترسی - فقط داکتر خودش یا ادمین می‌تواند ببیند
-             
-            
 
             return response()->json([
                 'success' => true,
@@ -263,7 +260,6 @@ class ExaminationController extends Controller
             $query = Examination::with(['patient', 'registration'])
                 ->where('user_id', Auth::id());
 
-            // فیلتر بر اساس تاریخ
             if ($request->from_date) {
                 $query->whereDate('examination_date', '>=', $request->from_date);
             }
@@ -272,17 +268,15 @@ class ExaminationController extends Controller
                 $query->whereDate('examination_date', '<=', $request->to_date);
             }
 
-            // فیلتر بر اساس وضعیت
             if ($request->status) {
                 $query->whereHas('registration', function ($q) use ($request) {
-                    $q->where('status', $request->status);
+                    $q->where('visit_status', $request->status);
                 });
             }
 
             $perPage = $request->per_page ?? 20;
             $examinations = $query->orderBy('examination_date', 'desc')->paginate($perPage);
 
-            // آمار کلی
             $stats = [
                 'total' => Examination::where('user_id', Auth::id())->count(),
                 'today' => Examination::where('user_id', Auth::id())
@@ -340,7 +334,6 @@ class ExaminationController extends Controller
                     ->count() / 30
             ];
 
-            // آمار بر اساس ماه‌های اخیر
             $monthlyStats = Examination::where('user_id', $userId)
                 ->whereYear('examination_date', now()->year)
                 ->select(
@@ -393,8 +386,11 @@ class ExaminationController extends Controller
                 ], 400);
             }
 
+            // ============================================================
+            // اصلاح: استفاده از visit_status به جای status
+            // ============================================================
             $registration->update([
-                'status' => 'completed',
+                'visit_status' => 'Completed',  // مقدار صحیح از enum
                 'completed_at' => now()
             ]);
 
@@ -454,7 +450,6 @@ class ExaminationController extends Controller
                 ], 404);
             }
 
-            // بررسی دسترسی - فقط داکتر خودش می‌تواند بروزرسانی کند
             if ($examination->user_id !== Auth::id()) {
                 return response()->json([
                     'success' => false,
@@ -462,7 +457,6 @@ class ExaminationController extends Controller
                 ], 403);
             }
 
-            // جلوگیری از بروزرسانی معاینات قدیمی (بیش از 24 ساعت)
             if ($examination->examination_date->diffInHours(now()) > 24) {
                 return response()->json([
                     'success' => false,
@@ -492,9 +486,6 @@ class ExaminationController extends Controller
     public function destroy($id)
     {
         try {
-            // فقط ادمین می‌تواند حذف کند
-        
-
             $examination = Examination::find($id);
             
             if (!$examination) {
@@ -506,12 +497,10 @@ class ExaminationController extends Controller
 
             DB::beginTransaction();
 
-            // برگرداندن وضعیت ثبت به حالت قبل
             $registration = Registrations::where('reg_id', $examination->registration_id)->first();
-            if ($registration && $registration->status === 'examined') {
+            if ($registration && $registration->visit_status === 'Examining') {
                 $registration->update([
-                    'status' => 'pending',
-                    'examined_at' => null
+                    'visit_status' => 'Doctor'
                 ]);
             }
 
@@ -645,10 +634,13 @@ class ExaminationController extends Controller
             $summary = [
                 'total' => $examinations->count(),
                 'pending' => $examinations->filter(function ($item) {
-                    return $item->registration->status === 'pending';
+                    return $item->registration->visit_status === 'Waiting';
+                })->count(),
+                'examining' => $examinations->filter(function ($item) {
+                    return $item->registration->visit_status === 'Examining';
                 })->count(),
                 'completed' => $examinations->filter(function ($item) {
-                    return $item->registration->status === 'completed';
+                    return $item->registration->visit_status === 'Completed';
                 })->count(),
                 'examinations' => $examinations
             ];
@@ -686,10 +678,6 @@ class ExaminationController extends Controller
 
         try {
             $doctorId = $request->doctor_id ?? Auth::id();
-            
-            // اگر کاربر ادمین نیست، فقط معاینات خودش را ببیند
-            
-            
 
             $examinations = Examination::with(['patient', 'user', 'registration'])
                 ->where('user_id', $doctorId)

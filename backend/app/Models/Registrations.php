@@ -55,6 +55,7 @@ class Registrations extends Model
         'doctor_id',
 
 
+        
 
 
         /*
@@ -69,6 +70,8 @@ class Registrations extends Model
         'visit_type',
 
         'queue_number',
+        'sent_to_doctor_at',
+'doctor_started_at',
 
 
 
@@ -143,7 +146,7 @@ class Registrations extends Model
 
         'sent_to_doctor_at',
 
-'doctor_started_at',
+ 
 
     ];
 

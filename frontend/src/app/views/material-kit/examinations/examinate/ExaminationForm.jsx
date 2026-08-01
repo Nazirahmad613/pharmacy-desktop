@@ -1,7 +1,21 @@
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 
-export default function ExaminationForm({ registration, onComplete, onRefresh, api }) {
+export default function ExaminationForm({ 
+  registration, 
+  onComplete, 
+  onRefresh, 
+  api,
+  onSave,
+  onFinish,
+  onNextStep,
+  onPrevStep,
+  currentStep,
+  nextStep,
+  prevStep,
+  isSubmitting,
+  isTreatmentComplete
+}) {
   const [formData, setFormData] = useState({
     diagnosis: '',
     weight: '',
@@ -20,13 +34,11 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
   });
   const [loading, setLoading] = useState(false);
   const [patientInfo, setPatientInfo] = useState(null);
-  const [isExamined, setIsExamined] = useState(false); // وضعیت معاینه
-  const [isCompleted, setIsCompleted] = useState(false); // وضعیت ختم معالجه
+  const [isExamined, setIsExamined] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
 
   useEffect(() => {
-    if (!registration || !registration.reg_id) {
-      return;
-    }
+    if (!registration || !registration.reg_id) return;
 
     const fetchPatientInfo = async () => {
       try {
@@ -34,7 +46,6 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
         const data = response.data?.data || response.data;
         setPatientInfo(data);
         
-        // بررسی اینکه آیا قبلاً معاینه ثبت شده است
         if (data.previous_examination) {
           setIsExamined(true);
           setFormData({
@@ -55,8 +66,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
           });
         }
         
-        // بررسی وضعیت ثبت
-        if (data.registration?.status === 'completed') {
+        if (data.registration?.visit_status === 'Completed') {
           setIsCompleted(true);
         }
       } catch (err) {
@@ -87,7 +97,7 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // اعتبارسنجی فیلدهای ضروری
+    // اعتبارسنجی
     if (!formData.chief_complaint) {
       toast.warning("⚠️ لطفاً شکایت اصلی را وارد کنید");
       return;
@@ -100,20 +110,60 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
     setLoading(true);
 
     try {
-      await api.post(`/doctor/treatment/${registration.reg_id}`, formData);
+      // 1. ثبت معاینه در جدول examinations
+      const examinationPayload = {
+        ...formData,
+        registration_id: registration.reg_id,
+        patient_id: registration.patient_id,
+        user_id: registration.doctor_id
+      };
+      
+      console.log("📤 ارسال داده معاینه:", examinationPayload);
+      
+      await api.post(`/doctor/treatment/${registration.reg_id}`, examinationPayload);
+      
+      // 2. به‌روزرسانی وضعیت مراجعه - استفاده از PUT مستقیم به جای PATCH
+      // این کار از خطای CHECK constraint جلوگیری می‌کند
+      const statusPayload = {
+        visit_status: 'Examining',  // مقدار صحیح با حرف بزرگ E
+        diagnosis: formData.diagnosis,
+        weight: formData.weight || null,
+        blood_pressure: formData.blood_pressure || null,
+        temperature: formData.temperature || null,
+        oxygen: formData.oxygen || null
+      };
+      
+      console.log("📤 ارسال وضعیت:", statusPayload);
+      
+      // استفاده از PUT به جای PATCH برای اطمینان از اعمال تغییرات
+      await api.put(`/registrations/${registration.reg_id}`, statusPayload);
+      
       toast.success("✅ معلومات معاینه با موفقیت ثبت شد");
-      setIsExamined(true); // فعال کردن دکمه ختم معالجه
+      setIsExamined(true);
+      
+      if (onSave) {
+        await onSave(formData);
+      }
+      
       onRefresh();
       
-      // به روز رسانی اطلاعات مریض
+      // دریافت اطلاعات به‌روز شده
       const response = await api.get(`/doctor/patient/${registration.reg_id}`);
       const data = response.data?.data || response.data;
       setPatientInfo(data);
       
     } catch (err) {
-      console.error("خطا در ثبت معاینه:", err);
+      console.error("❌ خطا در ثبت معاینه:", err);
+      console.error("❌ جزئیات خطا:", err.response?.data);
+      
+      // نمایش خطای دقیق از سرور
       if (err.response?.data?.message) {
         toast.error(`❌ ${err.response.data.message}`);
+      } else if (err.response?.data?.errors) {
+        const errors = Object.values(err.response.data.errors).flat();
+        toast.error(`❌ ${errors[0]}`);
+      } else if (err.response?.status === 500) {
+        toast.error("❌ خطای سرور - لطفاً با پشتیبانی تماس بگیرید");
       } else {
         toast.error("❌ خطا در ثبت معلومات معاینه");
       }
@@ -122,40 +172,8 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
     }
   };
 
-  const handleComplete = async () => {
-    // بررسی اینکه آیا معاینه ثبت شده است
-    if (!isExamined) {
-      toast.warning("⚠️ لطفاً ابتدا معاینه را ثبت کنید");
-      return;
-    }
-
-    if (!window.confirm("آیا مطمئن هستید که می‌خواهید معالجه این مریض را ختم کنید؟")) return;
-
-    setLoading(true);
-
-    try {
-      await api.post(`/doctor/complete/${registration.reg_id}`);
-      toast.success("✅ معالجه با موفقیت ختم شد");
-      setIsCompleted(true);
-      onRefresh();
-      
-      // بعد از 2 ثانیه به صف برگرد
-      setTimeout(() => {
-        onComplete();
-      }, 2000);
-    } catch (err) {
-      console.error("خطا در ختم معالجه:", err);
-      if (err.response?.data?.message) {
-        toast.error(`❌ ${err.response.data.message}`);
-      } else {
-        toast.error("❌ خطا در ختم معالجه");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const patient = patientInfo?.patient || registration.patient || {};
+  const isDisabled = isCompleted || isTreatmentComplete || isSubmitting;
 
   const getGenderText = (gender) => {
     if (!gender) return '-';
@@ -236,42 +254,36 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
             {patient.first_name || ''} {patient.last_name || ''}
           </div>
         </div>
-        
         <div>
           <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>سن</span>
           <div style={{ color: 'white', fontWeight: 'bold' }}>
             {patient.age ? `${patient.age} سال` : '-'}
           </div>
         </div>
-        
         <div>
           <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>جنسیت</span>
           <div style={{ color: 'white', fontWeight: 'bold' }}>
             {getGenderText(patient.gender)}
           </div>
         </div>
-        
         <div>
           <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>گروه خونی</span>
           <div style={{ color: '#fcd34d', fontWeight: 'bold' }}>
             {getBloodGroupText(patient.blood_group)}
           </div>
         </div>
-        
         <div>
           <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>شماره تماس</span>
           <div style={{ color: 'white', fontWeight: 'bold' }} dir="ltr">
             {patient.mobile || '-'}
           </div>
         </div>
-        
         <div>
           <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>بخش</span>
           <div style={{ color: 'white', fontWeight: 'bold' }}>
             {registration.department?.name || '-'}
           </div>
         </div>
-
         {patient.address && (
           <div style={{ gridColumn: 'span 2' }}>
             <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>آدرس</span>
@@ -302,13 +314,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 70.5"
                 min="0"
                 max="300"
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -327,13 +339,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 175"
                 min="50"
                 max="250"
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -352,13 +364,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="محاسبه خودکار"
                 min="10"
                 max="60"
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -374,13 +386,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 onChange={handleChange}
                 className="form-control"
                 placeholder="مثلاً 120/80"
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -399,13 +411,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 36.5"
                 min="30"
                 max="45"
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -423,13 +435,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 72"
                 min="30"
                 max="200"
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -447,13 +459,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 16"
                 min="5"
                 max="60"
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -471,13 +483,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 placeholder="مثلاً 98"
                 min="0"
                 max="100"
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -498,13 +510,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="شکایت اصلی مریض را وارد کنید..."
-                disabled={isCompleted || isExamined}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isCompleted || isExamined) ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
                 required
               />
@@ -521,13 +533,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="تاریخچه بیماری فعلی..."
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -543,13 +555,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="سابقه پزشکی قبلی..."
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -565,13 +577,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="نتایج معاینه فیزیکی..."
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -587,13 +599,13 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="تشخیص اولیه..."
-                disabled={isCompleted || isExamined}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isCompleted || isExamined) ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
                 required
               />
@@ -610,82 +622,125 @@ export default function ExaminationForm({ registration, onComplete, onRefresh, a
                 className="form-control"
                 rows="2"
                 placeholder="یادداشت‌های اضافی..."
-                disabled={isCompleted}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isCompleted ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
           </div>
         </div>
 
+        {/* ============ دکمه‌های ناوبری ============ */}
         <div style={{ 
           display: 'flex', 
           gap: '10px', 
           justifyContent: 'center', 
           marginTop: '30px',
           flexWrap: 'wrap',
-          borderTop: '1px solid #374151',
+          borderTop: '2px solid #374151',
           paddingTop: '20px'
         }}>
-          <button
-            type="submit"
-            disabled={loading || isCompleted || isExamined}
-            style={{
-              backgroundColor: (isCompleted || isExamined) ? '#6b7280' : '#3b82f6',
-              color: 'white',
-              padding: '12px 40px',
-              borderRadius: '5px',
-              border: 'none',
-              cursor: (loading || isCompleted || isExamined) ? 'not-allowed' : 'pointer',
-              opacity: (loading || isCompleted || isExamined) ? 0.6 : 1,
-              fontSize: '15px',
-              fontWeight: 'bold'
-            }}
-          >
-            {loading ? '⏳ در حال ثبت...' : isCompleted ? '✅ معالجه ختم شده' : isExamined ? '✅ معاینه ثبت شده' : '💾 ثبت معاینه'}
-          </button>
-
+          {/* دکمه 1: برگشت به مرحله قبلی */}
           <button
             type="button"
-            onClick={handleComplete}
-            disabled={!isExamined || isCompleted || loading}
-            style={{
-              backgroundColor: (!isExamined || isCompleted) ? '#6b7280' : '#22c55e',
-              color: 'white',
-              padding: '12px 40px',
-              borderRadius: '5px',
-              border: 'none',
-              cursor: (!isExamined || isCompleted || loading) ? 'not-allowed' : 'pointer',
-              opacity: (!isExamined || isCompleted || loading) ? 0.6 : 1,
-              fontSize: '15px',
-              fontWeight: 'bold'
-            }}
-          >
-            {isCompleted ? '✅ معالجه ختم شد' : '✅ ختم معالجه'}
-          </button>
-
-          <button
-            type="button"
-            onClick={onComplete}
-            disabled={loading}
+            onClick={onPrevStep}
+            disabled={isSubmitting}
             style={{
               backgroundColor: '#6b7280',
               color: 'white',
-              padding: '12px 40px',
-              borderRadius: '5px',
+              padding: '10px 25px',
+              borderRadius: '6px',
               border: 'none',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1,
-              fontSize: '15px'
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting ? 0.6 : 1,
+              fontSize: '14px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
             }}
           >
-            ↩️ بازگشت
+            <span>↩️</span>
+            برگشت به {prevStep?.label || 'صف انتظار'}
           </button>
+
+          {/* دکمه 2: ثبت معاینه */}
+          <button
+            type="submit"
+            disabled={loading || isDisabled || isExamined}
+            style={{
+              backgroundColor: (isDisabled || isExamined) ? '#6b7280' : '#10b981',
+              color: 'white',
+              padding: '10px 25px',
+              borderRadius: '6px',
+              border: 'none',
+              cursor: (loading || isDisabled || isExamined) ? 'not-allowed' : 'pointer',
+              opacity: (loading || isDisabled || isExamined) ? 0.6 : 1,
+              fontSize: '14px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <span>💾</span>
+            {loading ? 'در حال ثبت...' : isCompleted ? 'معالجه ختم شده' : isExamined ? '✅ ثبت شده' : 'ثبت معاینه'}
+          </button>
+
+          {/* دکمه 3: ختم معالجه */}
+          <button
+            type="button"
+            onClick={onFinish}
+            disabled={!isExamined || isCompleted || isSubmitting}
+            style={{
+              backgroundColor: (!isExamined || isCompleted) ? '#6b7280' : '#dc2626',
+              color: 'white',
+              padding: '10px 25px',
+              borderRadius: '6px',
+              border: 'none',
+              cursor: (!isExamined || isCompleted || isSubmitting) ? 'not-allowed' : 'pointer',
+              opacity: (!isExamined || isCompleted || isSubmitting) ? 0.6 : 1,
+              fontSize: '14px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <span>🏁</span>
+            {isCompleted ? '✅ ختم شده' : 'ختم معالجه'}
+          </button>
+
+          {/* دکمه 4: رفتن به مرحله بعدی */}
+          {nextStep && (
+            <button
+              type="button"
+              onClick={onNextStep}
+              disabled={isSubmitting}
+              style={{
+                backgroundColor: isSubmitting ? '#6b7280' : '#3b82f6',
+                color: 'white',
+                padding: '10px 25px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                opacity: isSubmitting ? 0.6 : 1,
+                fontSize: '14px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <span>➡️</span>
+              رفتن به {nextStep.label} {!isExamined && '(بدون ثبت)'}
+            </button>
+          )}
         </div>
       </form>
     </div>

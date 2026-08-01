@@ -226,10 +226,10 @@ class DoctorTreatmentController extends Controller
             ]);
 
             // بروزرسانی وضعیت ثبت
-            $registration->update([
-                'visit_status' => 'examined',
-                'examined_at' => now()
-            ]);
+          $registration->update([
+    'visit_status' => 'Examining',
+    'examined_at' => now()
+]);
 
             DB::commit();
 
@@ -276,10 +276,10 @@ class DoctorTreatmentController extends Controller
                 ], 400);
             }
 
-            $registration->update([
-                'visit_status' => 'completed',
-                'completed_at' => now()
-            ]);
+         $registration->update([
+    'visit_status' => 'Completed',
+    'completed_at' => now()
+]);
 
             return response()->json([
                 'success' => true,
