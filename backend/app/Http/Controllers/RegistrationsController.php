@@ -444,17 +444,25 @@ if (
                     $gender = 'Female';
                 }
 
-                $registration->patient->update([
-                    'first_name'   => $request->first_name,
-                    'last_name'    => $request->last_name,
-                    'father_name'  => $request->father_name,
-                    'mobile'       => $request->mobile,
-                    'national_id'  => $request->national_id,
-                    'gender'       => $gender,
-                    'age'          => $request->age,
-                    'blood_group'  => $request->blood_group,
-                    'address'      => $request->address,
-                ]);
+                $patientData = [];
+
+if ($request->filled('first_name')) {
+    $patientData['first_name'] = $request->first_name;
+}
+
+if ($request->filled('last_name')) {
+    $patientData['last_name'] = $request->last_name;
+}
+
+if ($request->filled('father_name')) {
+    $patientData['father_name'] = $request->father_name;
+}
+
+// ...
+
+if (!empty($patientData)) {
+    $registration->patient->update($patientData);
+}
             }
 
             // اگر داکتر تغییر کرده باشد، شماره صف را به‌روز می‌کنیم
@@ -463,16 +471,14 @@ if (
                 $doctorId = $request->doctor_id;
                 
                 if ($doctorId) {
-                    $lastQueue = Registrations::where('doctor_id', $doctorId)
-                        ->whereDate('visit_date', $visitDate)
-                        ->max('queue_number');
-                    
-                    $validated['queue_number'] = ($lastQueue ?? 0) + 1;
-                } else {
-                    $lastQueue = Registrations::whereDate('visit_date', $visitDate)
-                        ->max('queue_number');
-                    
-                    $validated['queue_number'] = ($lastQueue ?? 0) + 1;
+            $queueDate = now()->toDateString();
+
+$lastQueue = Registrations::where('doctor_id', $doctorId)
+    ->whereDate('queue_date', $queueDate)
+    ->max('queue_number');
+
+$validated['queue_number'] = ($lastQueue ?? 0) + 1;
+$validated['queue_date'] = $queueDate;
                 }
             }
 
@@ -483,6 +489,8 @@ if (
             */
 
             $registration->update($validated);
+
+
 
             /*
             |--------------------------------------------------------------------------

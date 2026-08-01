@@ -147,7 +147,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // ===== مسیرهای معاینات (ExaminationController) =====
         Route::middleware(['role:doctor'])->group(function () {
-            Route::post('/treatment/{registrationId}', [ExaminationController::class, 'store']);
+          Route::post('/examination/{registrationId}', [ExaminationController::class, 'store']);
             Route::get('/examination/{registrationId}', [ExaminationController::class, 'show']);
             Route::get('/examination-by-id/{id}', [ExaminationController::class, 'getById']);
             Route::get('/patient-history/{patientId}', [ExaminationController::class, 'history']);
@@ -163,6 +163,29 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/date-range', [ExaminationController::class, 'getByDateRange']);
         });
     });
+
+    // مسیرهای مربوط به معاینات داکتر
+Route::group(['prefix' => 'doctor', 'middleware' => ['auth:sanctum', 'role:doctor']], function () {
+    // ... مسیرهای موجود ...
+    
+    // دریافت لیست معاینات یک مریض
+    Route::get('/examinations/patient/{patientId}', [ExaminationController::class, 'getPatientExaminations']);
+    
+    // دریافت معاینه برای ویرایش
+    Route::get('/examinations/{id}/edit', [ExaminationController::class, 'getExaminationForEdit']);
+    
+    // بروزرسانی معاینه
+    Route::put('/examinations/{id}', [ExaminationController::class, 'updateExamination']);
+    
+    // حذف معاینه
+    Route::delete('/examinations/{id}', [ExaminationController::class, 'deleteExamination']);
+    
+    // ختم معالجه
+    Route::post('/treatment/{registrationId}/complete', [ExaminationController::class, 'complete']);
+    
+    // ثبت معاینه
+    Route::post('/treatment/{registrationId}', [ExaminationController::class, 'store']);
+});
 
     // ===== Prescriptions =====
     Route::get('/prescriptions/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);

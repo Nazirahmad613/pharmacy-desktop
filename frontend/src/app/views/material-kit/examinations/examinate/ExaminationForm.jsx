@@ -14,7 +14,12 @@ export default function ExaminationForm({
   nextStep,
   prevStep,
   isSubmitting,
-  isTreatmentComplete
+  isTreatmentComplete,
+  savedData,        // اطلاعات ذخیره شده از parent
+  allExaminations,  // لیست معاینات از parent
+  isExamined,       // وضعیت معاینه از parent
+  setIsExamined,    // تابع به‌روزرسانی وضعیت در parent
+  setAllExaminations // تابع به‌روزرسانی لیست در parent
 }) {
   const [formData, setFormData] = useState({
     diagnosis: '',
@@ -34,8 +39,32 @@ export default function ExaminationForm({
   });
   const [loading, setLoading] = useState(false);
   const [patientInfo, setPatientInfo] = useState(null);
-  const [isExamined, setIsExamined] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [editingExamination, setEditingExamination] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // ============ بارگذاری اطلاعات از props ============
+  useEffect(() => {
+    // اگر اطلاعات ذخیره شده وجود دارد، فرم را پر کن
+    if (savedData) {
+      setFormData({
+        diagnosis: savedData.diagnosis || '',
+        weight: savedData.weight || '',
+        blood_pressure: savedData.blood_pressure || '',
+        temperature: savedData.temperature || '',
+        oxygen: savedData.oxygen || '',
+        pulse: savedData.pulse || '',
+        respiratory_rate: savedData.respiratory_rate || '',
+        height: savedData.height || '',
+        bmi: savedData.bmi || '',
+        chief_complaint: savedData.chief_complaint || '',
+        history_of_present_illness: savedData.history_of_present_illness || '',
+        past_medical_history: savedData.past_medical_history || '',
+        physical_examination: savedData.physical_examination || '',
+        note: savedData.note || ''
+      });
+    }
+  }, [savedData]);
 
   useEffect(() => {
     if (!registration || !registration.reg_id) return;
@@ -45,26 +74,6 @@ export default function ExaminationForm({
         const response = await api.get(`/doctor/patient/${registration.reg_id}`);
         const data = response.data?.data || response.data;
         setPatientInfo(data);
-        
-        if (data.previous_examination) {
-          setIsExamined(true);
-          setFormData({
-            diagnosis: data.previous_examination.diagnosis || '',
-            weight: data.previous_examination.weight || '',
-            blood_pressure: data.previous_examination.blood_pressure || '',
-            temperature: data.previous_examination.temperature || '',
-            oxygen: data.previous_examination.oxygen || '',
-            pulse: data.previous_examination.pulse || '',
-            respiratory_rate: data.previous_examination.respiratory_rate || '',
-            height: data.previous_examination.height || '',
-            bmi: data.previous_examination.bmi || '',
-            chief_complaint: data.previous_examination.chief_complaint || '',
-            history_of_present_illness: data.previous_examination.history_of_present_illness || '',
-            past_medical_history: data.previous_examination.past_medical_history || '',
-            physical_examination: data.previous_examination.physical_examination || '',
-            note: data.previous_examination.note || ''
-          });
-        }
         
         if (data.registration?.visit_status === 'Completed') {
           setIsCompleted(true);
@@ -97,7 +106,6 @@ export default function ExaminationForm({
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // اعتبارسنجی
     if (!formData.chief_complaint) {
       toast.warning("⚠️ لطفاً شکایت اصلی را وارد کنید");
       return;
@@ -110,65 +118,131 @@ export default function ExaminationForm({
     setLoading(true);
 
     try {
-      // 1. ثبت معاینه در جدول examinations
-      const examinationPayload = {
-        ...formData,
-        registration_id: registration.reg_id,
-        patient_id: registration.patient_id,
-        user_id: registration.doctor_id
-      };
+      // استفاده از تابع onSave که از parent آمده
+      const result = await onSave(formData);
       
-      console.log("📤 ارسال داده معاینه:", examinationPayload);
-      
-      await api.post(`/doctor/treatment/${registration.reg_id}`, examinationPayload);
-      
-      // 2. به‌روزرسانی وضعیت مراجعه - استفاده از PUT مستقیم به جای PATCH
-      // این کار از خطای CHECK constraint جلوگیری می‌کند
-      const statusPayload = {
-        visit_status: 'Examining',  // مقدار صحیح با حرف بزرگ E
-        diagnosis: formData.diagnosis,
-        weight: formData.weight || null,
-        blood_pressure: formData.blood_pressure || null,
-        temperature: formData.temperature || null,
-        oxygen: formData.oxygen || null
-      };
-      
-      console.log("📤 ارسال وضعیت:", statusPayload);
-      
-      // استفاده از PUT به جای PATCH برای اطمینان از اعمال تغییرات
-      await api.put(`/registrations/${registration.reg_id}`, statusPayload);
-      
-      toast.success("✅ معلومات معاینه با موفقیت ثبت شد");
-      setIsExamined(true);
-      
-      if (onSave) {
-        await onSave(formData);
+      // به‌روزرسانی وضعیت در parent
+      if (setIsExamined) {
+        setIsExamined(true);
       }
       
-      onRefresh();
+      // به‌روزرسانی لیست معاینات
+      if (result?.data?.all_examinations && setAllExaminations) {
+        setAllExaminations(result.data.all_examinations);
+      }
       
-      // دریافت اطلاعات به‌روز شده
-      const response = await api.get(`/doctor/patient/${registration.reg_id}`);
-      const data = response.data?.data || response.data;
-      setPatientInfo(data);
+      toast.success("✅ معلومات معاینه با موفقیت ثبت شد");
+      onRefresh();
       
     } catch (err) {
       console.error("❌ خطا در ثبت معاینه:", err);
-      console.error("❌ جزئیات خطا:", err.response?.data);
-      
-      // نمایش خطای دقیق از سرور
-      if (err.response?.data?.message) {
-        toast.error(`❌ ${err.response.data.message}`);
-      } else if (err.response?.data?.errors) {
-        const errors = Object.values(err.response.data.errors).flat();
-        toast.error(`❌ ${errors[0]}`);
-      } else if (err.response?.status === 500) {
-        toast.error("❌ خطای سرور - لطفاً با پشتیبانی تماس بگیرید");
-      } else {
-        toast.error("❌ خطا در ثبت معلومات معاینه");
-      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ============ تابع ویرایش معاینه ============
+  const handleEditExamination = (examination) => {
+    setEditingExamination(examination);
+    setFormData({
+      diagnosis: examination.diagnosis || '',
+      weight: examination.weight || '',
+      blood_pressure: examination.blood_pressure || '',
+      temperature: examination.temperature || '',
+      oxygen: examination.oxygen || '',
+      pulse: examination.pulse || '',
+      respiratory_rate: examination.respiratory_rate || '',
+      height: examination.height || '',
+      bmi: examination.bmi || '',
+      chief_complaint: examination.chief_complaint || '',
+      history_of_present_illness: examination.history_of_present_illness || '',
+      past_medical_history: examination.past_medical_history || '',
+      physical_examination: examination.physical_examination || '',
+      note: examination.note || ''
+    });
+    setShowEditModal(true);
+  };
+
+  // ============ تابع ذخیره ویرایش ============
+  const handleUpdateExamination = async () => {
+    if (!editingExamination) return;
+
+    if (!formData.chief_complaint) {
+      toast.warning("⚠️ لطفاً شکایت اصلی را وارد کنید");
+      return;
+    }
+    if (!formData.diagnosis) {
+      toast.warning("⚠️ لطفاً تشخیص را وارد کنید");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await api.put(`/doctor/examinations/${editingExamination.id}`, formData);
+      
+      if (response.data?.data?.all_examinations && setAllExaminations) {
+        setAllExaminations(response.data.data.all_examinations);
+      }
+      
+      toast.success("✅ معاینه با موفقیت ویرایش شد");
+      setShowEditModal(false);
+      setEditingExamination(null);
+      
+      // به‌روزرسانی داده‌های ذخیره شده
+      if (response.data?.data?.examination && setIsExamined) {
+        // داده‌های جدید را به parent بفرستیم
+        onRefresh();
+      }
+      
+    } catch (err) {
+      console.error("❌ خطا در ویرایش معاینه:", err);
+      toast.error("❌ خطا در ویرایش معاینه");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============ تابع حذف معاینه ============
+  const handleDeleteExamination = async (examinationId) => {
+    if (!window.confirm("آیا مطمئن هستید که می‌خواهید این معاینه را حذف کنید؟")) {
+      return;
+    }
+
+    try {
+      const response = await api.delete(`/doctor/examinations/${examinationId}`);
+      
+      if (response.data?.data && setAllExaminations) {
+        setAllExaminations(response.data.data);
+      }
+      
+      toast.success("✅ معاینه با موفقیت حذف شد");
+      
+      // اگر معاینه فعلی حذف شده است
+      if (savedData && savedData.id === examinationId && setIsExamined) {
+        setIsExamined(false);
+        // فرم را خالی کن
+        setFormData({
+          diagnosis: '',
+          weight: '',
+          blood_pressure: '',
+          temperature: '',
+          oxygen: '',
+          pulse: '',
+          respiratory_rate: '',
+          height: '',
+          bmi: '',
+          chief_complaint: '',
+          history_of_present_illness: '',
+          past_medical_history: '',
+          physical_examination: '',
+          note: ''
+        });
+      }
+      
+    } catch (err) {
+      console.error("❌ خطا در حذف معاینه:", err);
+      toast.error("❌ خطا در حذف معاینه");
     }
   };
 
@@ -199,6 +273,9 @@ export default function ExaminationForm({
     };
     return bloodMap[bloodGroup] || bloodGroup;
   };
+
+  // لیست معاینات از parent یا local
+  const examinations = allExaminations || [];
 
   return (
     <div>
@@ -234,6 +311,16 @@ export default function ExaminationForm({
             marginRight: '8px'
           }}>
             {isCompleted ? '✅ ختم شده' : '⏳ در حال 진행'}
+          </span>
+        </div>
+        <div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>تعداد معاینات:</span>
+          <span style={{
+            color: '#60a5fa',
+            fontWeight: 'bold',
+            marginRight: '8px'
+          }}>
+            {examinations.length}
           </span>
         </div>
       </div>
@@ -294,6 +381,7 @@ export default function ExaminationForm({
         )}
       </div>
 
+      {/* فرم ثبت معاینه */}
       <form onSubmit={handleSubmit}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           {/* ستون راست - اطلاعات بالینی */}
@@ -314,13 +402,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 70.5"
                 min="0"
                 max="300"
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -339,13 +427,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 175"
                 min="50"
                 max="250"
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -364,13 +452,13 @@ export default function ExaminationForm({
                 placeholder="محاسبه خودکار"
                 min="10"
                 max="60"
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -386,13 +474,13 @@ export default function ExaminationForm({
                 onChange={handleChange}
                 className="form-control"
                 placeholder="مثلاً 120/80"
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -411,13 +499,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 36.5"
                 min="30"
                 max="45"
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -435,13 +523,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 72"
                 min="30"
                 max="200"
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -459,13 +547,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 16"
                 min="5"
                 max="60"
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -483,13 +571,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 98"
                 min="0"
                 max="100"
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -533,13 +621,13 @@ export default function ExaminationForm({
                 className="form-control"
                 rows="2"
                 placeholder="تاریخچه بیماری فعلی..."
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -555,13 +643,13 @@ export default function ExaminationForm({
                 className="form-control"
                 rows="2"
                 placeholder="سابقه پزشکی قبلی..."
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -577,13 +665,13 @@ export default function ExaminationForm({
                 className="form-control"
                 rows="2"
                 placeholder="نتایج معاینه فیزیکی..."
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
@@ -622,20 +710,20 @@ export default function ExaminationForm({
                 className="form-control"
                 rows="2"
                 placeholder="یادداشت‌های اضافی..."
-                disabled={isDisabled}
+                disabled={isDisabled || isExamined}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: isDisabled ? 0.5 : 1
+                  opacity: (isDisabled || isExamined) ? 0.5 : 1
                 }}
               />
             </div>
           </div>
         </div>
 
-        {/* ============ دکمه‌های ناوبری ============ */}
+        {/* دکمه‌های ناوبری */}
         <div style={{ 
           display: 'flex', 
           gap: '10px', 
@@ -645,7 +733,6 @@ export default function ExaminationForm({
           borderTop: '2px solid #374151',
           paddingTop: '20px'
         }}>
-          {/* دکمه 1: برگشت به مرحله قبلی */}
           <button
             type="button"
             onClick={onPrevStep}
@@ -669,7 +756,6 @@ export default function ExaminationForm({
             برگشت به {prevStep?.label || 'صف انتظار'}
           </button>
 
-          {/* دکمه 2: ثبت معاینه */}
           <button
             type="submit"
             disabled={loading || isDisabled || isExamined}
@@ -692,7 +778,6 @@ export default function ExaminationForm({
             {loading ? 'در حال ثبت...' : isCompleted ? 'معالجه ختم شده' : isExamined ? '✅ ثبت شده' : 'ثبت معاینه'}
           </button>
 
-          {/* دکمه 3: ختم معالجه */}
           <button
             type="button"
             onClick={onFinish}
@@ -716,7 +801,6 @@ export default function ExaminationForm({
             {isCompleted ? '✅ ختم شده' : 'ختم معالجه'}
           </button>
 
-          {/* دکمه 4: رفتن به مرحله بعدی */}
           {nextStep && (
             <button
               type="button"
@@ -743,6 +827,346 @@ export default function ExaminationForm({
           )}
         </div>
       </form>
+
+      {/* ============ لیست معاینات ============ */}
+      {examinations.length > 0 && (
+        <div style={{ marginTop: '30px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
+          <h4 style={{ color: '#60a5fa', marginBottom: '15px', fontSize: '16px' }}>
+            📋 تاریخچه معاینات ({examinations.length})
+          </h4>
+          
+          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            {examinations.map((exam) => (
+              <div
+                key={exam.id}
+                style={{
+                  backgroundColor: '#1a2a3a',
+                  padding: '15px 20px',
+                  borderRadius: '8px',
+                  marginBottom: '12px',
+                  borderRight: `4px solid ${exam.id === savedData?.id ? '#10b981' : '#374151'}`,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap',
+                  gap: '10px'
+                }}
+              >
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+                      📅 {new Date(exam.examination_date).toLocaleDateString('fa-IR')} - {new Date(exam.examination_date).toLocaleTimeString('fa-IR')}
+                    </span>
+                    {exam.id === savedData?.id && (
+                      <span style={{ backgroundColor: '#10b981', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
+                        آخرین معاینه
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px', fontSize: '13px' }}>
+                    <div>
+                      <span style={{ color: '#9ca3af' }}>تشخیص:</span>
+                      <span style={{ color: 'white', marginRight: '5px' }}>{exam.diagnosis || '-'}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: '#9ca3af' }}>وزن:</span>
+                      <span style={{ color: 'white', marginRight: '5px' }}>{exam.weight ? `${exam.weight} کیلوگرم` : '-'}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: '#9ca3af' }}>فشار خون:</span>
+                      <span style={{ color: 'white', marginRight: '5px' }}>{exam.blood_pressure || '-'}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: '#9ca3af' }}>درجه حرارت:</span>
+                      <span style={{ color: 'white', marginRight: '5px' }}>{exam.temperature ? `${exam.temperature}°C` : '-'}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: '#9ca3af' }}>دکتر:</span>
+                      <span style={{ color: 'white', marginRight: '5px' }}>{exam.user?.name || '-'}</span>
+                    </div>
+                  </div>
+                  {exam.chief_complaint && (
+                    <div style={{ marginTop: '5px', fontSize: '12px', color: '#9ca3af' }}>
+                      شکایت: {exam.chief_complaint}
+                    </div>
+                  )}
+                </div>
+                
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    onClick={() => handleEditExamination(exam)}
+                    style={{
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      border: 'none',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    ✏️ ویرایش
+                  </button>
+                  <button
+                    onClick={() => handleDeleteExamination(exam.id)}
+                    style={{
+                      backgroundColor: '#dc2626',
+                      color: 'white',
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      border: 'none',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    🗑️ حذف
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ============ مودال ویرایش ============ */}
+      {showEditModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#1a1a2e',
+            padding: '30px',
+            borderRadius: '12px',
+            maxWidth: '800px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <h4 style={{ color: '#60a5fa', marginBottom: '20px' }}>✏️ ویرایش معاینه</h4>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  شکایت اصلی *
+                </label>
+                <textarea
+                  name="chief_complaint"
+                  value={formData.chief_complaint}
+                  onChange={handleChange}
+                  rows="2"
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  تشخیص *
+                </label>
+                <textarea
+                  name="diagnosis"
+                  value={formData.diagnosis}
+                  onChange={handleChange}
+                  rows="2"
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  وزن (کیلوگرم)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  name="weight"
+                  value={formData.weight}
+                  onChange={handleChange}
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  فشار خون
+                </label>
+                <input
+                  type="text"
+                  name="blood_pressure"
+                  value={formData.blood_pressure}
+                  onChange={handleChange}
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  حرارت (درجه سانتی‌گراد)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  name="temperature"
+                  value={formData.temperature}
+                  onChange={handleChange}
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  نبض (ضربه در دقیقه)
+                </label>
+                <input
+                  type="number"
+                  name="pulse"
+                  value={formData.pulse}
+                  onChange={handleChange}
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  اکسیجن (%)
+                </label>
+                <input
+                  type="number"
+                  name="oxygen"
+                  value={formData.oxygen}
+                  onChange={handleChange}
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  یادداشت
+                </label>
+                <textarea
+                  name="note"
+                  value={formData.note}
+                  onChange={handleChange}
+                  rows="2"
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'center' }}>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingExamination(null);
+                }}
+                style={{
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  padding: '8px 20px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                لغو
+              </button>
+              <button
+                onClick={handleUpdateExamination}
+                disabled={loading}
+                style={{
+                  backgroundColor: loading ? '#6b7280' : '#3b82f6',
+                  color: 'white',
+                  padding: '8px 20px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: loading ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {loading ? 'در حال ذخیره...' : 'ذخیره تغییرات'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

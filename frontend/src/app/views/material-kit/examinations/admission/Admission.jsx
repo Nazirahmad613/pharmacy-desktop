@@ -1,21 +1,7 @@
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 
-export default function Admission({ 
-  registration, 
-  onComplete, 
-  onRefresh, 
-  api,
-  onSave,
-  onFinish,
-  onNextStep,
-  onPrevStep,
-  currentStep,
-  nextStep,
-  prevStep,
-  isSubmitting,
-  isTreatmentComplete
-}) {
+export default function Admission({ registration, onComplete, onRefresh, api }) {
   const [formData, setFormData] = useState({
     ward_id: "",
     room_number: "",
@@ -27,42 +13,6 @@ export default function Admission({
   const [wards, setWards] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingWards, setLoadingWards] = useState(false);
-  const [isRequested, setIsRequested] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(false);
-  const [patientInfo, setPatientInfo] = useState(null);
-
-  // دریافت اطلاعات مریض و بررسی وضعیت قبلی
-  useEffect(() => {
-    if (!registration || !registration.reg_id) return;
-
-    const fetchPatientInfo = async () => {
-      try {
-        const response = await api.get(`/doctor/patient/${registration.reg_id}`);
-        const data = response.data?.data || response.data;
-        setPatientInfo(data);
-        
-        // بررسی اینکه آیا قبلاً بستری ثبت شده است
-        if (data.admission) {
-          setIsRequested(true);
-          setFormData({
-            ward_id: data.admission.ward_id || '',
-            room_number: data.admission.room_number || '',
-            bed_number: data.admission.bed_number || '',
-            admission_type: data.admission.admission_type || 'emergency',
-            diagnosis: data.admission.diagnosis || '',
-            notes: data.admission.notes || ''
-          });
-        }
-        
-        if (data.registration?.status === 'completed') {
-          setIsCompleted(true);
-        }
-      } catch (err) {
-        console.error("خطا در دریافت اطلاعات مریض:", err);
-      }
-    };
-    fetchPatientInfo();
-  }, [registration?.reg_id, api]);
 
   // دریافت لیست بخش‌ها
   useEffect(() => {
@@ -83,21 +33,6 @@ export default function Admission({
       setLoadingWards(false);
     }
   };
-
-  if (!registration || !registration.reg_id) {
-    return (
-      <div style={{ textAlign: 'center', padding: '50px', color: '#ef4444' }}>
-        <div style={{ fontSize: '60px', marginBottom: '20px' }}>⚠️</div>
-        <div style={{ fontSize: '18px' }}>اطلاعات مریض معتبر نیست</div>
-        <div style={{ fontSize: '14px', color: '#9ca3af', marginTop: '10px' }}>
-          لطفاً یک مریض را از صف انتخاب کنید
-        </div>
-      </div>
-    );
-  }
-
-  const patient = patientInfo?.patient || registration.patient || {};
-  const isDisabled = isCompleted || isTreatmentComplete || isSubmitting;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -130,12 +65,7 @@ export default function Admission({
       
       if (response.data?.success) {
         toast.success("✅ بیمار با موفقیت بستری شد");
-        setIsRequested(true);
-        
-        if (onSave) {
-          await onSave(formData);
-        }
-        
+        onComplete();
         onRefresh();
       } else {
         toast.error("❌ خطا در بستری بیمار");
@@ -148,131 +78,32 @@ export default function Admission({
     }
   };
 
-  const getGenderText = (gender) => {
-    if (!gender) return '-';
-    const genderMap = {
-      'male': '♂️ مرد',
-      'female': '♀️ زن',
-      'other': '⚧️ دیگر'
-    };
-    return genderMap[gender] || gender;
-  };
+  const handleCompleteTreatment = async () => {
+    if (!window.confirm("آیا مطمئن هستید که معالجه را ختم کنید؟")) {
+      return;
+    }
 
-  const getAdmissionTypeLabel = (type) => {
-    const typeMap = {
-      'emergency': '🔴 اورژانسی',
-      'planned': '📋 برنامه‌ریزی شده',
-      'elective': '⚪ اختیاری',
-      'transfer': '🔄 انتقالی'
-    };
-    return typeMap[type] || type;
-  };
-
-  const getAdmissionTypeColor = (type) => {
-    const colorMap = {
-      'emergency': '#ef4444',
-      'planned': '#3b82f6',
-      'elective': '#9ca3af',
-      'transfer': '#f59e0b'
-    };
-    return colorMap[type] || '#6b7280';
+    setLoading(true);
+    try {
+      const response = await api.post(`/doctor/complete/${registration.reg_id}`);
+      if (response.data?.message) {
+        toast.success("✅ معالجه ختم شد و در تاریخچه ذخیره گردید");
+        onComplete();
+        onRefresh();
+      }
+    } catch (err) {
+      console.error("خطا در ختم معالجه:", err);
+      toast.error("❌ خطا در ختم معالجه");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div>
-      <h3 style={{ color: '#ef4444', marginBottom: '20px', borderBottom: '2px solid #374151', paddingBottom: '10px' }}>
+      <h3 style={{ color: "#ef4444", marginBottom: "20px" }}>
         🏥 بستری بیمار
       </h3>
-
-      {/* وضعیت */}
-      <div style={{
-        display: 'flex',
-        gap: '15px',
-        marginBottom: '20px',
-        padding: '10px 15px',
-        backgroundColor: '#1a2a3a',
-        borderRadius: '8px',
-        flexWrap: 'wrap'
-      }}>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px' }}>وضعیت بستری:</span>
-          <span style={{
-            color: isRequested ? '#22c55e' : '#f59e0b',
-            fontWeight: 'bold',
-            marginRight: '8px'
-          }}>
-            {isRequested ? '✅ ثبت شده' : '⏳ ثبت نشده'}
-          </span>
-        </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px' }}>وضعیت معالجه:</span>
-          <span style={{
-            color: isCompleted ? '#22c55e' : '#f59e0b',
-            fontWeight: 'bold',
-            marginRight: '8px'
-          }}>
-            {isCompleted ? '✅ ختم شده' : '⏳ در حال 진행'}
-          </span>
-        </div>
-        {formData.admission_type && isRequested && (
-          <div>
-            <span style={{ color: '#9ca3af', fontSize: '12px' }}>نوع بستری:</span>
-            <span style={{
-              color: getAdmissionTypeColor(formData.admission_type),
-              fontWeight: 'bold',
-              marginRight: '8px'
-            }}>
-              {getAdmissionTypeLabel(formData.admission_type)}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* اطلاعات مریض */}
-      <div style={{
-        backgroundColor: '#1a2a3a',
-        padding: '15px 20px',
-        borderRadius: '8px',
-        marginBottom: '25px',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-        gap: '12px 20px'
-      }}>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>نام کامل</span>
-          <div style={{ color: 'white', fontWeight: 'bold', fontSize: '15px' }}>
-            {patient.first_name || ''} {patient.last_name || ''}
-          </div>
-        </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>سن</span>
-          <div style={{ color: 'white', fontWeight: 'bold' }}>
-            {patient.age ? `${patient.age} سال` : '-'}
-          </div>
-        </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>جنسیت</span>
-          <div style={{ color: 'white', fontWeight: 'bold' }}>
-            {getGenderText(patient.gender)}
-          </div>
-        </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>شماره تماس</span>
-          <div style={{ color: 'white', fontWeight: 'bold' }} dir="ltr">
-            {patient.mobile || '-'}
-          </div>
-        </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>شماره مراجعه</span>
-          <div style={{ color: '#fcd34d', fontWeight: 'bold' }}>
-            {registration.visit_number || '-'}
-          </div>
-        </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>تشخیص</span>
-          <div style={{ color: 'white' }}>{registration.diagnosis || '-'}</div>
-        </div>
-      </div>
 
       <form onSubmit={handleSubmit}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
@@ -292,10 +123,9 @@ export default function Admission({
                 border: "1px solid #374151",
                 backgroundColor: "#1f2937",
                 color: "white",
-                outline: "none",
-                opacity: isDisabled || isRequested ? 0.5 : 1
+                outline: "none"
               }}
-              disabled={loadingWards || isDisabled || isRequested}
+              disabled={loadingWards}
             >
               <option value="">انتخاب کنید...</option>
               {wards.map(ward => (
@@ -322,15 +152,13 @@ export default function Admission({
                 border: "1px solid #374151",
                 backgroundColor: "#1f2937",
                 color: "white",
-                outline: "none",
-                opacity: isDisabled || isRequested ? 0.5 : 1
+                outline: "none"
               }}
-              disabled={isDisabled || isRequested}
             >
-              <option value="emergency">🔴 اورژانسی</option>
-              <option value="planned">📋 برنامه‌ریزی شده</option>
-              <option value="elective">⚪ اختیاری</option>
-              <option value="transfer">🔄 انتقالی</option>
+              <option value="emergency">اورژانسی</option>
+              <option value="planned">برنامه‌ریزی شده</option>
+              <option value="elective">اختیاری</option>
+              <option value="transfer">انتقالی</option>
             </select>
           </div>
 
@@ -352,10 +180,8 @@ export default function Admission({
                 border: "1px solid #374151",
                 backgroundColor: "#1f2937",
                 color: "white",
-                outline: "none",
-                opacity: isDisabled || isRequested ? 0.5 : 1
+                outline: "none"
               }}
-              disabled={isDisabled || isRequested}
             />
           </div>
 
@@ -377,10 +203,8 @@ export default function Admission({
                 border: "1px solid #374151",
                 backgroundColor: "#1f2937",
                 color: "white",
-                outline: "none",
-                opacity: isDisabled || isRequested ? 0.5 : 1
+                outline: "none"
               }}
-              disabled={isDisabled || isRequested}
             />
           </div>
 
@@ -402,11 +226,9 @@ export default function Admission({
                 backgroundColor: "#1f2937",
                 color: "white",
                 outline: "none",
-                resize: "vertical",
-                opacity: isDisabled || isRequested ? 0.5 : 1
+                resize: "vertical"
               }}
               placeholder="تشخیص اولیه بیمار را وارد کنید..."
-              disabled={isDisabled || isRequested}
             />
           </div>
 
@@ -428,123 +250,49 @@ export default function Admission({
                 backgroundColor: "#1f2937",
                 color: "white",
                 outline: "none",
-                resize: "vertical",
-                opacity: isDisabled ? 0.5 : 1
+                resize: "vertical"
               }}
               placeholder="یادداشت‌های اضافی برای بستری..."
-              disabled={isDisabled}
             />
           </div>
         </div>
 
-        {/* ============ دکمه‌های ناوبری ============ */}
-        <div style={{ 
-          display: 'flex', 
-          gap: '10px', 
-          justifyContent: 'center', 
-          marginTop: '30px',
-          flexWrap: 'wrap',
-          borderTop: '2px solid #374151',
-          paddingTop: '20px'
-        }}>
-          {/* دکمه 1: برگشت به مرحله قبلی */}
-          <button
-            type="button"
-            onClick={onPrevStep}
-            disabled={isSubmitting}
-            style={{
-              backgroundColor: '#6b7280',
-              color: 'white',
-              padding: '10px 25px',
-              borderRadius: '6px',
-              border: 'none',
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              opacity: isSubmitting ? 0.6 : 1,
-              fontSize: '14px',
-              fontWeight: 'bold',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <span>↩️</span>
-            برگشت به {prevStep?.label || 'ملاقات بعدی'}
-          </button>
-
-          {/* دکمه 2: ثبت بستری */}
+        {/* دکمه‌ها */}
+        <div style={{ display: "flex", gap: "10px", marginTop: "20px", justifyContent: "center", flexWrap: "wrap" }}>
           <button
             type="submit"
-            disabled={loading || isDisabled || isRequested}
+            disabled={loading}
             style={{
-              backgroundColor: (isDisabled || isRequested) ? '#6b7280' : '#ef4444',
-              color: 'white',
-              padding: '10px 25px',
-              borderRadius: '6px',
-              border: 'none',
-              cursor: (loading || isDisabled || isRequested) ? 'not-allowed' : 'pointer',
-              opacity: (loading || isDisabled || isRequested) ? 0.6 : 1,
-              fontSize: '14px',
-              fontWeight: 'bold',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
+              padding: "10px 30px",
+              borderRadius: "6px",
+              border: "none",
+              backgroundColor: "#ef4444",
+              color: "white",
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.5 : 1
             }}
           >
-            <span>🏥</span>
-            {loading ? 'در حال ثبت...' : isCompleted ? 'معالجه ختم شده' : isRequested ? '✅ ثبت شده' : 'ثبت بستری'}
+            {loading ? "⏳ در حال ثبت..." : "🏥 بستری بیمار"}
           </button>
 
-          {/* دکمه 3: ختم معالجه */}
           <button
             type="button"
-            onClick={onFinish}
-            disabled={isCompleted || isSubmitting}
+            onClick={handleCompleteTreatment}
+            disabled={loading}
             style={{
-              backgroundColor: isCompleted ? '#6b7280' : '#dc2626',
-              color: 'white',
-              padding: '10px 25px',
-              borderRadius: '6px',
-              border: 'none',
-              cursor: (isCompleted || isSubmitting) ? 'not-allowed' : 'pointer',
-              opacity: (isCompleted || isSubmitting) ? 0.6 : 1,
-              fontSize: '14px',
-              fontWeight: 'bold',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
+              padding: "10px 30px",
+              borderRadius: "6px",
+              border: "none",
+              backgroundColor: "#10b981",
+              color: "white",
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.5 : 1
             }}
           >
-            <span>🏁</span>
-            {isCompleted ? '✅ ختم شده' : 'ختم معالجه'}
+            ✅ ختم معالجه
           </button>
-
-          {/* دکمه 4: رفتن به مرحله بعدی (همیشه فعال) */}
-          {nextStep && (
-            <button
-              type="button"
-              onClick={onNextStep}
-              disabled={isSubmitting}
-              style={{
-                backgroundColor: isSubmitting ? '#6b7280' : '#3b82f6',
-                color: 'white',
-                padding: '10px 25px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                opacity: isSubmitting ? 0.6 : 1,
-                fontSize: '14px',
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <span>➡️</span>
-              رفتن به {nextStep.label} {!isRequested && '(بدون ثبت)'}
-            </button>
-          )}
         </div>
       </form>
     </div>
   );
-}
+}   
