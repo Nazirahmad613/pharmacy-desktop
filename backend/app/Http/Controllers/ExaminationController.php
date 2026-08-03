@@ -1,8 +1,7 @@
 <?php
 
-namespace App\Http\Controllers\Doctor;
+namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Models\Examination;
 use App\Models\Registrations;
 use App\Models\Patient;
@@ -14,10 +13,24 @@ use Illuminate\Support\Facades\DB;
 class ExaminationController extends Controller
 {
     /**
-     * ثبت معاینه جدید
+     * ثبت معاینه جدید (برای مسیر /save و /{registrationId})
      */
-    public function store(Request $request, $registrationId)
+    public function store(Request $request)
     {
+        // بررسی اینکه registration_id از کجا می‌آید
+        $registrationId = $request->registration_id ?? $request->route('registrationId');
+        
+        if (!$registrationId && $request->route('registrationId')) {
+            $registrationId = $request->route('registrationId');
+        }
+
+        if (!$registrationId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'شناسه ثبت مریض (registration_id) الزامی است'
+            ], 422);
+        }
+
         $validator = Validator::make($request->all(), [
             'chief_complaint' => 'required|string|max:500',
             'diagnosis' => 'required|string|max:500',
@@ -84,19 +97,26 @@ class ExaminationController extends Controller
                 'examination_date' => now()
             ]);
 
-            // ============================================================
-            // اصلاح: بروزرسانی visit_status به 'Examining'
-            // ============================================================
             $registration->update([
-                'visit_status' => 'Examining'  // مقدار صحیح از enum
+                'visit_status' => 'Examining'
             ]);
 
             DB::commit();
 
+            // دریافت تمام معاینات این مریض
+            $allExaminations = Examination::with(['user', 'patient'])
+                ->where('patient_id', $registration->patient_id)
+                ->orderBy('examination_date', 'desc')
+                ->get();
+
             return response()->json([
                 'success' => true,
                 'message' => 'معاینه با موفقیت ثبت شد',
-                'data' => $examination->load(['patient', 'user'])
+                'data' => [
+                    'examination' => $examination->load(['patient', 'user']),
+                    'all_examinations' => $allExaminations,
+                    'is_examined' => true
+                ]
             ], 201);
 
         } catch (\Exception $e) {
@@ -126,9 +146,19 @@ class ExaminationController extends Controller
                 ], 404);
             }
 
+            // دریافت تمام معاینات این مریض
+            $allExaminations = Examination::with(['user', 'patient'])
+                ->where('patient_id', $examination->patient_id)
+                ->orderBy('examination_date', 'desc')
+                ->get();
+
             return response()->json([
                 'success' => true,
-                'data' => $examination
+                'data' => [
+                    'examination' => $examination,
+                    'all_examinations' => $allExaminations,
+                    'is_examined' => true
+                ]
             ]);
 
         } catch (\Exception $e) {
@@ -377,7 +407,6 @@ class ExaminationController extends Controller
                 ], 404);
             }
 
-            // بررسی اینکه آیا معاینه ثبت شده است
             $examination = Examination::where('registration_id', $registrationId)->first();
             if (!$examination) {
                 return response()->json([
@@ -386,11 +415,8 @@ class ExaminationController extends Controller
                 ], 400);
             }
 
-            // ============================================================
-            // اصلاح: استفاده از visit_status به جای status
-            // ============================================================
             $registration->update([
-                'visit_status' => 'Completed',  // مقدار صحیح از enum
+                'visit_status' => 'Completed',
                 'completed_at' => now()
             ]);
 
@@ -457,19 +483,21 @@ class ExaminationController extends Controller
                 ], 403);
             }
 
-            if ($examination->examination_date->diffInHours(now()) > 24) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'امکان بروزرسانی معاینه‌های بیش از 24 ساعت وجود ندارد'
-                ], 400);
-            }
-
             $examination->update($request->all());
+
+            // دریافت تمام معاینات این مریض
+            $allExaminations = Examination::with(['user', 'patient'])
+                ->where('patient_id', $examination->patient_id)
+                ->orderBy('examination_date', 'desc')
+                ->get();
 
             return response()->json([
                 'success' => true,
                 'message' => 'معاینه با موفقیت بروزرسانی شد',
-                'data' => $examination->fresh(['patient', 'user'])
+                'data' => [
+                    'examination' => $examination->fresh(['patient', 'user']),
+                    'all_examinations' => $allExaminations
+                ]
             ]);
 
         } catch (\Exception $e) {
@@ -481,7 +509,7 @@ class ExaminationController extends Controller
     }
 
     /**
-     * حذف معاینه (فقط ادمین)
+     * حذف معاینه
      */
     public function destroy($id)
     {
@@ -506,11 +534,18 @@ class ExaminationController extends Controller
 
             $examination->delete();
 
+            // دریافت تمام معاینات باقی‌مانده این مریض
+            $allExaminations = Examination::with(['user', 'patient'])
+                ->where('patient_id', $examination->patient_id)
+                ->orderBy('examination_date', 'desc')
+                ->get();
+
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'معاینه با موفقیت حذف شد'
+                'message' => 'معاینه با موفقیت حذف شد',
+                'data' => $allExaminations
             ]);
 
         } catch (\Exception $e) {
@@ -698,5 +733,76 @@ class ExaminationController extends Controller
                 'message' => 'خطا در دریافت معاینات: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * دریافت معاینات یک بیمار خاص
+     */
+    public function getPatientExaminations($patientId)
+    {
+        try {
+            $examinations = Examination::with(['user', 'registration.department'])
+                ->where('patient_id', $patientId)
+                ->orderBy('examination_date', 'desc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $examinations
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت اطلاعات: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * دریافت معاینه برای ویرایش
+     */
+    public function getExaminationForEdit($id)
+    {
+        try {
+            $examination = Examination::with(['patient', 'registration'])
+                ->where('id', $id)
+                ->where('user_id', Auth::id())
+                ->first();
+
+            if (!$examination) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'معاینه یافت نشد یا شما دسترسی ندارید'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $examination
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت اطلاعات: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * بروزرسانی معاینه (نسخه جایگزین)
+     */
+    public function updateExamination(Request $request, $id)
+    {
+        return $this->update($request, $id);
+    }
+
+    /**
+     * حذف معاینه (نسخه جایگزین)
+     */
+    public function deleteExamination($id)
+    {
+        return $this->destroy($id);
     }
 }

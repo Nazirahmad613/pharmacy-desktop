@@ -33,7 +33,7 @@ use App\Http\Controllers\DepartementController;
 use App\Http\Controllers\BenefitController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ViewInventoryController;
-use App\Http\Controllers\Doctor\ExaminationController;
+use App\Http\Controllers\ExaminationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -128,10 +128,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/medications/{med_id}', [MedicationController::class, 'destroy']);
 
     // ============================================================
-    // ✅ مسیرهای داکتر برای معالجه (DoctorTreatmentController)
+    // ✅ مسیرهای داکتر (Doctor)
     // ============================================================
     Route::prefix('doctor')->group(function () {
-        // مسیرهای درمانی قبلی
+        
+        // ===== مسیرهای درمانی (DoctorTreatmentController) =====
         Route::get('/queue', [DoctorTreatmentController::class, 'doctorQueue']);
         Route::get('/patient/{reg_id}', [DoctorTreatmentController::class, 'show']);
         Route::post('/treatment/{reg_id}', [DoctorTreatmentController::class, 'treatment']);
@@ -145,47 +146,96 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/wards', [DoctorTreatmentController::class, 'getWards']);
         Route::post('/admission', [DoctorTreatmentController::class, 'storeAdmission']);
 
-        // ===== مسیرهای معاینات (ExaminationController) =====
-        Route::middleware(['role:doctor'])->group(function () {
-          Route::post('/examination/{registrationId}', [ExaminationController::class, 'store']);
-            Route::get('/examination/{registrationId}', [ExaminationController::class, 'show']);
-            Route::get('/examination-by-id/{id}', [ExaminationController::class, 'getById']);
-            Route::get('/patient-history/{patientId}', [ExaminationController::class, 'history']);
-            Route::get('/patient-history-filter/{patientId}', [ExaminationController::class, 'historyWithDateFilter']);
-            Route::get('/my-examinations', [ExaminationController::class, 'myExaminations']);
-            Route::get('/my-statistics', [ExaminationController::class, 'getStatistics']);
-            Route::get('/my-latest', [ExaminationController::class, 'getLatest']);
-            Route::get('/today-summary', [ExaminationController::class, 'getTodaySummary']);
-            Route::post('/complete-examination/{registrationId}', [ExaminationController::class, 'complete']);
-            Route::put('/examination/{id}', [ExaminationController::class, 'update']);
-            Route::delete('/examination/{id}', [ExaminationController::class, 'destroy']);
-            Route::get('/search-examinations', [ExaminationController::class, 'search']);
-            Route::get('/date-range', [ExaminationController::class, 'getByDateRange']);
-        });
+        // ============================================================
+        // ✅ مسیرهای معاینات (ExaminationController)
+        // ============================================================
+        
+        // ---- ثبت معاینه ----
+        Route::post('/examination/save', [ExaminationController::class, 'store']);
+        Route::post('/examination/{registrationId}', [ExaminationController::class, 'store']);
+        
+        // ---- دریافت اطلاعات معاینه بر اساس registration_id ----
+        // ⚠️ این مسیر برای دریافت معاینه یک مریض استفاده می‌شود
+        Route::get('/examination/{registrationId}', [ExaminationController::class, 'show']);
+        
+        // ---- دریافت اطلاعات معاینه بر اساس ID خود معاینه ----
+        Route::get('/examination-by-id/{id}', [ExaminationController::class, 'getById']);
+        
+        // ---- تاریخچه معاینات ----
+        Route::get('/patient-history/{patientId}', [ExaminationController::class, 'history']);
+        Route::get('/patient-history-filter/{patientId}', [ExaminationController::class, 'historyWithDateFilter']);
+        
+        // ---- لیست و آمار ----
+        Route::get('/my-examinations', [ExaminationController::class, 'myExaminations']);
+        Route::get('/my-statistics', [ExaminationController::class, 'getStatistics']);
+        Route::get('/my-latest', [ExaminationController::class, 'getLatest']);
+        Route::get('/today-summary', [ExaminationController::class, 'getTodaySummary']);
+        Route::get('/search-examinations', [ExaminationController::class, 'search']);
+        Route::get('/date-range', [ExaminationController::class, 'getByDateRange']);
+        
+        // ---- بروزرسانی و حذف ----
+        Route::put('/examination/{id}', [ExaminationController::class, 'update']);
+        Route::delete('/examination/{id}', [ExaminationController::class, 'destroy']);
+        
+        // ---- ختم معالجه ----
+        Route::post('/complete-examination/{registrationId}', [ExaminationController::class, 'complete']);
+        
+        // ---- مسیرهای اضافی برای کامپوننت (با نام‌های متفاوت) ----
+        Route::get('/examinations/patient/{patientId}', [ExaminationController::class, 'getPatientExaminations']);
+        Route::get('/examinations/{id}/edit', [ExaminationController::class, 'getExaminationForEdit']);
+        Route::put('/examinations/{id}', [ExaminationController::class, 'updateExamination']);
+        Route::delete('/examinations/{id}', [ExaminationController::class, 'deleteExamination']);
+        Route::post('/treatment/{registrationId}/complete', [ExaminationController::class, 'complete']);
+        Route::post('/treatment/{registrationId}', [ExaminationController::class, 'store']);
     });
 
-    // مسیرهای مربوط به معاینات داکتر
-Route::group(['prefix' => 'doctor', 'middleware' => ['auth:sanctum', 'role:doctor']], function () {
-    // ... مسیرهای موجود ...
-    
-    // دریافت لیست معاینات یک مریض
-    Route::get('/examinations/patient/{patientId}', [ExaminationController::class, 'getPatientExaminations']);
-    
-    // دریافت معاینه برای ویرایش
-    Route::get('/examinations/{id}/edit', [ExaminationController::class, 'getExaminationForEdit']);
-    
-    // بروزرسانی معاینه
-    Route::put('/examinations/{id}', [ExaminationController::class, 'updateExamination']);
-    
-    // حذف معاینه
-    Route::delete('/examinations/{id}', [ExaminationController::class, 'deleteExamination']);
-    
-    // ختم معالجه
-    Route::post('/treatment/{registrationId}/complete', [ExaminationController::class, 'complete']);
-    
-    // ثبت معاینه
-    Route::post('/treatment/{registrationId}', [ExaminationController::class, 'store']);
+// ============================================================
+// ✅ مسیرهای لابراتوار (LaboratoryController)
+// ============================================================
+
+// ---- ثبت درخواست لابراتوار ----
+Route::post('/laboratory/save', [LaboratoryController::class, 'store']);
+Route::post('/laboratory/{registrationId}', [LaboratoryController::class, 'store']);
+
+// ---- دریافت تست‌های لابراتوار ----
+Route::get('/laboratory/{registrationId}', [LaboratoryController::class, 'show']);
+Route::get('/laboratory-patient/{patientId}', [LaboratoryController::class, 'getPatientTests']);
+
+// ---- بروزرسانی و حذف ----
+Route::put('/laboratory/{id}', [LaboratoryController::class, 'update']);
+Route::delete('/laboratory/{id}', [LaboratoryController::class, 'destroy']);
+
+// ---- آمار ----
+Route::get('/laboratory-statistics', [LaboratoryController::class, 'getStatistics']);
+
+
+
+
+// ============================================================
+// مسیرهای فیس لابراتوار
+// ============================================================
+Route::prefix('laboratory-fees')->middleware(['auth:sanctum'])->group(function () {
+    Route::get('/', [LaboratoryFeeController::class, 'index']);
+    Route::post('/', [LaboratoryFeeController::class, 'store']);
+    Route::get('/statistics', [LaboratoryFeeController::class, 'statistics']);
+    Route::put('/{id}', [LaboratoryFeeController::class, 'update']);
+    Route::delete('/{id}', [LaboratoryFeeController::class, 'destroy']);
 });
+
+// ============================================================
+// مسیرهای فیس نسخه
+// ============================================================
+Route::prefix('prescription-fees')->middleware(['auth:sanctum'])->group(function () {
+    Route::get('/', [PrescriptionFeeController::class, 'index']);
+    Route::post('/', [PrescriptionFeeController::class, 'store']);
+    Route::get('/statistics', [PrescriptionFeeController::class, 'statistics']);
+    Route::put('/{id}', [PrescriptionFeeController::class, 'update']);
+    Route::delete('/{id}', [PrescriptionFeeController::class, 'destroy']);
+});
+
+
+
+
 
     // ===== Prescriptions =====
     Route::get('/prescriptions/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);

@@ -16,7 +16,6 @@ import OperationRoom from "./operations/OperationRoom";
 export default function TreatmentPage() {
   const { api } = useAuth();
   
-  // State های اصلی
   const [activeTab, setActiveTab] = useState("queue");
   const [selectedRegistration, setSelectedRegistration] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState(null);
@@ -24,6 +23,14 @@ export default function TreatmentPage() {
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // ============ مدیریت چندین مریض فعال ============
+  const [activePatients, setActivePatients] = useState({});
+  // ساختار: { reg_id: { examination: {...}, laboratory: {...}, ... } }
+
+  // ============ مریض جاری ============
+  const [currentPatientId, setCurrentPatientId] = useState(null);
 
   // ============ تعریف مراحل درمان ============
   const STEPS = [
@@ -44,70 +51,257 @@ export default function TreatmentPage() {
     completedSteps: [],
     isComplete: false,
     startTime: null,
-    endTime: null
+    endTime: null,
+    registrationId: null,
+    savedData: {}
   });
 
-  // دریافت صف انتظار
-  const fetchQueue = async () => {
-    setLoading(true);
+  // ============ کلید ذخیره‌سازی در localStorage ============
+  const STORAGE_KEY = 'treatment_progress_data';
+  const ACTIVE_PATIENTS_KEY = 'active_patients_data';
+
+  // ============ ذخیره وضعیت در localStorage ============
+  const saveToLocalStorage = (progress, regId) => {
     try {
-      const response = await api.get("/doctor/queue");
-      let data = [];
-      if (Array.isArray(response.data)) {
-        data = response.data;
-      } else if (response.data?.data && Array.isArray(response.data.data)) {
-        data = response.data.data;
-      }
-      setQueue(data);
-      
-      if (selectedRegistration) {
-        const stillInQueue = data.some(r => r.reg_id === selectedRegistration.reg_id);
-        if (!stillInQueue) {
-          setSelectedRegistration(null);
-        }
-      }
+      const dataToSave = {
+        ...progress,
+        registrationId: regId || progress.registrationId,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
     } catch (err) {
-      console.error("خطا در دریافت صف:", err);
-      toast.error("❌ خطا در دریافت لیست مریضان");
-    } finally {
-      setLoading(false);
+      console.error("خطا در ذخیره localStorage:", err);
     }
   };
 
-  useEffect(() => {
-    fetchQueue();
-  }, [refreshKey]);
-
-  const refreshData = () => {
-    setRefreshKey(prev => prev + 1);
+  // ============ ذخیره مریض‌های فعال ============
+  const saveActivePatients = (patients) => {
+    try {
+      localStorage.setItem(ACTIVE_PATIENTS_KEY, JSON.stringify(patients));
+    } catch (err) {
+      console.error("خطا در ذخیره مریض‌های فعال:", err);
+    }
   };
 
-  // ============ توابع مدیریت مراحل ============
+  // ============ بازیابی مریض‌های فعال ============
+  const loadActivePatients = () => {
+    try {
+      const saved = localStorage.getItem(ACTIVE_PATIENTS_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (err) {
+      console.error("خطا در بازیابی مریض‌های فعال:", err);
+    }
+    return {};
+  };
 
-  // شروع درمان (انتخاب مریض از صف)
-  const startTreatment = (registration) => {
+  // ============ بازیابی وضعیت از localStorage ============
+  const loadFromLocalStorage = () => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const savedTime = new Date(parsed.timestamp);
+        const now = new Date();
+        const hoursDiff = (now - savedTime) / (1000 * 60 * 60);
+        
+        if (hoursDiff > 24) {
+          localStorage.removeItem(STORAGE_KEY);
+          return null;
+        }
+        return parsed;
+      }
+    } catch (err) {
+      console.error("خطا در بازیابی localStorage:", err);
+    }
+    return null;
+  };
+
+  // ============ پاک کردن وضعیت ذخیره شده ============
+  const clearSavedProgress = () => {
+    localStorage.removeItem(STORAGE_KEY);
+  };
+
+  // ============ بارگذاری وضعیت از سرور ============
+  const loadProgressFromServer = async (registrationId) => {
+    try {
+      const response = await api.get(`/doctor/treatment/progress/${registrationId}`);
+      if (response.data && response.data.success) {
+        return response.data.data;
+      }
+    } catch (err) {
+      console.log("وضعیت در سرور یافت نشد");
+    }
+    return null;
+  };
+
+  // ============ ذخیره وضعیت در سرور ============
+  const saveProgressToServer = async (progress, registrationId) => {
+    try {
+      await api.post('/doctor/treatment/progress/save', {
+        registration_id: registrationId || progress.registrationId,
+        ...progress
+      });
+    } catch (err) {
+      console.error("خطا در ذخیره سرور:", err);
+    }
+  };
+
+  // ============ تابع به‌روزرسانی وضعیت ============
+  const updateTreatmentProgress = async (newProgress, regId) => {
+    const registrationId = regId || newProgress.registrationId || treatmentProgress.registrationId;
+    setTreatmentProgress(newProgress);
+    saveToLocalStorage(newProgress, registrationId);
+    if (registrationId) {
+      await saveProgressToServer(newProgress, registrationId);
+    }
+  };
+
+  // ============ بارگذاری معاینات یک مریض خاص ============
+  const loadExaminations = async (registrationId) => {
+    try {
+      const response = await api.get(`/doctor/examination/${registrationId}`);
+      if (response.data?.success && response.data?.data) {
+        const data = response.data.data;
+        // ذخیره در activePatients
+        setActivePatients(prev => ({
+          ...prev,
+          [registrationId]: {
+            ...prev[registrationId],
+            examination: {
+              data: data.examination || null,
+              allExaminations: data.all_examinations || [],
+              isExamined: !!data.examination
+            }
+          }
+        }));
+        return data;
+      }
+    } catch (err) {
+      console.log("هیچ معاینه‌ای یافت نشد");
+      setActivePatients(prev => ({
+        ...prev,
+        [registrationId]: {
+          ...prev[registrationId],
+          examination: {
+            data: null,
+            allExaminations: [],
+            isExamined: false
+          }
+        }
+      }));
+    }
+    return null;
+  };
+
+  // ============ بارگذاری تست‌های لابراتوار یک مریض خاص ============
+  const loadLaboratoryTests = async (registrationId) => {
+    try {
+      const response = await api.get(`/doctor/laboratory/${registrationId}`);
+      if (response.data?.success && response.data?.data) {
+        const data = response.data.data;
+        setActivePatients(prev => ({
+          ...prev,
+          [registrationId]: {
+            ...prev[registrationId],
+            laboratory: {
+              data: data.test || null,
+              allTests: data.all_tests || [],
+              isRequested: !!data.test
+            }
+          }
+        }));
+        return data;
+      }
+    } catch (err) {
+      console.log("هیچ تست لابراتواری یافت نشد");
+      setActivePatients(prev => ({
+        ...prev,
+        [registrationId]: {
+          ...prev[registrationId],
+          laboratory: {
+            data: null,
+            allTests: [],
+            isRequested: false
+          }
+        }
+      }));
+    }
+    return null;
+  };
+
+  // ============ تابع شروع درمان ============
+  const startTreatment = async (registration) => {
     if (!registration || !registration.reg_id) {
       toast.error("❌ اطلاعات مریض معتبر نیست");
       return;
     }
-    setSelectedRegistration(registration);
-    setSelectedHistory(null);
-    
-    // تنظیم وضعیت شروع درمان
-    setTreatmentProgress({
-      currentStepIndex: 1, // معاینه (بعد از صف)
-      completedSteps: ['queue'],
-      isComplete: false,
-      startTime: new Date().toISOString(),
-      endTime: null
-    });
-    
-    setActiveTab("examination");
-    toast.info(`👨‍⚕️ شروع درمان برای ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''}`);
+
+    const regId = registration.reg_id;
+
+    try {
+      // بررسی اینکه آیا مریض قبلاً فعال است
+      if (activePatients[regId]) {
+        // مریض فعال است، فقط انتخابش کن
+        setCurrentPatientId(regId);
+        setSelectedRegistration(registration);
+        setActiveTab("examination");
+        toast.info(`👤 بازگشت به معالجه ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''}`);
+        return;
+      }
+
+      // مریض جدید - بارگذاری اطلاعات
+      await loadExaminations(regId);
+      await loadLaboratoryTests(regId);
+
+      // تنظیم مریض جاری
+      setCurrentPatientId(regId);
+      setSelectedRegistration(registration);
+      setActiveTab("examination");
+
+      // تنظیم treatmentProgress
+      const newProgress = {
+        currentStepIndex: 1,
+        completedSteps: ['queue'],
+        isComplete: false,
+        startTime: new Date().toISOString(),
+        endTime: null,
+        registrationId: regId,
+        savedData: {}
+      };
+      setTreatmentProgress(newProgress);
+      saveToLocalStorage(newProgress, regId);
+
+      // ذخیره مریض‌های فعال
+      saveActivePatients(activePatients);
+
+      toast.info(`👨‍⚕️ شروع درمان برای ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''}`);
+      
+    } catch (err) {
+      console.error("خطا در شروع درمان:", err);
+      toast.error("❌ خطا در شروع درمان");
+    }
   };
 
-  // رفتن به مرحله بعدی
-  const goToNextStep = () => {
+  // ============ بارگذاری اطلاعات مریض هنگام انتخاب ============
+  const loadPatientData = async (registrationId) => {
+    if (!registrationId) return;
+    
+    // اگر اطلاعات مریض قبلاً بارگذاری شده، از کش استفاده کن
+    if (activePatients[registrationId]) {
+      return activePatients[registrationId];
+    }
+
+    // بارگذاری از سرور
+    await loadExaminations(registrationId);
+    await loadLaboratoryTests(registrationId);
+    
+    return activePatients[registrationId];
+  };
+
+  // ============ رفتن به مرحله بعدی ============
+  const goToNextStep = async () => {
     const currentIndex = treatmentProgress.currentStepIndex;
     const nextIndex = currentIndex + 1;
     
@@ -116,82 +310,101 @@ export default function TreatmentPage() {
       return;
     }
     
-    // مرحله فعلی را کامل شده علامت بزن
     const currentStep = STEPS[currentIndex];
-    if (!treatmentProgress.completedSteps.includes(currentStep.key)) {
-      setTreatmentProgress(prev => ({
-        ...prev,
-        completedSteps: [...prev.completedSteps, currentStep.key]
-      }));
+    const newCompletedSteps = [...treatmentProgress.completedSteps];
+    if (!newCompletedSteps.includes(currentStep.key)) {
+      newCompletedSteps.push(currentStep.key);
     }
     
-    setTreatmentProgress(prev => ({
-      ...prev,
-      currentStepIndex: nextIndex
-    }));
+    const newProgress = {
+      ...treatmentProgress,
+      currentStepIndex: nextIndex,
+      completedSteps: newCompletedSteps
+    };
     
+    await updateTreatmentProgress(newProgress);
     setActiveTab(STEPS[nextIndex].key);
     toast.info(`➡️ رفتن به مرحله ${STEPS[nextIndex].label}`);
   };
 
-  // برگشت به مرحله قبلی
-  const goToPreviousStep = () => {
+  // ============ برگشت به مرحله قبلی ============
+  const goToPreviousStep = async () => {
     const currentIndex = treatmentProgress.currentStepIndex;
     const prevIndex = currentIndex - 1;
     
     if (prevIndex < 1) {
-      // اگر در صف هستیم، به صف برگردیم
       setActiveTab('queue');
-      setTreatmentProgress({
-        currentStepIndex: 0,
-        completedSteps: [],
-        isComplete: false,
-        startTime: null,
-        endTime: null
-      });
       toast.info("↩️ بازگشت به صف انتظار");
       return;
     }
     
-    setTreatmentProgress(prev => ({
-      ...prev,
+    const newProgress = {
+      ...treatmentProgress,
       currentStepIndex: prevIndex,
-      completedSteps: prev.completedSteps.filter(step => step !== STEPS[currentIndex].key)
-    }));
+      completedSteps: treatmentProgress.completedSteps.filter(step => step !== STEPS[currentIndex].key)
+    };
     
+    await updateTreatmentProgress(newProgress);
     setActiveTab(STEPS[prevIndex].key);
     toast.info(`↩️ بازگشت به مرحله ${STEPS[prevIndex].label}`);
   };
 
-  // ثبت اطلاعات مرحله فعلی
+  // ============ ثبت اطلاعات مرحله فعلی ============
   const saveCurrentStep = async (data) => {
     setIsSubmitting(true);
     try {
       const currentStep = STEPS[treatmentProgress.currentStepIndex];
+      const regId = selectedRegistration?.reg_id;
       
       const response = await api.post(`/doctor/${currentStep.key}/save`, {
-        registration_id: selectedRegistration?.reg_id,
+        registration_id: regId,
         ...data
       });
       
+      // به‌روزرسانی داده‌های معاینه در activePatients
+      if (response.data?.data && regId) {
+        if (currentStep.key === 'examination') {
+          setActivePatients(prev => ({
+            ...prev,
+            [regId]: {
+              ...prev[regId],
+              examination: {
+                data: response.data.data.examination || null,
+                allExaminations: response.data.data.all_examinations || [],
+                isExamined: !!response.data.data.examination
+              }
+            }
+          }));
+        }
+      }
+      
       toast.success(`✅ اطلاعات ${currentStep.label} با موفقیت ثبت شد`);
       
-      setTreatmentProgress(prev => ({
-        ...prev,
-        completedSteps: [...prev.completedSteps, currentStep.key]
-      }));
+      // به‌روزرسانی وضعیت
+      const newProgress = {
+        ...treatmentProgress,
+        completedSteps: [...treatmentProgress.completedSteps, currentStep.key],
+        savedData: {
+          ...treatmentProgress.savedData,
+          [currentStep.key]: data
+        }
+      };
+      await updateTreatmentProgress(newProgress);
+      
+      // ذخیره مریض‌های فعال
+      saveActivePatients(activePatients);
       
       return response.data;
     } catch (err) {
       console.error("خطا در ثبت اطلاعات:", err);
-      toast.error("❌ خطا در ثبت اطلاعات");
+      toast.error(`❌ خطا در ثبت اطلاعات: ${err.response?.data?.message || err.message}`);
       throw err;
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // ختم معالجه
+  // ============ ختم معالجه ============
   const finishTreatment = async () => {
     if (!selectedRegistration) {
       toast.error("❌ مریضی انتخاب نشده است");
@@ -225,21 +438,29 @@ export default function TreatmentPage() {
 
       toast.success("✅ معالجه با موفقیت به پایان رسید");
       
-      setTreatmentProgress(prev => ({
-        ...prev,
-        isComplete: true,
-        endTime: new Date().toISOString()
-      }));
+      // حذف مریض از لیست فعال
+      const regId = selectedRegistration.reg_id;
+      setActivePatients(prev => {
+        const newPatients = { ...prev };
+        delete newPatients[regId];
+        saveActivePatients(newPatients);
+        return newPatients;
+      });
 
       setTimeout(() => {
         setSelectedRegistration(null);
-        setTreatmentProgress({
+        setCurrentPatientId(null);
+        const resetProgress = {
           currentStepIndex: 0,
           completedSteps: [],
           isComplete: false,
           startTime: null,
-          endTime: null
-        });
+          endTime: null,
+          registrationId: null,
+          savedData: {}
+        };
+        setTreatmentProgress(resetProgress);
+        clearSavedProgress();
         setActiveTab('queue');
         refreshData();
       }, 2000);
@@ -252,28 +473,109 @@ export default function TreatmentPage() {
     }
   };
 
+  // ============ بازگشت به صف ============
   const goBackToQueue = () => {
-    if (treatmentProgress.completedSteps.length > 0) {
-      if (!window.confirm("⚠️ آیا مطمئن هستید؟ اطلاعات ثبت شده از دست خواهد رفت.")) {
-        return;
-      }
-    }
     setSelectedRegistration(null);
+    setCurrentPatientId(null);
     setSelectedHistory(null);
-    setTreatmentProgress({
+    const resetProgress = {
       currentStepIndex: 0,
       completedSteps: [],
       isComplete: false,
       startTime: null,
-      endTime: null
-    });
+      endTime: null,
+      registrationId: null,
+      savedData: {}
+    };
+    setTreatmentProgress(resetProgress);
+    clearSavedProgress();
     setActiveTab("queue");
     refreshData();
   };
 
-  const handleSelectHistory = (historyItem) => {
-    setSelectedHistory(historyItem);
-    toast.info(`📜 مشاهده تاریخچه ${historyItem.patient?.first_name || ''} ${historyItem.patient?.last_name || ''}`);
+  // ============ بازیابی وضعیت در اولین بارگذاری ============
+  const restoreSavedState = async () => {
+    try {
+      // بازیابی مریض‌های فعال
+      const savedPatients = loadActivePatients();
+      if (savedPatients && Object.keys(savedPatients).length > 0) {
+        setActivePatients(savedPatients);
+      }
+
+      const savedLocal = loadFromLocalStorage();
+      
+      if (savedLocal && savedLocal.registrationId) {
+        try {
+          const queueResponse = await api.get("/doctor/queue");
+          const queueData = queueResponse.data?.data || queueResponse.data || [];
+          const isInQueue = queueData.some(r => r.reg_id === savedLocal.registrationId);
+          
+          if (isInQueue) {
+            const reg = queueData.find(r => r.reg_id === savedLocal.registrationId);
+            setSelectedRegistration(reg);
+            setCurrentPatientId(savedLocal.registrationId);
+            setTreatmentProgress(savedLocal);
+            setActiveTab(STEPS[savedLocal.currentStepIndex]?.key || 'examination');
+            
+            // بارگذاری معاینات
+            await loadExaminations(savedLocal.registrationId);
+            
+            toast.info(`↩️ ادامه درمان از مرحله ${STEPS[savedLocal.currentStepIndex]?.label || 'نامشخص'}`);
+            return;
+          }
+        } catch (err) {
+          console.error("خطا در بررسی صف:", err);
+        }
+      }
+    } catch (err) {
+      console.error("خطا در بازیابی وضعیت:", err);
+    } finally {
+      setIsInitialized(true);
+    }
+  };
+
+  // ============ دریافت صف انتظار ============
+  const fetchQueue = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get("/doctor/queue");
+      let data = [];
+      if (Array.isArray(response.data)) {
+        data = response.data;
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        data = response.data.data;
+      }
+      setQueue(data);
+    } catch (err) {
+      console.error("خطا در دریافت صف:", err);
+      toast.error("❌ خطا در دریافت لیست مریضان");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============ انتخاب مریض از لیست ============
+  const handleSelectPatient = (registration) => {
+    startTreatment(registration);
+  };
+
+  // ============ استفاده از useEffect ============
+  useEffect(() => {
+    const initialize = async () => {
+      await fetchQueue();
+      await restoreSavedState();
+    };
+    initialize();
+  }, []);
+
+  useEffect(() => {
+    if (refreshKey > 0) {
+      fetchQueue();
+    }
+  }, [refreshKey]);
+
+  const refreshData = () => {
+    setRefreshKey(prev => prev + 1);
   };
 
   const hasValidRegistration = selectedRegistration && selectedRegistration.reg_id;
@@ -288,6 +590,7 @@ export default function TreatmentPage() {
   // ============ نمایش وضعیت پیشرفت ============
   const renderProgressBar = () => {
     if (activeTab === 'queue' || activeTab === 'history') return null;
+    if (!hasValidRegistration) return null;
 
     const totalSteps = STEPS.length - 1;
     const completed = treatmentProgress.completedSteps.length;
@@ -369,6 +672,81 @@ export default function TreatmentPage() {
     );
   };
 
+  // ============ لیست مریض‌های فعال ============
+  const renderActivePatients = () => {
+    const patientIds = Object.keys(activePatients);
+    if (patientIds.length === 0) return null;
+
+    return (
+      <div style={{
+        backgroundColor: '#1a2a3a',
+        padding: '10px 15px',
+        borderRadius: '8px',
+        marginBottom: '15px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        flexWrap: 'wrap',
+        border: '1px solid #374151'
+      }}>
+        <span style={{ color: '#9ca3af', fontSize: '13px' }}>👥 مریض‌های فعال:</span>
+        {patientIds.map((id) => {
+          const isCurrent = id === currentPatientId;
+          // پیدا کردن اطلاعات مریض از صف
+          const patient = queue.find(r => r.reg_id === parseInt(id));
+          return (
+            <button
+              key={id}
+              onClick={() => {
+                const reg = queue.find(r => r.reg_id === parseInt(id));
+                if (reg) {
+                  setSelectedRegistration(reg);
+                  setCurrentPatientId(id);
+                  // بازیابی وضعیت از activePatients
+                  setActiveTab("examination");
+                  toast.info(`👤切换到 مریض ${reg.patient?.first_name || ''} ${reg.patient?.last_name || ''}`);
+                }
+              }}
+              style={{
+                backgroundColor: isCurrent ? '#3b82f6' : '#2a3a4a',
+                color: 'white',
+                padding: '4px 12px',
+                borderRadius: '15px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+            >
+              {isCurrent && '📍 '}
+              {patient?.patient?.first_name || 'نامشخص'} {patient?.patient?.last_name || ''}
+              {isCurrent && ' (جاری)'}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  if (!isInitialized) {
+    return (
+      <MainLayoutjur>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '400px',
+          color: 'white',
+          fontSize: '18px'
+        }}>
+          ⏳ در حال بارگذاری اطلاعات درمان...
+        </div>
+      </MainLayoutjur>
+    );
+  }
+
   return (
     <MainLayoutjur>
       <ToastContainer 
@@ -400,10 +778,11 @@ export default function TreatmentPage() {
           🏥 معالجه داکتر
         </h2>
 
-        {/* نوار پیشرفت */}
+        {/* لیست مریض‌های فعال */}
+        {renderActivePatients()}
+
         {renderProgressBar()}
 
-        {/* اطلاعات مریض انتخاب شده */}
         {hasValidRegistration && (
           <div style={{
             backgroundColor: treatmentProgress.isComplete ? '#065f46' : '#1e3a5f',
@@ -418,7 +797,7 @@ export default function TreatmentPage() {
             gap: '10px'
           }}>
             <div>
-              <strong style={{ color: '#60a5fa' }}>👤 مریض:</strong>
+              <strong style={{ color: '#60a5fa' }}>👤 مریض جاری:</strong>
               <span style={{ color: 'white', marginRight: '10px', fontSize: '16px' }}>
                 {selectedRegistration.patient?.first_name || ''} {selectedRegistration.patient?.last_name || ''}
               </span>
@@ -444,6 +823,19 @@ export default function TreatmentPage() {
                   ✅ تکمیل شد
                 </span>
               )}
+              {!treatmentProgress.isComplete && (
+                <span style={{
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  padding: '2px 12px',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  marginLeft: '10px'
+                }}>
+                  📍 {STEPS[treatmentProgress.currentStepIndex]?.label || 'نامشخص'}
+                </span>
+              )}
             </div>
             <button
               onClick={goBackToQueue}
@@ -457,12 +849,12 @@ export default function TreatmentPage() {
                 fontSize: '13px'
               }}
             >
-              ✕ بازگشت به صف
+              ✕ خروج از معالجه
             </button>
           </div>
         )}
 
-        {/* Tabs - فقط صف انتظار و تاریخچه فعال هستند */}
+        {/* ============ Tabs - همه تب‌ها قابل دسترس ============ */}
         <div
           style={{
             display: "flex",
@@ -476,15 +868,14 @@ export default function TreatmentPage() {
             const isActive = activeTab === step.key;
             const isCompleted = treatmentProgress.completedSteps.includes(step.key);
             
-            // تعیین اینکه آیا تب فعال است یا غیرفعال
-            // فقط صف انتظار و تاریخچه همیشه فعال هستند
-            // سایر تب‌ها فقط در صورتی فعال می‌شوند که مریض انتخاب شده باشد و مرحله به آن رسیده باشد
-            const isStepAccessible = 
-              step.key === 'queue' || 
-              step.key === 'history' ||
-              (hasValidRegistration && treatmentProgress.currentStepIndex >= STEPS.findIndex(s => s.key === step.key));
+            let isStepAccessible = false;
             
-            // تعیین رنگ
+            if (step.key === 'queue' || step.key === 'history') {
+              isStepAccessible = true;
+            } else if (hasValidRegistration) {
+              isStepAccessible = true;
+            }
+            
             let bgColor = '#374151';
             if (isActive) bgColor = step.color;
             else if (isCompleted) bgColor = '#10b981';
@@ -493,7 +884,11 @@ export default function TreatmentPage() {
               <button
                 key={step.key}
                 onClick={() => {
-                  // فقط صف انتظار و تاریخچه قابل کلیک مستقیم هستند
+                  if (!isStepAccessible) {
+                    toast.warning(`⚠️ لطفاً ابتدا یک مریض را انتخاب کنید`);
+                    return;
+                  }
+                  
                   if (step.key === 'queue') {
                     setActiveTab(step.key);
                     setSelectedHistory(null);
@@ -502,12 +897,6 @@ export default function TreatmentPage() {
                   if (step.key === 'history') {
                     setActiveTab(step.key);
                     setSelectedHistory(null);
-                    return;
-                  }
-                  
-                  // سایر تب‌ها فقط در صورتی قابل کلیک هستند که قابل دسترس باشند
-                  if (!isStepAccessible) {
-                    toast.warning(`⚠️ ابتدا باید مراحل قبلی را تکمیل کنید`);
                     return;
                   }
                   
@@ -537,7 +926,7 @@ export default function TreatmentPage() {
                   transition: 'all 0.3s'
                 }}
                 disabled={!isStepAccessible}
-                title={!isStepAccessible ? `برای دسترسی به ${step.label}، ابتدا مراحل قبل را تکمیل کنید` : ''}
+                title={!isStepAccessible ? `برای دسترسی به ${step.label}، ابتدا یک مریض انتخاب کنید` : ''}
               >
                 {isCompleted ? '✅' : step.icon}
                 {step.label}
@@ -553,31 +942,12 @@ export default function TreatmentPage() {
                     animation: 'pulse 1.5s infinite'
                   }} />
                 )}
-                {!isStepAccessible && step.key !== 'queue' && step.key !== 'history' && (
-                  <span style={{
-                    position: 'absolute',
-                    top: '-5px',
-                    right: '-5px',
-                    width: '10px',
-                    height: '10px',
-                    backgroundColor: '#ef4444',
-                    borderRadius: '50%',
-                    fontSize: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'white',
-                    fontWeight: 'bold'
-                  }}>
-                    🔒
-                  </span>
-                )}
               </button>
             );
           })}
         </div>
 
-        {/* Content */}
+        {/* ============ Content ============ */}
         <div
           style={{
             background: "#1f2937",
@@ -591,8 +961,9 @@ export default function TreatmentPage() {
             <PatientQueue 
               queue={queue}
               loading={loading}
-              onSelectPatient={startTreatment}
+              onSelectPatient={handleSelectPatient}
               onRefresh={refreshData}
+              activePatients={activePatients}
             />
           )}
 
@@ -611,6 +982,33 @@ export default function TreatmentPage() {
               prevStep={prevStep}
               isSubmitting={isSubmitting}
               isTreatmentComplete={treatmentProgress.isComplete}
+              savedData={activePatients[currentPatientId]?.examination?.data || null}
+              allExaminations={activePatients[currentPatientId]?.examination?.allExaminations || []}
+              isExamined={activePatients[currentPatientId]?.examination?.isExamined || false}
+              setIsExamined={(val) => {
+                setActivePatients(prev => ({
+                  ...prev,
+                  [currentPatientId]: {
+                    ...prev[currentPatientId],
+                    examination: {
+                      ...prev[currentPatientId]?.examination,
+                      isExamined: val
+                    }
+                  }
+                }));
+              }}
+              setAllExaminations={(exams) => {
+                setActivePatients(prev => ({
+                  ...prev,
+                  [currentPatientId]: {
+                    ...prev[currentPatientId],
+                    examination: {
+                      ...prev[currentPatientId]?.examination,
+                      allExaminations: exams
+                    }
+                  }
+                }));
+              }}
             />
           )}
 
@@ -653,7 +1051,7 @@ export default function TreatmentPage() {
           {activeTab === "operation" && (
             <OperationRoom 
               api={api}
-              onSelectPatient={startTreatment}
+              onSelectPatient={handleSelectPatient}
               onRefresh={refreshData}
             />
           )}
@@ -720,8 +1118,44 @@ export default function TreatmentPage() {
           )}
         </div>
 
-        {/* ============ دکمه‌های ناوبری حذف شدند ============ */}
-        {/* دیگر دکمه‌های پایین صفحه وجود ندارند */}
+        {/* ============ دکمه‌های ناوبری ============ */}
+        {hasValidRegistration && !treatmentProgress.isComplete && activeTab !== 'queue' && activeTab !== 'history' && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginTop: '20px',
+            gap: '10px'
+          }}>
+            <button
+              onClick={goToPreviousStep}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              ↩️ مرحله قبل
+            </button>
+            <button
+              onClick={goToNextStep}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              مرحله بعد ➡️
+            </button>
+          </div>
+        )}
       </div>
 
       <style jsx>{`

@@ -16,36 +16,63 @@ export default function LaboratoryRequest({
   isSubmitting,
   isTreatmentComplete
 }) {
+  const [formData, setFormData] = useState({
+    test_type: '',
+    test_name: '',
+    test_description: '',
+    clinical_indication: '',
+    special_notes: '',
+    request_date: new Date().toISOString().split('T')[0],
+    sample_collection_date: '',
+  });
+  
   const [loading, setLoading] = useState(false);
-  const [testType, setTestType] = useState("");
-  const [note, setNote] = useState("");
-  const [isRequested, setIsRequested] = useState(false);
+  const [tests, setTests] = useState([]);
+  const [isLabRequested, setIsLabRequested] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [patientInfo, setPatientInfo] = useState(null);
+  const [editingTest, setEditingTest] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
 
+  // ============ دریافت اطلاعات مریض ============
   useEffect(() => {
     if (!registration || !registration.reg_id) return;
 
     const fetchPatientInfo = async () => {
       try {
-        const response = await api.get(`/doctor/patient/${registration.reg_id}`);
+        // ✅ اصلاح: استفاده از مسیر صحیح
+        const response = await api.get(`/registrations/${registration.reg_id}`);
         const data = response.data?.data || response.data;
         setPatientInfo(data);
         
-        if (data.laboratory_request) {
-          setIsRequested(true);
-          setTestType(data.laboratory_request.test_type || '');
-          setNote(data.laboratory_request.note || '');
-        }
-        
-        if (data.registration?.status === 'completed') {
+        if (data.visit_status === 'Completed') {
           setIsCompleted(true);
         }
       } catch (err) {
         console.error("خطا در دریافت اطلاعات مریض:", err);
+        toast.error(`❌ خطا در دریافت اطلاعات مریض: ${err.response?.data?.message || err.message}`);
       }
     };
     fetchPatientInfo();
+  }, [registration?.reg_id, api]);
+
+  // ============ بارگذاری تست‌های لابراتوار ============
+  useEffect(() => {
+    if (!registration || !registration.reg_id) return;
+
+    const loadTests = async () => {
+      try {
+        const response = await api.get(`/doctor/laboratory/${registration.reg_id}`);
+        if (response.data?.success && response.data?.data) {
+          setTests(response.data.data.tests || []);
+          setIsLabRequested(response.data.data.has_tests || false);
+        }
+      } catch (err) {
+        console.log("هیچ تست لابراتواری یافت نشد");
+      }
+    };
+
+    loadTests();
   }, [registration?.reg_id, api]);
 
   if (!registration || !registration.reg_id) {
@@ -60,13 +87,16 @@ export default function LaboratoryRequest({
     );
   }
 
-  const patient = patientInfo?.patient || registration.patient || {};
-  const isDisabled = isCompleted || isTreatmentComplete || isSubmitting;
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
 
+  // ============ ثبت درخواست لابراتوار ============
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!testType) {
+    if (!formData.test_type) {
       toast.warning("⚠️ لطفاً نوع آزمایش را انتخاب کنید");
       return;
     }
@@ -74,31 +104,106 @@ export default function LaboratoryRequest({
     setLoading(true);
 
     try {
-      await api.post(`/doctor/laboratory/${registration.reg_id}`, {
-        test_type: testType,
-        note: note
+      // ✅ ارسال به مسیر صحیح
+      const response = await api.post(`/doctor/laboratory/${registration.reg_id}`, {
+        registration_id: registration.reg_id,
+        test_type: formData.test_type,
+        test_name: formData.test_name,
+        test_description: formData.test_description,
+        clinical_indication: formData.clinical_indication,
+        special_notes: formData.special_notes,
+        request_date: formData.request_date,
+        sample_collection_date: formData.sample_collection_date,
       });
-      
+
+      if (response.data?.data?.all_tests) {
+        setTests(response.data.data.all_tests);
+        setIsLabRequested(true);
+      }
+
       toast.success("✅ مریض با موفقیت به لابراتوار ارسال شد");
-      setIsRequested(true);
       
       if (onSave) {
-        await onSave({ test_type: testType, note: note });
+        await onSave(formData);
       }
       
       onRefresh();
       
     } catch (err) {
       console.error("خطا در ارسال به لابراتوار:", err);
-      if (err.response?.data?.message) {
-        toast.error(`❌ ${err.response.data.message}`);
-      } else {
-        toast.error("❌ خطا در ارسال به لابراتوار");
-      }
+      toast.error(`❌ خطا در ارسال به لابراتوار: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
+
+  // ============ ویرایش تست ============
+  const handleEditTest = (test) => {
+    setEditingTest(test);
+    setFormData({
+      test_type: test.test_type || '',
+      test_name: test.test_name || '',
+      test_description: test.test_description || '',
+      clinical_indication: test.clinical_indication || '',
+      special_notes: test.special_notes || '',
+      request_date: test.request_date || new Date().toISOString().split('T')[0],
+      sample_collection_date: test.sample_collection_date || '',
+    });
+    setShowEditModal(true);
+  };
+
+  // ============ ذخیره ویرایش ============
+  const handleUpdateTest = async () => {
+    if (!editingTest) return;
+
+    setLoading(true);
+
+    try {
+      const response = await api.put(`/doctor/laboratory/${editingTest.id}`, formData);
+      
+      if (response.data?.data?.all_tests) {
+        setTests(response.data.data.all_tests);
+      }
+
+      toast.success("✅ تست لابراتوار با موفقیت ویرایش شد");
+      setShowEditModal(false);
+      setEditingTest(null);
+      onRefresh();
+
+    } catch (err) {
+      console.error("❌ خطا در ویرایش تست:", err);
+      toast.error(`❌ خطا در ویرایش تست: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============ حذف تست ============
+  const handleDeleteTest = async (testId) => {
+    if (!window.confirm("آیا مطمئن هستید که می‌خواهید این تست را حذف کنید؟")) {
+      return;
+    }
+
+    try {
+      const response = await api.delete(`/doctor/laboratory/${testId}`);
+      
+      if (response.data?.data) {
+        setTests(response.data.data);
+        if (tests.length <= 1) {
+          setIsLabRequested(false);
+        }
+      }
+
+      toast.success("✅ تست لابراتوار با موفقیت حذف شد");
+
+    } catch (err) {
+      console.error("❌ خطا در حذف تست:", err);
+      toast.error(`❌ خطا در حذف تست: ${err.response?.data?.message || err.message}`);
+    }
+  };
+
+  const patient = patientInfo?.patient || registration.patient || {};
+  const isDisabled = isCompleted || isTreatmentComplete || isSubmitting;
 
   const getGenderText = (gender) => {
     if (!gender) return '-';
@@ -108,6 +213,38 @@ export default function LaboratoryRequest({
       'other': '⚧️ دیگر'
     };
     return genderMap[gender] || gender;
+  };
+
+  // لیست انواع تست
+  const testTypes = [
+    { value: 'blood', label: '🩸 آزمایش خون' },
+    { value: 'urine', label: '💧 آزمایش ادرار' },
+    { value: 'stool', label: '💩 آزمایش مدفوع' },
+    { value: 'biochemistry', label: '🧪 بیوشیمی' },
+    { value: 'hormonal', label: '🧬 هورمونی' },
+    { value: 'microbial', label: '🦠 میکروبی' },
+    { value: 'pathology', label: '🔬 پاتولوژی' },
+    { value: 'genetic', label: '🧬 ژنتیک' },
+    { value: 'imaging', label: '📷 تصویربرداری' },
+    { value: 'other', label: '📋 سایر' }
+  ];
+
+  const statusColors = {
+    pending: '#f59e0b',
+    sample_taken: '#3b82f6',
+    in_progress: '#8b5cf6',
+    completed: '#10b981',
+    cancelled: '#6b7280',
+    rejected: '#ef4444'
+  };
+
+  const statusLabels = {
+    pending: 'در انتظار',
+    sample_taken: 'نمونه گرفته شده',
+    in_progress: 'در حال انجام',
+    completed: 'تکمیل شده',
+    cancelled: 'لغو شده',
+    rejected: 'رد شده'
   };
 
   return (
@@ -129,11 +266,21 @@ export default function LaboratoryRequest({
         <div>
           <span style={{ color: '#9ca3af', fontSize: '12px' }}>وضعیت درخواست:</span>
           <span style={{
-            color: isRequested ? '#22c55e' : '#f59e0b',
+            color: isLabRequested ? '#22c55e' : '#f59e0b',
             fontWeight: 'bold',
             marginRight: '8px'
           }}>
-            {isRequested ? '✅ ثبت شده' : '⏳ ثبت نشده'}
+            {isLabRequested ? '✅ ثبت شده' : '⏳ ثبت نشده'}
+          </span>
+        </div>
+        <div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>تعداد تست‌ها:</span>
+          <span style={{
+            color: '#60a5fa',
+            fontWeight: 'bold',
+            marginRight: '8px'
+          }}>
+            {tests.length}
           </span>
         </div>
         <div>
@@ -194,55 +341,187 @@ export default function LaboratoryRequest({
         </div>
       </div>
 
+      {/* فرم ثبت درخواست */}
       <form onSubmit={handleSubmit}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '15px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          {/* ستون راست */}
           <div>
-            <label style={{ fontSize: '13px', color: '#9ca3af' }}>نوع آزمایش *</label>
-            <select
-              value={testType}
-              onChange={(e) => setTestType(e.target.value)}
-              className="form-control"
-              style={{ 
-                backgroundColor: '#1a1a2e', 
-                color: 'white', 
-                borderColor: '#374151',
-                opacity: isDisabled ? 0.5 : 1
-              }}
-              disabled={isDisabled}
-              required
-            >
-              <option value="">-- انتخاب نوع آزمایش --</option>
-              <option value="Blood Test">آزمایش خون</option>
-              <option value="Urine Test">آزمایش ادرار</option>
-              <option value="X-Ray">رادیولوژی (X-Ray)</option>
-              <option value="CT Scan">سی تی اسکن</option>
-              <option value="MRI">ام آر آی</option>
-              <option value="Ultrasound">التراساند</option>
-              <option value="ECG">نوار قلب</option>
-              <option value="Culture">کالچر</option>
-              <option value="Stool Test">آزمایش مدفوع</option>
-              <option value="Sputum Test">آزمایش خلط</option>
-              <option value="Biopsy">بیوپسی</option>
-              <option value="Other">سایر</option>
-            </select>
+            <h4 style={{ color: '#60a5fa', marginBottom: '15px', fontSize: '15px' }}>📋 اطلاعات درخواست</h4>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                نوع تست *
+              </label>
+              <select
+                name="test_type"
+                value={formData.test_type}
+                onChange={handleChange}
+                style={{
+                  backgroundColor: '#1a1a2e',
+                  color: 'white',
+                  borderColor: '#374151',
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  border: '1px solid #374151',
+                  opacity: isDisabled ? 0.5 : 1
+                }}
+                disabled={isDisabled || isLabRequested}
+                required
+              >
+                <option value="">-- انتخاب کنید --</option>
+                {testTypes.map(type => (
+                  <option key={type.value} value={type.value}>{type.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                نام تست
+              </label>
+              <input
+                type="text"
+                name="test_name"
+                value={formData.test_name}
+                onChange={handleChange}
+                placeholder="مثلاً CBC, FBS, TSH..."
+                style={{
+                  backgroundColor: '#1a1a2e',
+                  color: 'white',
+                  borderColor: '#374151',
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  border: '1px solid #374151',
+                  opacity: isDisabled ? 0.5 : 1
+                }}
+                disabled={isDisabled || isLabRequested}
+              />
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                تاریخ درخواست
+              </label>
+              <input
+                type="date"
+                name="request_date"
+                value={formData.request_date}
+                onChange={handleChange}
+                style={{
+                  backgroundColor: '#1a1a2e',
+                  color: 'white',
+                  borderColor: '#374151',
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  border: '1px solid #374151',
+                  opacity: isDisabled ? 0.5 : 1
+                }}
+                disabled={isDisabled || isLabRequested}
+              />
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                تاریخ نمونه‌گیری
+              </label>
+              <input
+                type="date"
+                name="sample_collection_date"
+                value={formData.sample_collection_date}
+                onChange={handleChange}
+                style={{
+                  backgroundColor: '#1a1a2e',
+                  color: 'white',
+                  borderColor: '#374151',
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  border: '1px solid #374151',
+                  opacity: isDisabled ? 0.5 : 1
+                }}
+                disabled={isDisabled || isLabRequested}
+              />
+            </div>
           </div>
 
+          {/* ستون چپ */}
           <div>
-            <label style={{ fontSize: '13px', color: '#9ca3af' }}>یادداشت برای لابراتوار</label>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="form-control"
-              rows="4"
-              placeholder="توضیحات اضافی برای لابراتوار..."
-              style={{ 
-                backgroundColor: '#1a1a2e', 
-                color: 'white', 
-                borderColor: '#374151',
-                opacity: isDisabled ? 0.5 : 1
-              }}
-              disabled={isDisabled}
-            />
+            <h4 style={{ color: '#60a5fa', marginBottom: '15px', fontSize: '15px' }}>📝 توضیحات</h4>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                شرح تست
+              </label>
+              <textarea
+                name="test_description"
+                value={formData.test_description}
+                onChange={handleChange}
+                rows="2"
+                placeholder="شرح کامل تست..."
+                style={{
+                  backgroundColor: '#1a1a2e',
+                  color: 'white',
+                  borderColor: '#374151',
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  border: '1px solid #374151',
+                  opacity: isDisabled ? 0.5 : 1
+                }}
+                disabled={isDisabled || isLabRequested}
+              />
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                اندیکاسیون بالینی
+              </label>
+              <textarea
+                name="clinical_indication"
+                value={formData.clinical_indication}
+                onChange={handleChange}
+                rows="2"
+                placeholder="دلیل درخواست تست..."
+                style={{
+                  backgroundColor: '#1a1a2e',
+                  color: 'white',
+                  borderColor: '#374151',
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  border: '1px solid #374151',
+                  opacity: isDisabled ? 0.5 : 1
+                }}
+                disabled={isDisabled || isLabRequested}
+              />
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                نکات ویژه
+              </label>
+              <textarea
+                name="special_notes"
+                value={formData.special_notes}
+                onChange={handleChange}
+                rows="2"
+                placeholder="نکات ویژه برای لابراتوار..."
+                style={{
+                  backgroundColor: '#1a1a2e',
+                  color: 'white',
+                  borderColor: '#374151',
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  border: '1px solid #374151',
+                  opacity: isDisabled ? 0.5 : 1
+                }}
+                disabled={isDisabled || isLabRequested}
+              />
+            </div>
           </div>
         </div>
 
@@ -256,7 +535,6 @@ export default function LaboratoryRequest({
           borderTop: '2px solid #374151',
           paddingTop: '20px'
         }}>
-          {/* دکمه 1: برگشت به مرحله قبلی */}
           <button
             type="button"
             onClick={onPrevStep}
@@ -280,18 +558,17 @@ export default function LaboratoryRequest({
             برگشت به {prevStep?.label || 'معاینه'}
           </button>
 
-          {/* دکمه 2: ثبت درخواست لابراتوار */}
           <button
             type="submit"
-            disabled={loading || isDisabled}
+            disabled={loading || isDisabled || isLabRequested}
             style={{
-              backgroundColor: isDisabled ? '#6b7280' : '#8b5cf6',
+              backgroundColor: (isDisabled || isLabRequested) ? '#6b7280' : '#8b5cf6',
               color: 'white',
               padding: '10px 25px',
               borderRadius: '6px',
               border: 'none',
-              cursor: (loading || isDisabled) ? 'not-allowed' : 'pointer',
-              opacity: (loading || isDisabled) ? 0.6 : 1,
+              cursor: (loading || isDisabled || isLabRequested) ? 'not-allowed' : 'pointer',
+              opacity: (loading || isDisabled || isLabRequested) ? 0.6 : 1,
               fontSize: '14px',
               fontWeight: 'bold',
               display: 'flex',
@@ -300,22 +577,21 @@ export default function LaboratoryRequest({
             }}
           >
             <span>📤</span>
-            {loading ? 'در حال ارسال...' : isCompleted ? 'معالجه ختم شده' : isRequested ? '✅ ثبت شده' : 'ثبت درخواست'}
+            {loading ? 'در حال ارسال...' : isCompleted ? 'معالجه ختم شده' : isLabRequested ? '✅ ثبت شده' : 'ثبت درخواست'}
           </button>
 
-          {/* دکمه 3: ختم معالجه */}
           <button
             type="button"
             onClick={onFinish}
-            disabled={isCompleted || isSubmitting}
+            disabled={!isLabRequested || isCompleted || isSubmitting}
             style={{
-              backgroundColor: isCompleted ? '#6b7280' : '#dc2626',
+              backgroundColor: (!isLabRequested || isCompleted) ? '#6b7280' : '#dc2626',
               color: 'white',
               padding: '10px 25px',
               borderRadius: '6px',
               border: 'none',
-              cursor: (isCompleted || isSubmitting) ? 'not-allowed' : 'pointer',
-              opacity: (isCompleted || isSubmitting) ? 0.6 : 1,
+              cursor: (!isLabRequested || isCompleted || isSubmitting) ? 'not-allowed' : 'pointer',
+              opacity: (!isLabRequested || isCompleted || isSubmitting) ? 0.6 : 1,
               fontSize: '14px',
               fontWeight: 'bold',
               display: 'flex',
@@ -327,7 +603,6 @@ export default function LaboratoryRequest({
             {isCompleted ? '✅ ختم شده' : 'ختم معالجه'}
           </button>
 
-          {/* دکمه 4: رفتن به مرحله بعدی (همیشه فعال) */}
           {nextStep && (
             <button
               type="button"
@@ -349,11 +624,315 @@ export default function LaboratoryRequest({
               }}
             >
               <span>➡️</span>
-              رفتن به {nextStep.label} {!isRequested && '(بدون ثبت)'}
+              رفتن به {nextStep.label} {!isLabRequested && '(بدون ثبت)'}
             </button>
           )}
         </div>
       </form>
+
+      {/* ============ لیست تست‌های لابراتوار ============ */}
+      {tests.length > 0 && (
+        <div style={{ marginTop: '30px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
+          <h4 style={{ color: '#60a5fa', marginBottom: '15px', fontSize: '16px' }}>
+            📋 لیست تست‌های لابراتوار ({tests.length})
+          </h4>
+          
+          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            {tests.map((test) => (
+              <div
+                key={test.id}
+                style={{
+                  backgroundColor: '#1a2a3a',
+                  padding: '15px 20px',
+                  borderRadius: '8px',
+                  marginBottom: '10px',
+                  borderRight: `4px solid ${statusColors[test.status] || '#374151'}`,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap',
+                  gap: '10px'
+                }}
+              >
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '5px' }}>
+                    <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>
+                      {test.test_type_label || test.test_type}
+                    </span>
+                    <span style={{ 
+                      backgroundColor: statusColors[test.status] || '#6b7280',
+                      color: 'white',
+                      padding: '2px 10px',
+                      borderRadius: '12px',
+                      fontSize: '11px'
+                    }}>
+                      {statusLabels[test.status] || test.status}
+                    </span>
+                    <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+                      📅 {test.request_date ? new Date(test.request_date).toLocaleDateString('fa-IR') : '-'}
+                    </span>
+                  </div>
+                  {test.test_name && (
+                    <div style={{ color: 'white', fontSize: '14px' }}>
+                      {test.test_name}
+                    </div>
+                  )}
+                  {test.test_description && (
+                    <div style={{ color: '#9ca3af', fontSize: '12px', marginTop: '3px' }}>
+                      {test.test_description}
+                    </div>
+                  )}
+                </div>
+                
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    onClick={() => handleEditTest(test)}
+                    style={{
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      padding: '4px 10px',
+                      borderRadius: '4px',
+                      border: 'none',
+                      fontSize: '11px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✏️ ویرایش
+                  </button>
+                  <button
+                    onClick={() => handleDeleteTest(test.id)}
+                    style={{
+                      backgroundColor: '#dc2626',
+                      color: 'white',
+                      padding: '4px 10px',
+                      borderRadius: '4px',
+                      border: 'none',
+                      fontSize: '11px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🗑️ حذف
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ============ مودال ویرایش ============ */}
+      {showEditModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#1a1a2e',
+            padding: '30px',
+            borderRadius: '12px',
+            maxWidth: '700px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <h4 style={{ color: '#60a5fa', marginBottom: '20px' }}>✏️ ویرایش تست لابراتوار</h4>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  نوع تست *
+                </label>
+                <select
+                  name="test_type"
+                  value={formData.test_type}
+                  onChange={handleChange}
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                >
+                  {testTypes.map(type => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  نام تست
+                </label>
+                <input
+                  type="text"
+                  name="test_name"
+                  value={formData.test_name}
+                  onChange={handleChange}
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  شرح تست
+                </label>
+                <textarea
+                  name="test_description"
+                  value={formData.test_description}
+                  onChange={handleChange}
+                  rows="2"
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  اندیکاسیون بالینی
+                </label>
+                <textarea
+                  name="clinical_indication"
+                  value={formData.clinical_indication}
+                  onChange={handleChange}
+                  rows="2"
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  تاریخ درخواست
+                </label>
+                <input
+                  type="date"
+                  name="request_date"
+                  value={formData.request_date}
+                  onChange={handleChange}
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  تاریخ نمونه‌گیری
+                </label>
+                <input
+                  type="date"
+                  name="sample_collection_date"
+                  value={formData.sample_collection_date}
+                  onChange={handleChange}
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+              
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
+                  نکات ویژه
+                </label>
+                <textarea
+                  name="special_notes"
+                  value={formData.special_notes}
+                  onChange={handleChange}
+                  rows="2"
+                  style={{
+                    backgroundColor: '#1a1a2e',
+                    color: 'white',
+                    borderColor: '#374151',
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #374151'
+                  }}
+                />
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'center' }}>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingTest(null);
+                }}
+                style={{
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  padding: '8px 20px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                لغو
+              </button>
+              <button
+                onClick={handleUpdateTest}
+                disabled={loading}
+                style={{
+                  backgroundColor: loading ? '#6b7280' : '#3b82f6',
+                  color: 'white',
+                  padding: '8px 20px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: loading ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {loading ? 'در حال ذخیره...' : 'ذخیره تغییرات'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

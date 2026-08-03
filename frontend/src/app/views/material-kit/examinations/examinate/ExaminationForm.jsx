@@ -15,11 +15,11 @@ export default function ExaminationForm({
   prevStep,
   isSubmitting,
   isTreatmentComplete,
-  savedData,        // اطلاعات ذخیره شده از parent
-  allExaminations,  // لیست معاینات از parent
-  isExamined,       // وضعیت معاینه از parent
-  setIsExamined,    // تابع به‌روزرسانی وضعیت در parent
-  setAllExaminations // تابع به‌روزرسانی لیست در parent
+  savedData,        
+  allExaminations,  
+  isExamined,       
+  setIsExamined,    
+  setAllExaminations 
 }) {
   const [formData, setFormData] = useState({
     diagnosis: '',
@@ -42,10 +42,10 @@ export default function ExaminationForm({
   const [isCompleted, setIsCompleted] = useState(false);
   const [editingExamination, setEditingExamination] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [isFormLocked, setIsFormLocked] = useState(false);
 
   // ============ بارگذاری اطلاعات از props ============
   useEffect(() => {
-    // اگر اطلاعات ذخیره شده وجود دارد، فرم را پر کن
     if (savedData) {
       setFormData({
         diagnosis: savedData.diagnosis || '',
@@ -63,27 +63,75 @@ export default function ExaminationForm({
         physical_examination: savedData.physical_examination || '',
         note: savedData.note || ''
       });
+      if (savedData.id) {
+        setIsFormLocked(true);
+      }
     }
   }, [savedData]);
 
+  // ============ دریافت اطلاعات مریض ============
   useEffect(() => {
     if (!registration || !registration.reg_id) return;
 
     const fetchPatientInfo = async () => {
       try {
-        const response = await api.get(`/doctor/patient/${registration.reg_id}`);
+        const response = await api.get(`/registrations/${registration.reg_id}`);
         const data = response.data?.data || response.data;
         setPatientInfo(data);
         
-        if (data.registration?.visit_status === 'Completed') {
+        if (data.visit_status === 'Completed') {
           setIsCompleted(true);
         }
       } catch (err) {
         console.error("خطا در دریافت اطلاعات مریض:", err);
-        toast.error("❌ خطا در دریافت اطلاعات مریض");
+        toast.error(`❌ خطا در دریافت اطلاعات مریض: ${err.response?.data?.message || err.message}`);
       }
     };
     fetchPatientInfo();
+  }, [registration?.reg_id, api]);
+
+  // ============ بررسی وجود معاینه ============
+  useEffect(() => {
+    if (!registration || !registration.reg_id) return;
+
+    const checkExamination = async () => {
+      try {
+        const response = await api.get(`/doctor/examination/${registration.reg_id}`);
+        if (response.data?.success && response.data?.data) {
+          const data = response.data.data;
+          if (data.all_examinations && setAllExaminations) {
+            setAllExaminations(data.all_examinations);
+          }
+          if (data.examination) {
+            if (setIsExamined) {
+              setIsExamined(true);
+            }
+            setIsFormLocked(true);
+            setFormData({
+              diagnosis: data.examination.diagnosis || '',
+              weight: data.examination.weight || '',
+              blood_pressure: data.examination.blood_pressure || '',
+              temperature: data.examination.temperature || '',
+              oxygen: data.examination.oxygen || '',
+              pulse: data.examination.pulse || '',
+              respiratory_rate: data.examination.respiratory_rate || '',
+              height: data.examination.height || '',
+              bmi: data.examination.bmi || '',
+              chief_complaint: data.examination.chief_complaint || '',
+              history_of_present_illness: data.examination.history_of_present_illness || '',
+              past_medical_history: data.examination.past_medical_history || '',
+              physical_examination: data.examination.physical_examination || '',
+              note: data.examination.note || ''
+            });
+          }
+        }
+      } catch (err) {
+        console.log("هیچ معاینه‌ای یافت نشد");
+        setIsFormLocked(false);
+      }
+    };
+
+    checkExamination();
   }, [registration?.reg_id, api]);
 
   if (!registration || !registration.reg_id) {
@@ -118,24 +166,43 @@ export default function ExaminationForm({
     setLoading(true);
 
     try {
-      // استفاده از تابع onSave که از parent آمده
       const result = await onSave(formData);
       
-      // به‌روزرسانی وضعیت در parent
-      if (setIsExamined) {
+      if (result?.data?.examination) {
         setIsExamined(true);
+        setIsFormLocked(true);
+        // به‌روزرسانی فرم با داده‌های ثبت شده
+        if (result.data.examination) {
+          setFormData({
+            diagnosis: result.data.examination.diagnosis || '',
+            weight: result.data.examination.weight || '',
+            blood_pressure: result.data.examination.blood_pressure || '',
+            temperature: result.data.examination.temperature || '',
+            oxygen: result.data.examination.oxygen || '',
+            pulse: result.data.examination.pulse || '',
+            respiratory_rate: result.data.examination.respiratory_rate || '',
+            height: result.data.examination.height || '',
+            bmi: result.data.examination.bmi || '',
+            chief_complaint: result.data.examination.chief_complaint || '',
+            history_of_present_illness: result.data.examination.history_of_present_illness || '',
+            past_medical_history: result.data.examination.past_medical_history || '',
+            physical_examination: result.data.examination.physical_examination || '',
+            note: result.data.examination.note || ''
+          });
+        }
       }
       
-      // به‌روزرسانی لیست معاینات
       if (result?.data?.all_examinations && setAllExaminations) {
         setAllExaminations(result.data.all_examinations);
       }
       
       toast.success("✅ معلومات معاینه با موفقیت ثبت شد");
-      onRefresh();
+      // ✅ فقط صف را رفرش کن نه کل صفحه را
+      // onRefresh(); // حذف شد تا اطلاعات پاک نشود
       
     } catch (err) {
       console.error("❌ خطا در ثبت معاینه:", err);
+      toast.error(`❌ خطا در ثبت معاینه: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -189,15 +256,14 @@ export default function ExaminationForm({
       setShowEditModal(false);
       setEditingExamination(null);
       
-      // به‌روزرسانی داده‌های ذخیره شده
-      if (response.data?.data?.examination && setIsExamined) {
-        // داده‌های جدید را به parent بفرستیم
-        onRefresh();
+      if (response.data?.data?.examination) {
+        setIsExamined(true);
+        setIsFormLocked(true);
       }
       
     } catch (err) {
       console.error("❌ خطا در ویرایش معاینه:", err);
-      toast.error("❌ خطا در ویرایش معاینه");
+      toast.error(`❌ خطا در ویرایش معاینه: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -218,10 +284,9 @@ export default function ExaminationForm({
       
       toast.success("✅ معاینه با موفقیت حذف شد");
       
-      // اگر معاینه فعلی حذف شده است
-      if (savedData && savedData.id === examinationId && setIsExamined) {
+      if (savedData && savedData.id === examinationId) {
         setIsExamined(false);
-        // فرم را خالی کن
+        setIsFormLocked(false);
         setFormData({
           diagnosis: '',
           weight: '',
@@ -242,12 +307,12 @@ export default function ExaminationForm({
       
     } catch (err) {
       console.error("❌ خطا در حذف معاینه:", err);
-      toast.error("❌ خطا در حذف معاینه");
+      toast.error(`❌ خطا در حذف معاینه: ${err.response?.data?.message || err.message}`);
     }
   };
 
   const patient = patientInfo?.patient || registration.patient || {};
-  const isDisabled = isCompleted || isTreatmentComplete || isSubmitting;
+  const isDisabled = isCompleted || isTreatmentComplete || isSubmitting || isFormLocked;
 
   const getGenderText = (gender) => {
     if (!gender) return '-';
@@ -274,8 +339,78 @@ export default function ExaminationForm({
     return bloodMap[bloodGroup] || bloodGroup;
   };
 
-  // لیست معاینات از parent یا local
   const examinations = allExaminations || [];
+
+  // ============ تابع پرینت ============
+  const handlePrint = (examination) => {
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) {
+      toast.error("❌ پنجره پرینت باز نشد. لطفاً pop-up را فعال کنید.");
+      return;
+    }
+    
+    const printContent = `
+      <html dir="rtl">
+        <head>
+          <title>معاینه مریض</title>
+          <style>
+            body { font-family: 'Tahoma', Arial, sans-serif; padding: 20px; direction: rtl; }
+            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; }
+            .info { margin: 15px 0; }
+            .info-item { margin: 5px 0; }
+            .label { font-weight: bold; color: #555; }
+            .value { color: #000; }
+            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+            th { background-color: #f2f2f2; }
+            .signature { margin-top: 30px; border-top: 1px solid #333; padding-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>🩺 معاینه مریض</h2>
+            <p>تاریخ: ${new Date(examination.examination_date).toLocaleDateString('fa-IR')}</p>
+          </div>
+          
+          <div class="info">
+            <div class="info-item"><span class="label">نام مریض:</span> <span class="value">${patient.first_name || ''} ${patient.last_name || ''}</span></div>
+            <div class="info-item"><span class="label">شماره مراجعه:</span> <span class="value">${registration.visit_number || '-'}</span></div>
+            <div class="info-item"><span class="label">سن:</span> <span class="value">${patient.age || '-'}</span></div>
+            <div class="info-item"><span class="label">جنسیت:</span> <span class="value">${getGenderText(patient.gender)}</span></div>
+          </div>
+          
+          <h3>📋 اطلاعات معاینه</h3>
+          <table>
+            <tr><th>فیلد</th><th>مقدار</th></tr>
+            <tr><td>شکایت اصلی</td><td>${examination.chief_complaint || '-'}</td></tr>
+            <tr><td>تشخیص</td><td>${examination.diagnosis || '-'}</td></tr>
+            <tr><td>وزن</td><td>${examination.weight ? examination.weight + ' کیلوگرم' : '-'}</td></tr>
+            <tr><td>قد</td><td>${examination.height ? examination.height + ' سانتی‌متر' : '-'}</td></tr>
+            <tr><td>BMI</td><td>${examination.bmi || '-'}</td></tr>
+            <tr><td>فشار خون</td><td>${examination.blood_pressure || '-'}</td></tr>
+            <tr><td>حرارت</td><td>${examination.temperature ? examination.temperature + '°C' : '-'}</td></tr>
+            <tr><td>نبض</td><td>${examination.pulse || '-'}</td></tr>
+            <tr><td>تعداد تنفس</td><td>${examination.respiratory_rate || '-'}</td></tr>
+            <tr><td>اکسیژن</td><td>${examination.oxygen ? examination.oxygen + '%' : '-'}</td></tr>
+            <tr><td>تاریخچه بیماری فعلی</td><td>${examination.history_of_present_illness || '-'}</td></tr>
+            <tr><td>سابقه پزشکی قبلی</td><td>${examination.past_medical_history || '-'}</td></tr>
+            <tr><td>معاینه فیزیکی</td><td>${examination.physical_examination || '-'}</td></tr>
+            <tr><td>یادداشت</td><td>${examination.note || '-'}</td></tr>
+          </table>
+          
+          <div class="signature">
+            <p>دکتر: ${examination.user?.name || '-'}</p>
+            <p>امضاء: _________________</p>
+          </div>
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
 
   return (
     <div>
@@ -323,6 +458,19 @@ export default function ExaminationForm({
             {examinations.length}
           </span>
         </div>
+        {isFormLocked && (
+          <div>
+            <span style={{
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              padding: '2px 10px',
+              borderRadius: '12px',
+              fontSize: '11px'
+            }}>
+              🔒 فرم قفل شده
+            </span>
+          </div>
+        )}
       </div>
 
       {/* اطلاعات مریض */}
@@ -402,13 +550,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 70.5"
                 min="0"
                 max="300"
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -427,13 +575,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 175"
                 min="50"
                 max="250"
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -452,13 +600,13 @@ export default function ExaminationForm({
                 placeholder="محاسبه خودکار"
                 min="10"
                 max="60"
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -474,13 +622,13 @@ export default function ExaminationForm({
                 onChange={handleChange}
                 className="form-control"
                 placeholder="مثلاً 120/80"
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -499,13 +647,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 36.5"
                 min="30"
                 max="45"
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -523,13 +671,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 72"
                 min="30"
                 max="200"
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -547,13 +695,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 16"
                 min="5"
                 max="60"
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -571,13 +719,13 @@ export default function ExaminationForm({
                 placeholder="مثلاً 98"
                 min="0"
                 max="100"
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -598,13 +746,13 @@ export default function ExaminationForm({
                 className="form-control"
                 rows="2"
                 placeholder="شکایت اصلی مریض را وارد کنید..."
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
                 required
               />
@@ -621,13 +769,13 @@ export default function ExaminationForm({
                 className="form-control"
                 rows="2"
                 placeholder="تاریخچه بیماری فعلی..."
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -643,13 +791,13 @@ export default function ExaminationForm({
                 className="form-control"
                 rows="2"
                 placeholder="سابقه پزشکی قبلی..."
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -665,13 +813,13 @@ export default function ExaminationForm({
                 className="form-control"
                 rows="2"
                 placeholder="نتایج معاینه فیزیکی..."
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -687,13 +835,13 @@ export default function ExaminationForm({
                 className="form-control"
                 rows="2"
                 placeholder="تشخیص اولیه..."
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
                 required
               />
@@ -710,13 +858,13 @@ export default function ExaminationForm({
                 className="form-control"
                 rows="2"
                 placeholder="یادداشت‌های اضافی..."
-                disabled={isDisabled || isExamined}
+                disabled={isDisabled}
                 style={{ 
                   backgroundColor: '#1a1a2e', 
                   color: 'white', 
                   borderColor: '#374151', 
                   width: '100%',
-                  opacity: (isDisabled || isExamined) ? 0.5 : 1
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               />
             </div>
@@ -828,108 +976,415 @@ export default function ExaminationForm({
         </div>
       </form>
 
-      {/* ============ لیست معاینات ============ */}
+      {/* ============ لیست معاینات با نمایش عرضی/جدولی ============ */}
       {examinations.length > 0 && (
         <div style={{ marginTop: '30px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
-          <h4 style={{ color: '#60a5fa', marginBottom: '15px', fontSize: '16px' }}>
-            📋 تاریخچه معاینات ({examinations.length})
+          <h4 style={{ 
+            color: '#60a5fa', 
+            marginBottom: '15px', 
+            fontSize: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <span>📋</span>
+            تاریخچه معاینات
+            <span style={{
+              backgroundColor: '#374151',
+              color: 'white',
+              padding: '2px 12px',
+              borderRadius: '12px',
+              fontSize: '12px'
+            }}>
+              {examinations.length}
+            </span>
           </h4>
-          
-          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-            {examinations.map((exam) => (
-              <div
-                key={exam.id}
-                style={{
-                  backgroundColor: '#1a2a3a',
-                  padding: '15px 20px',
-                  borderRadius: '8px',
-                  marginBottom: '12px',
-                  borderRight: `4px solid ${exam.id === savedData?.id ? '#10b981' : '#374151'}`,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  flexWrap: 'wrap',
-                  gap: '10px'
-                }}
-              >
-                <div style={{ flex: 1, minWidth: '200px' }}>
-                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                    <span style={{ color: '#9ca3af', fontSize: '12px' }}>
-                      📅 {new Date(exam.examination_date).toLocaleDateString('fa-IR')} - {new Date(exam.examination_date).toLocaleTimeString('fa-IR')}
-                    </span>
-                    {exam.id === savedData?.id && (
-                      <span style={{ backgroundColor: '#10b981', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
-                        آخرین معاینه
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px', fontSize: '13px' }}>
-                    <div>
-                      <span style={{ color: '#9ca3af' }}>تشخیص:</span>
-                      <span style={{ color: 'white', marginRight: '5px' }}>{exam.diagnosis || '-'}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: '#9ca3af' }}>وزن:</span>
-                      <span style={{ color: 'white', marginRight: '5px' }}>{exam.weight ? `${exam.weight} کیلوگرم` : '-'}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: '#9ca3af' }}>فشار خون:</span>
-                      <span style={{ color: 'white', marginRight: '5px' }}>{exam.blood_pressure || '-'}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: '#9ca3af' }}>درجه حرارت:</span>
-                      <span style={{ color: 'white', marginRight: '5px' }}>{exam.temperature ? `${exam.temperature}°C` : '-'}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: '#9ca3af' }}>دکتر:</span>
-                      <span style={{ color: 'white', marginRight: '5px' }}>{exam.user?.name || '-'}</span>
-                    </div>
-                  </div>
-                  {exam.chief_complaint && (
-                    <div style={{ marginTop: '5px', fontSize: '12px', color: '#9ca3af' }}>
-                      شکایت: {exam.chief_complaint}
-                    </div>
-                  )}
-                </div>
-                
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <button
-                    onClick={() => handleEditExamination(exam)}
+
+          {/* ===== جدول عرضی ===== */}
+          <div style={{
+            overflowX: 'auto',
+            borderRadius: '8px',
+            border: '1px solid #374151'
+          }}>
+            <table style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              minWidth: '1200px',
+              fontSize: '13px'
+            }}>
+              {/* هدر جدول */}
+              <thead>
+                <tr style={{
+                  backgroundColor: '#0f1a2a',
+                  borderBottom: '2px solid #374151'
+                }}>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    borderLeft: '1px solid #2a3a4a',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    #
+                  </th>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    borderLeft: '1px solid #2a3a4a',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    📅 تاریخ
+                  </th>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    borderLeft: '1px solid #2a3a4a',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    🩺 تشخیص
+                  </th>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    borderLeft: '1px solid #2a3a4a',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    📋 شکایت
+                  </th>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    borderLeft: '1px solid #2a3a4a',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    ⚖️ وزن
+                  </th>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    borderLeft: '1px solid #2a3a4a',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    💓 فشار
+                  </th>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    borderLeft: '1px solid #2a3a4a',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    💓 نبض
+                  </th>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    borderLeft: '1px solid #2a3a4a',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    🌡️ دما
+                  </th>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    borderLeft: '1px solid #2a3a4a',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    🫁 اکسیژن
+                  </th>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    borderLeft: '1px solid #2a3a4a',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    👨‍⚕️ دکتر
+                  </th>
+                  <th style={{ 
+                    padding: '10px 12px', 
+                    color: '#60a5fa', 
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: '#0f1a2a',
+                    zIndex: 2
+                  }}>
+                    عملیات
+                  </th>
+                </tr>
+              </thead>
+
+              {/* بدنه جدول */}
+              <tbody>
+                {examinations.map((exam, index) => (
+                  <tr
+                    key={exam.id}
                     style={{
-                      backgroundColor: '#3b82f6',
-                      color: 'white',
-                      padding: '6px 12px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
+                      backgroundColor: exam.id === savedData?.id ? '#065f46' : 'transparent',
+                      borderBottom: '1px solid #2a3a4a',
+                      transition: 'background-color 0.3s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (exam.id !== savedData?.id) {
+                        e.currentTarget.style.backgroundColor = '#1a2a3a';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (exam.id !== savedData?.id) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
                     }}
                   >
-                    ✏️ ویرایش
-                  </button>
-                  <button
-                    onClick={() => handleDeleteExamination(exam.id)}
-                    style={{
-                      backgroundColor: '#dc2626',
+                    <td style={{
+                      padding: '10px 12px',
+                      textAlign: 'center',
+                      color: exam.id === savedData?.id ? '#10b981' : '#9ca3af',
+                      fontWeight: 'bold',
+                      fontSize: '14px',
+                      borderLeft: '1px solid #2a3a4a'
+                    }}>
+                      {index + 1}
+                      {exam.id === savedData?.id && (
+                        <span style={{
+                          display: 'block',
+                          fontSize: '9px',
+                          color: '#10b981'
+                        }}>
+                          جاری
+                        </span>
+                      )}
+                    </td>
+                    
+                    <td style={{
+                      padding: '10px 12px',
+                      textAlign: 'center',
                       color: 'white',
-                      padding: '6px 12px',
-                      borderRadius: '4px',
-                      border: 'none',
                       fontSize: '12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    🗑️ حذف
-                  </button>
-                </div>
-              </div>
-            ))}
+                      borderLeft: '1px solid #2a3a4a',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {new Date(exam.examination_date).toLocaleDateString('fa-IR')}
+                    </td>
+                    
+                    <td style={{
+                      padding: '10px 12px',
+                      textAlign: 'center',
+                      color: '#fcd34d',
+                      fontSize: '13px',
+                      fontWeight: 'bold',
+                      borderLeft: '1px solid #2a3a4a',
+                      maxWidth: '150px',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {exam.diagnosis || '-'}
+                    </td>
+                    
+                    <td style={{
+                      padding: '10px 12px',
+                      textAlign: 'center',
+                      color: '#9ca3af',
+                      fontSize: '12px',
+                      borderLeft: '1px solid #2a3a4a',
+                      maxWidth: '150px',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {exam.chief_complaint || '-'}
+                    </td>
+                    
+                    <td style={{
+                      padding: '10px 12px',
+                      textAlign: 'center',
+                      color: 'white',
+                      fontSize: '13px',
+                      fontWeight: 'bold',
+                      borderLeft: '1px solid #2a3a4a'
+                    }}>
+                      {exam.weight ? `${exam.weight}kg` : '-'}
+                    </td>
+                    
+                    <td style={{
+                      padding: '10px 12px',
+                      textAlign: 'center',
+                      color: '#fcd34d',
+                      fontSize: '13px',
+                      fontWeight: 'bold',
+                      borderLeft: '1px solid #2a3a4a'
+                    }}>
+                      {exam.blood_pressure || '-'}
+                    </td>
+                    
+                    <td style={{
+                      padding: '10px 12px',
+                      textAlign: 'center',
+                      color: '#34d399',
+                      fontSize: '13px',
+                      fontWeight: 'bold',
+                      borderLeft: '1px solid #2a3a4a'
+                    }}>
+                      {exam.pulse || '-'}
+                    </td>
+                    
+                    <td style={{
+                      padding: '10px 12px',
+                      textAlign: 'center',
+                      color: '#60a5fa',
+                      fontSize: '13px',
+                      fontWeight: 'bold',
+                      borderLeft: '1px solid #2a3a4a'
+                    }}>
+                      {exam.temperature ? `${exam.temperature}°C` : '-'}
+                    </td>
+                    
+                    <td style={{
+                      padding: '10px 12px',
+                      textAlign: 'center',
+                      color: '#60a5fa',
+                      fontSize: '13px',
+                      fontWeight: 'bold',
+                      borderLeft: '1px solid #2a3a4a'
+                    }}>
+                      {exam.oxygen ? `${exam.oxygen}%` : '-'}
+                    </td>
+                    
+                    <td style={{
+                      padding: '10px 12px',
+                      textAlign: 'center',
+                      color: 'white',
+                      fontSize: '12px',
+                      borderLeft: '1px solid #2a3a4a'
+                    }}>
+                      {exam.user?.name || '-'}
+                    </td>
+                    
+                    <td style={{
+                      padding: '8px 12px',
+                      textAlign: 'center',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => handleEditExamination(exam)}
+                          style={{
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            border: 'none',
+                            fontSize: '11px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDeleteExamination(exam.id)}
+                          style={{
+                            backgroundColor: '#dc2626',
+                            color: 'white',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            border: 'none',
+                            fontSize: '11px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🗑️
+                        </button>
+                        <button
+                          onClick={() => handlePrint(exam)}
+                          style={{
+                            backgroundColor: '#8b5cf6',
+                            color: 'white',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            border: 'none',
+                            fontSize: '11px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🖨️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

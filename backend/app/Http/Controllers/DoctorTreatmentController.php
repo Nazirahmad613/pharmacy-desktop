@@ -29,7 +29,7 @@ class DoctorTreatmentController extends Controller
             ->where('doctor_id', $doctorId)
             ->where('visit_status', 'Doctor')
             ->whereNotNull('sent_to_doctor_at')
-            ->whereDate('queue_date', now()->toDateString())
+          
             ->orderBy('sent_to_doctor_at', 'asc')
             ->orderBy('queue_number', 'asc')
             ->get();
