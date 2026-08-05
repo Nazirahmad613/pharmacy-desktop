@@ -35,6 +35,12 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ViewInventoryController;
 use App\Http\Controllers\ExaminationController;
 
+use App\Http\Controllers\LaboratoryRequestController;
+use App\Http\Controllers\LaboratoryFeeController;
+
+
+
+
 /*
 |--------------------------------------------------------------------------
 | API Test
@@ -54,6 +60,75 @@ Route::post('/login', [AuthController::class, 'login']);
 
 Route::get('/sales-view', [SalesController::class, 'view']);
 Route::get('/sales/chart', [SalesController::class, 'chart']);
+
+
+
+// ============================================================
+// ROUTES درخواست‌های لابراتوار (بخش داکتر)
+// ============================================================
+
+// دریافت درخواست‌های لابراتوار یک مراجعه
+Route::get('/laboratory/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
+
+// ثبت درخواست جدید لابراتوار
+Route::post('/laboratory/{registrationId}', [LaboratoryRequestController::class, 'store']);
+
+// ============================================================
+// ROUTES مدیریت درخواست‌های لابراتوار
+// ============================================================
+
+// لیست تمام درخواست‌ها با فیلتر
+Route::get('/laboratory-requests', [LaboratoryRequestController::class, 'index']);
+
+// نمایش یک درخواست
+Route::get('/laboratory-requests/{id}', [LaboratoryRequestController::class, 'show']);
+
+// ویرایش درخواست
+Route::put('/laboratory-requests/{id}', [LaboratoryRequestController::class, 'update']);
+
+// حذف درخواست
+Route::delete('/laboratory-requests/{id}', [LaboratoryRequestController::class, 'destroy']);
+
+// آپلود نتیجه آزمایش
+Route::post('/laboratory-requests/{id}/upload-result', [LaboratoryRequestController::class, 'uploadResult']);
+
+// ============================================================
+// ROUTES مدیریت فیس‌های لابراتوار
+// ============================================================
+
+// لیست تمام فیس‌ها با فیلتر
+Route::get('/laboratory-fees', [LaboratoryFeeController::class, 'index']);
+
+// آمار فیس‌ها
+Route::get('/laboratory-fees/statistics', [LaboratoryFeeController::class, 'statistics']);
+
+// دریافت فیس‌های یک مراجعه
+Route::get('/laboratory-fees/registration/{registrationId}', [LaboratoryFeeController::class, 'getByRegistration']);
+
+// نمایش یک فیس
+Route::get('/laboratory-fees/{id}', [LaboratoryFeeController::class, 'show']);
+
+// ثبت فیس جدید
+Route::post('/laboratory-fees', [LaboratoryFeeController::class, 'store']);
+
+// ویرایش فیس
+Route::put('/laboratory-fees/{id}', [LaboratoryFeeController::class, 'update']);
+
+// حذف فیس
+Route::delete('/laboratory-fees/{id}', [LaboratoryFeeController::class, 'destroy']);
+
+// ثبت پرداخت جدید برای فیس
+Route::post('/laboratory-fees/{id}/payment', [LaboratoryFeeController::class, 'addPayment']);
+
+
+
+ 
+
+// تایید و ارسال به لابراتوار
+Route::post('/laboratory-fees/{id}/confirm-and-send', [LaboratoryFeeController::class, 'confirmAndSend']);
+
+// دریافت QR Code
+Route::get('/laboratory-fees/{id}/qr-code', [LaboratoryFeeController::class, 'getQRCode']);
 
 /*
 |--------------------------------------------------------------------------
@@ -232,8 +307,6 @@ Route::prefix('prescription-fees')->middleware(['auth:sanctum'])->group(function
     Route::put('/{id}', [PrescriptionFeeController::class, 'update']);
     Route::delete('/{id}', [PrescriptionFeeController::class, 'destroy']);
 });
-
-
 
 
 

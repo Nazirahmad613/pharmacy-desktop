@@ -1,3 +1,4 @@
+// src/app/pages/laboratory/LaboratoryRequest.jsx
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 
@@ -33,17 +34,26 @@ export default function LaboratoryRequest({
   const [patientInfo, setPatientInfo] = useState(null);
   const [editingTest, setEditingTest] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [barcode, setBarcode] = useState(null);
+  const [registrationData, setRegistrationData] = useState(null);
 
-  // ============ دریافت اطلاعات مریض ============
+  // ============ دریافت اطلاعات مریض و بارکد ============
   useEffect(() => {
     if (!registration || !registration.reg_id) return;
 
     const fetchPatientInfo = async () => {
       try {
-        // ✅ اصلاح: استفاده از مسیر صحیح
         const response = await api.get(`/registrations/${registration.reg_id}`);
         const data = response.data?.data || response.data;
         setPatientInfo(data);
+        setRegistrationData(data);
+        
+        // استخراج بارکد از اطلاعات مراجعه
+        if (data.barcode) {
+          setBarcode(data.barcode);
+        } else if (data.patient?.barcode) {
+          setBarcode(data.patient.barcode);
+        }
         
         if (data.visit_status === 'Completed') {
           setIsCompleted(true);
@@ -92,7 +102,7 @@ export default function LaboratoryRequest({
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // ============ ثبت درخواست لابراتوار ============
+  // ============ ثبت درخواست لابراتوار با بارکد ============
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -104,9 +114,9 @@ export default function LaboratoryRequest({
     setLoading(true);
 
     try {
-      // ✅ ارسال به مسیر صحیح
-      const response = await api.post(`/doctor/laboratory/${registration.reg_id}`, {
+      const payload = {
         registration_id: registration.reg_id,
+        patient_id: registration.patient_id || registration.patient?.id,
         test_type: formData.test_type,
         test_name: formData.test_name,
         test_description: formData.test_description,
@@ -114,14 +124,22 @@ export default function LaboratoryRequest({
         special_notes: formData.special_notes,
         request_date: formData.request_date,
         sample_collection_date: formData.sample_collection_date,
-      });
+        barcode: barcode, // ارسال بارکد
+      };
+
+      const response = await api.post(`/doctor/laboratory/${registration.reg_id}`, payload);
 
       if (response.data?.data?.all_tests) {
         setTests(response.data.data.all_tests);
         setIsLabRequested(true);
+        
+        // ذخیره بارکد درخواست
+        if (response.data.data.laboratory_request?.barcode) {
+          setBarcode(response.data.data.laboratory_request.barcode);
+        }
       }
 
-      toast.success("✅ مریض با موفقیت به لابراتوار ارسال شد");
+      toast.success(`✅ درخواست لابراتوار با بارکد ${barcode || 'ثبت شد'} با موفقیت ارسال شد`);
       
       if (onSave) {
         await onSave(formData);
@@ -159,7 +177,10 @@ export default function LaboratoryRequest({
     setLoading(true);
 
     try {
-      const response = await api.put(`/doctor/laboratory/${editingTest.id}`, formData);
+      const response = await api.put(`/doctor/laboratory/${editingTest.id}`, {
+        ...formData,
+        barcode: barcode
+      });
       
       if (response.data?.data?.all_tests) {
         setTests(response.data.data.all_tests);
@@ -253,6 +274,48 @@ export default function LaboratoryRequest({
         🔬 درخواست لابراتوار
       </h3>
 
+      {/* بارکد */}
+      {barcode && (
+        <div style={{
+          backgroundColor: '#1a2a3a',
+          padding: '10px 15px',
+          borderRadius: '8px',
+          marginBottom: '15px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          border: '1px dashed #60a5fa'
+        }}>
+          <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>📊 بارکد:</span>
+          <span style={{ 
+            color: 'white', 
+            fontWeight: 'bold',
+            fontSize: '16px',
+            letterSpacing: '2px',
+            fontFamily: 'monospace'
+          }}>
+            {barcode}
+          </span>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(barcode);
+              toast.success("✅ بارکد کپی شد");
+            }}
+            style={{
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              padding: '4px 12px',
+              borderRadius: '4px',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            📋 کپی
+          </button>
+        </div>
+      )}
+
       {/* وضعیت */}
       <div style={{
         display: 'flex',
@@ -293,6 +356,19 @@ export default function LaboratoryRequest({
             {isCompleted ? '✅ ختم شده' : '⏳ در حال 진행'}
           </span>
         </div>
+        {barcode && (
+          <div>
+            <span style={{ color: '#9ca3af', fontSize: '12px' }}>بارکد:</span>
+            <span style={{
+              color: '#fcd34d',
+              fontWeight: 'bold',
+              marginRight: '8px',
+              fontSize: '13px'
+            }}>
+              {barcode}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* اطلاعات خلاصه مریض */}
@@ -341,7 +417,7 @@ export default function LaboratoryRequest({
         </div>
       </div>
 
-      {/* فرم ثبت درخواست */}
+      {/* فرم ثبت درخواست - همانند قبل */}
       <form onSubmit={handleSubmit}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           {/* ستون راست */}
@@ -525,7 +601,7 @@ export default function LaboratoryRequest({
           </div>
         </div>
 
-        {/* ============ دکمه‌های ناوبری ============ */}
+        {/* دکمه‌های ناوبری */}
         <div style={{ 
           display: 'flex', 
           gap: '10px', 
@@ -630,7 +706,7 @@ export default function LaboratoryRequest({
         </div>
       </form>
 
-      {/* ============ لیست تست‌های لابراتوار ============ */}
+      {/* لیست تست‌های لابراتوار - همانند قبل */}
       {tests.length > 0 && (
         <div style={{ marginTop: '30px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
           <h4 style={{ color: '#60a5fa', marginBottom: '15px', fontSize: '16px' }}>
@@ -671,6 +747,11 @@ export default function LaboratoryRequest({
                     <span style={{ color: '#9ca3af', fontSize: '12px' }}>
                       📅 {test.request_date ? new Date(test.request_date).toLocaleDateString('fa-IR') : '-'}
                     </span>
+                    {test.barcode && (
+                      <span style={{ color: '#fcd34d', fontSize: '11px', fontFamily: 'monospace' }}>
+                        🏷️ {test.barcode}
+                      </span>
+                    )}
                   </div>
                   {test.test_name && (
                     <div style={{ color: 'white', fontSize: '14px' }}>
@@ -720,7 +801,7 @@ export default function LaboratoryRequest({
         </div>
       )}
 
-      {/* ============ مودال ویرایش ============ */}
+      {/* مودال ویرایش - همانند قبل */}
       {showEditModal && (
         <div style={{
           position: 'fixed',
@@ -746,6 +827,21 @@ export default function LaboratoryRequest({
           }}>
             <h4 style={{ color: '#60a5fa', marginBottom: '20px' }}>✏️ ویرایش تست لابراتوار</h4>
             
+            {barcode && (
+              <div style={{
+                backgroundColor: '#1a2a3a',
+                padding: '8px 15px',
+                borderRadius: '6px',
+                marginBottom: '15px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              }}>
+                <span style={{ color: '#9ca3af', fontSize: '12px' }}>بارکد:</span>
+                <span style={{ color: '#fcd34d', fontFamily: 'monospace' }}>{barcode}</span>
+              </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
               <div>
                 <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>

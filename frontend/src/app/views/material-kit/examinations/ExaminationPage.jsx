@@ -350,59 +350,103 @@ export default function TreatmentPage() {
   };
 
   // ============ ثبت اطلاعات مرحله فعلی ============
-  const saveCurrentStep = async (data) => {
-    setIsSubmitting(true);
-    try {
-      const currentStep = STEPS[treatmentProgress.currentStepIndex];
-      const regId = selectedRegistration?.reg_id;
-      
-      const response = await api.post(`/doctor/${currentStep.key}/save`, {
-        registration_id: regId,
-        ...data
-      });
-      
-      // به‌روزرسانی داده‌های معاینه در activePatients
-      if (response.data?.data && regId) {
-        if (currentStep.key === 'examination') {
-          setActivePatients(prev => ({
-            ...prev,
-            [regId]: {
-              ...prev[regId],
-              examination: {
-                data: response.data.data.examination || null,
-                allExaminations: response.data.data.all_examinations || [],
-                isExamined: !!response.data.data.examination
-              }
-            }
-          }));
-        }
-      }
-      
-      toast.success(`✅ اطلاعات ${currentStep.label} با موفقیت ثبت شد`);
-      
-      // به‌روزرسانی وضعیت
-      const newProgress = {
-        ...treatmentProgress,
-        completedSteps: [...treatmentProgress.completedSteps, currentStep.key],
-        savedData: {
-          ...treatmentProgress.savedData,
-          [currentStep.key]: data
-        }
-      };
-      await updateTreatmentProgress(newProgress);
-      
-      // ذخیره مریض‌های فعال
-      saveActivePatients(activePatients);
-      
-      return response.data;
-    } catch (err) {
-      console.error("خطا در ثبت اطلاعات:", err);
-      toast.error(`❌ خطا در ثبت اطلاعات: ${err.response?.data?.message || err.message}`);
-      throw err;
-    } finally {
-      setIsSubmitting(false);
+  // ============ ثبت اطلاعات مرحله فعلی ============
+const saveCurrentStep = async (data) => {
+  setIsSubmitting(true);
+  try {
+    const currentStep = STEPS[treatmentProgress.currentStepIndex];
+    const regId = selectedRegistration?.reg_id;
+    
+    if (!regId) {
+      toast.error("❌ شناسه مراجعه یافت نشد");
+      throw new Error("شناسه مراجعه یافت نشد");
     }
-  };
+    
+    let url = '';
+    let payload = { ...data };
+    
+    // تعیین مسیر مناسب برای هر مرحله
+    if (currentStep.key === 'laboratory') {
+      // مسیر صحیح برای ثبت درخواست لابراتوار
+      url = `/doctor/laboratory/${regId}`;
+      payload = {
+        registration_id: regId,
+        patient_id: selectedRegistration.patient_id || selectedRegistration.patient?.id,
+        ...data
+      };
+    } else if (currentStep.key === 'examination') {
+      url = `/doctor/examination/${regId}`;
+    } else if (currentStep.key === 'radiology') {
+      url = `/doctor/radiology/${regId}`;
+    } else if (currentStep.key === 'pres_insert') {
+      url = `/doctor/prescription/${regId}`;
+    } else if (currentStep.key === 'followup') {
+      url = `/doctor/followup/${regId}`;
+    } else if (currentStep.key === 'admission') {
+      url = `/doctor/admission/${regId}`;
+    } else if (currentStep.key === 'operation') {
+      url = `/doctor/operation/${regId}`;
+    } else {
+      // fallback
+      url = `/doctor/${currentStep.key}/save`;
+    }
+    
+    const response = await api.post(url, payload);
+    
+    // به‌روزرسانی داده‌ها در activePatients
+    if (response.data?.data && regId) {
+      if (currentStep.key === 'examination') {
+        setActivePatients(prev => ({
+          ...prev,
+          [regId]: {
+            ...prev[regId],
+            examination: {
+              data: response.data.data.examination || null,
+              allExaminations: response.data.data.all_examinations || [],
+              isExamined: !!response.data.data.examination
+            }
+          }
+        }));
+      } else if (currentStep.key === 'laboratory') {
+        setActivePatients(prev => ({
+          ...prev,
+          [regId]: {
+            ...prev[regId],
+            laboratory: {
+              data: response.data.data.laboratory_request || null,
+              allTests: response.data.data.all_tests || [],
+              isRequested: !!response.data.data.laboratory_request
+            }
+          }
+        }));
+      }
+    }
+    
+    toast.success(`✅ اطلاعات ${currentStep.label} با موفقیت ثبت شد`);
+    
+    // به‌روزرسانی وضعیت
+    const newProgress = {
+      ...treatmentProgress,
+      completedSteps: [...treatmentProgress.completedSteps, currentStep.key],
+      savedData: {
+        ...treatmentProgress.savedData,
+        [currentStep.key]: data
+      }
+    };
+    await updateTreatmentProgress(newProgress);
+    
+    // ذخیره مریض‌های فعال
+    saveActivePatients(activePatients);
+    
+    return response.data;
+  } catch (err) {
+    console.error("خطا در ثبت اطلاعات:", err);
+    toast.error(`❌ خطا در ثبت اطلاعات: ${err.response?.data?.message || err.message}`);
+    throw err;
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // ============ ختم معالجه ============
   const finishTreatment = async () => {

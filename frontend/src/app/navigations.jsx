@@ -87,8 +87,42 @@ const navigations = [
     },
   ],
 },
-
-
+{
+  name: "رادیولوژی",
+  icon: <LocalHospitalIcon />,
+  children: [
+    {
+      name: "درخواست‌های رادیولوژی",
+      path: "/material/radiology-request",
+      icon: <AssignmentIcon />,
+    },
+    {
+      name: "X-Ray",
+      path: "/material/radiology-xray",
+      icon: <LocalHospitalIcon />,
+    },
+    {
+      name: "Ultrasound",
+      path: "/material/radiology-ultrasound",
+      icon: <LocalHospitalIcon />,
+    },
+    {
+      name: "CT Scan",
+      path: "/material/radiology-ct",
+      icon: <LocalHospitalIcon />,
+    },
+    {
+      name: "MRI",
+      path: "/material/radiology-mri",
+      icon: <LocalHospitalIcon />,
+    },
+    {
+      name: "ثبت نتایج رادیولوژی",
+      path: "/material/radiology-results",
+      icon: <DescriptionIcon />,
+    },
+  ],
+},
 {
   label: "مدیریت مالی",
   type: "label",
@@ -239,12 +273,12 @@ const navigations = [
   ],
 },
 
-{
+ {
   name: "لابراتوار",
   icon: <ScienceIcon />,
   children: [
     {
-      name: "ثبت درخواست لابراتوار",
+      name: "درخواست‌های لابراتوار",
       path: "/material/lab-request",
       icon: <AssignmentIcon />,
     },
@@ -288,7 +322,6 @@ const navigations = [
       path: "/material/lab-urine",
       icon: <ScienceIcon />,
     },
-    
     {
       name: "گروپ خون",
       path: "/material/lab-blood-group",
