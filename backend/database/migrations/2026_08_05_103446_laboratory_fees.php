@@ -20,7 +20,7 @@ return new class extends Migration
             $table->decimal('amount', 12, 2);
             $table->decimal('paid_amount', 12, 2)->default(0);
             $table->decimal('discount', 5, 2)->default(0);
-            $table->decimal('remaining_amount', 12, 2)->virtualAs('amount - paid_amount - (amount * discount / 100)');
+            $table->decimal('remaining_amount', 12, 2)->default(0);
             
             // Payment
             $table->enum('payment_method', ['cash', 'card', 'online', 'insurance'])->default('cash');
@@ -33,6 +33,15 @@ return new class extends Migration
             // Barcode
             $table->string('barcode')->unique()->nullable();
             
+            // QR Code
+            $table->string('qr_code_path')->nullable();
+            $table->text('qr_code_data')->nullable();
+            
+            // Timestamps for tracking
+            $table->timestamp('confirmed_at')->nullable();
+            $table->timestamp('sent_to_lab_at')->nullable();
+            $table->timestamp('result_received_at')->nullable();
+            
             // Timestamps
             $table->timestamps();
             $table->softDeletes();
@@ -41,6 +50,8 @@ return new class extends Migration
             $table->index(['registration_id', 'payment_status']);
             $table->index(['patient_id', 'payment_status']);
             $table->index('barcode');
+            $table->index('laboratory_request_id');
+            $table->index(['payment_status', 'created_at']);
         });
     }
 

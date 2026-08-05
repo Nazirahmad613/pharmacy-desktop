@@ -20,30 +20,26 @@ class LaboratoryRequestController extends Controller
     {
         $query = LaboratoryRequest::with(['patient', 'doctor', 'fee']);
 
-        // فیلتر بر اساس مراجعه
         if ($request->has('registration_id')) {
             $query->where('registration_id', $request->registration_id);
         }
 
-        // فیلتر بر اساس مریض
         if ($request->has('patient_id')) {
             $query->where('patient_id', $request->patient_id);
         }
 
-        // فیلتر بر اساس وضعیت
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
 
-        // فیلتر بر اساس تاریخ
         if ($request->has('from_date')) {
             $query->whereDate('request_date', '>=', $request->from_date);
         }
+
         if ($request->has('to_date')) {
             $query->whereDate('request_date', '<=', $request->to_date);
         }
 
-        // جستجو
         if ($request->has('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -82,14 +78,39 @@ class LaboratoryRequestController extends Controller
         }
 
         $tests = LaboratoryRequest::where('registration_id', $registrationId)
+            ->with(['fee'])
             ->orderBy('created_at', 'desc')
             ->get();
+
+        $testsWithFee = $tests->map(function($test) {
+            return [
+                'id' => $test->id,
+                'registration_id' => $test->registration_id,
+                'patient_id' => $test->patient_id,
+                'doctor_id' => $test->doctor_id,
+                'test_type' => $test->test_type,
+                'test_type_label' => $test->test_type_label,
+                'test_name' => $test->test_name,
+                'test_description' => $test->test_description,
+                'clinical_indication' => $test->clinical_indication,
+                'special_notes' => $test->special_notes,
+                'request_date' => $test->request_date,
+                'sample_collection_date' => $test->sample_collection_date,
+                'status' => $test->status,
+                'status_label' => $test->status_label,
+                'barcode' => $test->barcode,
+                'fee_id' => $test->fee_id,
+                'has_fee' => $test->fee_id !== null,
+                'created_at' => $test->created_at,
+                'updated_at' => $test->updated_at,
+            ];
+        });
 
         return response()->json([
             'success' => true,
             'data' => [
                 'registration' => $registration,
-                'tests' => $tests,
+                'tests' => $testsWithFee,
                 'has_tests' => $tests->count() > 0,
                 'total_tests' => $tests->count()
             ],
@@ -128,8 +149,7 @@ class LaboratoryRequestController extends Controller
             ], 422);
         }
 
-        // تولید بارکد یکتا
-        $barcode = $this->generateBarcode();
+        $barcode = $request->barcode ?? $this->generateBarcode();
 
         $laboratoryRequest = LaboratoryRequest::create([
             'registration_id' => $registration->id,
@@ -144,15 +164,32 @@ class LaboratoryRequestController extends Controller
             'sample_collection_date' => $request->sample_collection_date,
             'status' => 'pending',
             'barcode' => $barcode,
+            'fee_id' => null,
         ]);
 
-        // بارگذاری روابط
         $laboratoryRequest->load(['patient', 'doctor']);
 
-        // دریافت همه تست‌های این مراجعه
         $allTests = LaboratoryRequest::where('registration_id', $registrationId)
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->map(function($test) {
+                return [
+                    'id' => $test->id,
+                    'test_type' => $test->test_type,
+                    'test_type_label' => $test->test_type_label,
+                    'test_name' => $test->test_name,
+                    'test_description' => $test->test_description,
+                    'clinical_indication' => $test->clinical_indication,
+                    'special_notes' => $test->special_notes,
+                    'request_date' => $test->request_date,
+                    'sample_collection_date' => $test->sample_collection_date,
+                    'status' => $test->status,
+                    'barcode' => $test->barcode,
+                    'fee_id' => $test->fee_id,
+                    'has_fee' => $test->fee_id !== null,
+                    'created_at' => $test->created_at,
+                ];
+            });
 
         return response()->json([
             'success' => true,
@@ -200,7 +237,6 @@ class LaboratoryRequestController extends Controller
             ], 404);
         }
 
-        // بررسی اینکه آیا درخواست قابل ویرایش است
         if (in_array($laboratoryRequest->status, ['completed', 'cancelled'])) {
             return response()->json([
                 'success' => false,
@@ -219,6 +255,7 @@ class LaboratoryRequestController extends Controller
             'status' => 'sometimes|in:pending,sample_taken,in_progress,completed,cancelled,rejected',
             'results' => 'nullable|string',
             'result_date' => 'nullable|date',
+            'fee_id' => 'nullable|exists:laboratory_fees,id',
         ]);
 
         if ($validator->fails()) {
@@ -231,17 +268,33 @@ class LaboratoryRequestController extends Controller
 
         $laboratoryRequest->update($request->all());
 
-        // اگر وضعیت به completed تغییر کرد و نتیجه وارد شد
         if ($request->has('status') && $request->status === 'completed' && !$request->has('result_date')) {
             $laboratoryRequest->update(['result_date' => Carbon::now()->toDateString()]);
         }
 
         $laboratoryRequest->load(['patient', 'doctor']);
 
-        // دریافت همه تست‌های این مراجعه
         $allTests = LaboratoryRequest::where('registration_id', $laboratoryRequest->registration_id)
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->map(function($test) {
+                return [
+                    'id' => $test->id,
+                    'test_type' => $test->test_type,
+                    'test_type_label' => $test->test_type_label,
+                    'test_name' => $test->test_name,
+                    'test_description' => $test->test_description,
+                    'clinical_indication' => $test->clinical_indication,
+                    'special_notes' => $test->special_notes,
+                    'request_date' => $test->request_date,
+                    'sample_collection_date' => $test->sample_collection_date,
+                    'status' => $test->status,
+                    'barcode' => $test->barcode,
+                    'fee_id' => $test->fee_id,
+                    'has_fee' => $test->fee_id !== null,
+                    'created_at' => $test->created_at,
+                ];
+            });
 
         return response()->json([
             'success' => true,
@@ -269,21 +322,46 @@ class LaboratoryRequestController extends Controller
             ], 404);
         }
 
-        // بررسی اینکه آیا درخواست قابل حذف است
-        if (in_array($laboratoryRequest->status, ['completed', 'in_progress'])) {
+        if (in_array($laboratoryRequest->status, ['completed', 'in_progress', 'sample_taken', 'sent_to_lab'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'درخواست در حال انجام یا تکمیل شده قابل حذف نیست'
+                'message' => 'درخواست در حال انجام، نمونه گرفته شده، ارسال به لابراتوار یا تکمیل شده قابل حذف نیست'
             ], 400);
         }
 
         $registrationId = $laboratoryRequest->registration_id;
+        
+        // بررسی وجود فیس
+        if ($laboratoryRequest->fee_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'این درخواست دارای فیس ثبت شده است، ابتدا فیس را حذف کنید'
+            ], 400);
+        }
+
         $laboratoryRequest->delete();
 
-        // دریافت تست‌های باقی‌مانده
         $remainingTests = LaboratoryRequest::where('registration_id', $registrationId)
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->map(function($test) {
+                return [
+                    'id' => $test->id,
+                    'test_type' => $test->test_type,
+                    'test_type_label' => $test->test_type_label,
+                    'test_name' => $test->test_name,
+                    'test_description' => $test->test_description,
+                    'clinical_indication' => $test->clinical_indication,
+                    'special_notes' => $test->special_notes,
+                    'request_date' => $test->request_date,
+                    'sample_collection_date' => $test->sample_collection_date,
+                    'status' => $test->status,
+                    'barcode' => $test->barcode,
+                    'fee_id' => $test->fee_id,
+                    'has_fee' => $test->fee_id !== null,
+                    'created_at' => $test->created_at,
+                ];
+            });
 
         return response()->json([
             'success' => true,
@@ -340,6 +418,48 @@ class LaboratoryRequestController extends Controller
     }
 
     /**
+     * ارسال به لابراتوار
+     */
+    public function sendToLab(Request $request, $id)
+    {
+        $laboratoryRequest = LaboratoryRequest::find($id);
+        
+        if (!$laboratoryRequest) {
+            return response()->json([
+                'success' => false,
+                'message' => 'درخواست لابراتوار یافت نشد'
+            ], 404);
+        }
+
+        if (!$laboratoryRequest->fee_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'ابتدا باید فیس این درخواست ثبت شود'
+            ], 400);
+        }
+
+        if ($laboratoryRequest->status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => 'این درخواست قبلاً ارسال شده است'
+            ], 400);
+        }
+
+        $laboratoryRequest->update([
+            'status' => 'sent_to_lab',
+            'sent_to_lab_at' => Carbon::now()
+        ]);
+
+        $laboratoryRequest->load(['patient', 'doctor', 'fee']);
+
+        return response()->json([
+            'success' => true,
+            'data' => $laboratoryRequest,
+            'message' => 'درخواست با موفقیت به لابراتوار ارسال شد'
+        ]);
+    }
+
+    /**
      * تولید بارکد یکتا
      */
     private function generateBarcode()
@@ -349,7 +469,6 @@ class LaboratoryRequestController extends Controller
         $random = Str::random(6);
         $barcode = $prefix . $date . $random;
 
-        // اطمینان از یکتا بودن
         while (LaboratoryRequest::where('barcode', $barcode)->exists()) {
             $random = Str::random(6);
             $barcode = $prefix . $date . $random;
@@ -357,4 +476,4 @@ class LaboratoryRequestController extends Controller
 
         return $barcode;
     }
-}
+}   

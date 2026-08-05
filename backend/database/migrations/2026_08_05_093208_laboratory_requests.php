@@ -34,7 +34,10 @@ return new class extends Migration
                 'in_progress',
                 'completed',
                 'cancelled',
-                'rejected'
+                'rejected',
+                'sent_to_lab',
+                'waiting_for_result',
+                'result_ready'
             ])->default('pending');
             
             // Results
@@ -45,6 +48,11 @@ return new class extends Migration
             // Barcode
             $table->string('barcode')->unique()->nullable();
             
+            // ============ فیلدهای جدید ============
+            $table->foreignId('fee_id')->nullable()->constrained('laboratory_fees')->onDelete('set null');
+            $table->timestamp('sent_to_lab_at')->nullable();
+            $table->timestamp('result_received_at')->nullable();
+            
             // Timestamps
             $table->timestamps();
             $table->softDeletes();
@@ -53,6 +61,7 @@ return new class extends Migration
             $table->index(['registration_id', 'status']);
             $table->index(['patient_id', 'status']);
             $table->index('barcode');
+            $table->index('fee_id');
         });
     }
 

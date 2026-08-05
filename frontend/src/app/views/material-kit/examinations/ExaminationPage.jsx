@@ -367,7 +367,6 @@ const saveCurrentStep = async (data) => {
     
     // تعیین مسیر مناسب برای هر مرحله
     if (currentStep.key === 'laboratory') {
-      // مسیر صحیح برای ثبت درخواست لابراتوار
       url = `/doctor/laboratory/${regId}`;
       payload = {
         registration_id: regId,
@@ -387,7 +386,6 @@ const saveCurrentStep = async (data) => {
     } else if (currentStep.key === 'operation') {
       url = `/doctor/operation/${regId}`;
     } else {
-      // fallback
       url = `/doctor/${currentStep.key}/save`;
     }
     
@@ -441,7 +439,15 @@ const saveCurrentStep = async (data) => {
     return response.data;
   } catch (err) {
     console.error("خطا در ثبت اطلاعات:", err);
-    toast.error(`❌ خطا در ثبت اطلاعات: ${err.response?.data?.message || err.message}`);
+    // نمایش خطاهای اعتبارسنجی
+    if (err.response?.data?.errors) {
+      const errors = err.response.data.errors;
+      Object.keys(errors).forEach(key => {
+        toast.error(`❌ ${key}: ${errors[key][0]}`);
+      });
+    } else {
+      toast.error(`❌ خطا در ثبت اطلاعات: ${err.response?.data?.message || err.message}`);
+    }
     throw err;
   } finally {
     setIsSubmitting(false);

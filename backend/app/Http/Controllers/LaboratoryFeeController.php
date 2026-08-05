@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\LaboratoryFee;
 use App\Models\Registration;
 use App\Models\LaboratoryRequest;
-use App\Models\JournalEntry;
+use App\Models\Journal;
  
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -140,85 +140,86 @@ class LaboratoryFeeController extends Controller
     /**
      * ثبت فیس جدید لابراتوار
      */
-    public function store(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'registration_id' => 'required|exists:registrations,id',
-            'patient_id' => 'required|exists:patients,id',
-            'laboratory_request_id' => 'nullable|exists:laboratory_requests,id',
-            'amount' => 'required|numeric|min:0',
-            'paid_amount' => 'nullable|numeric|min:0',
-            'discount' => 'nullable|numeric|min:0|max:100',
-            'payment_method' => 'required|in:cash,card,online,insurance',
-            'description' => 'nullable|string',
-            'note' => 'nullable|string',
-            'barcode' => 'nullable|string',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در اعتبارسنجی',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $paidAmount = $request->paid_amount ?? 0;
-        $discount = $request->discount ?? 0;
-        $amount = $request->amount;
-        $remainingAmount = $amount - $paidAmount - ($amount * $discount / 100);
-
-        $paymentStatus = 'pending';
-        if ($remainingAmount <= 0) {
-            $paymentStatus = 'paid';
-        } elseif ($paidAmount > 0 && $remainingAmount > 0) {
-            $paymentStatus = 'partial';
-        }
-
-        $barcode = $request->barcode ?? $this->generateBarcode();
-
-        $fee = LaboratoryFee::create([
-            'registration_id' => $request->registration_id,
-            'patient_id' => $request->patient_id,
-            'laboratory_request_id' => $request->laboratory_request_id,
-            'amount' => $amount,
-            'paid_amount' => $paidAmount,
-            'discount' => $discount,
-            'payment_method' => $request->payment_method,
-            'payment_status' => $paymentStatus,
-            'description' => $request->description,
-            'note' => $request->note,
-            'barcode' => $barcode,
-        ]);
-
-        // تولید QR Code
-        $qrCode = $this->generateQRCode($fee);
-
-        // همگام‌سازی با ژورنال
-        $this->syncJournal($fee);
-
-        $fee->load(['patient', 'registration', 'laboratoryRequest']);
-        
-        // اضافه کردن QR Code به پاسخ
-        $fee->qr_code = $qrCode;
-
-        // اگر درخواست لابراتوار مرتبط وجود داشت، وضعیت آن را به روزرسانی کن
-        if ($request->laboratory_request_id && $paymentStatus === 'paid') {
-            $labRequest = LaboratoryRequest::find($request->laboratory_request_id);
-            if ($labRequest) {
-                $labRequest->update([
-                    'status' => 'sample_taken',
-                    'fee_id' => $fee->id
-                ]);
-            }
-        }
-
+    public function store(Request $request, $registrationId)
+{
+    $registration = Registration::find($registrationId);
+    if (!$registration) {
         return response()->json([
-            'success' => true,
-            'data' => $fee,
-            'message' => 'فیس لابراتوار با موفقیت ثبت شد'
-        ], 201);
+            'success' => false,
+            'message' => 'مراجعه یافت نشد'
+        ], 404);
     }
+
+    $validator = Validator::make($request->all(), [
+        'test_type' => 'required|string|in:blood,urine,stool,biochemistry,hormonal,microbial,pathology,genetic,imaging,other',
+        'test_name' => 'nullable|string|max:255',
+        'test_description' => 'nullable|string',
+        'clinical_indication' => 'nullable|string',
+        'special_notes' => 'nullable|string',
+        'request_date' => 'nullable|date',
+        'sample_collection_date' => 'nullable|date',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'success' => false,
+            'message' => 'خطا در اعتبارسنجی',
+            'errors' => $validator->errors()
+        ], 422);
+    }
+
+    $barcode = $request->barcode ?? $this->generateBarcode();
+
+    $laboratoryRequest = LaboratoryRequest::create([
+        'registration_id' => $registration->id,
+        'patient_id' => $registration->patient_id,
+        'doctor_id' => auth()->id(),
+        'test_type' => $request->test_type,
+        'test_name' => $request->test_name,
+        'test_description' => $request->test_description,
+        'clinical_indication' => $request->clinical_indication,
+        'special_notes' => $request->special_notes,
+        'request_date' => $request->request_date ?? Carbon::now()->toDateString(),
+        'sample_collection_date' => $request->sample_collection_date,
+        'status' => 'pending',
+        'barcode' => $barcode,
+        'fee_id' => null, // مقداردهی اولیه null
+    ]);
+
+    $laboratoryRequest->load(['patient', 'doctor']);
+
+    // دریافت همه تست‌های این مراجعه با fee_id
+    $allTests = LaboratoryRequest::where('registration_id', $registrationId)
+        ->get()
+        ->map(function($test) {
+            return [
+                'id' => $test->id,
+                'test_type' => $test->test_type,
+                'test_type_label' => $test->test_type_label,
+                'test_name' => $test->test_name,
+                'test_description' => $test->test_description,
+                'clinical_indication' => $test->clinical_indication,
+                'special_notes' => $test->special_notes,
+                'request_date' => $test->request_date,
+                'sample_collection_date' => $test->sample_collection_date,
+                'status' => $test->status,
+                'barcode' => $test->barcode,
+                'fee_id' => $test->fee_id, // اضافه کردن fee_id
+                'created_at' => $test->created_at,
+            ];
+        });
+
+    return response()->json([
+        'success' => true,
+        'data' => [
+            'laboratory_request' => $laboratoryRequest,
+            'all_tests' => $allTests,
+            'has_tests' => $allTests->count() > 0,
+            'total_tests' => $allTests->count()
+        ],
+        'message' => 'درخواست لابراتوار با موفقیت ثبت شد'
+    ], 201);
+}
 
     /**
      * نمایش یک فیس خاص
