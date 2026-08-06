@@ -48,7 +48,6 @@ export default function LaboratoryRequest({
         setPatientInfo(data);
         setRegistrationData(data);
         
-        // استخراج بارکد از اطلاعات مراجعه
         if (data.barcode) {
           setBarcode(data.barcode);
         } else if (data.patient?.barcode) {
@@ -72,6 +71,7 @@ export default function LaboratoryRequest({
 
     const loadTests = async () => {
       try {
+        // ✅ تغییر آدرس: حذف پیشوند doctor
         const response = await api.get(`/doctor/laboratory/${registration.reg_id}`);
         if (response.data?.success && response.data?.data) {
           setTests(response.data.data.tests || []);
@@ -102,7 +102,7 @@ export default function LaboratoryRequest({
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // ============ ثبت درخواست لابراتوار با بارکد ============
+  // ============ ثبت درخواست لابراتوار ============
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -114,9 +114,8 @@ export default function LaboratoryRequest({
     setLoading(true);
 
     try {
-      const payload = {
-        registration_id: registration.reg_id,
-        patient_id: registration.patient_id || registration.patient?.id,
+      // ✅ تغییر آدرس: حذف پیشوند doctor و ارسال در URL
+     const response = await api.post(`/doctor/laboratory/${registration.reg_id}`, {
         test_type: formData.test_type,
         test_name: formData.test_name,
         test_description: formData.test_description,
@@ -124,16 +123,14 @@ export default function LaboratoryRequest({
         special_notes: formData.special_notes,
         request_date: formData.request_date,
         sample_collection_date: formData.sample_collection_date,
-        barcode: barcode, // ارسال بارکد
-      };
-
-      const response = await api.post(`/doctor/laboratory/${registration.reg_id}`, payload);
+        // barcode به صورت خودکار در سرور تولید می‌شود، اما اگر نیاز باشد ارسال می‌کنیم
+        barcode: barcode,
+      });
 
       if (response.data?.data?.all_tests) {
         setTests(response.data.data.all_tests);
         setIsLabRequested(true);
         
-        // ذخیره بارکد درخواست
         if (response.data.data.laboratory_request?.barcode) {
           setBarcode(response.data.data.laboratory_request.barcode);
         }
@@ -177,8 +174,15 @@ export default function LaboratoryRequest({
     setLoading(true);
 
     try {
-      const response = await api.put(`/doctor/laboratory/${editingTest.id}`, {
-        ...formData,
+      // ✅ تغییر آدرس: استفاده از مسیر laboratory-requests
+      const response = await api.put(`/laboratory-requests/${editingTest.id}`, {
+        test_type: formData.test_type,
+        test_name: formData.test_name,
+        test_description: formData.test_description,
+        clinical_indication: formData.clinical_indication,
+        special_notes: formData.special_notes,
+        request_date: formData.request_date,
+        sample_collection_date: formData.sample_collection_date,
         barcode: barcode
       });
       
@@ -206,7 +210,8 @@ export default function LaboratoryRequest({
     }
 
     try {
-      const response = await api.delete(`/doctor/laboratory/${testId}`);
+      // ✅ تغییر آدرس: استفاده از مسیر laboratory-requests
+      const response = await api.delete(`/laboratory-requests/${testId}`);
       
       if (response.data?.data) {
         setTests(response.data.data);
@@ -236,7 +241,6 @@ export default function LaboratoryRequest({
     return genderMap[gender] || gender;
   };
 
-  // لیست انواع تست
   const testTypes = [
     { value: 'blood', label: '🩸 آزمایش خون' },
     { value: 'urine', label: '💧 آزمایش ادرار' },
@@ -274,7 +278,6 @@ export default function LaboratoryRequest({
         🔬 درخواست لابراتوار
       </h3>
 
-      {/* بارکد */}
       {barcode && (
         <div style={{
           backgroundColor: '#1a2a3a',
@@ -316,7 +319,6 @@ export default function LaboratoryRequest({
         </div>
       )}
 
-      {/* وضعیت */}
       <div style={{
         display: 'flex',
         gap: '15px',
@@ -371,7 +373,6 @@ export default function LaboratoryRequest({
         )}
       </div>
 
-      {/* اطلاعات خلاصه مریض */}
       <div style={{
         backgroundColor: '#1a2a3a',
         padding: '15px 20px',
@@ -417,10 +418,8 @@ export default function LaboratoryRequest({
         </div>
       </div>
 
-      {/* فرم ثبت درخواست - همانند قبل */}
       <form onSubmit={handleSubmit}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          {/* ستون راست */}
           <div>
             <h4 style={{ color: '#60a5fa', marginBottom: '15px', fontSize: '15px' }}>📋 اطلاعات درخواست</h4>
             
@@ -523,7 +522,6 @@ export default function LaboratoryRequest({
             </div>
           </div>
 
-          {/* ستون چپ */}
           <div>
             <h4 style={{ color: '#60a5fa', marginBottom: '15px', fontSize: '15px' }}>📝 توضیحات</h4>
             
@@ -601,7 +599,6 @@ export default function LaboratoryRequest({
           </div>
         </div>
 
-        {/* دکمه‌های ناوبری */}
         <div style={{ 
           display: 'flex', 
           gap: '10px', 
@@ -706,7 +703,6 @@ export default function LaboratoryRequest({
         </div>
       </form>
 
-      {/* لیست تست‌های لابراتوار - همانند قبل */}
       {tests.length > 0 && (
         <div style={{ marginTop: '30px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
           <h4 style={{ color: '#60a5fa', marginBottom: '15px', fontSize: '16px' }}>
@@ -801,7 +797,6 @@ export default function LaboratoryRequest({
         </div>
       )}
 
-      {/* مودال ویرایش - همانند قبل */}
       {showEditModal && (
         <div style={{
           position: 'fixed',

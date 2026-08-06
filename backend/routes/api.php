@@ -138,6 +138,14 @@ Route::middleware('auth:sanctum')->group(function () {
         
         // ===== مسیرهای درمانی (DoctorTreatmentController) =====
         Route::get('/queue', [DoctorTreatmentController::class, 'doctorQueue']);
+        Route::post('/treatment/progress/save', [
+    DoctorTreatmentController::class,
+    'saveProgress'
+]);
+Route::get('/treatment/progress/{registrationId}', [
+    DoctorTreatmentController::class,
+    'getProgress'
+]);
         Route::get('/patient/{reg_id}', [DoctorTreatmentController::class, 'show']);
         Route::post('/treatment/{reg_id}', [DoctorTreatmentController::class, 'treatment']);
         Route::post('/start-treatment/{reg_id}', [DoctorTreatmentController::class, 'startTreatment']);
@@ -213,21 +221,55 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}/send-to-lab', [LaboratoryRequestController::class, 'sendToLab']);
     });
 
-    // ============================================================
-    // ROUTES مدیریت فیس‌های لابراتوار
-    // ============================================================
-    Route::prefix('laboratory-fees')->group(function () {
-        Route::get('/', [LaboratoryFeeController::class, 'index']);
-        Route::get('/statistics', [LaboratoryFeeController::class, 'statistics']);
-        Route::get('/registration/{registrationId}', [LaboratoryFeeController::class, 'getByRegistration']);
-        Route::get('/{id}', [LaboratoryFeeController::class, 'show']);
-        Route::post('/', [LaboratoryFeeController::class, 'store']);
-        Route::put('/{id}', [LaboratoryFeeController::class, 'update']);
-        Route::delete('/{id}', [LaboratoryFeeController::class, 'destroy']);
-        Route::post('/{id}/payment', [LaboratoryFeeController::class, 'addPayment']);
-        Route::post('/{id}/confirm-and-send', [LaboratoryFeeController::class, 'confirmAndSend']);
-        Route::get('/{id}/qr-code', [LaboratoryFeeController::class, 'getQRCode']);
-    });
+ 
+ 
+// ROUTES مدیریت فیس‌های لابراتوار
+// ============================================================
+
+Route::prefix('laboratory-fees')->group(function () {
+
+    // لیست فیس‌ها
+    Route::get('/', [LaboratoryFeeController::class, 'index']);
+
+    // آمار
+    Route::get('/statistics', [LaboratoryFeeController::class, 'statistics']);
+
+    // درخواست‌های بدون فیس یک مراجعه
+    Route::get(
+        '/registration/{registrationId}/unpaid-requests',
+        [LaboratoryFeeController::class, 'getUnpaidRequests']
+    );
+
+    // فیس‌های یک مراجعه
+    Route::get(
+        '/registration/{registrationId}',
+        [LaboratoryFeeController::class, 'getByRegistration']
+    );
+
+    // ثبت فیس جدید
+    Route::post(
+        '/registration/{registrationId}',
+        [LaboratoryFeeController::class, 'store']
+    );
+
+    // نمایش یک فیس
+    Route::get('/{id}', [LaboratoryFeeController::class, 'show']);
+
+    // ویرایش
+    Route::put('/{id}', [LaboratoryFeeController::class, 'update']);
+
+    // حذف
+    Route::delete('/{id}', [LaboratoryFeeController::class, 'destroy']);
+
+    // ثبت پرداخت
+    Route::post('/{id}/payment', [LaboratoryFeeController::class, 'addPayment']);
+
+    // تایید و ارسال به لابراتوار
+    Route::post('/{id}/confirm-and-send', [LaboratoryFeeController::class, 'confirmAndSend']);
+
+    // دریافت QR Code
+    Route::get('/{id}/qr-code', [LaboratoryFeeController::class, 'getQRCode']);
+});
 
     // ============================================================
     // مسیرهای فیس نسخه
@@ -292,7 +334,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
         Route::post('/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
     });
-
+ 
     // ============================================================
     // مسیرهای مدیریت دیپارتمنت‌ها
     // ============================================================

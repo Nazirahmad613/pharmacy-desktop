@@ -7,10 +7,12 @@ export default function LaboratoryFeeTab({ api, registration }) {
   const [patientInfo, setPatientInfo] = useState(null);
   const [barcode, setBarcode] = useState(null);
   const [laboratoryRequests, setLaboratoryRequests] = useState([]);
-  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [selectedRequests, setSelectedRequests] = useState([]); // تغییر به آرایه برای چند درخواست
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [feeRecords, setFeeRecords] = useState([]);
   const [editingFee, setEditingFee] = useState(null);
+  const [unpaidRequests, setUnpaidRequests] = useState([]);
+  const [paidRequests, setPaidRequests] = useState([]);
   const printRef = useRef(null);
   
   // فرم اخذ فیس
@@ -39,7 +41,9 @@ export default function LaboratoryFeeTab({ api, registration }) {
           setBarcode(data.patient.barcode);
         }
 
-        await fetchLaboratoryRequests(registration.reg_id);
+        // دریافت درخواست‌های بدون فیس
+        await fetchUnpaidRequests(registration.reg_id);
+        // دریافت فیس‌های ثبت شده
         await fetchFeeRecords(registration.reg_id);
         
       } catch (err) {
@@ -51,17 +55,27 @@ export default function LaboratoryFeeTab({ api, registration }) {
     fetchPatientData();
   }, [registration?.reg_id, api]);
 
-  // ============ دریافت درخواست‌های لابراتوار ============
-  const fetchLaboratoryRequests = async (registrationId) => {
+  // ============ دریافت درخواست‌های بدون فیس ============
+  const fetchUnpaidRequests = async (registrationId) => {
     try {
-      const response = await api.get(`/doctor/laboratory/${registrationId}`);
+      const response = await api.get(`/laboratory-fees/registration/${registrationId}/unpaid-requests`);
+      console.log("Unpaid requests response:", response.data);
+      
       if (response.data?.success && response.data?.data) {
-        const tests = response.data.data.tests || [];
-        const pendingRequests = tests.filter(test => !test.fee_id);
-        setLaboratoryRequests(pendingRequests);
+        const data = response.data.data;
+        setUnpaidRequests(data.unpaid_requests || []);
+        setPaidRequests(data.paid_requests || []);
+        setLaboratoryRequests(data.unpaid_requests || []);
+      } else {
+        setUnpaidRequests([]);
+        setPaidRequests([]);
+        setLaboratoryRequests([]);
       }
     } catch (err) {
       console.error("خطا در دریافت درخواست‌ها:", err);
+      setUnpaidRequests([]);
+      setPaidRequests([]);
+      setLaboratoryRequests([]);
     }
   };
 
@@ -69,6 +83,8 @@ export default function LaboratoryFeeTab({ api, registration }) {
   const fetchFeeRecords = async (registrationId) => {
     try {
       const response = await api.get(`/laboratory-fees?registration_id=${registrationId}`);
+      console.log("Fee records response:", response.data);
+      
       const data = response.data?.data?.data || [];
       setFeeRecords(data);
     } catch (err) {
@@ -77,12 +93,16 @@ export default function LaboratoryFeeTab({ api, registration }) {
     }
   };
 
-  // ============ باز کردن فرم اخذ فیس ============
+  // ============ باز کردن فرم اخذ فیس (با پشتیبانی از چند درخواست) ============
   const handleOpenFeeForm = (request) => {
-    setSelectedRequest(request);
+    setSelectedRequests([request]); // تبدیل به آرایه
     setEditingFee(null);
+    
+    // محاسبه مبلغ پیش‌فرض (می‌توانید از تنظیمات سیستم استفاده کنید)
+    const defaultAmount = request.amount || 0;
+    
     setFeeFormData({
-      amount: request.amount || "",
+      amount: defaultAmount.toString(),
       paid_amount: "",
       discount: "",
       payment_method: "cash",
@@ -92,10 +112,38 @@ export default function LaboratoryFeeTab({ api, registration }) {
     setShowFeeForm(true);
   };
 
+  // ============ باز کردن فرم برای چند درخواست ============
+  const handleOpenFeeFormMultiple = (requests) => {
+    if (!requests || requests.length === 0) {
+      toast.warning("⚠️ هیچ درخواستی انتخاب نشده است");
+      return;
+    }
+    
+    setSelectedRequests(requests);
+    setEditingFee(null);
+    
+    const testNames = requests.map(r => r.test_name || r.test_type_label || r.test_type).join('، ');
+    const totalAmount = requests.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+    
+    setFeeFormData({
+      amount: totalAmount.toString(),
+      paid_amount: "",
+      discount: "",
+      payment_method: "cash",
+      description: `آزمایش‌ها: ${testNames}`,
+      note: `تعداد ${requests.length} درخواست - بارکدها: ${requests.map(r => r.barcode).join('، ')}`
+    });
+    setShowFeeForm(true);
+  };
+
   // ============ ویرایش فیس ============
   const handleEditFee = (fee) => {
     setEditingFee(fee);
-    setSelectedRequest(null);
+    setSelectedRequests([]);
+    
+    // دریافت درخواست‌های مرتبط با این فیس
+    const relatedRequests = fee.related_requests || [];
+    
     setFeeFormData({
       amount: fee.amount || "",
       paid_amount: fee.paid_amount || "",
@@ -110,7 +158,7 @@ export default function LaboratoryFeeTab({ api, registration }) {
   // ============ بستن فرم ============
   const handleCloseForm = () => {
     setShowFeeForm(false);
-    setSelectedRequest(null);
+    setSelectedRequests([]);
     setEditingFee(null);
     setFeeFormData({
       amount: "",
@@ -135,36 +183,31 @@ export default function LaboratoryFeeTab({ api, registration }) {
 
     try {
       const payload = {
-        registration_id: registration.reg_id,
-        patient_id: registration.patient_id || patientInfo?.patient?.id,
-        laboratory_request_id: selectedRequest?.id || editingFee?.laboratory_request_id,
-        amount: feeFormData.amount,
-        paid_amount: feeFormData.paid_amount || 0,
-        discount: feeFormData.discount || 0,
+        amount: parseFloat(feeFormData.amount),
+        paid_amount: parseFloat(feeFormData.paid_amount) || 0,
+        discount: parseFloat(feeFormData.discount) || 0,
         payment_method: feeFormData.payment_method,
         description: feeFormData.description,
         note: feeFormData.note,
-        barcode: barcode
+        laboratory_request_ids: selectedRequests.map(r => r.id) // ارسال آرایه‌ای از IDs
       };
 
+      let response;
       if (editingFee) {
-        await api.put(`/laboratory-fees/${editingFee.id}`, payload);
+        // ویرایش فیس
+        response = await api.put(`/laboratory-fees/${editingFee.id}`, payload);
         toast.success("✅ فیس لابراتوار با موفقیت ویرایش شد");
       } else {
-        const response = await api.post("/laboratory-fees", payload);
-        
-        if (selectedRequest?.id) {
-          await api.put(`/laboratory-requests/${selectedRequest.id}`, {
-            status: 'sample_taken',
-            fee_id: response.data?.data?.id
-          });
-        }
-        
-        toast.success(`✅ فیس لابراتوار با بارکد ${barcode || 'ثبت شد'} با موفقیت ثبت شد`);
+        // ثبت فیس جدید
+        response = await api.post(`/laboratory-fees/${registration.reg_id}`, payload);
+        toast.success(`✅ فیس لابراتوار با موفقیت ثبت شد`);
       }
 
+      console.log("Fee response:", response.data);
+
+      // به‌روزرسانی لیست‌ها
       await fetchFeeRecords(registration.reg_id);
-      await fetchLaboratoryRequests(registration.reg_id);
+      await fetchUnpaidRequests(registration.reg_id);
       handleCloseForm();
 
     } catch (err) {
@@ -189,7 +232,7 @@ export default function LaboratoryFeeTab({ api, registration }) {
       await api.delete(`/laboratory-fees/${feeId}`);
       toast.success("✅ فیس لابراتوار با موفقیت حذف شد");
       await fetchFeeRecords(registration.reg_id);
-      await fetchLaboratoryRequests(registration.reg_id);
+      await fetchUnpaidRequests(registration.reg_id);
     } catch (err) {
       toast.error("❌ خطا در حذف فیس لابراتوار");
     }
@@ -376,10 +419,10 @@ export default function LaboratoryFeeTab({ api, registration }) {
 
           <div class="test-details">
             <div class="title">📋 اطلاعات درخواست</div>
-            <div><strong>نوع آزمایش:</strong> ${fee.laboratory_request?.test_type_label || fee.laboratory_request?.test_type || selectedRequest?.test_type_label || selectedRequest?.test_type || '-'}</div>
-            ${fee.laboratory_request?.test_name || selectedRequest?.test_name ? `<div><strong>نام آزمایش:</strong> ${fee.laboratory_request?.test_name || selectedRequest?.test_name}</div>` : ''}
-            ${fee.laboratory_request?.test_description || selectedRequest?.test_description ? `<div class="desc"><strong>توضیحات:</strong> ${fee.laboratory_request?.test_description || selectedRequest?.test_description}</div>` : ''}
-            ${fee.laboratory_request?.clinical_indication || selectedRequest?.clinical_indication ? `<div class="desc"><strong>اندیکاسیون:</strong> ${fee.laboratory_request?.clinical_indication || selectedRequest?.clinical_indication}</div>` : ''}
+            <div><strong>نوع آزمایش:</strong> ${fee.laboratory_request?.test_type_label || fee.laboratory_request?.test_type || '-'}</div>
+            ${fee.laboratory_request?.test_name ? `<div><strong>نام آزمایش:</strong> ${fee.laboratory_request?.test_name}</div>` : ''}
+            ${fee.laboratory_request?.test_description ? `<div class="desc"><strong>توضیحات:</strong> ${fee.laboratory_request?.test_description}</div>` : ''}
+            ${fee.laboratory_request?.clinical_indication ? `<div class="desc"><strong>اندیکاسیون:</strong> ${fee.laboratory_request?.clinical_indication}</div>` : ''}
           </div>
 
           <div class="payment-details">
@@ -528,6 +571,9 @@ export default function LaboratoryFeeTab({ api, registration }) {
       {/* ============ لیست درخواست‌های لابراتوار ============ */}
       <h4 style={{ color: '#60a5fa', marginBottom: '15px' }}>
         📋 درخواست‌های لابراتوار
+        <span style={{ fontSize: '12px', color: '#9ca3af', marginRight: '10px' }}>
+          ({laboratoryRequests.length} درخواست بدون فیس)
+        </span>
       </h4>
 
       {laboratoryRequests.length === 0 && feeRecords.length === 0 ? (
@@ -612,122 +658,133 @@ export default function LaboratoryFeeTab({ api, registration }) {
           ))}
 
           {/* فیس‌های ثبت شده */}
-          {feeRecords.map((fee) => {
-            const status = getPaymentStatus(fee.amount, fee.paid_amount, fee.discount);
-            return (
-              <div
-                key={fee.id}
-                style={{
-                  backgroundColor: '#1a2a3a',
-                  padding: '15px 20px',
-                  borderRadius: '8px',
-                  borderRight: `4px solid ${status.color}`,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '10px'
-                }}
-              >
-                <div style={{ flex: 1, minWidth: '200px' }}>
-                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ فیس ثبت شده</span>
-                    {fee.barcode && (
-                      <span style={{ 
-                        color: '#fcd34d', 
-                        fontSize: '12px',
-                        fontFamily: 'monospace',
-                        backgroundColor: '#0f1a2a',
-                        padding: '2px 10px',
-                        borderRadius: '4px'
-                      }}>
-                        🏷️ {fee.barcode}
-                      </span>
-                    )}
-                    <span style={{
-                      backgroundColor: status.color,
-                      color: 'white',
-                      padding: '2px 12px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: 'bold'
-                    }}>
-                      {status.label}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '20px', marginTop: '5px', flexWrap: 'wrap' }}>
-                    <span style={{ color: '#fcd34d' }}>💰 {fee.amount?.toFixed(2)}</span>
-                    <span style={{ color: '#22c55e' }}>پرداخت: {fee.paid_amount?.toFixed(2)}</span>
-                    {fee.discount > 0 && (
-                      <span style={{ color: '#f59e0b' }}>تخفیف: {fee.discount}%</span>
-                    )}
-                    <span style={{ color: '#ef4444' }}>
-                      باقیمانده: {calculateRemaining(fee.amount, fee.paid_amount, fee.discount).toFixed(2)}
-                    </span>
-                    <span style={{ color: '#9ca3af', fontSize: '12px' }}>
-                      {getMethodLabel(fee.payment_method)}
-                    </span>
-                  </div>
-                  {fee.description && (
-                    <div style={{ color: '#9ca3af', fontSize: '12px', marginTop: '3px' }}>
-                      {fee.description}
-                    </div>
-                  )}
-                  <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>
-                    📅 {formatDate(fee.created_at)}
-                  </div>
-                </div>
-                
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => handlePrint(fee)}
+          {feeRecords.length > 0 && (
+            <>
+              <h4 style={{ color: '#10b981', marginTop: '20px', marginBottom: '10px' }}>
+                ✅ فیس‌های ثبت شده
+                <span style={{ fontSize: '12px', color: '#9ca3af', marginRight: '10px' }}>
+                  ({feeRecords.length} فیس)
+                </span>
+              </h4>
+              
+              {feeRecords.map((fee) => {
+                const status = getPaymentStatus(fee.amount, fee.paid_amount, fee.discount);
+                return (
+                  <div
+                    key={fee.id}
                     style={{
-                      backgroundColor: '#8b5cf6',
-                      color: 'white',
-                      padding: '5px 15px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '12px',
+                      backgroundColor: '#1a2a3a',
+                      padding: '15px 20px',
+                      borderRadius: '8px',
+                      borderRight: `4px solid ${status.color}`,
                       display: 'flex',
+                      justifyContent: 'space-between',
                       alignItems: 'center',
-                      gap: '5px'
+                      flexWrap: 'wrap',
+                      gap: '10px'
                     }}
                   >
-                    🖨️ پرنت
-                  </button>
-                  <button
-                    onClick={() => handleEditFee(fee)}
-                    style={{
-                      backgroundColor: '#3b82f6',
-                      color: 'white',
-                      padding: '5px 15px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '12px'
-                    }}
-                  >
-                    ✏️ تصحیح
-                  </button>
-                  <button
-                    onClick={() => handleDeleteFee(fee.id)}
-                    style={{
-                      backgroundColor: '#dc2626',
-                      color: 'white',
-                      padding: '5px 15px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '12px'
-                    }}
-                  >
-                    🗑️ حذف
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ فیس ثبت شده</span>
+                        {fee.barcode && (
+                          <span style={{ 
+                            color: '#fcd34d', 
+                            fontSize: '12px',
+                            fontFamily: 'monospace',
+                            backgroundColor: '#0f1a2a',
+                            padding: '2px 10px',
+                            borderRadius: '4px'
+                          }}>
+                            🏷️ {fee.barcode}
+                          </span>
+                        )}
+                        <span style={{
+                          backgroundColor: status.color,
+                          color: 'white',
+                          padding: '2px 12px',
+                          borderRadius: '12px',
+                          fontSize: '11px',
+                          fontWeight: 'bold'
+                        }}>
+                          {status.label}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '20px', marginTop: '5px', flexWrap: 'wrap' }}>
+                        <span style={{ color: '#fcd34d' }}>💰 {fee.amount?.toFixed(2)}</span>
+                        <span style={{ color: '#22c55e' }}>پرداخت: {fee.paid_amount?.toFixed(2)}</span>
+                        {fee.discount > 0 && (
+                          <span style={{ color: '#f59e0b' }}>تخفیف: {fee.discount}%</span>
+                        )}
+                        <span style={{ color: '#ef4444' }}>
+                          باقیمانده: {calculateRemaining(fee.amount, fee.paid_amount, fee.discount).toFixed(2)}
+                        </span>
+                        <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+                          {getMethodLabel(fee.payment_method)}
+                        </span>
+                      </div>
+                      {fee.description && (
+                        <div style={{ color: '#9ca3af', fontSize: '12px', marginTop: '3px' }}>
+                          {fee.description}
+                        </div>
+                      )}
+                      <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>
+                        📅 {formatDate(fee.created_at)}
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => handlePrint(fee)}
+                        style={{
+                          backgroundColor: '#8b5cf6',
+                          color: 'white',
+                          padding: '5px 15px',
+                          borderRadius: '4px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px'
+                        }}
+                      >
+                        🖨️ پرنت
+                      </button>
+                      <button
+                        onClick={() => handleEditFee(fee)}
+                        style={{
+                          backgroundColor: '#3b82f6',
+                          color: 'white',
+                          padding: '5px 15px',
+                          borderRadius: '4px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        ✏️ تصحیح
+                      </button>
+                      <button
+                        onClick={() => handleDeleteFee(fee.id)}
+                        style={{
+                          backgroundColor: '#dc2626',
+                          color: 'white',
+                          padding: '5px 15px',
+                          borderRadius: '4px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        🗑️ حذف
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
 
@@ -778,8 +835,8 @@ export default function LaboratoryFeeTab({ api, registration }) {
               </div>
             )}
 
-            {/* اطلاعات درخواست */}
-            {selectedRequest && (
+            {/* اطلاعات درخواست‌های انتخاب شده */}
+            {selectedRequests.length > 0 && (
               <div style={{
                 backgroundColor: '#0f1a2a',
                 padding: '15px',
@@ -787,21 +844,21 @@ export default function LaboratoryFeeTab({ api, registration }) {
                 marginBottom: '20px',
                 border: '1px solid #374151'
               }}>
-                <div style={{ color: '#9ca3af', fontSize: '12px', marginBottom: '5px' }}>📋 اطلاعات درخواست:</div>
-                <div style={{ color: 'white' }}>
-                  <strong>{selectedRequest.test_type_label || selectedRequest.test_type}</strong>
-                  {selectedRequest.test_name && ` - ${selectedRequest.test_name}`}
+                <div style={{ color: '#9ca3af', fontSize: '12px', marginBottom: '5px' }}>
+                  📋 تعداد درخواست‌ها: {selectedRequests.length}
                 </div>
-                {selectedRequest.test_description && (
-                  <div style={{ color: '#9ca3af', fontSize: '13px', marginTop: '5px' }}>
-                    {selectedRequest.test_description}
+                {selectedRequests.map((req, index) => (
+                  <div key={req.id} style={{ 
+                    color: 'white', 
+                    fontSize: '13px',
+                    padding: '4px 0',
+                    borderBottom: index < selectedRequests.length - 1 ? '1px solid #2a3a4a' : 'none'
+                  }}>
+                    {index + 1}. {req.test_type_label || req.test_type}
+                    {req.test_name && ` - ${req.test_name}`}
+                    {req.barcode && ` (🏷️ ${req.barcode})`}
                   </div>
-                )}
-                {selectedRequest.barcode && (
-                  <div style={{ color: '#fcd34d', fontSize: '12px', marginTop: '5px' }}>
-                    🏷️ بارکد درخواست: {selectedRequest.barcode}
-                  </div>
-                )}
+                ))}
               </div>
             )}
 

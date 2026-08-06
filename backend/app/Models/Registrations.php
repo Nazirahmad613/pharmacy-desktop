@@ -296,5 +296,50 @@ class Registrations extends Model
             $type
         );
     }
+     public function treatmentProgress(): HasOne
+    {
+        return $this->hasOne(TreatmentProgress::class, 'registration_id', 'reg_id');
+    }
+
+    /**
+     * دریافت وضعیت پیشرفت درمان
+     */
+    public function getTreatmentProgressAttribute(): ?array
+    {
+        $progress = $this->treatmentProgress;
+        
+        if (!$progress) {
+            return null;
+        }
+        
+        return [
+            'currentStepIndex' => $progress->current_step_index,
+            'currentStep' => $progress->current_step,
+            'completedSteps' => $progress->completed_steps ?? [],
+            'isComplete' => $progress->is_complete,
+            'startTime' => $progress->start_time?->toISOString(),
+            'endTime' => $progress->end_time?->toISOString(),
+            'registrationId' => $progress->registration_id,
+            'savedData' => $progress->saved_data ?? [],
+            'progressPercentage' => $progress->progress_percentage,
+        ];
+    }
+
+    /**
+     * شروع یا ادامه درمان
+     */
+    public function startOrContinueTreatment(): TreatmentProgress
+    {
+        $progress = $this->treatmentProgress;
+        
+        if (!$progress) {
+            $progress = TreatmentProgress::create([
+                'registration_id' => $this->reg_id,
+            ]);
+            $progress->startTreatment();
+        }
+        
+        return $progress;
+    }
 
 }

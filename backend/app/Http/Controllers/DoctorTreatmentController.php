@@ -570,4 +570,107 @@ class DoctorTreatmentController extends Controller
             ], 500);
         }
     }
+
+    /**
+ * ذخیره Progress مراحل درمان
+ */ /**
+ * ذخیره Progress مراحل درمان
+ */
+public function saveProgress(Request $request)
+{
+    try {
+        $validated = $request->validate([
+            'registration_id' => 'required|exists:registrations,reg_id',
+            'currentStepIndex' => 'required|integer',  // تغییر به currentStepIndex
+            'completedSteps' => 'nullable|array',
+            'savedData' => 'nullable|array',
+            'startTime' => 'nullable|string',
+            'endTime' => 'nullable|string',
+            'isComplete' => 'nullable|boolean',
+        ]);
+
+        // استخراج current_step از currentStepIndex
+        $steps = ['queue', 'examination', 'laboratory', 'radiology', 'operation', 'pres_insert', 'followup', 'admission', 'history'];
+        $currentStep = $steps[$validated['currentStepIndex']] ?? 'queue';
+
+        DB::table('treatment_progress')->updateOrInsert(
+            [
+                'registration_id' => $validated['registration_id']
+            ],
+            [
+                'current_step' => $currentStep,
+                'current_step_index' => $validated['currentStepIndex'],
+                'completed_steps' => json_encode(
+                    $validated['completedSteps'] ?? []
+                ),
+                'saved_data' => json_encode(
+                    $validated['savedData'] ?? []
+                ),
+                'start_time' => $validated['startTime'] ?? null,
+                'end_time' => $validated['endTime'] ?? null,
+                'is_complete' => $validated['isComplete'] ?? false,
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Progress ذخیره شد'
+        ]);
+
+    } catch(\Exception $e) {
+        Log::error('Save treatment progress error: '.$e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
+    }
+}
+
+/**
+ * دریافت Progress درمان
+ */
+public function getProgress($registrationId)
+{
+    try {
+        $progress = DB::table('treatment_progress')
+            ->where('registration_id', $registrationId)
+            ->first();
+
+        if ($progress) {
+            // تبدیل JSON به آرایه
+            $progress->completed_steps = json_decode($progress->completed_steps, true) ?? [];
+            $progress->saved_data = json_decode($progress->saved_data, true) ?? [];
+            
+            // تبدیل به فرمت فرانت‌اند
+            $formatted = [
+                'currentStepIndex' => $progress->current_step_index ?? 0,
+                'completedSteps' => $progress->completed_steps,
+                'isComplete' => $progress->is_complete ?? false,
+                'startTime' => $progress->start_time,
+                'endTime' => $progress->end_time,
+                'registrationId' => $progress->registration_id,
+                'savedData' => $progress->saved_data,
+            ];
+            
+            return response()->json([
+                'success' => true,
+                'data' => $formatted
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => null
+        ]);
+
+    } catch(\Exception $e) {
+        Log::error('Get treatment progress error: '.$e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
+    }
+}
 }
