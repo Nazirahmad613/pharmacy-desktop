@@ -12,6 +12,20 @@ import RadiologyRequest from "./radiology/RadiologyRequest";
 import FollowUp from "./follow/FollowUp";
 import Admission from "./admission/Admission";
 import OperationRoom from "./operations/OperationRoom";
+import StagePatients from "./StagePatients";
+
+// تعریف STEPS در سطح بالا
+const STEPS = [
+  { key: 'queue', label: 'صف انتظار', icon: '📋', color: '#3b82f6' },
+  { key: 'examination', label: 'معاینه', icon: '🩺', color: '#3b82f6' },
+  { key: 'laboratory', label: 'لابراتوار', icon: '🔬', color: '#8b5cf6' },
+  { key: 'radiology', label: 'رادیولوژی', icon: '📷', color: '#ec4899' },
+  { key: 'operation', label: 'عملیات خانه', icon: '🔪', color: '#dc2626' },
+  { key: 'pres_insert', label: 'نسخه', icon: '📝', color: '#10b981' },
+  { key: 'followup', label: 'ملاقات بعدی', icon: '📅', color: '#f59e0b' },
+  { key: 'admission', label: 'بستری', icon: '🏥', color: '#ef4444' },
+  { key: 'history', label: 'تاریخچه', icon: '📜', color: '#8b5cf6' }
+];
 
 export default function TreatmentPage() {
   const { api } = useAuth();
@@ -27,23 +41,9 @@ export default function TreatmentPage() {
 
   // ============ مدیریت چندین مریض فعال ============
   const [activePatients, setActivePatients] = useState({});
-  // ساختار: { reg_id: { examination: {...}, laboratory: {...}, ... } }
 
   // ============ مریض جاری ============
   const [currentPatientId, setCurrentPatientId] = useState(null);
-
-  // ============ تعریف مراحل درمان ============
-  const STEPS = [
-    { key: 'queue', label: 'صف انتظار', icon: '📋', color: '#3b82f6' },
-    { key: 'examination', label: 'معاینه', icon: '🩺', color: '#3b82f6' },
-    { key: 'laboratory', label: 'لابراتوار', icon: '🔬', color: '#8b5cf6' },
-    { key: 'radiology', label: 'رادیولوژی', icon: '📷', color: '#ec4899' },
-    { key: 'operation', label: 'عملیات خانه', icon: '🔪', color: '#dc2626' },
-    { key: 'pres_insert', label: 'نسخه', icon: '📝', color: '#10b981' },
-    { key: 'followup', label: 'ملاقات بعدی', icon: '📅', color: '#f59e0b' },
-    { key: 'admission', label: 'بستری', icon: '🏥', color: '#ef4444' },
-    { key: 'history', label: 'تاریخچه', icon: '📜', color: '#8b5cf6' }
-  ];
 
   // ============ وضعیت عملیات جاری ============
   const [treatmentProgress, setTreatmentProgress] = useState({
@@ -56,11 +56,11 @@ export default function TreatmentPage() {
     savedData: {}
   });
 
-  // ============ کلید ذخیره‌سازی در localStorage ============
+  // ============ کلیدهای ذخیره‌سازی ============
   const STORAGE_KEY = 'treatment_progress_data';
   const ACTIVE_PATIENTS_KEY = 'active_patients_data';
 
-  // ============ ذخیره وضعیت در localStorage ============
+  // ============ توابع ذخیره و بازیابی ============
   const saveToLocalStorage = (progress, regId) => {
     try {
       const dataToSave = {
@@ -74,7 +74,6 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ ذخیره مریض‌های فعال ============
   const saveActivePatients = (patients) => {
     try {
       localStorage.setItem(ACTIVE_PATIENTS_KEY, JSON.stringify(patients));
@@ -83,7 +82,6 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ بازیابی مریض‌های فعال ============
   const loadActivePatients = () => {
     try {
       const saved = localStorage.getItem(ACTIVE_PATIENTS_KEY);
@@ -96,7 +94,6 @@ export default function TreatmentPage() {
     return {};
   };
 
-  // ============ بازیابی وضعیت از localStorage ============
   const loadFromLocalStorage = () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -118,9 +115,28 @@ export default function TreatmentPage() {
     return null;
   };
 
-  // ============ پاک کردن وضعیت ذخیره شده ============
   const clearSavedProgress = () => {
     localStorage.removeItem(STORAGE_KEY);
+  };
+
+  // ============ دریافت صف انتظار ============
+  const fetchQueue = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get("/doctor/queue");
+      let data = [];
+      if (Array.isArray(response.data)) {
+        data = response.data;
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        data = response.data.data;
+      }
+      setQueue(data);
+    } catch (err) {
+      console.error("خطا در دریافت صف:", err);
+      toast.error("❌ خطا در دریافت لیست مریضان");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ============ بارگذاری وضعیت از سرور ============
@@ -148,7 +164,7 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ تابع به‌روزرسانی وضعیت ============
+  // ============ به‌روزرسانی وضعیت ============
   const updateTreatmentProgress = async (newProgress, regId) => {
     const registrationId = regId || newProgress.registrationId || treatmentProgress.registrationId;
     setTreatmentProgress(newProgress);
@@ -158,13 +174,12 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ بارگذاری معاینات یک مریض خاص ============
+  // ============ بارگذاری معاینات ============
   const loadExaminations = async (registrationId) => {
     try {
       const response = await api.get(`/doctor/examination/${registrationId}`);
       if (response.data?.success && response.data?.data) {
         const data = response.data.data;
-        // ذخیره در activePatients
         setActivePatients(prev => ({
           ...prev,
           [registrationId]: {
@@ -195,7 +210,7 @@ export default function TreatmentPage() {
     return null;
   };
 
-  // ============ بارگذاری تست‌های لابراتوار یک مریض خاص ============
+  // ============ بارگذاری تست‌های لابراتوار ============
   const loadLaboratoryTests = async (registrationId) => {
     try {
       const response = await api.get(`/doctor/laboratory/${registrationId}`);
@@ -241,26 +256,30 @@ export default function TreatmentPage() {
     const regId = registration.reg_id;
 
     try {
-      // بررسی اینکه آیا مریض قبلاً فعال است
       if (activePatients[regId]) {
-        // مریض فعال است، فقط انتخابش کن
         setCurrentPatientId(regId);
         setSelectedRegistration(registration);
-        setActiveTab("examination");
+        
+        const savedProgress = await loadProgressFromServer(regId);
+        if (savedProgress) {
+          const stepIndex = savedProgress.currentStepIndex || 1;
+          setTreatmentProgress(savedProgress);
+          setActiveTab(STEPS[stepIndex]?.key || 'examination');
+        } else {
+          setActiveTab("examination");
+        }
+        
         toast.info(`👤 بازگشت به معالجه ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''}`);
         return;
       }
 
-      // مریض جدید - بارگذاری اطلاعات
       await loadExaminations(regId);
       await loadLaboratoryTests(regId);
 
-      // تنظیم مریض جاری
       setCurrentPatientId(regId);
       setSelectedRegistration(registration);
       setActiveTab("examination");
 
-      // تنظیم treatmentProgress
       const newProgress = {
         currentStepIndex: 1,
         completedSteps: ['queue'],
@@ -273,7 +292,10 @@ export default function TreatmentPage() {
       setTreatmentProgress(newProgress);
       saveToLocalStorage(newProgress, regId);
 
-      // ذخیره مریض‌های فعال
+      await api.put(`/registrations/${regId}/status`, {
+        visit_status: 'InProgress'
+      });
+
       saveActivePatients(activePatients);
 
       toast.info(`👨‍⚕️ شروع درمان برای ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''}`);
@@ -284,20 +306,43 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ بارگذاری اطلاعات مریض هنگام انتخاب ============
-  const loadPatientData = async (registrationId) => {
-    if (!registrationId) return;
-    
-    // اگر اطلاعات مریض قبلاً بارگذاری شده، از کش استفاده کن
-    if (activePatients[registrationId]) {
-      return activePatients[registrationId];
+  // ============ انتخاب مریض از هر مرحله ============
+  const handleSelectPatient = (registration) => {
+    startTreatment(registration);
+  };
+
+  // ============ دریافت مریض‌های یک مرحله خاص ============
+  const getPatientsInStage = (stage) => {
+    if (stage === 'queue') {
+      return queue.filter(p => 
+        !activePatients[p.reg_id] && 
+        p.visit_status !== 'Completed' &&
+        p.visit_status !== 'InProgress'
+      );
     }
 
-    // بارگذاری از سرور
-    await loadExaminations(registrationId);
-    await loadLaboratoryTests(registrationId);
+    const patientsInStage = [];
+    const patientIds = Object.keys(activePatients);
     
-    return activePatients[registrationId];
+    patientIds.forEach(id => {
+      const regId = parseInt(id);
+      const patientData = queue.find(r => r.reg_id === regId);
+      if (!patientData) return;
+      
+      const progress = treatmentProgress;
+      if (progress.registrationId === regId) {
+        const currentStep = progress.currentStepIndex;
+        const stageIndex = STEPS.findIndex(s => s.key === stage);
+        if (currentStep === stageIndex || progress.completedSteps.includes(stage)) {
+          patientsInStage.push({
+            ...patientData,
+            progress: progress
+          });
+        }
+      }
+    });
+    
+    return patientsInStage;
   };
 
   // ============ رفتن به مرحله بعدی ============
@@ -350,109 +395,103 @@ export default function TreatmentPage() {
   };
 
   // ============ ثبت اطلاعات مرحله فعلی ============
-  // ============ ثبت اطلاعات مرحله فعلی ============
-const saveCurrentStep = async (data) => {
-  setIsSubmitting(true);
-  try {
-    const currentStep = STEPS[treatmentProgress.currentStepIndex];
-    const regId = selectedRegistration?.reg_id;
-    
-    if (!regId) {
-      toast.error("❌ شناسه مراجعه یافت نشد");
-      throw new Error("شناسه مراجعه یافت نشد");
-    }
-    
-    let url = '';
-    let payload = { ...data };
-    
-    // تعیین مسیر مناسب برای هر مرحله
-    if (currentStep.key === 'laboratory') {
-      url = `/doctor/laboratory/${regId}`;
-      payload = {
-        registration_id: regId,
-        patient_id: selectedRegistration.patient_id || selectedRegistration.patient?.id,
-        ...data
+  const saveCurrentStep = async (data) => {
+    setIsSubmitting(true);
+    try {
+      const currentStep = STEPS[treatmentProgress.currentStepIndex];
+      const regId = selectedRegistration?.reg_id;
+      
+      if (!regId) {
+        toast.error("❌ شناسه مراجعه یافت نشد");
+        throw new Error("شناسه مراجعه یافت نشد");
+      }
+      
+      let url = '';
+      let payload = { ...data };
+      
+      if (currentStep.key === 'laboratory') {
+        url = `/doctor/laboratory/${regId}`;
+        payload = {
+          registration_id: regId,
+          patient_id: selectedRegistration.patient_id || selectedRegistration.patient?.id,
+          ...data
+        };
+      } else if (currentStep.key === 'examination') {
+        url = `/doctor/examination/${regId}`;
+      } else if (currentStep.key === 'radiology') {
+        url = `/doctor/radiology/${regId}`;
+      } else if (currentStep.key === 'pres_insert') {
+        url = `/doctor/prescription/${regId}`;
+      } else if (currentStep.key === 'followup') {
+        url = `/doctor/followup/${regId}`;
+      } else if (currentStep.key === 'admission') {
+        url = `/doctor/admission/${regId}`;
+      } else if (currentStep.key === 'operation') {
+        url = `/doctor/operation/${regId}`;
+      } else {
+        url = `/doctor/${currentStep.key}/save`;
+      }
+      
+      const response = await api.post(url, payload);
+      
+      if (response.data?.data && regId) {
+        if (currentStep.key === 'examination') {
+          setActivePatients(prev => ({
+            ...prev,
+            [regId]: {
+              ...prev[regId],
+              examination: {
+                data: response.data.data.examination || null,
+                allExaminations: response.data.data.all_examinations || [],
+                isExamined: !!response.data.data.examination
+              }
+            }
+          }));
+        } else if (currentStep.key === 'laboratory') {
+          setActivePatients(prev => ({
+            ...prev,
+            [regId]: {
+              ...prev[regId],
+              laboratory: {
+                data: response.data.data.laboratory_request || null,
+                allTests: response.data.data.all_tests || [],
+                isRequested: !!response.data.data.laboratory_request
+              }
+            }
+          }));
+        }
+      }
+      
+      toast.success(`✅ اطلاعات ${currentStep.label} با موفقیت ثبت شد`);
+      
+      const newProgress = {
+        ...treatmentProgress,
+        completedSteps: [...treatmentProgress.completedSteps, currentStep.key],
+        savedData: {
+          ...treatmentProgress.savedData,
+          [currentStep.key]: data
+        }
       };
-    } else if (currentStep.key === 'examination') {
-      url = `/doctor/examination/${regId}`;
-    } else if (currentStep.key === 'radiology') {
-      url = `/doctor/radiology/${regId}`;
-    } else if (currentStep.key === 'pres_insert') {
-      url = `/doctor/prescription/${regId}`;
-    } else if (currentStep.key === 'followup') {
-      url = `/doctor/followup/${regId}`;
-    } else if (currentStep.key === 'admission') {
-      url = `/doctor/admission/${regId}`;
-    } else if (currentStep.key === 'operation') {
-      url = `/doctor/operation/${regId}`;
-    } else {
-      url = `/doctor/${currentStep.key}/save`;
-    }
-    
-    const response = await api.post(url, payload);
-    
-    // به‌روزرسانی داده‌ها در activePatients
-    if (response.data?.data && regId) {
-      if (currentStep.key === 'examination') {
-        setActivePatients(prev => ({
-          ...prev,
-          [regId]: {
-            ...prev[regId],
-            examination: {
-              data: response.data.data.examination || null,
-              allExaminations: response.data.data.all_examinations || [],
-              isExamined: !!response.data.data.examination
-            }
-          }
-        }));
-      } else if (currentStep.key === 'laboratory') {
-        setActivePatients(prev => ({
-          ...prev,
-          [regId]: {
-            ...prev[regId],
-            laboratory: {
-              data: response.data.data.laboratory_request || null,
-              allTests: response.data.data.all_tests || [],
-              isRequested: !!response.data.data.laboratory_request
-            }
-          }
-        }));
+      await updateTreatmentProgress(newProgress);
+      
+      saveActivePatients(activePatients);
+      
+      return response.data;
+    } catch (err) {
+      console.error("خطا در ثبت اطلاعات:", err);
+      if (err.response?.data?.errors) {
+        const errors = err.response.data.errors;
+        Object.keys(errors).forEach(key => {
+          toast.error(`❌ ${key}: ${errors[key][0]}`);
+        });
+      } else {
+        toast.error(`❌ خطا در ثبت اطلاعات: ${err.response?.data?.message || err.message}`);
       }
+      throw err;
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    toast.success(`✅ اطلاعات ${currentStep.label} با موفقیت ثبت شد`);
-    
-    // به‌روزرسانی وضعیت
-    const newProgress = {
-      ...treatmentProgress,
-      completedSteps: [...treatmentProgress.completedSteps, currentStep.key],
-      savedData: {
-        ...treatmentProgress.savedData,
-        [currentStep.key]: data
-      }
-    };
-    await updateTreatmentProgress(newProgress);
-    
-    // ذخیره مریض‌های فعال
-    saveActivePatients(activePatients);
-    
-    return response.data;
-  } catch (err) {
-    console.error("خطا در ثبت اطلاعات:", err);
-    // نمایش خطاهای اعتبارسنجی
-    if (err.response?.data?.errors) {
-      const errors = err.response.data.errors;
-      Object.keys(errors).forEach(key => {
-        toast.error(`❌ ${key}: ${errors[key][0]}`);
-      });
-    } else {
-      toast.error(`❌ خطا در ثبت اطلاعات: ${err.response?.data?.message || err.message}`);
-    }
-    throw err;
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   // ============ ختم معالجه ============
   const finishTreatment = async () => {
@@ -488,7 +527,6 @@ const saveCurrentStep = async (data) => {
 
       toast.success("✅ معالجه با موفقیت به پایان رسید");
       
-      // حذف مریض از لیست فعال
       const regId = selectedRegistration.reg_id;
       setActivePatients(prev => {
         const newPatients = { ...prev };
@@ -543,10 +581,9 @@ const saveCurrentStep = async (data) => {
     refreshData();
   };
 
-  // ============ بازیابی وضعیت در اولین بارگذاری ============
+  // ============ بازیابی وضعیت ============
   const restoreSavedState = async () => {
     try {
-      // بازیابی مریض‌های فعال
       const savedPatients = loadActivePatients();
       if (savedPatients && Object.keys(savedPatients).length > 0) {
         setActivePatients(savedPatients);
@@ -567,7 +604,6 @@ const saveCurrentStep = async (data) => {
             setTreatmentProgress(savedLocal);
             setActiveTab(STEPS[savedLocal.currentStepIndex]?.key || 'examination');
             
-            // بارگذاری معاینات
             await loadExaminations(savedLocal.registrationId);
             
             toast.info(`↩️ ادامه درمان از مرحله ${STEPS[savedLocal.currentStepIndex]?.label || 'نامشخص'}`);
@@ -584,32 +620,13 @@ const saveCurrentStep = async (data) => {
     }
   };
 
-  // ============ دریافت صف انتظار ============
-  const fetchQueue = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get("/doctor/queue");
-      let data = [];
-      if (Array.isArray(response.data)) {
-        data = response.data;
-      } else if (response.data?.data && Array.isArray(response.data.data)) {
-        data = response.data.data;
-      }
-      setQueue(data);
-    } catch (err) {
-      console.error("خطا در دریافت صف:", err);
-      toast.error("❌ خطا در دریافت لیست مریضان");
-    } finally {
-      setLoading(false);
-    }
+  // ============ انتخاب تاریخچه ============
+  const handleSelectHistory = (history) => {
+    setSelectedHistory(history);
+    // منطق نمایش تاریخچه
   };
 
-  // ============ انتخاب مریض از لیست ============
-  const handleSelectPatient = (registration) => {
-    startTreatment(registration);
-  };
-
-  // ============ استفاده از useEffect ============
+  // ============ useEffect ============
   useEffect(() => {
     const initialize = async () => {
       await fetchQueue();
@@ -636,6 +653,200 @@ const saveCurrentStep = async (data) => {
   const prevStep = treatmentProgress.currentStepIndex > 1 
     ? STEPS[treatmentProgress.currentStepIndex - 1] 
     : null;
+
+  // ============ نمایش محتوای تب ============
+  const renderTabContent = () => {
+    if (activeTab !== 'queue' && activeTab !== 'history') {
+      const stagePatients = getPatientsInStage(activeTab);
+      return (
+        <StagePatients
+          stage={activeTab}
+          queue={queue}
+          activePatients={activePatients}
+          treatmentProgress={treatmentProgress}
+          onSelectPatient={handleSelectPatient}
+          onRefresh={refreshData}
+        />
+      );
+    }
+
+    switch (activeTab) {
+      case "queue":
+        return (
+          <PatientQueue 
+            queue={queue}
+            loading={loading}
+            onSelectPatient={handleSelectPatient}
+            onRefresh={refreshData}
+            activePatients={activePatients}
+          />
+        );
+      case "history":
+        return (
+          <HistoryList 
+            api={api}
+            onSelectHistory={handleSelectHistory}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  // ============ نمایش فرم‌های مربوط به مریض انتخاب شده ============
+  const renderSelectedPatientForm = () => {
+    if (!selectedRegistration || !selectedRegistration.reg_id) return null;
+    
+    const currentStep = STEPS[treatmentProgress.currentStepIndex];
+    
+    switch (activeTab) {
+      case "examination":
+        return (
+          <ExaminationForm 
+            registration={selectedRegistration}
+            onComplete={goBackToQueue}
+            onRefresh={refreshData}
+            api={api}
+            onSave={saveCurrentStep}
+            onFinish={finishTreatment}
+            onNextStep={goToNextStep}
+            onPrevStep={goToPreviousStep}
+            currentStep={currentStep}
+            nextStep={nextStep}
+            prevStep={prevStep}
+            isSubmitting={isSubmitting}
+            isTreatmentComplete={treatmentProgress.isComplete}
+            savedData={activePatients[currentPatientId]?.examination?.data || null}
+            allExaminations={activePatients[currentPatientId]?.examination?.allExaminations || []}
+            isExamined={activePatients[currentPatientId]?.examination?.isExamined || false}
+            setIsExamined={(val) => {
+              setActivePatients(prev => ({
+                ...prev,
+                [currentPatientId]: {
+                  ...prev[currentPatientId],
+                  examination: {
+                    ...prev[currentPatientId]?.examination,
+                    isExamined: val
+                  }
+                }
+              }));
+            }}
+            setAllExaminations={(exams) => {
+              setActivePatients(prev => ({
+                ...prev,
+                [currentPatientId]: {
+                  ...prev[currentPatientId],
+                  examination: {
+                    ...prev[currentPatientId]?.examination,
+                    allExaminations: exams
+                  }
+                }
+              }));
+            }}
+          />
+        );
+      case "laboratory":
+        return (
+          <LaboratoryRequest 
+            registration={selectedRegistration}
+            onComplete={goBackToQueue}
+            onRefresh={refreshData}
+            api={api}
+            onSave={saveCurrentStep}
+            onFinish={finishTreatment}
+            onNextStep={goToNextStep}
+            onPrevStep={goToPreviousStep}
+            currentStep={currentStep}
+            nextStep={nextStep}
+            prevStep={prevStep}
+            isSubmitting={isSubmitting}
+            isTreatmentComplete={treatmentProgress.isComplete}
+          />
+        );
+      case "radiology":
+        return (
+          <RadiologyRequest 
+            registration={selectedRegistration}
+            onComplete={goBackToQueue}
+            onRefresh={refreshData}
+            api={api}
+            onSave={saveCurrentStep}
+            onFinish={finishTreatment}
+            onNextStep={goToNextStep}
+            onPrevStep={goToPreviousStep}
+            currentStep={currentStep}
+            nextStep={nextStep}
+            prevStep={prevStep}
+            isSubmitting={isSubmitting}
+            isTreatmentComplete={treatmentProgress.isComplete}
+          />
+        );
+      case "operation":
+        return (
+          <OperationRoom 
+            api={api}
+            onSelectPatient={handleSelectPatient}
+            onRefresh={refreshData}
+          />
+        );
+      case "pres_insert":
+        return (
+          <PrescriptionForm 
+            registration={selectedRegistration}
+            onComplete={goBackToQueue}
+            onRefresh={refreshData}
+            api={api}
+            onSave={saveCurrentStep}
+            onFinish={finishTreatment}
+            onNextStep={goToNextStep}
+            onPrevStep={goToPreviousStep}
+            currentStep={currentStep}
+            nextStep={nextStep}
+            prevStep={prevStep}
+            isSubmitting={isSubmitting}
+            isTreatmentComplete={treatmentProgress.isComplete}
+          />
+        );
+      case "followup":
+        return (
+          <FollowUp 
+            registration={selectedRegistration}
+            onComplete={goBackToQueue}
+            onRefresh={refreshData}
+            api={api}
+            onSave={saveCurrentStep}
+            onFinish={finishTreatment}
+            onNextStep={goToNextStep}
+            onPrevStep={goToPreviousStep}
+            currentStep={currentStep}
+            nextStep={nextStep}
+            prevStep={prevStep}
+            isSubmitting={isSubmitting}
+            isTreatmentComplete={treatmentProgress.isComplete}
+          />
+        );
+      case "admission":
+        return (
+          <Admission 
+            registration={selectedRegistration}
+            onComplete={goBackToQueue}
+            onRefresh={refreshData}
+            api={api}
+            onSave={saveCurrentStep}
+            onFinish={finishTreatment}
+            onNextStep={goToNextStep}
+            onPrevStep={goToPreviousStep}
+            currentStep={currentStep}
+            nextStep={nextStep}
+            prevStep={prevStep}
+            isSubmitting={isSubmitting}
+            isTreatmentComplete={treatmentProgress.isComplete}
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
   // ============ نمایش وضعیت پیشرفت ============
   const renderProgressBar = () => {
@@ -722,64 +933,6 @@ const saveCurrentStep = async (data) => {
     );
   };
 
-  // ============ لیست مریض‌های فعال ============
-  const renderActivePatients = () => {
-    const patientIds = Object.keys(activePatients);
-    if (patientIds.length === 0) return null;
-
-    return (
-      <div style={{
-        backgroundColor: '#1a2a3a',
-        padding: '10px 15px',
-        borderRadius: '8px',
-        marginBottom: '15px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        flexWrap: 'wrap',
-        border: '1px solid #374151'
-      }}>
-        <span style={{ color: '#9ca3af', fontSize: '13px' }}>👥 مریض‌های فعال:</span>
-        {patientIds.map((id) => {
-          const isCurrent = id === currentPatientId;
-          // پیدا کردن اطلاعات مریض از صف
-          const patient = queue.find(r => r.reg_id === parseInt(id));
-          return (
-            <button
-              key={id}
-              onClick={() => {
-                const reg = queue.find(r => r.reg_id === parseInt(id));
-                if (reg) {
-                  setSelectedRegistration(reg);
-                  setCurrentPatientId(id);
-                  // بازیابی وضعیت از activePatients
-                  setActiveTab("examination");
-                  toast.info(`👤切换到 مریض ${reg.patient?.first_name || ''} ${reg.patient?.last_name || ''}`);
-                }
-              }}
-              style={{
-                backgroundColor: isCurrent ? '#3b82f6' : '#2a3a4a',
-                color: 'white',
-                padding: '4px 12px',
-                borderRadius: '15px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}
-            >
-              {isCurrent && '📍 '}
-              {patient?.patient?.first_name || 'نامشخص'} {patient?.patient?.last_name || ''}
-              {isCurrent && ' (جاری)'}
-            </button>
-          );
-        })}
-      </div>
-    );
-  };
-
   if (!isInitialized) {
     return (
       <MainLayoutjur>
@@ -828,83 +981,9 @@ const saveCurrentStep = async (data) => {
           🏥 معالجه داکتر
         </h2>
 
-        {/* لیست مریض‌های فعال */}
-        {renderActivePatients()}
-
         {renderProgressBar()}
 
-        {hasValidRegistration && (
-          <div style={{
-            backgroundColor: treatmentProgress.isComplete ? '#065f46' : '#1e3a5f',
-            padding: '15px 20px',
-            borderRadius: '8px',
-            marginBottom: '20px',
-            border: `2px solid ${treatmentProgress.isComplete ? '#10b981' : '#3b82f6'}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '10px'
-          }}>
-            <div>
-              <strong style={{ color: '#60a5fa' }}>👤 مریض جاری:</strong>
-              <span style={{ color: 'white', marginRight: '10px', fontSize: '16px' }}>
-                {selectedRegistration.patient?.first_name || ''} {selectedRegistration.patient?.last_name || ''}
-              </span>
-              <span style={{ color: '#9ca3af', marginRight: '15px', fontSize: '13px' }}>
-                📋 {selectedRegistration.visit_number || '-'}
-              </span>
-              <span style={{ color: '#9ca3af', marginRight: '15px', fontSize: '13px' }}>
-                🎫 صف: {selectedRegistration.queue_number || '-'}
-              </span>
-              <span style={{ color: '#9ca3af', fontSize: '13px' }}>
-                📅 {selectedRegistration.visit_date ? new Date(selectedRegistration.visit_date).toLocaleDateString('fa-IR') : '-'}
-              </span>
-              {treatmentProgress.isComplete && (
-                <span style={{
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  padding: '2px 12px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  marginLeft: '10px'
-                }}>
-                  ✅ تکمیل شد
-                </span>
-              )}
-              {!treatmentProgress.isComplete && (
-                <span style={{
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  padding: '2px 12px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  marginLeft: '10px'
-                }}>
-                  📍 {STEPS[treatmentProgress.currentStepIndex]?.label || 'نامشخص'}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={goBackToQueue}
-              style={{
-                backgroundColor: '#6b7280',
-                color: 'white',
-                padding: '6px 15px',
-                borderRadius: '5px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '13px'
-              }}
-            >
-              ✕ خروج از معالجه
-            </button>
-          </div>
-        )}
-
-        {/* ============ Tabs - همه تب‌ها قابل دسترس ============ */}
+        {/* ============ Tabs ============ */}
         <div
           style={{
             display: "flex",
@@ -918,12 +997,16 @@ const saveCurrentStep = async (data) => {
             const isActive = activeTab === step.key;
             const isCompleted = treatmentProgress.completedSteps.includes(step.key);
             
-            let isStepAccessible = false;
-            
-            if (step.key === 'queue' || step.key === 'history') {
-              isStepAccessible = true;
-            } else if (hasValidRegistration) {
-              isStepAccessible = true;
+            let patientCount = 0;
+            if (step.key === 'queue') {
+              patientCount = queue.filter(p => 
+                !activePatients[p.reg_id] && 
+                p.visit_status !== 'Completed' &&
+                p.visit_status !== 'InProgress'
+              ).length;
+            } else if (step.key !== 'history') {
+              const patients = getPatientsInStage(step.key);
+              patientCount = patients.length;
             }
             
             let bgColor = '#374151';
@@ -934,39 +1017,29 @@ const saveCurrentStep = async (data) => {
               <button
                 key={step.key}
                 onClick={() => {
-                  if (!isStepAccessible) {
-                    toast.warning(`⚠️ لطفاً ابتدا یک مریض را انتخاب کنید`);
-                    return;
-                  }
-                  
-                  if (step.key === 'queue') {
-                    setActiveTab(step.key);
-                    setSelectedHistory(null);
-                    return;
-                  }
-                  if (step.key === 'history') {
-                    setActiveTab(step.key);
-                    setSelectedHistory(null);
-                    return;
-                  }
-                  
-                  if (!hasValidRegistration) {
-                    toast.warning("⚠️ لطفاً ابتدا یک مریض را انتخاب کنید");
-                    return;
-                  }
-                  
                   setActiveTab(step.key);
                   setSelectedHistory(null);
+                  
+                  if (step.key !== 'queue' && step.key !== 'history') {
+                    const patients = getPatientsInStage(step.key);
+                    if (patients.length > 0) {
+                      const currentPatient = patients.find(p => p.reg_id === currentPatientId);
+                      if (!currentPatient) {
+                        handleSelectPatient(patients[0]);
+                      }
+                    } else {
+                      toast.info(`📭 هیچ مریضی در مرحله ${step.label} وجود ندارد`);
+                    }
+                  }
                 }}
                 style={{
                   padding: "10px 20px",
                   border: "none",
                   borderRadius: "8px",
-                  cursor: isStepAccessible ? "pointer" : "not-allowed",
+                  cursor: "pointer",
                   fontWeight: "bold",
                   background: bgColor,
                   color: "#fff",
-                  opacity: isStepAccessible ? 1 : 0.4,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
@@ -975,11 +1048,19 @@ const saveCurrentStep = async (data) => {
                   border: isActive ? '2px solid #60a5fa' : 'none',
                   transition: 'all 0.3s'
                 }}
-                disabled={!isStepAccessible}
-                title={!isStepAccessible ? `برای دسترسی به ${step.label}، ابتدا یک مریض انتخاب کنید` : ''}
               >
                 {isCompleted ? '✅' : step.icon}
                 {step.label}
+                {patientCount > 0 && (
+                  <span style={{
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                    padding: '0 8px',
+                    borderRadius: '10px',
+                    fontSize: '11px'
+                  }}>
+                    {patientCount}
+                  </span>
+                )}
                 {isActive && (
                   <span style={{
                     position: 'absolute',
@@ -1007,169 +1088,15 @@ const saveCurrentStep = async (data) => {
             color: "#fff",
           }}
         >
-          {activeTab === "queue" && (
-            <PatientQueue 
-              queue={queue}
-              loading={loading}
-              onSelectPatient={handleSelectPatient}
-              onRefresh={refreshData}
-              activePatients={activePatients}
-            />
-          )}
-
-          {activeTab === "examination" && hasValidRegistration && (
-            <ExaminationForm 
-              registration={selectedRegistration}
-              onComplete={goBackToQueue}
-              onRefresh={refreshData}
-              api={api}
-              onSave={saveCurrentStep}
-              onFinish={finishTreatment}
-              onNextStep={goToNextStep}
-              onPrevStep={goToPreviousStep}
-              currentStep={currentStep}
-              nextStep={nextStep}
-              prevStep={prevStep}
-              isSubmitting={isSubmitting}
-              isTreatmentComplete={treatmentProgress.isComplete}
-              savedData={activePatients[currentPatientId]?.examination?.data || null}
-              allExaminations={activePatients[currentPatientId]?.examination?.allExaminations || []}
-              isExamined={activePatients[currentPatientId]?.examination?.isExamined || false}
-              setIsExamined={(val) => {
-                setActivePatients(prev => ({
-                  ...prev,
-                  [currentPatientId]: {
-                    ...prev[currentPatientId],
-                    examination: {
-                      ...prev[currentPatientId]?.examination,
-                      isExamined: val
-                    }
-                  }
-                }));
-              }}
-              setAllExaminations={(exams) => {
-                setActivePatients(prev => ({
-                  ...prev,
-                  [currentPatientId]: {
-                    ...prev[currentPatientId],
-                    examination: {
-                      ...prev[currentPatientId]?.examination,
-                      allExaminations: exams
-                    }
-                  }
-                }));
-              }}
-            />
-          )}
-
-          {activeTab === "laboratory" && hasValidRegistration && (
-            <LaboratoryRequest 
-              registration={selectedRegistration}
-              onComplete={goBackToQueue}
-              onRefresh={refreshData}
-              api={api}
-              onSave={saveCurrentStep}
-              onFinish={finishTreatment}
-              onNextStep={goToNextStep}
-              onPrevStep={goToPreviousStep}
-              currentStep={currentStep}
-              nextStep={nextStep}
-              prevStep={prevStep}
-              isSubmitting={isSubmitting}
-              isTreatmentComplete={treatmentProgress.isComplete}
-            />
-          )}
-
-          {activeTab === "radiology" && hasValidRegistration && (
-            <RadiologyRequest 
-              registration={selectedRegistration}
-              onComplete={goBackToQueue}
-              onRefresh={refreshData}
-              api={api}
-              onSave={saveCurrentStep}
-              onFinish={finishTreatment}
-              onNextStep={goToNextStep}
-              onPrevStep={goToPreviousStep}
-              currentStep={currentStep}
-              nextStep={nextStep}
-              prevStep={prevStep}
-              isSubmitting={isSubmitting}
-              isTreatmentComplete={treatmentProgress.isComplete}
-            />
-          )}
-
-          {activeTab === "operation" && (
-            <OperationRoom 
-              api={api}
-              onSelectPatient={handleSelectPatient}
-              onRefresh={refreshData}
-            />
-          )}
-
-          {activeTab === "pres_insert" && hasValidRegistration && (
-            <PrescriptionForm 
-              registration={selectedRegistration}
-              onComplete={goBackToQueue}
-              onRefresh={refreshData}
-              api={api}
-              onSave={saveCurrentStep}
-              onFinish={finishTreatment}
-              onNextStep={goToNextStep}
-              onPrevStep={goToPreviousStep}
-              currentStep={currentStep}
-              nextStep={nextStep}
-              prevStep={prevStep}
-              isSubmitting={isSubmitting}
-              isTreatmentComplete={treatmentProgress.isComplete}
-            />
-          )}
-
-          {activeTab === "followup" && hasValidRegistration && (
-            <FollowUp 
-              registration={selectedRegistration}
-              onComplete={goBackToQueue}
-              onRefresh={refreshData}
-              api={api}
-              onSave={saveCurrentStep}
-              onFinish={finishTreatment}
-              onNextStep={goToNextStep}
-              onPrevStep={goToPreviousStep}
-              currentStep={currentStep}
-              nextStep={nextStep}
-              prevStep={prevStep}
-              isSubmitting={isSubmitting}
-              isTreatmentComplete={treatmentProgress.isComplete}
-            />
-          )}
-
-          {activeTab === "admission" && hasValidRegistration && (
-            <Admission 
-              registration={selectedRegistration}
-              onComplete={goBackToQueue}
-              onRefresh={refreshData}
-              api={api}
-              onSave={saveCurrentStep}
-              onFinish={finishTreatment}
-              onNextStep={goToNextStep}
-              onPrevStep={goToPreviousStep}
-              currentStep={currentStep}
-              nextStep={nextStep}
-              prevStep={prevStep}
-              isSubmitting={isSubmitting}
-              isTreatmentComplete={treatmentProgress.isComplete}
-            />
-          )}
-
-          {activeTab === "history" && (
-            <HistoryList 
-              api={api}
-              onSelectHistory={handleSelectHistory}
-            />
+          {selectedRegistration && activeTab !== 'queue' && activeTab !== 'history' ? (
+            renderSelectedPatientForm()
+          ) : (
+            renderTabContent()
           )}
         </div>
 
         {/* ============ دکمه‌های ناوبری ============ */}
-        {hasValidRegistration && !treatmentProgress.isComplete && activeTab !== 'queue' && activeTab !== 'history' && (
+        {selectedRegistration && !treatmentProgress.isComplete && activeTab !== 'queue' && activeTab !== 'history' && (
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',

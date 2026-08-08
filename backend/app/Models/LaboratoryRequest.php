@@ -26,23 +26,28 @@ class LaboratoryRequest extends Model
         'result_file_path',
         'result_date',
         'barcode',
+        'fee_id',
     ];
 
     protected $casts = [
         'request_date' => 'date',
         'sample_collection_date' => 'date',
         'result_date' => 'date',
+        'fee_id' => 'integer',
+        'registration_id' => 'integer',
+        'patient_id' => 'integer',
+        'doctor_id' => 'integer',
+        'status' => 'string',
     ];
 
-    // Relationships
     public function registration()
     {
-        return $this->belongsTo(Registration::class);
+        return $this->belongsTo(Registrations::class, 'registration_id');
     }
 
     public function patient()
     {
-        return $this->belongsTo(Patient::class);
+        return $this->belongsTo(Patient::class, 'patient_id');
     }
 
     public function doctor()
@@ -52,10 +57,9 @@ class LaboratoryRequest extends Model
 
     public function fee()
     {
-        return $this->hasOne(LaboratoryFee::class);
+        return $this->hasOne(LaboratoryFee::class, 'laboratory_request_id');
     }
 
-    // Accessors
     public function getTestTypeLabelAttribute()
     {
         $labels = [
@@ -83,6 +87,7 @@ class LaboratoryRequest extends Model
             'completed' => 'تکمیل شده',
             'cancelled' => 'لغو شده',
             'rejected' => 'رد شده',
+            'sent_to_lab' => 'ارسال به لابراتوار',
         ];
 
         return $labels[$this->status] ?? $this->status;
@@ -97,6 +102,7 @@ class LaboratoryRequest extends Model
             'completed' => '#10b981',
             'cancelled' => '#6b7280',
             'rejected' => '#ef4444',
+            'sent_to_lab' => '#8b5cf6',
         ];
 
         return $colors[$this->status] ?? '#6b7280';

@@ -36,6 +36,7 @@ export default function LaboratoryRequest({
   const [showEditModal, setShowEditModal] = useState(false);
   const [barcode, setBarcode] = useState(null);
   const [registrationData, setRegistrationData] = useState(null);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
 
   // ============ دریافت اطلاعات مریض و بارکد ============
   useEffect(() => {
@@ -71,14 +72,22 @@ export default function LaboratoryRequest({
 
     const loadTests = async () => {
       try {
-        // ✅ تغییر آدرس: حذف پیشوند doctor
         const response = await api.get(`/doctor/laboratory/${registration.reg_id}`);
+        console.log('📥 Load Tests Response:', response.data);
+        
         if (response.data?.success && response.data?.data) {
-          setTests(response.data.data.tests || []);
+          const testsData = response.data.data.tests || [];
+          setTests(testsData);
           setIsLabRequested(response.data.data.has_tests || false);
+          
+          if (testsData.length > 0 && testsData[0].barcode) {
+            setBarcode(testsData[0].barcode);
+          }
         }
       } catch (err) {
         console.log("هیچ تست لابراتواری یافت نشد");
+        setTests([]);
+        setIsLabRequested(false);
       }
     };
 
@@ -102,6 +111,19 @@ export default function LaboratoryRequest({
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  // ============ ریست فرم ============
+  const resetForm = () => {
+    setFormData({
+      test_type: '',
+      test_name: '',
+      test_description: '',
+      clinical_indication: '',
+      special_notes: '',
+      request_date: new Date().toISOString().split('T')[0],
+      sample_collection_date: '',
+    });
+  };
+
   // ============ ثبت درخواست لابراتوار ============
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -111,11 +133,13 @@ export default function LaboratoryRequest({
       return;
     }
 
+    setIsSubmittingForm(true);
     setLoading(true);
 
     try {
-      // ✅ تغییر آدرس: حذف پیشوند doctor و ارسال در URL
-     const response = await api.post(`/doctor/laboratory/${registration.reg_id}`, {
+      console.log('📤 Sending data:', formData);
+      
+      const response = await api.post(`/laboratory/${registration.reg_id}`, {
         test_type: formData.test_type,
         test_name: formData.test_name,
         test_description: formData.test_description,
@@ -123,32 +147,52 @@ export default function LaboratoryRequest({
         special_notes: formData.special_notes,
         request_date: formData.request_date,
         sample_collection_date: formData.sample_collection_date,
-        // barcode به صورت خودکار در سرور تولید می‌شود، اما اگر نیاز باشد ارسال می‌کنیم
-        barcode: barcode,
       });
 
-      if (response.data?.data?.all_tests) {
-        setTests(response.data.data.all_tests);
-        setIsLabRequested(true);
+      console.log('✅ Response:', response.data);
+
+      if (response.data?.success) {
+        if (response.data.data?.all_tests) {
+          setTests(response.data.data.all_tests);
+          setIsLabRequested(true);
+        }
         
-        if (response.data.data.laboratory_request?.barcode) {
+        if (response.data.data?.laboratory_request?.barcode) {
           setBarcode(response.data.data.laboratory_request.barcode);
         }
-      }
 
-      toast.success(`✅ درخواست لابراتوار با بارکد ${barcode || 'ثبت شد'} با موفقیت ارسال شد`);
-      
-      if (onSave) {
-        await onSave(formData);
+        toast.success(`✅ درخواست لابراتوار با موفقیت ثبت شد`);
+        resetForm();
+        
+        if (onSave) {
+          await onSave(formData);
+        }
+        
+        if (onRefresh) {
+          onRefresh();
+        }
+      } else {
+        toast.error(`❌ خطا: ${response.data?.message || 'ثبت ناموفق بود'}`);
       }
-      
-      onRefresh();
       
     } catch (err) {
-      console.error("خطا در ارسال به لابراتوار:", err);
-      toast.error(`❌ خطا در ارسال به لابراتوار: ${err.response?.data?.message || err.message}`);
+      console.error("❌ خطای کامل:", err);
+      console.error("❌ پاسخ خطا:", err.response?.data);
+      console.error("❌ وضعیت:", err.response?.status);
+      
+      if (err.response?.data?.errors) {
+        const errors = err.response.data.errors;
+        Object.keys(errors).forEach(key => {
+          toast.error(`❌ ${key}: ${errors[key][0]}`);
+        });
+      } else if (err.response?.data?.message) {
+        toast.error(`❌ ${err.response.data.message}`);
+      } else {
+        toast.error(`❌ خطا در ارسال به لابراتوار: ${err.message}`);
+      }
     } finally {
       setLoading(false);
+      setIsSubmittingForm(false);
     }
   };
 
@@ -174,7 +218,8 @@ export default function LaboratoryRequest({
     setLoading(true);
 
     try {
-      // ✅ تغییر آدرس: استفاده از مسیر laboratory-requests
+      console.log('📤 Updating test:', editingTest.id, formData);
+      
       const response = await api.put(`/laboratory-requests/${editingTest.id}`, {
         test_type: formData.test_type,
         test_name: formData.test_name,
@@ -183,21 +228,45 @@ export default function LaboratoryRequest({
         special_notes: formData.special_notes,
         request_date: formData.request_date,
         sample_collection_date: formData.sample_collection_date,
-        barcode: barcode
       });
       
-      if (response.data?.data?.all_tests) {
-        setTests(response.data.data.all_tests);
-      }
+      console.log('✅ Update Response:', response.data);
+      
+      if (response.data?.success) {
+        if (response.data.data?.all_tests) {
+          setTests(response.data.data.all_tests);
+        } else {
+          const reloadResponse = await api.get(`/doctor/laboratory/${registration.reg_id}`);
+          if (reloadResponse.data?.success && reloadResponse.data?.data) {
+            setTests(reloadResponse.data.data.tests || []);
+          }
+        }
 
-      toast.success("✅ تست لابراتوار با موفقیت ویرایش شد");
-      setShowEditModal(false);
-      setEditingTest(null);
-      onRefresh();
+        toast.success("✅ تست لابراتوار با موفقیت ویرایش شد");
+        setShowEditModal(false);
+        setEditingTest(null);
+        resetForm();
+        
+        if (onRefresh) {
+          onRefresh();
+        }
+      } else {
+        toast.error(`❌ خطا: ${response.data?.message || 'ویرایش ناموفق بود'}`);
+      }
 
     } catch (err) {
       console.error("❌ خطا در ویرایش تست:", err);
-      toast.error(`❌ خطا در ویرایش تست: ${err.response?.data?.message || err.message}`);
+      
+      if (err.response?.data?.errors) {
+        const errors = err.response.data.errors;
+        Object.keys(errors).forEach(key => {
+          toast.error(`❌ ${key}: ${errors[key][0]}`);
+        });
+      } else if (err.response?.data?.message) {
+        toast.error(`❌ ${err.response.data.message}`);
+      } else {
+        toast.error(`❌ خطا در ویرایش تست: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -210,17 +279,33 @@ export default function LaboratoryRequest({
     }
 
     try {
-      // ✅ تغییر آدرس: استفاده از مسیر laboratory-requests
+      console.log('🗑️ Deleting test:', testId);
+      
       const response = await api.delete(`/laboratory-requests/${testId}`);
       
-      if (response.data?.data) {
-        setTests(response.data.data);
-        if (tests.length <= 1) {
-          setIsLabRequested(false);
+      console.log('✅ Delete Response:', response.data);
+      
+      if (response.data?.success) {
+        if (response.data.data && Array.isArray(response.data.data)) {
+          setTests(response.data.data);
+          setIsLabRequested(response.data.data.length > 0);
+        } else {
+          const reloadResponse = await api.get(`/doctor/laboratory/${registration.reg_id}`);
+          if (reloadResponse.data?.success && reloadResponse.data?.data) {
+            const testsData = reloadResponse.data.data.tests || [];
+            setTests(testsData);
+            setIsLabRequested(reloadResponse.data.data.has_tests || false);
+          }
         }
-      }
 
-      toast.success("✅ تست لابراتوار با موفقیت حذف شد");
+        toast.success("✅ تست لابراتوار با موفقیت حذف شد");
+        
+        if (onRefresh) {
+          onRefresh();
+        }
+      } else {
+        toast.error(`❌ خطا: ${response.data?.message || 'حذف ناموفق بود'}`);
+      }
 
     } catch (err) {
       console.error("❌ خطا در حذف تست:", err);
@@ -229,7 +314,7 @@ export default function LaboratoryRequest({
   };
 
   const patient = patientInfo?.patient || registration.patient || {};
-  const isDisabled = isCompleted || isTreatmentComplete || isSubmitting;
+  const isDisabled = isCompleted || isTreatmentComplete || isSubmitting || isSubmittingForm;
 
   const getGenderText = (gender) => {
     if (!gender) return '-';
@@ -260,7 +345,8 @@ export default function LaboratoryRequest({
     in_progress: '#8b5cf6',
     completed: '#10b981',
     cancelled: '#6b7280',
-    rejected: '#ef4444'
+    rejected: '#ef4444',
+    sent_to_lab: '#8b5cf6'
   };
 
   const statusLabels = {
@@ -269,7 +355,8 @@ export default function LaboratoryRequest({
     in_progress: 'در حال انجام',
     completed: 'تکمیل شده',
     cancelled: 'لغو شده',
-    rejected: 'رد شده'
+    rejected: 'رد شده',
+    sent_to_lab: 'ارسال به لابراتوار'
   };
 
   return (
@@ -748,6 +835,17 @@ export default function LaboratoryRequest({
                         🏷️ {test.barcode}
                       </span>
                     )}
+                    {test.has_fee && (
+                      <span style={{ 
+                        backgroundColor: '#10b981',
+                        color: 'white',
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        fontSize: '10px'
+                      }}>
+                        💰 فیس ثبت شده
+                      </span>
+                    )}
                   </div>
                   {test.test_name && (
                     <div style={{ color: 'white', fontSize: '14px' }}>
@@ -764,28 +862,32 @@ export default function LaboratoryRequest({
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <button
                     onClick={() => handleEditTest(test)}
+                    disabled={test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab'}
                     style={{
-                      backgroundColor: '#3b82f6',
+                      backgroundColor: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? '#6b7280' : '#3b82f6',
                       color: 'white',
                       padding: '4px 10px',
                       borderRadius: '4px',
                       border: 'none',
                       fontSize: '11px',
-                      cursor: 'pointer'
+                      cursor: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? 'not-allowed' : 'pointer',
+                      opacity: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? 0.5 : 1
                     }}
                   >
                     ✏️ ویرایش
                   </button>
                   <button
                     onClick={() => handleDeleteTest(test.id)}
+                    disabled={test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee}
                     style={{
-                      backgroundColor: '#dc2626',
+                      backgroundColor: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? '#6b7280' : '#dc2626',
                       color: 'white',
                       padding: '4px 10px',
                       borderRadius: '4px',
                       border: 'none',
                       fontSize: '11px',
-                      cursor: 'pointer'
+                      cursor: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? 'not-allowed' : 'pointer',
+                      opacity: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? 0.5 : 1
                     }}
                   >
                     🗑️ حذف
@@ -994,6 +1096,7 @@ export default function LaboratoryRequest({
                 onClick={() => {
                   setShowEditModal(false);
                   setEditingTest(null);
+                  resetForm();
                 }}
                 style={{
                   backgroundColor: '#6b7280',
