@@ -11,10 +11,23 @@ return new class extends Migration
         Schema::create('laboratory_requests', function (Blueprint $table) {
             $table->id();
             
-            // Foreign keys
-            $table->foreignId('registration_id')->constrained('registrations')->onDelete('cascade');
-            $table->foreignId('patient_id')->constrained('patients')->onDelete('cascade');
-            $table->foreignId('doctor_id')->nullable()->constrained('users')->onDelete('set null');
+            // ============ اصلاح کلیدهای خارجی ============
+            // برای registration_id که به reg_id اشاره می‌کند
+            $table->foreignId('registration_id')
+                  ->nullable()
+                  ->constrained('registrations', 'reg_id')  // ← نام ستون صحیح
+                  ->onDelete('cascade');
+            
+            // patient_id به id در جدول patients اشاره می‌کند (صحیح است)
+            $table->foreignId('patient_id')
+                  ->constrained('patients')
+                  ->onDelete('cascade');
+            
+            // doctor_id به id در جدول users اشاره می‌کند (صحیح است)
+            $table->foreignId('doctor_id')
+                  ->nullable()
+                  ->constrained('users')
+                  ->onDelete('set null');
             
             // Test information
             $table->string('test_type');
@@ -48,8 +61,12 @@ return new class extends Migration
             // Barcode
             $table->string('barcode')->unique()->nullable();
             
-            // ============ فیلدهای جدید ============
-            $table->foreignId('fee_id')->nullable()->constrained('laboratory_fees')->onDelete('set null');
+            // Fee
+            $table->foreignId('fee_id')
+                  ->nullable()
+                  ->constrained('laboratory_fees')
+                  ->onDelete('set null');
+            
             $table->timestamp('sent_to_lab_at')->nullable();
             $table->timestamp('result_received_at')->nullable();
             

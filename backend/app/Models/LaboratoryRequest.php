@@ -10,6 +10,8 @@ class LaboratoryRequest extends Model
 {
     use HasFactory, SoftDeletes;
 
+    protected $table = 'laboratory_requests';
+
     protected $fillable = [
         'registration_id',
         'patient_id',
@@ -27,12 +29,14 @@ class LaboratoryRequest extends Model
         'result_date',
         'barcode',
         'fee_id',
+        'sent_to_lab_at',
     ];
 
     protected $casts = [
         'request_date' => 'date',
         'sample_collection_date' => 'date',
         'result_date' => 'date',
+        'sent_to_lab_at' => 'datetime',
         'fee_id' => 'integer',
         'registration_id' => 'integer',
         'patient_id' => 'integer',

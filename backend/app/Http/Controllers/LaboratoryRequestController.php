@@ -143,17 +143,12 @@ class LaboratoryRequestController extends Controller
      */
     public function store(Request $request, $registrationId)
     {
-        // لاگ برای دیباگ
-
-    dd('LABORATORY STORE REACHED', $registrationId, $request->all());
-
-    Log::info('=== START LaboratoryRequest Store ===');
-        dd('LABORATORY STORE REACHED', $registrationId, $request->all());
+        // لاگ برای دیباگ (بدون dd)
         Log::info('=== START LaboratoryRequest Store ===');
         Log::info('Registration ID: ' . $registrationId);
         Log::info('Request Data: ' . json_encode($request->all()));
         Log::info('User ID: ' . (auth()->id() ?? 'null'));
-
+        
         try {
             $registration = Registrations::find($registrationId);
             if (!$registration) {

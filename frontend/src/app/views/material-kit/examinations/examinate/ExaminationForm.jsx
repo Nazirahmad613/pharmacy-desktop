@@ -1,3 +1,4 @@
+// src/app/pages/treatment/examinate/ExaminationForm.jsx
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 
@@ -46,6 +47,7 @@ export default function ExaminationForm({
 
   // ============ بارگذاری اطلاعات از props ============
   useEffect(() => {
+    console.log('📝 ExaminationForm - savedData changed:', savedData);
     if (savedData) {
       setFormData({
         diagnosis: savedData.diagnosis || '',
@@ -66,6 +68,25 @@ export default function ExaminationForm({
       if (savedData.id) {
         setIsFormLocked(true);
       }
+    } else {
+      // اگر savedData null باشه، فرم رو ریست کن
+      setFormData({
+        diagnosis: '',
+        weight: '',
+        blood_pressure: '',
+        temperature: '',
+        oxygen: '',
+        pulse: '',
+        respiratory_rate: '',
+        height: '',
+        bmi: '',
+        chief_complaint: '',
+        history_of_present_illness: '',
+        past_medical_history: '',
+        physical_examination: '',
+        note: ''
+      });
+      setIsFormLocked(false);
     }
   }, [savedData]);
 
@@ -97,12 +118,20 @@ export default function ExaminationForm({
     const checkExamination = async () => {
       try {
         const response = await api.get(`/doctor/examination/${registration.reg_id}`);
+        console.log('📥 Check Examination Response:', response.data);
+        
         if (response.data?.success && response.data?.data) {
           const data = response.data.data;
+          
+          // به‌روزرسانی لیست معاینات
           if (data.all_examinations && setAllExaminations) {
+            console.log('📋 Setting allExaminations from API:', data.all_examinations);
             setAllExaminations(data.all_examinations);
           }
+          
+          // اگر معاینه وجود دارد
           if (data.examination) {
+            console.log('✅ Found examination:', data.examination);
             if (setIsExamined) {
               setIsExamined(true);
             }
@@ -123,6 +152,9 @@ export default function ExaminationForm({
               physical_examination: data.examination.physical_examination || '',
               note: data.examination.note || ''
             });
+          } else {
+            console.log('ℹ️ No examination found in response');
+            setIsFormLocked(false);
           }
         }
       } catch (err) {
@@ -168,37 +200,39 @@ export default function ExaminationForm({
     try {
       const result = await onSave(formData);
       
+      console.log('📝 Result from onSave:', result);
+      
       if (result?.data?.examination) {
         setIsExamined(true);
         setIsFormLocked(true);
+        
         // به‌روزرسانی فرم با داده‌های ثبت شده
-        if (result.data.examination) {
-          setFormData({
-            diagnosis: result.data.examination.diagnosis || '',
-            weight: result.data.examination.weight || '',
-            blood_pressure: result.data.examination.blood_pressure || '',
-            temperature: result.data.examination.temperature || '',
-            oxygen: result.data.examination.oxygen || '',
-            pulse: result.data.examination.pulse || '',
-            respiratory_rate: result.data.examination.respiratory_rate || '',
-            height: result.data.examination.height || '',
-            bmi: result.data.examination.bmi || '',
-            chief_complaint: result.data.examination.chief_complaint || '',
-            history_of_present_illness: result.data.examination.history_of_present_illness || '',
-            past_medical_history: result.data.examination.past_medical_history || '',
-            physical_examination: result.data.examination.physical_examination || '',
-            note: result.data.examination.note || ''
-          });
+        const examData = result.data.examination;
+        setFormData({
+          diagnosis: examData.diagnosis || '',
+          weight: examData.weight || '',
+          blood_pressure: examData.blood_pressure || '',
+          temperature: examData.temperature || '',
+          oxygen: examData.oxygen || '',
+          pulse: examData.pulse || '',
+          respiratory_rate: examData.respiratory_rate || '',
+          height: examData.height || '',
+          bmi: examData.bmi || '',
+          chief_complaint: examData.chief_complaint || '',
+          history_of_present_illness: examData.history_of_present_illness || '',
+          past_medical_history: examData.past_medical_history || '',
+          physical_examination: examData.physical_examination || '',
+          note: examData.note || ''
+        });
+        
+        // به‌روزرسانی لیست معاینات
+        if (result.data.all_examinations && setAllExaminations) {
+          console.log('📋 Updating allExaminations from save:', result.data.all_examinations);
+          setAllExaminations(result.data.all_examinations);
         }
       }
       
-      if (result?.data?.all_examinations && setAllExaminations) {
-        setAllExaminations(result.data.all_examinations);
-      }
-      
       toast.success("✅ معلومات معاینه با موفقیت ثبت شد");
-      // ✅ فقط صف را رفرش کن نه کل صفحه را
-      // onRefresh(); // حذف شد تا اطلاعات پاک نشود
       
     } catch (err) {
       console.error("❌ خطا در ثبت معاینه:", err);

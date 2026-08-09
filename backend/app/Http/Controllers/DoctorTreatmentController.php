@@ -8,18 +8,61 @@ use App\Models\Examination;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log; // اضافه کردن این خط
+use Illuminate\Support\Facades\Log;
 
 class DoctorTreatmentController extends Controller
 {
     /**
      * دریافت صف انتظار داکتر
-     * 
+     *
      * @return \Illuminate\Http\JsonResponse
      */
+    public function activePatients()
+    {
+        try {
+
+            $doctorId = Auth::id();
+
+            $registrations = Registrations::with([
+                'patient',
+                'department',
+                'doctor'
+            ])
+            ->where('doctor_id', $doctorId)
+            ->whereIn('visit_status', [
+                'Doctor',
+                'Examining',
+                'Laboratory',
+            ])
+            ->orderBy('queue_number')
+            ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $registrations,
+            ], 200);
+
+        } catch (\Throwable $e) {
+
+            Log::error('Active patients API error', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت مریضان فعال',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
     public function doctorQueue()
     {
         try {
+
             $doctorId = Auth::id();
 
             $registrations = Registrations::with([
@@ -29,13 +72,12 @@ class DoctorTreatmentController extends Controller
             ->where('doctor_id', $doctorId)
             ->where('visit_status', 'Doctor')
             ->whereNotNull('sent_to_doctor_at')
-          
             ->orderBy('sent_to_doctor_at', 'asc')
             ->orderBy('queue_number', 'asc')
             ->get();
 
             // تبدیل داده‌ها به فرمت مناسب برای فرانت‌اند
-            $formattedData = $registrations->map(function($registration) {
+            $formattedData = $registrations->map(function ($registration) {
                 return [
                     'reg_id' => $registration->reg_id,
                     'queue_number' => $registration->queue_number,
@@ -50,6 +92,7 @@ class DoctorTreatmentController extends Controller
                     'temperature' => $registration->temperature,
                     'oxygen' => $registration->oxygen,
                     'note' => $registration->note,
+
                     'patient' => $registration->patient ? [
                         'id' => $registration->patient->id,
                         'first_name' => $registration->patient->first_name,
@@ -62,6 +105,7 @@ class DoctorTreatmentController extends Controller
                         'blood_group' => $registration->patient->blood_group,
                         'address' => $registration->patient->address,
                     ] : null,
+
                     'department' => $registration->department ? [
                         'id' => $registration->department->id,
                         'name' => $registration->department->name,
@@ -69,7 +113,7 @@ class DoctorTreatmentController extends Controller
                     ] : null,
                 ];
             });
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $formattedData,
@@ -77,7 +121,9 @@ class DoctorTreatmentController extends Controller
             ]);
 
         } catch (\Exception $e) {
+
             Log::error('Doctor queue error: ' . $e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت صف داکتر',
@@ -86,19 +132,23 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * دریافت اطلاعات کامل مریض برای معاینه
-     * 
+     *
      * @param int $reg_id
      * @return \Illuminate\Http\JsonResponse
      */
     public function show($reg_id)
     {
         try {
+
             $registration = Registrations::with([
                 'patient',
                 'department'
-            ])->where('reg_id', $reg_id)->first();
+            ])
+            ->where('reg_id', $reg_id)
+            ->first();
 
             if (!$registration) {
                 return response()->json([
@@ -108,7 +158,7 @@ class DoctorTreatmentController extends Controller
             }
 
             $patient = $registration->patient;
-            
+
             if (!$patient) {
                 return response()->json([
                     'success' => false,
@@ -117,7 +167,10 @@ class DoctorTreatmentController extends Controller
             }
 
             // دریافت آخرین معاینه
-            $examination = Examination::where('registration_id', $reg_id)->latest()->first();
+            $examination = Examination::where(
+                'registration_id',
+                $reg_id
+            )->latest()->first();
 
             $data = [
                 'registration' => [
@@ -126,12 +179,14 @@ class DoctorTreatmentController extends Controller
                     'queue_number' => $registration->queue_number,
                     'visit_date' => $registration->visit_date,
                     'status' => $registration->visit_status,
+
                     'department' => $registration->department ? [
                         'id' => $registration->department->id,
                         'name' => $registration->department->name,
                         'code' => $registration->department->code
                     ] : null,
                 ],
+
                 'patient' => [
                     'id' => $patient->id,
                     'first_name' => $patient->first_name,
@@ -147,6 +202,7 @@ class DoctorTreatmentController extends Controller
                     'email' => $patient->email ?? null,
                     'national_id' => $patient->national_id,
                 ],
+
                 'previous_examination' => $examination ? [
                     'diagnosis' => $examination->diagnosis,
                     'weight' => $examination->weight,
@@ -171,7 +227,11 @@ class DoctorTreatmentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error fetching patient info: ' . $e->getMessage());
+
+            Log::error(
+                'Error fetching patient info: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت اطلاعات مریض: ' . $e->getMessage()
@@ -179,9 +239,10 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * ثبت معاینه
-     * 
+     *
      * @param Request $request
      * @param int $reg_id
      * @return \Illuminate\Http\JsonResponse
@@ -189,17 +250,18 @@ class DoctorTreatmentController extends Controller
     public function treatment(Request $request, $reg_id)
     {
         try {
-            $registration = Registrations::where('reg_id', $reg_id)->first();
-            
+
+            $registration = Registrations::where(
+                'reg_id',
+                $reg_id
+            )->first();
+
             if (!$registration) {
                 return response()->json([
                     'success' => false,
                     'message' => 'ثبت مریض پیدا نشد'
                 ], 404);
             }
-
-            // بررسی اینکه کاربر جاری داکتر است
-            
 
             DB::beginTransaction();
 
@@ -226,10 +288,10 @@ class DoctorTreatmentController extends Controller
             ]);
 
             // بروزرسانی وضعیت ثبت
-          $registration->update([
-    'visit_status' => 'Examining',
-    'examined_at' => now()
-]);
+            $registration->update([
+                'visit_status' => 'Examining',
+                'examined_at' => now()
+            ]);
 
             DB::commit();
 
@@ -240,8 +302,13 @@ class DoctorTreatmentController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
+
             DB::rollBack();
-            Log::error('Error in treatment: ' . $e->getMessage());
+
+            Log::error(
+                'Error in treatment: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در ثبت معاینه: ' . $e->getMessage()
@@ -249,17 +316,22 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * ختم معالجه
-     * 
+     *
      * @param int $reg_id
      * @return \Illuminate\Http\JsonResponse
      */
     public function complete($reg_id)
     {
         try {
-            $registration = Registrations::where('reg_id', $reg_id)->first();
-            
+
+            $registration = Registrations::where(
+                'reg_id',
+                $reg_id
+            )->first();
+
             if (!$registration) {
                 return response()->json([
                     'success' => false,
@@ -268,7 +340,11 @@ class DoctorTreatmentController extends Controller
             }
 
             // بررسی اینکه آیا معاینه ثبت شده است
-            $examination = Examination::where('registration_id', $reg_id)->first();
+            $examination = Examination::where(
+                'registration_id',
+                $reg_id
+            )->first();
+
             if (!$examination) {
                 return response()->json([
                     'success' => false,
@@ -276,10 +352,10 @@ class DoctorTreatmentController extends Controller
                 ], 400);
             }
 
-         $registration->update([
-    'visit_status' => 'Completed',
-    'completed_at' => now()
-]);
+            $registration->update([
+                'visit_status' => 'Completed',
+                'completed_at' => now()
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -288,7 +364,11 @@ class DoctorTreatmentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error completing treatment: ' . $e->getMessage());
+
+            Log::error(
+                'Error completing treatment: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در ختم معالجه: ' . $e->getMessage()
@@ -296,17 +376,22 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * شروع معالجه
-     * 
+     *
      * @param int $reg_id
      * @return \Illuminate\Http\JsonResponse
      */
     public function startTreatment($reg_id)
     {
         try {
-            $registration = Registrations::where('reg_id', $reg_id)->first();
-            
+
+            $registration = Registrations::where(
+                'reg_id',
+                $reg_id
+            )->first();
+
             if (!$registration) {
                 return response()->json([
                     'success' => false,
@@ -326,7 +411,11 @@ class DoctorTreatmentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error starting treatment: ' . $e->getMessage());
+
+            Log::error(
+                'Error starting treatment: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در شروع معالجه: ' . $e->getMessage()
@@ -334,9 +423,10 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * ارسال به لابراتوار
-     * 
+     *
      * @param Request $request
      * @param int $reg_id
      * @return \Illuminate\Http\JsonResponse
@@ -344,8 +434,12 @@ class DoctorTreatmentController extends Controller
     public function sendToLaboratory(Request $request, $reg_id)
     {
         try {
-            $registration = Registrations::where('reg_id', $reg_id)->first();
-            
+
+            $registration = Registrations::where(
+                'reg_id',
+                $reg_id
+            )->first();
+
             if (!$registration) {
                 return response()->json([
                     'success' => false,
@@ -365,7 +459,11 @@ class DoctorTreatmentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error sending to laboratory: ' . $e->getMessage());
+
+            Log::error(
+                'Error sending to laboratory: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در ارسال به لابراتوار: ' . $e->getMessage()
@@ -373,17 +471,22 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * بازگشت به معالجه
-     * 
+     *
      * @param int $history_id
      * @return \Illuminate\Http\JsonResponse
      */
     public function returnToTreatment($history_id)
     {
         try {
-            $registration = Registrations::where('reg_id', $history_id)->first();
-            
+
+            $registration = Registrations::where(
+                'reg_id',
+                $history_id
+            )->first();
+
             if (!$registration) {
                 return response()->json([
                     'success' => false,
@@ -403,7 +506,11 @@ class DoctorTreatmentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error returning to treatment: ' . $e->getMessage());
+
+            Log::error(
+                'Error returning to treatment: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در بازگشت به معالجه: ' . $e->getMessage()
@@ -411,23 +518,28 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * دریافت تاریخچه معالجه
-     * 
+     *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function treatmentHistory(Request $request)
     {
         try {
+
             $doctorId = Auth::id();
-            
+
             $history = Registrations::with([
                 'patient',
                 'department'
             ])
             ->where('doctor_id', $doctorId)
-            ->whereIn('visit_status', ['completed', 'examined'])
+            ->whereIn('visit_status', [
+                'Completed',
+                'Examining'
+            ])
             ->orderBy('updated_at', 'desc')
             ->paginate(20);
 
@@ -437,7 +549,11 @@ class DoctorTreatmentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error fetching treatment history: ' . $e->getMessage());
+
+            Log::error(
+                'Error fetching treatment history: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت تاریخچه معالجه: ' . $e->getMessage()
@@ -445,24 +561,23 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * ذخیره درخواست رادیولوژی
-     * 
+     *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function storeRadiologyRequest(Request $request)
     {
         try {
+
             $validated = $request->validate([
                 'registration_id' => 'required|exists:registrations,reg_id',
                 'radiology_type' => 'required|string|max:100',
                 'description' => 'nullable|string',
             ]);
 
-            // ایجاد درخواست رادیولوژی
-            // اینجا می‌توانید مدل RadiologyRequest را ایجاد کنید
-            
             return response()->json([
                 'success' => true,
                 'message' => 'درخواست رادیولوژی با موفقیت ثبت شد',
@@ -470,7 +585,11 @@ class DoctorTreatmentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error storing radiology request: ' . $e->getMessage());
+
+            Log::error(
+                'Error storing radiology request: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در ثبت درخواست رادیولوژی: ' . $e->getMessage()
@@ -478,23 +597,22 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * ذخیره Follow Up
-     * 
+     *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function storeFollowUp(Request $request)
     {
         try {
+
             $validated = $request->validate([
                 'registration_id' => 'required|exists:registrations,reg_id',
                 'follow_up_date' => 'required|date|after:today',
                 'description' => 'nullable|string',
             ]);
-
-            // ایجاد Follow Up
-            // اینجا می‌توانید مدل FollowUp را ایجاد کنید
 
             return response()->json([
                 'success' => true,
@@ -503,7 +621,11 @@ class DoctorTreatmentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error storing follow up: ' . $e->getMessage());
+
+            Log::error(
+                'Error storing follow up: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در ثبت ملاقات بعدی: ' . $e->getMessage()
@@ -511,25 +633,27 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * دریافت بخش‌های بستری
-     * 
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function getWards()
     {
         try {
-            // فرض کنید مدل Ward وجود دارد
-            // $wards = Ward::where('status', 'active')->get();
-            
-            // برای تست، یک آرایه خالی برمی‌گردانیم
+
             return response()->json([
                 'success' => true,
                 'data' => []
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error fetching wards: ' . $e->getMessage());
+
+            Log::error(
+                'Error fetching wards: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت بخش‌های بستری: ' . $e->getMessage()
@@ -537,24 +661,23 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
      * ذخیره درخواست بستری
-     * 
+     *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function storeAdmission(Request $request)
     {
         try {
+
             $validated = $request->validate([
                 'registration_id' => 'required|exists:registrations,reg_id',
                 'ward_id' => 'required|integer',
                 'admission_date' => 'required|date',
                 'reason' => 'required|string',
             ]);
-
-            // ایجاد درخواست بستری
-            // اینجا می‌توانید مدل Admission را ایجاد کنید
 
             return response()->json([
                 'success' => true,
@@ -563,7 +686,11 @@ class DoctorTreatmentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error storing admission: ' . $e->getMessage());
+
+            Log::error(
+                'Error storing admission: ' . $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در ثبت درخواست بستری: ' . $e->getMessage()
@@ -571,106 +698,148 @@ class DoctorTreatmentController extends Controller
         }
     }
 
+
     /**
- * ذخیره Progress مراحل درمان
- */ /**
- * ذخیره Progress مراحل درمان
- */
-public function saveProgress(Request $request)
-{
-    try {
-        $validated = $request->validate([
-            'registration_id' => 'required|exists:registrations,reg_id',
-            'currentStepIndex' => 'required|integer',  // تغییر به currentStepIndex
-            'completedSteps' => 'nullable|array',
-            'savedData' => 'nullable|array',
-            'startTime' => 'nullable|string',
-            'endTime' => 'nullable|string',
-            'isComplete' => 'nullable|boolean',
-        ]);
+     * ذخیره Progress مراحل درمان
+     */
+    public function saveProgress(Request $request)
+    {
+        try {
 
-        // استخراج current_step از currentStepIndex
-        $steps = ['queue', 'examination', 'laboratory', 'radiology', 'operation', 'pres_insert', 'followup', 'admission', 'history'];
-        $currentStep = $steps[$validated['currentStepIndex']] ?? 'queue';
+            $validated = $request->validate([
+                'registration_id' => 'required|exists:registrations,reg_id',
+                'currentStepIndex' => 'required|integer',
+                'completedSteps' => 'nullable|array',
+                'savedData' => 'nullable|array',
+                'startTime' => 'nullable|string',
+                'endTime' => 'nullable|string',
+                'isComplete' => 'nullable|boolean',
+            ]);
 
-        DB::table('treatment_progress')->updateOrInsert(
-            [
-                'registration_id' => $validated['registration_id']
-            ],
-            [
-                'current_step' => $currentStep,
-                'current_step_index' => $validated['currentStepIndex'],
-                'completed_steps' => json_encode(
-                    $validated['completedSteps'] ?? []
-                ),
-                'saved_data' => json_encode(
-                    $validated['savedData'] ?? []
-                ),
-                'start_time' => $validated['startTime'] ?? null,
-                'end_time' => $validated['endTime'] ?? null,
-                'is_complete' => $validated['isComplete'] ?? false,
-                'updated_at' => now(),
-                'created_at' => now(),
-            ]
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Progress ذخیره شد'
-        ]);
-
-    } catch(\Exception $e) {
-        Log::error('Save treatment progress error: '.$e->getMessage());
-        return response()->json([
-            'success' => false,
-            'message' => $e->getMessage()
-        ], 500);
-    }
-}
-
-/**
- * دریافت Progress درمان
- */
-public function getProgress($registrationId)
-{
-    try {
-        $progress = DB::table('treatment_progress')
-            ->where('registration_id', $registrationId)
-            ->first();
-
-        if ($progress) {
-            // تبدیل JSON به آرایه
-            $progress->completed_steps = json_decode($progress->completed_steps, true) ?? [];
-            $progress->saved_data = json_decode($progress->saved_data, true) ?? [];
-            
-            // تبدیل به فرمت فرانت‌اند
-            $formatted = [
-                'currentStepIndex' => $progress->current_step_index ?? 0,
-                'completedSteps' => $progress->completed_steps,
-                'isComplete' => $progress->is_complete ?? false,
-                'startTime' => $progress->start_time,
-                'endTime' => $progress->end_time,
-                'registrationId' => $progress->registration_id,
-                'savedData' => $progress->saved_data,
+            // استخراج current_step از currentStepIndex
+            $steps = [
+                'queue',
+                'examination',
+                'laboratory',
+                'radiology',
+                'operation',
+                'pres_insert',
+                'followup',
+                'admission',
+                'history'
             ];
-            
+
+            $currentStep = $steps[$validated['currentStepIndex']] ?? 'queue';
+
+            DB::table('treatment_progress')->updateOrInsert(
+                [
+                    'registration_id' => $validated['registration_id']
+                ],
+                [
+                    'current_step' => $currentStep,
+                    'current_step_index' => $validated['currentStepIndex'],
+
+                    'completed_steps' => json_encode(
+                        $validated['completedSteps'] ?? []
+                    ),
+
+                    'saved_data' => json_encode(
+                        $validated['savedData'] ?? []
+                    ),
+
+                    'start_time' => $validated['startTime'] ?? null,
+                    'end_time' => $validated['endTime'] ?? null,
+                    'is_complete' => $validated['isComplete'] ?? false,
+
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+
             return response()->json([
                 'success' => true,
-                'data' => $formatted
+                'message' => 'Progress ذخیره شد'
             ]);
+
+        } catch (\Exception $e) {
+
+            Log::error(
+                'Save treatment progress error: ' . $e->getMessage()
+            );
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'data' => null
-        ]);
-
-    } catch(\Exception $e) {
-        Log::error('Get treatment progress error: '.$e->getMessage());
-        return response()->json([
-            'success' => false,
-            'message' => $e->getMessage()
-        ], 500);
     }
-}
+
+
+    /**
+     * دریافت Progress درمان
+     */
+    public function getProgress($registrationId)
+    {
+        try {
+
+            $progress = DB::table('treatment_progress')
+                ->where('registration_id', $registrationId)
+                ->first();
+
+            if ($progress) {
+
+                // تبدیل JSON به آرایه
+                $progress->completed_steps =
+                    json_decode($progress->completed_steps, true) ?? [];
+
+                $progress->saved_data =
+                    json_decode($progress->saved_data, true) ?? [];
+
+                // تبدیل به فرمت فرانت‌اند
+                $formatted = [
+                    'currentStepIndex' =>
+                        $progress->current_step_index ?? 0,
+
+                    'completedSteps' =>
+                        $progress->completed_steps,
+
+                    'isComplete' =>
+                        $progress->is_complete ?? false,
+
+                    'startTime' =>
+                        $progress->start_time,
+
+                    'endTime' =>
+                        $progress->end_time,
+
+                    'registrationId' =>
+                        $progress->registration_id,
+
+                    'savedData' =>
+                        $progress->saved_data,
+                ];
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $formatted
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => null
+            ]);
+
+        } catch (\Exception $e) {
+
+            Log::error(
+                'Get treatment progress error: ' . $e->getMessage()
+            );
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
