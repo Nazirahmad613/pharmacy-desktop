@@ -193,10 +193,13 @@ Route::middleware('auth:sanctum')->group(function () {
         // لیست تمام درخواست‌ها
         Route::get('/', [LaboratoryRequestController::class, 'index']);
 
-        // درخواست‌های یک مراجعه
+        // درخواست‌های یک مراجعه (GET - ساده)
         Route::get('/registration/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
 
-        // ثبت درخواست جدید
+        // ✅ درخواست‌های یک مراجعه با جزئیات کامل (GET - با جزئیات کامل برای جدول)
+        Route::get('/registration/{registrationId}/full', [LaboratoryRequestController::class, 'getByRegistrationFull']);
+
+        // ثبت درخواست جدید (POST)
         Route::post('/registration/{registrationId}', [LaboratoryRequestController::class, 'store']);
 
         // نمایش یک درخواست

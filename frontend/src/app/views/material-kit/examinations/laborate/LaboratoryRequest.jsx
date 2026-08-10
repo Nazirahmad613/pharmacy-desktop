@@ -15,7 +15,13 @@ export default function LaboratoryRequest({
   nextStep,
   prevStep,
   isSubmitting,
-  isTreatmentComplete
+  isTreatmentComplete,
+  // ============ Props جدید ============
+  savedTests,        // تست جاری
+  allTests,          // لیست تمام تست‌ها
+  isLabRequested,    // وضعیت درخواست
+  setIsLabRequested, // تابع به‌روزرسانی وضعیت
+  setAllTests        // تابع به‌روزرسانی لیست تست‌ها
 }) {
   const [formData, setFormData] = useState({
     test_type: '',
@@ -29,7 +35,6 @@ export default function LaboratoryRequest({
   
   const [loading, setLoading] = useState(false);
   const [tests, setTests] = useState([]);
-  const [isLabRequested, setIsLabRequested] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [patientInfo, setPatientInfo] = useState(null);
   const [editingTest, setEditingTest] = useState(null);
@@ -70,8 +75,26 @@ export default function LaboratoryRequest({
     fetchPatientInfo();
   }, [registration?.reg_id, api]);
 
-  // ============ بارگذاری تست‌های لابراتوار ============
-  const loadTests = async () => {
+  // ============ بارگذاری تست‌ها از props ============
+  useEffect(() => {
+    console.log('📝 LaboratoryRequest - allTests changed:', allTests);
+    if (allTests && Array.isArray(allTests)) {
+      setTests(allTests);
+      if (setIsLabRequested) {
+        setIsLabRequested(allTests.length > 0);
+      }
+    }
+  }, [allTests, setIsLabRequested]);
+
+  // ============ بارگذاری اولیه از سرور با روت جدید ============
+  useEffect(() => {
+    if (registration?.reg_id) {
+      loadTestsFromServer();
+    }
+  }, [registration?.reg_id]);
+
+  // ============ بارگذاری تست‌ها از سرور با روت جدید ============
+  const loadTestsFromServer = async () => {
     if (!registration || !registration.reg_id) {
       console.log('⚠️ No registration ID available');
       return;
@@ -79,15 +102,18 @@ export default function LaboratoryRequest({
 
     setLoadingTests(true);
     try {
-      console.log('📥 Loading tests for registration:', registration.reg_id);
-      const response = await api.get(`/laboratory-requests/registration/${registration.reg_id}`);
-      console.log('📥 Load Tests Response:', response.data);
+      // ✅ استفاده از روت جدید با جزئیات کامل
+      const url = `/laboratory-requests/registration/${registration.reg_id}/full`;
+      console.log('📥 Loading full tests from:', url);
+      
+      const response = await api.get(url);
+      console.log('📥 Full Response:', JSON.stringify(response.data, null, 2));
       
       if (response.data?.success) {
         const data = response.data.data;
         
-        // تنظیم تست‌ها
         let testsData = [];
+        
         if (data.tests && Array.isArray(data.tests)) {
           testsData = data.tests;
         } else if (data.all_tests && Array.isArray(data.all_tests)) {
@@ -95,22 +121,36 @@ export default function LaboratoryRequest({
         }
         
         setTests(testsData);
-        setIsLabRequested(testsData.length > 0 || data.has_tests || false);
+        if (setIsLabRequested) {
+          setIsLabRequested(testsData.length > 0);
+        }
+        if (setAllTests) {
+          setAllTests(testsData);
+        }
         
-        // اگر بارکد در تست اول وجود دارد
         if (testsData.length > 0 && testsData[0].barcode) {
           setBarcode(testsData[0].barcode);
         }
         
-        console.log(`✅ Loaded ${testsData.length} tests`);
+        console.log(`✅ Loaded ${testsData.length} tests from server`);
       } else {
         setTests([]);
-        setIsLabRequested(false);
+        if (setIsLabRequested) {
+          setIsLabRequested(false);
+        }
+        if (setAllTests) {
+          setAllTests([]);
+        }
       }
     } catch (err) {
       console.error("❌ Error loading tests:", err);
       setTests([]);
-      setIsLabRequested(false);
+      if (setIsLabRequested) {
+        setIsLabRequested(false);
+      }
+      if (setAllTests) {
+        setAllTests([]);
+      }
       
       if (err.response?.status !== 404) {
         toast.error(`❌ خطا در بارگذاری تست‌ها: ${err.response?.data?.message || err.message}`);
@@ -119,18 +159,6 @@ export default function LaboratoryRequest({
       setLoadingTests(false);
     }
   };
-
-  // بارگذاری اولیه
-  useEffect(() => {
-    loadTests();
-  }, [registration?.reg_id]);
-
-  // بارگذاری مجدد هنگام تغییر registration
-  useEffect(() => {
-    if (registration?.reg_id) {
-      loadTests();
-    }
-  }, [registration?.reg_id]);
 
   // ============ هندلرهای فرم ============
   const handleChange = (e) => {
@@ -195,8 +223,8 @@ export default function LaboratoryRequest({
       if (response.data?.success) {
         const data = response.data.data;
         
-        // به‌روزرسانی تست‌ها
         let testsData = [];
+        
         if (data.all_tests && Array.isArray(data.all_tests)) {
           testsData = data.all_tests;
         } else if (data.tests && Array.isArray(data.tests)) {
@@ -204,25 +232,28 @@ export default function LaboratoryRequest({
         }
         
         setTests(testsData);
-        setIsLabRequested(testsData.length > 0);
+        if (setIsLabRequested) {
+          setIsLabRequested(testsData.length > 0);
+        }
+        if (setAllTests) {
+          setAllTests(testsData);
+        }
         
         if (data.laboratory_request?.barcode) {
           setBarcode(data.laboratory_request.barcode);
         }
 
-        toast.success(`✅ درخواست لابراتوار با موفقیت ثبت شد`);
+        toast.success(`✅ درخواست لابراتوار با موفقیت ثبت شد (${testsData.length} تست)`);
         resetForm();
-        
-        if (onSave) {
-          await onSave(formData);
-        }
         
         if (onRefresh) {
           onRefresh();
         }
         
-        // بارگذاری مجدد برای اطمینان
-        setTimeout(() => loadTests(), 500);
+        setTimeout(() => {
+          loadTestsFromServer();
+        }, 500);
+        
       } else {
         toast.error(`❌ خطا: ${response.data?.message || 'ثبت ناموفق بود'}`);
       }
@@ -290,7 +321,12 @@ export default function LaboratoryRequest({
         }
         
         setTests(testsData);
-        setIsLabRequested(testsData.length > 0);
+        if (setIsLabRequested) {
+          setIsLabRequested(testsData.length > 0);
+        }
+        if (setAllTests) {
+          setAllTests(testsData);
+        }
 
         toast.success("✅ تست لابراتوار با موفقیت ویرایش شد");
         setShowEditModal(false);
@@ -301,7 +337,7 @@ export default function LaboratoryRequest({
           onRefresh();
         }
         
-        setTimeout(() => loadTests(), 300);
+        setTimeout(() => loadTestsFromServer(), 300);
       } else {
         toast.error(`❌ خطا: ${response.data?.message || 'ویرایش ناموفق بود'}`);
       }
@@ -324,12 +360,20 @@ export default function LaboratoryRequest({
       const response = await api.delete(`/laboratory-requests/${testId}`);
       
       if (response.data?.success) {
-        // اگر پاسخ شامل لیست جدید تست‌هاست
+        let testsData = [];
         if (response.data.data && Array.isArray(response.data.data)) {
-          setTests(response.data.data);
-          setIsLabRequested(response.data.data.length > 0);
+          testsData = response.data.data;
         } else {
-          await loadTests();
+          await loadTestsFromServer();
+          return;
+        }
+        
+        setTests(testsData);
+        if (setIsLabRequested) {
+          setIsLabRequested(testsData.length > 0);
+        }
+        if (setAllTests) {
+          setAllTests(testsData);
         }
 
         toast.success("✅ تست لابراتوار با موفقیت حذف شد");
@@ -347,7 +391,7 @@ export default function LaboratoryRequest({
     }
   };
 
-  // ============ پرینت ============
+  // ============ پرینت همه تست‌ها ============
   const handlePrint = () => {
     const printContent = document.getElementById('print-content');
     if (!printContent) return;
@@ -412,9 +456,76 @@ export default function LaboratoryRequest({
     window.location.reload();
   };
 
+  // ============ پرینت یک تست خاص ============
+  const handlePrintTest = (test) => {
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) {
+      toast.error("❌ پنجره پرینت باز نشد. لطفاً pop-up را فعال کنید.");
+      return;
+    }
+    
+    const patient = patientInfo?.patient || registration?.patient || {};
+    
+    const printContent = `
+      <html dir="rtl">
+        <head>
+          <title>درخواست لابراتوار</title>
+          <style>
+            body { font-family: 'Tahoma', Arial, sans-serif; padding: 20px; direction: rtl; }
+            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; }
+            .info { margin: 15px 0; }
+            .info-item { margin: 5px 0; }
+            .label { font-weight: bold; color: #555; }
+            .value { color: #000; }
+            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+            th { background-color: #f2f2f2; }
+            .signature { margin-top: 30px; border-top: 1px solid #333; padding-top: 10px; }
+            .barcode { font-family: monospace; font-size: 20px; letter-spacing: 2px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>🔬 درخواست لابراتوار</h2>
+            <p>تاریخ: ${new Date(test.request_date).toLocaleDateString('fa-IR')}</p>
+          </div>
+          
+          <div class="info">
+            <div class="info-item"><span class="label">نام مریض:</span> <span class="value">${patient.first_name || ''} ${patient.last_name || ''}</span></div>
+            <div class="info-item"><span class="label">شماره مراجعه:</span> <span class="value">${registration?.visit_number || '-'}</span></div>
+            <div class="info-item"><span class="label">بارکد:</span> <span class="barcode">${test.barcode || '-'}</span></div>
+          </div>
+          
+          <h3>📋 اطلاعات تست</h3>
+          <table>
+            <tr><th>فیلد</th><th>مقدار</th></tr>
+            <tr><td>نوع تست</td><td>${test.test_type_label || test.test_type}</td></tr>
+            <tr><td>نام تست</td><td>${test.test_name || '-'}</td></tr>
+            <tr><td>شرح تست</td><td>${test.test_description || '-'}</td></tr>
+            <tr><td>اندیکاسیون بالینی</td><td>${test.clinical_indication || '-'}</td></tr>
+            <tr><td>نکات ویژه</td><td>${test.special_notes || '-'}</td></tr>
+            <tr><td>وضعیت</td><td>${test.status_label || test.status}</td></tr>
+            <tr><td>تاریخ نمونه‌گیری</td><td>${test.sample_collection_date ? new Date(test.sample_collection_date).toLocaleDateString('fa-IR') : '-'}</td></tr>
+          </table>
+          
+          <div class="signature">
+            <p>دکتر: ${test.doctor?.name || '-'}</p>
+            <p>امضاء: _________________</p>
+          </div>
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
   // ============ وضعیت‌ها ============
   const patient = patientInfo?.patient || registration?.patient || {};
   const isDisabled = isCompleted || isTreatmentComplete || isSubmitting || isSubmittingForm;
+  const labRequested = isLabRequested !== undefined ? isLabRequested : tests.length > 0;
 
   const getGenderText = (gender) => {
     if (!gender) return '-';
@@ -499,7 +610,7 @@ export default function LaboratoryRequest({
 
   return (
     <div>
-      {/* بخش پرینت */}
+      {/* بخش پرینت مخفی */}
       <div id="print-content" style={{ display: 'none' }}>
         <div className="print-header">
           <h2>🔬 درخواست لابراتوار</h2>
@@ -542,7 +653,54 @@ export default function LaboratoryRequest({
         🔬 درخواست لابراتوار
       </h3>
 
-      {/* اطلاعات مریض - همیشه نمایش داده می‌شود */}
+      {/* وضعیت */}
+      <div style={{
+        display: 'flex',
+        gap: '15px',
+        marginBottom: '20px',
+        padding: '10px 15px',
+        backgroundColor: '#1a2a3a',
+        borderRadius: '8px',
+        flexWrap: 'wrap'
+      }}>
+        <div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>وضعیت درخواست:</span>
+          <span style={{
+            color: labRequested ? '#22c55e' : '#f59e0b',
+            fontWeight: 'bold',
+            marginRight: '8px'
+          }}>
+            {labRequested ? '✅ ثبت شده' : '⏳ ثبت نشده'}
+          </span>
+        </div>
+        <div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>تعداد تست‌ها:</span>
+          <span style={{
+            color: '#60a5fa',
+            fontWeight: 'bold',
+            marginRight: '8px'
+          }}>
+            {tests.length}
+          </span>
+        </div>
+        <div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>وضعیت معالجه:</span>
+          <span style={{
+            color: isCompleted ? '#22c55e' : '#f59e0b',
+            fontWeight: 'bold',
+            marginRight: '8px'
+          }}>
+            {isCompleted ? '✅ ختم شده' : '⏳ در حال 진행'}
+          </span>
+        </div>
+        {loadingTests && (
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>
+            ⏳ در حال بارگذاری...
+          </span>
+        )}
+      </div>
+
+      {/* اطلاعات مریض */}
       <div style={{
         backgroundColor: '#1a2a3a',
         padding: '15px 20px',
@@ -580,16 +738,6 @@ export default function LaboratoryRequest({
             <div style={{ color: '#fcd34d', fontWeight: 'bold', fontFamily: 'monospace' }}>{barcode}</div>
           </div>
         )}
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>وضعیت درخواست</span>
-          <div style={{ color: isLabRequested ? '#22c55e' : '#f59e0b', fontWeight: 'bold' }}>
-            {isLabRequested ? '✅ ثبت شده' : '⏳ ثبت نشده'}
-          </div>
-        </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>تعداد تست‌ها</span>
-          <div style={{ color: '#60a5fa', fontWeight: 'bold' }}>{tests.length}</div>
-        </div>
       </div>
 
       {/* فرم ثبت درخواست */}
@@ -614,9 +762,9 @@ export default function LaboratoryRequest({
                   padding: '6px 10px',
                   borderRadius: '4px',
                   border: '1px solid #374151',
-                  opacity: isDisabled || isLabRequested ? 0.5 : 1
+                  opacity: isDisabled || labRequested ? 0.5 : 1
                 }}
-                disabled={isDisabled || isLabRequested}
+                disabled={isDisabled || labRequested}
                 required
               >
                 <option value="">-- انتخاب کنید --</option>
@@ -644,9 +792,9 @@ export default function LaboratoryRequest({
                   padding: '6px 10px',
                   borderRadius: '4px',
                   border: '1px solid #374151',
-                  opacity: isDisabled || isLabRequested ? 0.5 : 1
+                  opacity: isDisabled || labRequested ? 0.5 : 1
                 }}
-                disabled={isDisabled || isLabRequested}
+                disabled={isDisabled || labRequested}
               />
             </div>
 
@@ -667,9 +815,9 @@ export default function LaboratoryRequest({
                   padding: '6px 10px',
                   borderRadius: '4px',
                   border: '1px solid #374151',
-                  opacity: isDisabled || isLabRequested ? 0.5 : 1
+                  opacity: isDisabled || labRequested ? 0.5 : 1
                 }}
-                disabled={isDisabled || isLabRequested}
+                disabled={isDisabled || labRequested}
               />
             </div>
 
@@ -690,9 +838,9 @@ export default function LaboratoryRequest({
                   padding: '6px 10px',
                   borderRadius: '4px',
                   border: '1px solid #374151',
-                  opacity: isDisabled || isLabRequested ? 0.5 : 1
+                  opacity: isDisabled || labRequested ? 0.5 : 1
                 }}
-                disabled={isDisabled || isLabRequested}
+                disabled={isDisabled || labRequested}
               />
             </div>
           </div>
@@ -718,9 +866,9 @@ export default function LaboratoryRequest({
                   padding: '6px 10px',
                   borderRadius: '4px',
                   border: '1px solid #374151',
-                  opacity: isDisabled || isLabRequested ? 0.5 : 1
+                  opacity: isDisabled || labRequested ? 0.5 : 1
                 }}
-                disabled={isDisabled || isLabRequested}
+                disabled={isDisabled || labRequested}
               />
             </div>
 
@@ -742,9 +890,9 @@ export default function LaboratoryRequest({
                   padding: '6px 10px',
                   borderRadius: '4px',
                   border: '1px solid #374151',
-                  opacity: isDisabled || isLabRequested ? 0.5 : 1
+                  opacity: isDisabled || labRequested ? 0.5 : 1
                 }}
-                disabled={isDisabled || isLabRequested}
+                disabled={isDisabled || labRequested}
               />
             </div>
 
@@ -766,9 +914,9 @@ export default function LaboratoryRequest({
                   padding: '6px 10px',
                   borderRadius: '4px',
                   border: '1px solid #374151',
-                  opacity: isDisabled || isLabRequested ? 0.5 : 1
+                  opacity: isDisabled || labRequested ? 0.5 : 1
                 }}
-                disabled={isDisabled || isLabRequested}
+                disabled={isDisabled || labRequested}
               />
             </div>
           </div>
@@ -808,15 +956,15 @@ export default function LaboratoryRequest({
 
           <button
             type="submit"
-            disabled={loading || isDisabled || isLabRequested}
+            disabled={loading || isDisabled || labRequested}
             style={{
-              backgroundColor: (isDisabled || isLabRequested) ? '#6b7280' : '#8b5cf6',
+              backgroundColor: (isDisabled || labRequested) ? '#6b7280' : '#8b5cf6',
               color: 'white',
               padding: '8px 20px',
               borderRadius: '6px',
               border: 'none',
-              cursor: (loading || isDisabled || isLabRequested) ? 'not-allowed' : 'pointer',
-              opacity: (loading || isDisabled || isLabRequested) ? 0.6 : 1,
+              cursor: (loading || isDisabled || labRequested) ? 'not-allowed' : 'pointer',
+              opacity: (loading || isDisabled || labRequested) ? 0.6 : 1,
               fontSize: '13px',
               fontWeight: 'bold',
               display: 'flex',
@@ -825,7 +973,7 @@ export default function LaboratoryRequest({
             }}
           >
             <span>📤</span>
-            {loading ? 'در حال ارسال...' : isCompleted ? 'معالجه ختم شده' : isLabRequested ? '✅ ثبت شده' : 'ثبت درخواست'}
+            {loading ? 'در حال ارسال...' : isCompleted ? 'معالجه ختم شده' : labRequested ? '✅ ثبت شده' : 'ثبت درخواست'}
           </button>
 
           {tests.length > 0 && (
@@ -847,22 +995,22 @@ export default function LaboratoryRequest({
               }}
             >
               <span>🖨️</span>
-              پرینت
+              پرینت همه
             </button>
           )}
 
           <button
             type="button"
             onClick={onFinish}
-            disabled={!isLabRequested || isCompleted || isSubmitting}
+            disabled={!labRequested || isCompleted || isSubmitting}
             style={{
-              backgroundColor: (!isLabRequested || isCompleted) ? '#6b7280' : '#dc2626',
+              backgroundColor: (!labRequested || isCompleted) ? '#6b7280' : '#dc2626',
               color: 'white',
               padding: '8px 20px',
               borderRadius: '6px',
               border: 'none',
-              cursor: (!isLabRequested || isCompleted || isSubmitting) ? 'not-allowed' : 'pointer',
-              opacity: (!isLabRequested || isCompleted || isSubmitting) ? 0.6 : 1,
+              cursor: (!labRequested || isCompleted || isSubmitting) ? 'not-allowed' : 'pointer',
+              opacity: (!labRequested || isCompleted || isSubmitting) ? 0.6 : 1,
               fontSize: '13px',
               fontWeight: 'bold',
               display: 'flex',
@@ -901,163 +1049,120 @@ export default function LaboratoryRequest({
         </div>
       </form>
 
-      {/* لیست تست‌های ثبت شده - همیشه نمایش داده می‌شود */}
-      <div style={{ marginTop: '25px', borderTop: '2px solid #374151', paddingTop: '15px' }}>
+      {/* ============ لیست تست‌های ثبت شده با جدول ============ */}
+      <div style={{ marginTop: '30px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <h4 style={{ color: '#60a5fa', fontSize: '15px', margin: 0 }}>
             📋 لیست تست‌های لابراتوار ({tests.length})
             {loadingTests && <span style={{ marginLeft: '10px', fontSize: '13px', color: '#9ca3af' }}>⏳ در حال بارگذاری...</span>}
           </h4>
           {tests.length > 0 && (
-            <button
-              onClick={handlePrint}
-              className="no-print"
-              style={{
-                backgroundColor: '#10b981',
-                color: 'white',
-                padding: '4px 12px',
-                borderRadius: '4px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-            >
-              🖨️ پرینت
-            </button>
-          )}
-        </div>
-        
-        <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
-          {tests.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '25px', color: '#9ca3af' }}>
-              <div style={{ fontSize: '35px', marginBottom: '8px' }}>📋</div>
-              <div>هیچ تست لابراتواری ثبت نشده است</div>
-              <div style={{ fontSize: '12px', marginTop: '5px' }}>برای ثبت درخواست، فرم بالا را پر کنید</div>
-            </div>
-          ) : (
-            tests.map((test) => (
-              <div
-                key={test.id}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={loadTestsFromServer}
                 style={{
-                  backgroundColor: '#1a2a3a',
-                  padding: '12px 15px',
-                  borderRadius: '6px',
-                  marginBottom: '8px',
-                  borderRight: `4px solid ${statusColors[test.status] || '#374151'}`,
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  padding: '4px 12px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '11px',
                   display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  flexWrap: 'wrap',
-                  gap: '8px'
+                  alignItems: 'center',
+                  gap: '4px'
                 }}
               >
-                <div style={{ flex: 1, minWidth: '180px' }}>
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '3px' }}>
-                    <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '13px' }}>
-                      {test.test_type_label || test.test_type}
-                    </span>
-                    <span style={{ 
-                      backgroundColor: statusColors[test.status] || '#6b7280',
-                      color: 'white',
-                      padding: '1px 8px',
-                      borderRadius: '10px',
-                      fontSize: '10px'
-                    }}>
-                      {statusLabels[test.status] || test.status}
-                    </span>
-                    {test.barcode && (
-                      <span style={{ color: '#fcd34d', fontSize: '10px', fontFamily: 'monospace' }}>
-                        🏷️ {test.barcode}
-                      </span>
-                    )}
-                    {test.has_fee && (
-                      <span style={{ 
-                        backgroundColor: '#10b981',
-                        color: 'white',
-                        padding: '1px 6px',
-                        borderRadius: '8px',
-                        fontSize: '9px'
-                      }}>
-                        💰 فیس
-                      </span>
-                    )}
-                  </div>
-                  
-                  {test.test_name && (
-                    <div style={{ color: 'white', fontSize: '13px', fontWeight: 'bold' }}>
-                      {test.test_name}
-                    </div>
-                  )}
-                  
-                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
-                    {test.request_date && (
-                      <span>📅 {new Date(test.request_date).toLocaleDateString('fa-IR')}</span>
-                    )}
-                    {test.sample_collection_date && (
-                      <span>🧪 نمونه: {new Date(test.sample_collection_date).toLocaleDateString('fa-IR')}</span>
-                    )}
-                  </div>
-                  
-                  {test.test_description && (
-                    <div style={{ color: '#9ca3af', fontSize: '11px', marginTop: '2px' }}>
-                      {test.test_description}
-                    </div>
-                  )}
-                  
-                  {test.clinical_indication && (
-                    <div style={{ color: '#9ca3af', fontSize: '10px', marginTop: '1px' }}>
-                      <span style={{ color: '#6b7280' }}>اندیکاسیون:</span> {test.clinical_indication}
-                    </div>
-                  )}
-                  
-                  {test.special_notes && (
-                    <div style={{ color: '#fbbf24', fontSize: '10px', marginTop: '1px' }}>
-                      <span style={{ color: '#6b7280' }}>نکات ویژه:</span> {test.special_notes}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="no-print" style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                  <button
-                    onClick={() => handleEditTest(test)}
-                    disabled={test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab'}
-                    style={{
-                      backgroundColor: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? '#6b7280' : '#3b82f6',
-                      color: 'white',
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      fontSize: '10px',
-                      cursor: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? 'not-allowed' : 'pointer',
-                      opacity: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? 0.5 : 1
-                    }}
-                  >
-                    ✏️ ویرایش
-                  </button>
-                  <button
-                    onClick={() => handleDeleteTest(test.id)}
-                    disabled={test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee}
-                    style={{
-                      backgroundColor: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? '#6b7280' : '#dc2626',
-                      color: 'white',
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      fontSize: '10px',
-                      cursor: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? 'not-allowed' : 'pointer',
-                      opacity: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? 0.5 : 1
-                    }}
-                  >
-                    🗑️ حذف
-                  </button>
-                </div>
-              </div>
-            ))
+                🔄 بارگذاری مجدد
+              </button>
+              <button
+                onClick={handlePrint}
+                className="no-print"
+                style={{
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  padding: '4px 12px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                🖨️ پرینت
+              </button>
+            </div>
           )}
         </div>
+
+        {tests.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '25px', color: '#9ca3af' }}>
+            <div style={{ fontSize: '35px', marginBottom: '8px' }}>📋</div>
+            <div>هیچ تست لابراتواری ثبت نشده است</div>
+            <div style={{ fontSize: '12px', marginTop: '5px' }}>برای ثبت درخواست، فرم بالا را پر کنید</div>
+          </div>
+        ) : (
+          <div style={{
+            overflowX: 'auto',
+            borderRadius: '8px',
+            border: '1px solid #374151'
+          }}>
+            <table style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              minWidth: '1000px',
+              fontSize: '13px'
+            }}>
+              <thead>
+                <tr style={{
+                  backgroundColor: '#0f1a2a',
+                  borderBottom: '2px solid #374151'
+                }}>
+                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>#</th>
+                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>🏷️ بارکد</th>
+                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>🔬 نوع تست</th>
+                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>📝 نام تست</th>
+                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>📅 تاریخ</th>
+                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>📊 وضعیت</th>
+                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>💰 فیس</th>
+                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', whiteSpace: 'nowrap' }}>عملیات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tests.map((test, index) => (
+                  <tr key={test.id} style={{ borderBottom: '1px solid #2a3a4a' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1a2a3a'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', color: '#9ca3af', fontWeight: 'bold', fontSize: '14px', borderLeft: '1px solid #2a3a4a' }}>{index + 1}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', color: '#fcd34d', fontSize: '12px', fontFamily: 'monospace', borderLeft: '1px solid #2a3a4a' }}>{test.barcode || '-'}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', color: '#60a5fa', fontSize: '13px', fontWeight: 'bold', borderLeft: '1px solid #2a3a4a' }}>{test.test_type_label || test.test_type}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', color: 'white', fontSize: '13px', borderLeft: '1px solid #2a3a4a', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{test.test_name || '-'}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', color: '#9ca3af', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>{test.request_date ? new Date(test.request_date).toLocaleDateString('fa-IR') : '-'}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
+                      <span style={{ backgroundColor: statusColors[test.status] || '#6b7280', color: 'white', padding: '2px 10px', borderRadius: '12px', fontSize: '11px', display: 'inline-block' }}>
+                        {statusLabels[test.status] || test.status}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
+                      {test.has_fee ? (
+                        <span style={{ backgroundColor: '#10b981', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>✅ ثبت شده</span>
+                      ) : (
+                        <span style={{ color: '#9ca3af', fontSize: '11px' }}>❌ ثبت نشده</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button onClick={() => handleEditTest(test)} disabled={test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab'} style={{ backgroundColor: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? '#6b7280' : '#3b82f6', color: 'white', padding: '4px 8px', borderRadius: '4px', border: 'none', fontSize: '11px', cursor: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? 'not-allowed' : 'pointer', opacity: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? 0.5 : 1 }}>✏️</button>
+                        <button onClick={() => handleDeleteTest(test.id)} disabled={test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee} style={{ backgroundColor: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? '#6b7280' : '#dc2626', color: 'white', padding: '4px 8px', borderRadius: '4px', border: 'none', fontSize: '11px', cursor: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? 'not-allowed' : 'pointer', opacity: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? 0.5 : 1 }}>🗑️</button>
+                        <button onClick={() => handlePrintTest(test)} style={{ backgroundColor: '#8b5cf6', color: 'white', padding: '4px 8px', borderRadius: '4px', border: 'none', fontSize: '11px', cursor: 'pointer' }}>🖨️</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* مودال ویرایش */}
@@ -1103,190 +1208,40 @@ export default function LaboratoryRequest({
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  نوع تست *
-                </label>
-                <select
-                  name="test_type"
-                  value={formData.test_type}
-                  onChange={handleChange}
-                  style={{
-                    backgroundColor: '#1a1a2e',
-                    color: 'white',
-                    borderColor: '#374151',
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
-                >
-                  {testTypes.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
+                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>نوع تست *</label>
+                <select name="test_type" value={formData.test_type} onChange={handleChange} style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #374151' }}>
+                  {testTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
                 </select>
               </div>
-              
               <div>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  نام تست
-                </label>
-                <input
-                  type="text"
-                  name="test_name"
-                  value={formData.test_name}
-                  onChange={handleChange}
-                  style={{
-                    backgroundColor: '#1a1a2e',
-                    color: 'white',
-                    borderColor: '#374151',
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
-                />
+                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>نام تست</label>
+                <input type="text" name="test_name" value={formData.test_name} onChange={handleChange} style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #374151' }} />
               </div>
-              
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  شرح تست
-                </label>
-                <textarea
-                  name="test_description"
-                  value={formData.test_description}
-                  onChange={handleChange}
-                  rows="2"
-                  style={{
-                    backgroundColor: '#1a1a2e',
-                    color: 'white',
-                    borderColor: '#374151',
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
-                />
+                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>شرح تست</label>
+                <textarea name="test_description" value={formData.test_description} onChange={handleChange} rows="2" style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #374151' }} />
               </div>
-              
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  اندیکاسیون بالینی
-                </label>
-                <textarea
-                  name="clinical_indication"
-                  value={formData.clinical_indication}
-                  onChange={handleChange}
-                  rows="2"
-                  style={{
-                    backgroundColor: '#1a1a2e',
-                    color: 'white',
-                    borderColor: '#374151',
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
-                />
+                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>اندیکاسیون بالینی</label>
+                <textarea name="clinical_indication" value={formData.clinical_indication} onChange={handleChange} rows="2" style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #374151' }} />
               </div>
-              
               <div>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  تاریخ درخواست
-                </label>
-                <input
-                  type="date"
-                  name="request_date"
-                  value={formData.request_date}
-                  onChange={handleChange}
-                  style={{
-                    backgroundColor: '#1a1a2e',
-                    color: 'white',
-                    borderColor: '#374151',
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
-                />
+                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>تاریخ درخواست</label>
+                <input type="date" name="request_date" value={formData.request_date} onChange={handleChange} style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #374151' }} />
               </div>
-              
               <div>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  تاریخ نمونه‌گیری
-                </label>
-                <input
-                  type="date"
-                  name="sample_collection_date"
-                  value={formData.sample_collection_date}
-                  onChange={handleChange}
-                  style={{
-                    backgroundColor: '#1a1a2e',
-                    color: 'white',
-                    borderColor: '#374151',
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
-                />
+                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>تاریخ نمونه‌گیری</label>
+                <input type="date" name="sample_collection_date" value={formData.sample_collection_date} onChange={handleChange} style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #374151' }} />
               </div>
-              
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  نکات ویژه
-                </label>
-                <textarea
-                  name="special_notes"
-                  value={formData.special_notes}
-                  onChange={handleChange}
-                  rows="2"
-                  style={{
-                    backgroundColor: '#1a1a2e',
-                    color: 'white',
-                    borderColor: '#374151',
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
-                />
+                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>نکات ویژه</label>
+                <textarea name="special_notes" value={formData.special_notes} onChange={handleChange} rows="2" style={{ backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151', width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #374151' }} />
               </div>
             </div>
             
             <div style={{ display: 'flex', gap: '8px', marginTop: '15px', justifyContent: 'center' }}>
-              <button
-                onClick={() => {
-                  setShowEditModal(false);
-                  setEditingTest(null);
-                  resetForm();
-                }}
-                style={{
-                  backgroundColor: '#6b7280',
-                  color: 'white',
-                  padding: '6px 16px',
-                  borderRadius: '4px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '13px'
-                }}
-              >
-                لغو
-              </button>
-              <button
-                onClick={handleUpdateTest}
-                disabled={loading}
-                style={{
-                  backgroundColor: loading ? '#6b7280' : '#3b82f6',
-                  color: 'white',
-                  padding: '6px 16px',
-                  borderRadius: '4px',
-                  border: 'none',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  fontSize: '13px'
-                }}
-              >
-                {loading ? 'در حال ذخیره...' : 'ذخیره تغییرات'}
-              </button>
+              <button onClick={() => { setShowEditModal(false); setEditingTest(null); resetForm(); }} style={{ backgroundColor: '#6b7280', color: 'white', padding: '6px 16px', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '13px' }}>لغو</button>
+              <button onClick={handleUpdateTest} disabled={loading} style={{ backgroundColor: loading ? '#6b7280' : '#3b82f6', color: 'white', padding: '6px 16px', borderRadius: '4px', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '13px' }}>{loading ? 'در حال ذخیره...' : 'ذخیره تغییرات'}</button>
             </div>
           </div>
         </div>

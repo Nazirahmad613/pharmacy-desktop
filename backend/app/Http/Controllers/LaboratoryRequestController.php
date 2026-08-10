@@ -75,6 +75,91 @@ class LaboratoryRequestController extends Controller
         }
     }
 
+/**
+ * دریافت درخواست‌های لابراتوار یک مراجعه با جزئیات کامل
+ * (برای استفاده در فرانت‌اند با جدول کامل)
+ */
+public function getByRegistrationFull($registrationId)
+{
+    try {
+        $registration = Registrations::find($registrationId);
+        if (!$registration) {
+            return response()->json([
+                'success' => false,
+                'message' => 'مراجعه یافت نشد'
+            ], 404);
+        }
+
+        $tests = LaboratoryRequest::where('registration_id', $registrationId)
+            ->with(['patient', 'doctor', 'fee'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $testsWithDetails = $tests->map(function($test) {
+            return [
+                'id' => $test->id,
+                'registration_id' => $test->registration_id,
+                'patient_id' => $test->patient_id,
+                'doctor_id' => $test->doctor_id,
+                'test_type' => $test->test_type,
+                'test_type_label' => $test->test_type_label,
+                'test_name' => $test->test_name,
+                'test_description' => $test->test_description,
+                'clinical_indication' => $test->clinical_indication,
+                'special_notes' => $test->special_notes,
+                'request_date' => $test->request_date,
+                'sample_collection_date' => $test->sample_collection_date,
+                'status' => $test->status,
+                'status_label' => $test->status_label,
+                'barcode' => $test->barcode,
+                'fee_id' => $test->fee_id,
+                'has_fee' => $test->fee_id !== null,
+                'doctor' => $test->doctor ? [
+                    'id' => $test->doctor->id,
+                    'name' => $test->doctor->name
+                ] : null,
+                'patient' => $test->patient ? [
+                    'id' => $test->patient->id,
+                    'first_name' => $test->patient->first_name,
+                    'last_name' => $test->patient->last_name,
+                    'national_id' => $test->patient->national_id,
+                ] : null,
+                'fee' => $test->fee ? [
+                    'id' => $test->fee->id,
+                    'amount' => $test->fee->amount,
+                    'status' => $test->fee->status,
+                ] : null,
+                'created_at' => $test->created_at,
+                'updated_at' => $test->updated_at,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'registration' => $registration,
+                'tests' => $testsWithDetails,
+                'all_tests' => $testsWithDetails,
+                'has_tests' => $tests->count() > 0,
+                'total_tests' => $tests->count()
+            ],
+            'message' => 'درخواست‌های لابراتوار مراجعه با جزئیات کامل'
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Error in getByRegistrationFull: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'خطا در دریافت اطلاعات: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+
+
+
+
+
     /**
      * دریافت درخواست‌های لابراتوار یک مراجعه خاص
      */

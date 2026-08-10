@@ -1647,7 +1647,7 @@ export default function ExaminationForm({
                   padding: '8px 20px',
                   borderRadius: '4px',
                   border: 'none',
-                  cursor: loading ? 'not-allowed' : 'pointer'
+                  cursor: loading ? 'not-allowed' : 'pointer' 
                 }}
               >
                 {loading ? 'در حال ذخیره...' : 'ذخیره تغییرات'}
