@@ -21,7 +21,7 @@ class LaboratoryRequestController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = LaboratoryRequest::with(['patient', 'doctor', 'fee']);
+            $query = LaboratoryRequest::with(['patient', 'doctor', 'fee', 'registration']);
 
             if ($request->has('registration_id')) {
                 $query->where('registration_id', $request->registration_id);
@@ -75,90 +75,116 @@ class LaboratoryRequestController extends Controller
         }
     }
 
-/**
- * دریافت درخواست‌های لابراتوار یک مراجعه با جزئیات کامل
- * (برای استفاده در فرانت‌اند با جدول کامل)
- */
-public function getByRegistrationFull($registrationId)
-{
-    try {
-        $registration = Registrations::find($registrationId);
-        if (!$registration) {
+    /**
+     * دریافت درخواست‌های لابراتوار یک مراجعه با جزئیات کامل
+     * ✅ این متد برای فرانت‌اند استفاده می‌شود
+     */
+    public function getByRegistrationFull($registrationId)
+    {
+        try {
+            Log::info('🔬 getByRegistrationFull called for registration: ' . $registrationId);
+            
+            // ✅ دریافت اطلاعات مراجعه با reg_id
+            $registration = Registrations::with(['patient', 'department', 'doctor'])
+                ->where('reg_id', $registrationId)
+                ->first();
+            
+            if (!$registration) {
+                Log::error('Registration not found with reg_id: ' . $registrationId);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'مراجعه یافت نشد'
+                ], 404);
+            }
+
+            Log::info('Registration found with reg_id: ' . $registration->reg_id);
+
+            // ✅ دریافت درخواست‌های این مراجعه با reg_id
+            $currentTests = LaboratoryRequest::where('registration_id', $registration->reg_id)
+                ->with(['patient', 'doctor', 'fee'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            Log::info('Found ' . $currentTests->count() . ' tests for registration_id: ' . $registration->reg_id);
+
+            // دریافت تمام درخواست‌های قبلی این مریض (تاریخچه)
+            $historyTests = LaboratoryRequest::where('patient_id', $registration->patient_id)
+                ->where('registration_id', '!=', $registration->reg_id)
+                ->with(['patient', 'doctor', 'fee', 'registration'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            // فرمت کردن اطلاعات برای فرانت‌اند
+            $formattedCurrent = $currentTests->map(function($test) {
+                return $this->formatForFrontend($test);
+            });
+
+            $formattedHistory = $historyTests->map(function($test) {
+                return $this->formatForFrontend($test);
+            });
+
+            // اطلاعات کامل مریض
+            $patient = $registration->patient;
+            $patientInfo = $patient ? [
+                'id' => $patient->id,
+                'first_name' => $patient->first_name,
+                'last_name' => $patient->last_name,
+                'father_name' => $patient->father_name,
+                'mobile' => $patient->mobile,
+                'national_id' => $patient->national_id,
+                'gender' => $patient->gender,
+                'age' => $patient->age,
+                'blood_group' => $patient->blood_group,
+                'address' => $patient->address,
+            ] : null;
+
+            Log::info('✅ Found ' . $currentTests->count() . ' current tests and ' . $historyTests->count() . ' history tests');
+
+            // پاسخ با ساختار مورد انتظار فرانت‌اند
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'registration' => [
+                        'id' => $registration->id,
+                        'reg_id' => $registration->reg_id,
+                        'visit_number' => $registration->visit_number,
+                        'visit_date' => $registration->visit_date,
+                        'visit_status' => $registration->visit_status,
+                        'visit_type' => $registration->visit_type,
+                        'department' => $registration->department ? [
+                            'id' => $registration->department->id,
+                            'name' => $registration->department->name,
+                        ] : null,
+                        'doctor' => $registration->doctor ? [
+                            'id' => $registration->doctor->id,
+                            'name' => $registration->doctor->name,
+                        ] : null,
+                    ],
+                    'patient' => $patientInfo,
+                    'tests' => $formattedCurrent,
+                    'all_tests' => $formattedCurrent,
+                    'history_tests' => $formattedHistory,
+                    'has_tests' => $currentTests->count() > 0,
+                    'has_history' => $historyTests->count() > 0,
+                    'total_tests' => $currentTests->count(),
+                    'total_history' => $historyTests->count(),
+                    'can_edit' => true,
+                    'can_delete' => true,
+                    'can_print' => true,
+                    'barcode' => $currentTests->first()?->barcode ?? null,
+                ],
+                'message' => 'درخواست‌های لابراتوار مراجعه با جزئیات کامل'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error in getByRegistrationFull: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json([
                 'success' => false,
-                'message' => 'مراجعه یافت نشد'
-            ], 404);
+                'message' => 'خطا در دریافت اطلاعات: ' . $e->getMessage()
+            ], 500);
         }
-
-        $tests = LaboratoryRequest::where('registration_id', $registrationId)
-            ->with(['patient', 'doctor', 'fee'])
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        $testsWithDetails = $tests->map(function($test) {
-            return [
-                'id' => $test->id,
-                'registration_id' => $test->registration_id,
-                'patient_id' => $test->patient_id,
-                'doctor_id' => $test->doctor_id,
-                'test_type' => $test->test_type,
-                'test_type_label' => $test->test_type_label,
-                'test_name' => $test->test_name,
-                'test_description' => $test->test_description,
-                'clinical_indication' => $test->clinical_indication,
-                'special_notes' => $test->special_notes,
-                'request_date' => $test->request_date,
-                'sample_collection_date' => $test->sample_collection_date,
-                'status' => $test->status,
-                'status_label' => $test->status_label,
-                'barcode' => $test->barcode,
-                'fee_id' => $test->fee_id,
-                'has_fee' => $test->fee_id !== null,
-                'doctor' => $test->doctor ? [
-                    'id' => $test->doctor->id,
-                    'name' => $test->doctor->name
-                ] : null,
-                'patient' => $test->patient ? [
-                    'id' => $test->patient->id,
-                    'first_name' => $test->patient->first_name,
-                    'last_name' => $test->patient->last_name,
-                    'national_id' => $test->patient->national_id,
-                ] : null,
-                'fee' => $test->fee ? [
-                    'id' => $test->fee->id,
-                    'amount' => $test->fee->amount,
-                    'status' => $test->fee->status,
-                ] : null,
-                'created_at' => $test->created_at,
-                'updated_at' => $test->updated_at,
-            ];
-        });
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'registration' => $registration,
-                'tests' => $testsWithDetails,
-                'all_tests' => $testsWithDetails,
-                'has_tests' => $tests->count() > 0,
-                'total_tests' => $tests->count()
-            ],
-            'message' => 'درخواست‌های لابراتوار مراجعه با جزئیات کامل'
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Error in getByRegistrationFull: ' . $e->getMessage());
-        return response()->json([
-            'success' => false,
-            'message' => 'خطا در دریافت اطلاعات: ' . $e->getMessage()
-        ], 500);
     }
-}
-
-
-
-
-
 
     /**
      * دریافت درخواست‌های لابراتوار یک مراجعه خاص
@@ -166,7 +192,11 @@ public function getByRegistrationFull($registrationId)
     public function getByRegistration($registrationId)
     {
         try {
-            $registration = Registrations::find($registrationId);
+            // ✅ دریافت با reg_id
+            $registration = Registrations::with(['patient'])
+                ->where('reg_id', $registrationId)
+                ->first();
+            
             if (!$registration) {
                 return response()->json([
                     'success' => false,
@@ -174,33 +204,14 @@ public function getByRegistrationFull($registrationId)
                 ], 404);
             }
 
-            $tests = LaboratoryRequest::where('registration_id', $registrationId)
-                ->with(['fee'])
+            // ✅ استفاده از reg_id
+            $tests = LaboratoryRequest::where('registration_id', $registration->reg_id)
+                ->with(['fee', 'doctor'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
             $testsWithFee = $tests->map(function($test) {
-                return [
-                    'id' => $test->id,
-                    'registration_id' => $test->registration_id,
-                    'patient_id' => $test->patient_id,
-                    'doctor_id' => $test->doctor_id,
-                    'test_type' => $test->test_type,
-                    'test_type_label' => $test->test_type_label,
-                    'test_name' => $test->test_name,
-                    'test_description' => $test->test_description,
-                    'clinical_indication' => $test->clinical_indication,
-                    'special_notes' => $test->special_notes,
-                    'request_date' => $test->request_date,
-                    'sample_collection_date' => $test->sample_collection_date,
-                    'status' => $test->status,
-                    'status_label' => $test->status_label,
-                    'barcode' => $test->barcode,
-                    'fee_id' => $test->fee_id,
-                    'has_fee' => $test->fee_id !== null,
-                    'created_at' => $test->created_at,
-                    'updated_at' => $test->updated_at,
-                ];
+                return $this->formatForFrontend($test);
             });
 
             return response()->json([
@@ -228,23 +239,25 @@ public function getByRegistrationFull($registrationId)
      */
     public function store(Request $request, $registrationId)
     {
-        // لاگ برای دیباگ (بدون dd)
         Log::info('=== START LaboratoryRequest Store ===');
-        Log::info('Registration ID: ' . $registrationId);
+        Log::info('Registration ID (reg_id): ' . $registrationId);
         Log::info('Request Data: ' . json_encode($request->all()));
-        Log::info('User ID: ' . (auth()->id() ?? 'null'));
         
         try {
-            $registration = Registrations::find($registrationId);
+            // ✅ دریافت با reg_id
+            $registration = Registrations::with(['patient'])
+                ->where('reg_id', $registrationId)
+                ->first();
+            
             if (!$registration) {
-                Log::error('Registration not found: ' . $registrationId);
+                Log::error('Registration not found with reg_id: ' . $registrationId);
                 return response()->json([
                     'success' => false,
                     'message' => 'مراجعه یافت نشد'
                 ], 404);
             }
 
-            Log::info('Registration found: ' . $registration->id);
+            Log::info('Registration found with reg_id: ' . $registration->reg_id);
 
             $validator = Validator::make($request->all(), [
                 'test_type' => 'required|string|in:blood,urine,stool,biochemistry,hormonal,microbial,pathology,genetic,imaging,other',
@@ -274,9 +287,11 @@ public function getByRegistrationFull($registrationId)
                 $doctorId = 1;
             }
 
-            // ایجاد رکورد جدید
+            DB::beginTransaction();
+
+            // ✅ ذخیره با reg_id (چون foreign key به reg_id اشاره میکنه)
             $laboratoryRequest = LaboratoryRequest::create([
-                'registration_id' => $registration->id,
+                'registration_id' => $registration->reg_id,  // ← این reg_id هست (string)
                 'patient_id' => $registration->patient_id,
                 'doctor_id' => $doctorId,
                 'test_type' => $request->test_type,
@@ -295,46 +310,64 @@ public function getByRegistrationFull($registrationId)
                 throw new \Exception('رکورد در دیتابیس ذخیره نشد');
             }
 
+            DB::commit();
+
             Log::info('Laboratory request saved with ID: ' . $laboratoryRequest->id);
+            Log::info('Saved with registration_id: ' . $laboratoryRequest->registration_id);
 
-            $laboratoryRequest->load(['patient', 'doctor']);
-
-            $allTests = LaboratoryRequest::where('registration_id', $registrationId)
+            // ✅ دریافت درخواست‌های جاری این مراجعه با reg_id
+            $currentTests = LaboratoryRequest::where('registration_id', $registration->reg_id)
+                ->with(['doctor', 'fee'])
                 ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function($test) {
-                    return [
-                        'id' => $test->id,
-                        'test_type' => $test->test_type,
-                        'test_type_label' => $test->test_type_label,
-                        'test_name' => $test->test_name,
-                        'test_description' => $test->test_description,
-                        'clinical_indication' => $test->clinical_indication,
-                        'special_notes' => $test->special_notes,
-                        'request_date' => $test->request_date,
-                        'sample_collection_date' => $test->sample_collection_date,
-                        'status' => $test->status,
-                        'barcode' => $test->barcode,
-                        'fee_id' => $test->fee_id,
-                        'has_fee' => $test->fee_id !== null,
-                        'created_at' => $test->created_at,
-                    ];
-                });
+                ->get();
+
+            Log::info('Current tests count after store: ' . $currentTests->count());
+
+            // دریافت تمام درخواست‌های قبلی این مریض (تاریخچه)
+            $historyTests = LaboratoryRequest::where('patient_id', $registration->patient_id)
+                ->where('registration_id', '!=', $registration->reg_id)
+                ->with(['doctor', 'fee', 'registration'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            $formattedCurrent = $currentTests->map(function($test) {
+                return $this->formatForFrontend($test);
+            });
+
+            $formattedHistory = $historyTests->map(function($test) {
+                return $this->formatForFrontend($test);
+            });
 
             Log::info('=== END LaboratoryRequest Store SUCCESS ===');
 
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'laboratory_request' => $laboratoryRequest,
-                    'all_tests' => $allTests,
-                    'has_tests' => $allTests->count() > 0,
-                    'total_tests' => $allTests->count()
+                    'laboratory_request' => $this->formatForFrontend($laboratoryRequest),
+                    'tests' => $formattedCurrent,
+                    'all_tests' => $formattedCurrent,
+                    'history_tests' => $formattedHistory,
+                    'has_tests' => $currentTests->count() > 0,
+                    'has_history' => $historyTests->count() > 0,
+                    'total_tests' => $currentTests->count(),
+                    'total_history' => $historyTests->count(),
+                    'barcode' => $barcode,
+                    'patient_info' => [
+                        'id' => $registration->patient->id ?? null,
+                        'first_name' => $registration->patient->first_name ?? null,
+                        'last_name' => $registration->patient->last_name ?? null,
+                        'mobile' => $registration->patient->mobile ?? null,
+                        'national_id' => $registration->patient->national_id ?? null,
+                        'gender' => $registration->patient->gender ?? null,
+                        'age' => $registration->patient->age ?? null,
+                        'blood_group' => $registration->patient->blood_group ?? null,
+                    ]
                 ],
                 'message' => 'درخواست لابراتوار با موفقیت ثبت شد'
             ], 201);
 
         } catch (\Exception $e) {
+            DB::rollBack();
             Log::error('=== ERROR in LaboratoryRequest store ===');
             Log::error('Error message: ' . $e->getMessage());
             Log::error('Error trace: ' . $e->getTraceAsString());
@@ -352,7 +385,8 @@ public function getByRegistrationFull($registrationId)
     public function show($id)
     {
         try {
-            $laboratoryRequest = LaboratoryRequest::with(['patient', 'doctor', 'fee'])->find($id);
+            $laboratoryRequest = LaboratoryRequest::with(['patient', 'doctor', 'fee', 'registration'])
+                ->find($id);
             
             if (!$laboratoryRequest) {
                 return response()->json([
@@ -363,7 +397,7 @@ public function getByRegistrationFull($registrationId)
 
             return response()->json([
                 'success' => true,
-                'data' => $laboratoryRequest
+                'data' => $this->formatForFrontend($laboratoryRequest)
             ]);
 
         } catch (\Exception $e) {
@@ -381,7 +415,7 @@ public function getByRegistrationFull($registrationId)
     public function update(Request $request, $id)
     {
         try {
-            $laboratoryRequest = LaboratoryRequest::find($id);
+            $laboratoryRequest = LaboratoryRequest::with(['patient', 'registration'])->find($id);
             
             if (!$laboratoryRequest) {
                 return response()->json([
@@ -425,37 +459,37 @@ public function getByRegistrationFull($registrationId)
                 $laboratoryRequest->update(['result_date' => Carbon::now()->toDateString()]);
             }
 
-            $laboratoryRequest->load(['patient', 'doctor']);
+            $laboratoryRequest->fresh();
 
-            $allTests = LaboratoryRequest::where('registration_id', $laboratoryRequest->registration_id)
+            // ✅ دریافت لیست بروز شده با registration_id (که همان reg_id هست)
+            $currentTests = LaboratoryRequest::where('registration_id', $laboratoryRequest->registration_id)
+                ->with(['doctor', 'fee'])
                 ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function($test) {
-                    return [
-                        'id' => $test->id,
-                        'test_type' => $test->test_type,
-                        'test_type_label' => $test->test_type_label,
-                        'test_name' => $test->test_name,
-                        'test_description' => $test->test_description,
-                        'clinical_indication' => $test->clinical_indication,
-                        'special_notes' => $test->special_notes,
-                        'request_date' => $test->request_date,
-                        'sample_collection_date' => $test->sample_collection_date,
-                        'status' => $test->status,
-                        'barcode' => $test->barcode,
-                        'fee_id' => $test->fee_id,
-                        'has_fee' => $test->fee_id !== null,
-                        'created_at' => $test->created_at,
-                    ];
-                });
+                ->get();
+
+            $historyTests = LaboratoryRequest::where('patient_id', $laboratoryRequest->patient_id)
+                ->where('registration_id', '!=', $laboratoryRequest->registration_id)
+                ->with(['doctor', 'fee', 'registration'])
+                ->orderBy('created_at', 'desc')
+                ->get();
 
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'laboratory_request' => $laboratoryRequest,
-                    'all_tests' => $allTests,
-                    'has_tests' => $allTests->count() > 0,
-                    'total_tests' => $allTests->count()
+                    'laboratory_request' => $this->formatForFrontend($laboratoryRequest),
+                    'tests' => $currentTests->map(function($test) {
+                        return $this->formatForFrontend($test);
+                    }),
+                    'all_tests' => $currentTests->map(function($test) {
+                        return $this->formatForFrontend($test);
+                    }),
+                    'history_tests' => $historyTests->map(function($test) {
+                        return $this->formatForFrontend($test);
+                    }),
+                    'has_tests' => $currentTests->count() > 0,
+                    'has_history' => $historyTests->count() > 0,
+                    'total_tests' => $currentTests->count(),
+                    'total_history' => $historyTests->count(),
                 ],
                 'message' => 'درخواست لابراتوار با موفقیت ویرایش شد'
             ]);
@@ -475,7 +509,7 @@ public function getByRegistrationFull($registrationId)
     public function destroy($id)
     {
         try {
-            $laboratoryRequest = LaboratoryRequest::find($id);
+            $laboratoryRequest = LaboratoryRequest::with(['patient', 'registration'])->find($id);
             
             if (!$laboratoryRequest) {
                 return response()->json([
@@ -499,33 +533,27 @@ public function getByRegistrationFull($registrationId)
             }
 
             $registrationId = $laboratoryRequest->registration_id;
+            $patientId = $laboratoryRequest->patient_id;
+            
             $laboratoryRequest->delete();
 
-            $remainingTests = LaboratoryRequest::where('registration_id', $registrationId)
+            // ✅ دریافت لیست بروز شده
+            $currentTests = LaboratoryRequest::where('registration_id', $registrationId)
+                ->with(['doctor', 'fee'])
                 ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function($test) {
-                    return [
-                        'id' => $test->id,
-                        'test_type' => $test->test_type,
-                        'test_type_label' => $test->test_type_label,
-                        'test_name' => $test->test_name,
-                        'test_description' => $test->test_description,
-                        'clinical_indication' => $test->clinical_indication,
-                        'special_notes' => $test->special_notes,
-                        'request_date' => $test->request_date,
-                        'sample_collection_date' => $test->sample_collection_date,
-                        'status' => $test->status,
-                        'barcode' => $test->barcode,
-                        'fee_id' => $test->fee_id,
-                        'has_fee' => $test->fee_id !== null,
-                        'created_at' => $test->created_at,
-                    ];
-                });
+                ->get();
+
+            $historyTests = LaboratoryRequest::where('patient_id', $patientId)
+                ->where('registration_id', '!=', $registrationId)
+                ->with(['doctor', 'fee', 'registration'])
+                ->orderBy('created_at', 'desc')
+                ->get();
 
             return response()->json([
                 'success' => true,
-                'data' => $remainingTests,
+                'data' => $currentTests->map(function($test) {
+                    return $this->formatForFrontend($test);
+                }),
                 'message' => 'درخواست لابراتوار با موفقیت حذف شد'
             ]);
 
@@ -534,6 +562,95 @@ public function getByRegistrationFull($registrationId)
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در حذف: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * چاپ درخواست لابراتوار
+     */
+    public function print($id)
+    {
+        try {
+            $laboratoryRequest = LaboratoryRequest::with(['patient', 'doctor', 'fee', 'registration'])
+                ->find($id);
+            
+            if (!$laboratoryRequest) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'درخواست لابراتوار یافت نشد'
+                ], 404);
+            }
+
+            $printData = [
+                'laboratory_request' => $this->formatForFrontend($laboratoryRequest),
+                'patient' => $laboratoryRequest->patient,
+                'doctor' => $laboratoryRequest->doctor,
+                'registration' => $laboratoryRequest->registration,
+                'fee' => $laboratoryRequest->fee,
+                'print_date' => Carbon::now()->format('Y-m-d H:i:s'),
+                'barcode_url' => route('barcode.generate', ['barcode' => $laboratoryRequest->barcode]),
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $printData,
+                'message' => 'اطلاعات برای چاپ آماده شد'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in print: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در آماده‌سازی چاپ: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * دریافت تاریخچه کامل یک مریض
+     */
+    public function getPatientHistory($patientId)
+    {
+        try {
+            $patient = Patient::find($patientId);
+            if (!$patient) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'مریض یافت نشد'
+                ], 404);
+            }
+
+            $tests = LaboratoryRequest::where('patient_id', $patientId)
+                ->with(['doctor', 'fee', 'registration'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            $formattedTests = $tests->map(function($test) {
+                return $this->formatForFrontend($test);
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'patient' => $patient,
+                    'tests' => $formattedTests,
+                    'total' => $tests->count(),
+                    'stats' => [
+                        'pending' => $tests->where('status', 'pending')->count(),
+                        'completed' => $tests->where('status', 'completed')->count(),
+                        'in_progress' => $tests->where('status', 'in_progress')->count(),
+                        'cancelled' => $tests->where('status', 'cancelled')->count(),
+                    ]
+                ],
+                'message' => 'تاریخچه درخواست‌های لابراتوار مریض'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in getPatientHistory: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت تاریخچه: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -581,7 +698,7 @@ public function getByRegistrationFull($registrationId)
 
             return response()->json([
                 'success' => true,
-                'data' => $laboratoryRequest,
+                'data' => $this->formatForFrontend($laboratoryRequest->fresh()),
                 'message' => 'نتیجه آزمایش با موفقیت آپلود شد'
             ]);
 
@@ -628,11 +745,9 @@ public function getByRegistrationFull($registrationId)
                 'sent_to_lab_at' => Carbon::now()
             ]);
 
-            $laboratoryRequest->load(['patient', 'doctor', 'fee']);
-
             return response()->json([
                 'success' => true,
-                'data' => $laboratoryRequest,
+                'data' => $this->formatForFrontend($laboratoryRequest->fresh()),
                 'message' => 'درخواست با موفقیت به لابراتوار ارسال شد'
             ]);
 
@@ -643,6 +758,86 @@ public function getByRegistrationFull($registrationId)
                 'message' => 'خطا در ارسال: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * فرمت کردن یک درخواست لابراتوار برای فرانت‌اند
+     */
+    private function formatForFrontend($test)
+    {
+        if (!$test) return null;
+
+        return [
+            'id' => $test->id,
+            'registration_id' => $test->registration_id,
+            'patient_id' => $test->patient_id,
+            'doctor_id' => $test->doctor_id,
+            'test_type' => $test->test_type,
+            'test_type_label' => $test->test_type_label,
+            'test_name' => $test->test_name,
+            'test_description' => $test->test_description,
+            'clinical_indication' => $test->clinical_indication,
+            'special_notes' => $test->special_notes,
+            'request_date' => $test->request_date,
+            'sample_collection_date' => $test->sample_collection_date,
+            'status' => $test->status,
+            'status_label' => $test->status_label,
+            'status_badge_color' => $this->getStatusBadgeColor($test->status),
+            'barcode' => $test->barcode,
+            'fee_id' => $test->fee_id,
+            'has_fee' => $test->fee_id !== null,
+            'results' => $test->results,
+            'result_date' => $test->result_date,
+            'result_file_path' => $test->result_file_path,
+            'created_at' => $test->created_at,
+            'updated_at' => $test->updated_at,
+            'doctor' => $test->doctor ? [
+                'id' => $test->doctor->id,
+                'name' => $test->doctor->name ?? $test->doctor->full_name ?? null,
+            ] : null,
+            'fee' => $test->fee ? [
+                'id' => $test->fee->id,
+                'amount' => $test->fee->amount,
+                'status' => $test->fee->status,
+            ] : null,
+            'registration' => $test->registration ? [
+                'id' => $test->registration->id,
+                'reg_id' => $test->registration->reg_id,
+                'visit_number' => $test->registration->visit_number,
+            ] : null,
+            'patient' => $test->patient ? [
+                'id' => $test->patient->id,
+                'first_name' => $test->patient->first_name,
+                'last_name' => $test->patient->last_name,
+                'national_id' => $test->patient->national_id,
+                'mobile' => $test->patient->mobile,
+                'gender' => $test->patient->gender,
+                'age' => $test->patient->age,
+                'blood_group' => $test->patient->blood_group,
+            ] : null,
+            'can_edit' => !in_array($test->status, ['completed', 'cancelled', 'sent_to_lab']),
+            'can_delete' => !in_array($test->status, ['completed', 'in_progress', 'sample_taken', 'sent_to_lab']) && !$test->fee_id,
+            'can_print' => true,
+            'can_send_to_lab' => $test->status === 'pending' && $test->fee_id !== null,
+        ];
+    }
+
+    /**
+     * دریافت رنگ وضعیت
+     */
+    private function getStatusBadgeColor($status)
+    {
+        $colors = [
+            'pending' => 'warning',
+            'sample_taken' => 'info',
+            'in_progress' => 'primary',
+            'sent_to_lab' => 'secondary',
+            'completed' => 'success',
+            'cancelled' => 'danger',
+            'rejected' => 'dark',
+        ];
+        
+        return $colors[$status] ?? 'secondary';
     }
 
     /**

@@ -192,7 +192,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // لیست تمام درخواست‌ها
         Route::get('/', [LaboratoryRequestController::class, 'index']);
-
+  Route::get('/registration/{registrationId}/full', [LaboratoryRequestController::class, 'getByRegistrationFull']);
+    
         // درخواست‌های یک مراجعه (GET - ساده)
         Route::get('/registration/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
 

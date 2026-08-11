@@ -28,6 +28,8 @@ const STEPS = [
 
 // کلید localStorage
 const ACTIVE_PATIENTS_KEY = 'treatment_active_patients';
+const SELECTED_PATIENT_KEY = 'treatment_selected_patient';
+const ACTIVE_TAB_KEY = 'treatment_active_tab';
 
 export default function TreatmentPage() {
   const { api } = useAuth();
@@ -55,13 +57,17 @@ export default function TreatmentPage() {
   const [selectedRegistration, setSelectedRegistration] = useState(null);
 
   // ============ توابع ذخیره و بازیابی ============
-  const saveState = (patients, tab) => {
+  const saveState = (patients, tab, patientId) => {
     try {
       const data = {
         patients: patients,
-        activeTab: tab || activeTab
+        activeTab: tab || activeTab,
+        selectedPatientId: patientId || selectedPatientId
       };
       localStorage.setItem(ACTIVE_PATIENTS_KEY, JSON.stringify(data));
+      
+      if (tab) localStorage.setItem(ACTIVE_TAB_KEY, tab);
+      if (patientId) localStorage.setItem(SELECTED_PATIENT_KEY, String(patientId));
     } catch (err) {
       console.error("خطا در ذخیره وضعیت:", err);
     }
@@ -74,13 +80,14 @@ export default function TreatmentPage() {
         const data = JSON.parse(saved);
         return {
           patients: data.patients || {},
-          activeTab: data.activeTab || 'queue'
+          activeTab: data.activeTab || 'queue',
+          selectedPatientId: data.selectedPatientId || null
         };
       }
     } catch (err) {
       console.error("خطا در بازیابی وضعیت:", err);
     }
-    return { patients: {}, activeTab: 'queue' };
+    return { patients: {}, activeTab: 'queue', selectedPatientId: null };
   };
 
   // ============ به‌روزرسانی اطلاعات مریض ============
@@ -109,13 +116,11 @@ export default function TreatmentPage() {
       
       updated[registrationId].data[section] = data;
       
-      // ✅ اگر registration وجود داشت، ذخیره کن
       if (selectedRegistration && selectedRegistration.reg_id === registrationId) {
         updated[registrationId].registration = selectedRegistration;
       }
       
-      // ذخیره در localStorage
-      saveState(updated);
+      saveState(updated, activeTab, selectedPatientId);
       
       return updated;
     });
@@ -148,7 +153,7 @@ export default function TreatmentPage() {
           } else {
             updated[registrationId].registration = data;
           }
-          saveState(updated);
+          saveState(updated, activeTab, selectedPatientId);
           return updated;
         });
         return data;
@@ -164,8 +169,7 @@ export default function TreatmentPage() {
     console.log(`📥 Loading all data for patient ${registrationId}...`);
     
     try {
-      // دریافت اطلاعات مریض
-      const regData = await fetchPatientRegistration(registrationId);
+      await fetchPatientRegistration(registrationId);
       
       // بارگذاری معاینات
       try {
@@ -187,7 +191,7 @@ export default function TreatmentPage() {
         });
       }
       
-      // ✅ بارگذاری لابراتوار با روت FULL
+      // بارگذاری لابراتوار
       try {
         const labResponse = await api.get(`/laboratory-requests/registration/${registrationId}/full`);
         console.log('📥 Lab Response:', labResponse.data);
@@ -290,10 +294,8 @@ export default function TreatmentPage() {
     setSelectedPatientId(regId);
     setSelectedRegistration(registration);
 
-    // بررسی وجود مریض در activePatients
     let patientData = activePatients[regId];
     if (!patientData) {
-      // ایجاد entry جدید
       const newProgress = {
         currentStepIndex: 1,
         completedSteps: ['queue'],
@@ -311,25 +313,22 @@ export default function TreatmentPage() {
           progress: newProgress,
           data: {}
         };
-        saveState(updated);
+        saveState(updated, 'examination', regId);
         return updated;
       });
       
-      // بارگذاری تمام اطلاعات
       await loadAllPatientData(regId);
     } else {
-      // اطلاعات موجود را بروز کن
       setActivePatients(prev => {
         const updated = { ...prev };
         if (updated[regId]) {
           updated[regId].registration = registration;
         }
-        saveState(updated);
+        saveState(updated, activeTab, regId);
         return updated;
       });
     }
 
-    // برو به مرحله بعد از صف
     const progress = activePatients[regId]?.progress || {
       currentStepIndex: 1,
       completedSteps: ['queue']
@@ -339,7 +338,9 @@ export default function TreatmentPage() {
     const nextTab = STEPS[stepIndex]?.key || 'examination';
     setActiveTab(nextTab);
     
-    // به‌روزرسانی وضعیت مریض
+    localStorage.setItem(ACTIVE_TAB_KEY, nextTab);
+    localStorage.setItem(SELECTED_PATIENT_KEY, String(regId));
+    
     if (registration.visit_status !== "InProgress") {
       await api.put(`/registrations/${regId}/status`, {
         visit_status: "InProgress"
@@ -349,8 +350,9 @@ export default function TreatmentPage() {
     toast.info(`👨‍⚕️ شروع معالجه برای ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''}`);
   };
 
-  // ============ دریافت مریضان یک مرحله ============
+  // ============ دریافت مریضان یک مرحله (اصلاح شده) ============
   const getPatientsInStage = (stage) => {
+    // صف انتظار: مریض‌هایی که هنوز شروع نشده‌اند
     if (stage === "queue") {
       return queue.filter(p => 
         !activePatients[p.reg_id] && 
@@ -375,9 +377,10 @@ export default function TreatmentPage() {
       
       if (progress) {
         const currentIdx = progress.currentStepIndex || 0;
-        const completedSteps = progress.completedSteps || [];
         
-        if (currentIdx === stageIndex || completedSteps.includes(stage)) {
+        // ✅ فقط مریض‌هایی که مرحله فعلی‌شان همین تب باشد
+        // اگر مریض در مرحله currentIdx باشد، در همان تب نمایش داده می‌شود
+        if (currentIdx === stageIndex) {
           patients.push({
             reg_id: parseInt(id),
             ...patient.registration,
@@ -427,11 +430,13 @@ export default function TreatmentPage() {
       if (updated[selectedPatientId]) {
         updated[selectedPatientId].progress = newProgress;
       }
-      saveState(updated);
+      saveState(updated, STEPS[nextIndex].key, selectedPatientId);
       return updated;
     });
     
     setActiveTab(STEPS[nextIndex].key);
+    localStorage.setItem(ACTIVE_TAB_KEY, STEPS[nextIndex].key);
+    
     toast.info(`➡️ رفتن به مرحله ${STEPS[nextIndex].label}`);
   };
 
@@ -451,6 +456,8 @@ export default function TreatmentPage() {
     
     if (prevIndex < 1) {
       setActiveTab('queue');
+      localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+      localStorage.removeItem(SELECTED_PATIENT_KEY);
       toast.info("↩️ بازگشت به صف انتظار");
       return;
     }
@@ -467,11 +474,13 @@ export default function TreatmentPage() {
       if (updated[selectedPatientId]) {
         updated[selectedPatientId].progress = newProgress;
       }
-      saveState(updated);
+      saveState(updated, STEPS[prevIndex].key, selectedPatientId);
       return updated;
     });
     
     setActiveTab(STEPS[prevIndex].key);
+    localStorage.setItem(ACTIVE_TAB_KEY, STEPS[prevIndex].key);
+    
     toast.info(`↩️ بازگشت به مرحله ${STEPS[prevIndex].label}`);
   };
 
@@ -535,7 +544,6 @@ export default function TreatmentPage() {
       
       toast.success(`✅ ${currentStep.label} با موفقیت ثبت شد`);
       
-      // بارگذاری مجدد اطلاعات
       await loadAllPatientData(regId);
       
       return response.data;
@@ -585,17 +593,18 @@ export default function TreatmentPage() {
       
       toast.success("✅ معالجه با موفقیت به پایان رسید");
       
-      // حذف مریض از لیست فعال
       setActivePatients(prev => {
         const updated = { ...prev };
         delete updated[selectedPatientId];
-        saveState(updated);
+        saveState(updated, 'queue', null);
         return updated;
       });
       
       setSelectedPatientId(null);
       setSelectedRegistration(null);
       setActiveTab('queue');
+      localStorage.removeItem(SELECTED_PATIENT_KEY);
+      localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
       await fetchQueue();
       
     } catch (err) {
@@ -625,28 +634,27 @@ export default function TreatmentPage() {
       
       const saved = loadState();
       const patients = saved.patients || {};
+      const savedTab = saved.activeTab || 'queue';
+      const savedPatientId = saved.selectedPatientId;
       
-      const patientIds = Object.keys(patients);
-      if (patientIds.length > 0) {
-        for (const id of patientIds) {
-          await loadAllPatientData(parseInt(id));
-        }
+      setActivePatients(patients);
+      
+      if (savedPatientId && patients[savedPatientId]) {
+        setSelectedPatientId(savedPatientId);
+        setActiveTab(savedTab);
         
-        const firstId = parseInt(patientIds[0]);
-        setSelectedPatientId(firstId);
-        
-        // ✅ دریافت مجدد registration از state به‌روز شده
-        const updatedPatient = activePatients[firstId];
-        if (updatedPatient?.registration) {
-          setSelectedRegistration(updatedPatient.registration);
-        } else {
-          const regData = await fetchPatientRegistration(firstId);
+        const regData = await fetchPatientRegistration(savedPatientId);
+        if (regData) {
           setSelectedRegistration(regData);
         }
         
-        setActiveTab(saved.activeTab || 'examination');
+        await loadAllPatientData(savedPatientId);
+        
+        console.log(`✅ Restored patient ${savedPatientId} in tab ${savedTab}`);
       } else {
         setActiveTab('queue');
+        localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+        localStorage.removeItem(SELECTED_PATIENT_KEY);
       }
       
       await fetchQueue();
@@ -742,6 +750,8 @@ export default function TreatmentPage() {
                     setSelectedPatientId(p.reg_id);
                     setSelectedRegistration(p);
                     setActiveTab(activeTab);
+                    localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
+                    localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
                   }}
                   style={{
                     backgroundColor: selectedPatientId === p.reg_id ? '#3b82f6' : '#1a2a3a',
@@ -772,9 +782,14 @@ export default function TreatmentPage() {
           )}
         </div>
         
-        {selectedPatientId && selectedRegistration && (
+        {selectedPatientId && selectedRegistration ? (
           <div style={{ borderTop: '1px solid #374151', paddingTop: '20px' }}>
             {renderSelectedPatientForm()}
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '30px', color: '#9ca3af' }}>
+            <div style={{ fontSize: '40px', marginBottom: '10px' }}>👤</div>
+            <div>برای مشاهده فرم، یک مریض را از لیست بالا انتخاب کنید</div>
           </div>
         )}
       </div>
@@ -798,6 +813,8 @@ export default function TreatmentPage() {
               setActiveTab('queue');
               setSelectedPatientId(null);
               setSelectedRegistration(null);
+              localStorage.removeItem(SELECTED_PATIENT_KEY);
+              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
             }}
             onRefresh={refreshData}
             api={api}
@@ -843,6 +860,8 @@ export default function TreatmentPage() {
               setActiveTab('queue');
               setSelectedPatientId(null);
               setSelectedRegistration(null);
+              localStorage.removeItem(SELECTED_PATIENT_KEY);
+              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
             }}
             onRefresh={refreshData}
             api={api}
@@ -883,6 +902,8 @@ export default function TreatmentPage() {
               setActiveTab('queue');
               setSelectedPatientId(null);
               setSelectedRegistration(null);
+              localStorage.removeItem(SELECTED_PATIENT_KEY);
+              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
             }}
             onRefresh={refreshData}
             api={api}
@@ -915,6 +936,8 @@ export default function TreatmentPage() {
               setActiveTab('queue');
               setSelectedPatientId(null);
               setSelectedRegistration(null);
+              localStorage.removeItem(SELECTED_PATIENT_KEY);
+              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
             }}
             onRefresh={refreshData}
             api={api}
@@ -938,6 +961,8 @@ export default function TreatmentPage() {
               setActiveTab('queue');
               setSelectedPatientId(null);
               setSelectedRegistration(null);
+              localStorage.removeItem(SELECTED_PATIENT_KEY);
+              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
             }}
             onRefresh={refreshData}
             api={api}
@@ -961,6 +986,8 @@ export default function TreatmentPage() {
               setActiveTab('queue');
               setSelectedPatientId(null);
               setSelectedRegistration(null);
+              localStorage.removeItem(SELECTED_PATIENT_KEY);
+              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
             }}
             onRefresh={refreshData}
             api={api}
@@ -1134,8 +1161,8 @@ export default function TreatmentPage() {
             if (step.key === 'queue') {
               patientCount = queue.filter(p => 
                 !activePatients[p.reg_id] && 
-                p.visit_status !== 'Completed' &&
-                p.visit_status !== 'InProgress'
+                p.visit_status !== "Completed" &&
+                p.visit_status !== "InProgress"
               ).length;
             } else if (step.key !== 'history') {
               const patients = getPatientsInStage(step.key);
@@ -1151,6 +1178,7 @@ export default function TreatmentPage() {
                 onClick={() => {
                   setActiveTab(step.key);
                   setSelectedHistory(null);
+                  localStorage.setItem(ACTIVE_TAB_KEY, step.key);
                 }}
                 style={{
                   padding: "8px 16px",
