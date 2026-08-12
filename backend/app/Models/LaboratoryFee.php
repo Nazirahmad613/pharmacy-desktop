@@ -11,7 +11,7 @@ class LaboratoryFee extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'registration_id',
+        'reg_id',           // ← اینجا reg_id است نه registration_id
         'patient_id',
         'laboratory_request_id',
         'amount',
@@ -22,6 +22,7 @@ class LaboratoryFee extends Model
         'description',
         'note',
         'barcode',
+        'remaining_amount',
     ];
 
     protected $casts = [
@@ -31,10 +32,11 @@ class LaboratoryFee extends Model
         'remaining_amount' => 'decimal:2',
     ];
 
-    // Relationships
+    // ✅ Relationship با Registrations با استفاده از reg_id
     public function registration()
     {
-        return $this->belongsTo(Registration::class);
+        return $this->belongsTo(Registrations::class, 'reg_id', 'reg_id');
+        //                          مدل مقصد      , کلید خارجی  , کلید محلی
     }
 
     public function patient()
@@ -45,6 +47,11 @@ class LaboratoryFee extends Model
     public function laboratoryRequest()
     {
         return $this->belongsTo(LaboratoryRequest::class);
+    }
+
+    public function qrCode()
+    {
+        return $this->hasOne(QRCode::class, 'laboratory_fee_id');
     }
 
     // Accessors
@@ -73,6 +80,7 @@ class LaboratoryFee extends Model
         return $methods[$this->payment_method] ?? $this->payment_method;
     }
 
+    // ✅ محاسبه مبلغ باقیمانده
     public function getRemainingAmountAttribute()
     {
         $discountAmount = $this->amount * ($this->discount / 100);

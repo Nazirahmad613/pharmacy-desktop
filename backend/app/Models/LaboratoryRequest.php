@@ -13,7 +13,7 @@ class LaboratoryRequest extends Model
     protected $table = 'laboratory_requests';
 
     protected $fillable = [
-        'registration_id',
+        'reg_id',           // ← تغییر از registration_id به reg_id
         'patient_id',
         'doctor_id',
         'test_type',
@@ -28,7 +28,7 @@ class LaboratoryRequest extends Model
         'result_file_path',
         'result_date',
         'barcode',
-        'fee_id',
+        
         'sent_to_lab_at',
     ];
 
@@ -38,15 +38,17 @@ class LaboratoryRequest extends Model
         'result_date' => 'date',
         'sent_to_lab_at' => 'datetime',
         'fee_id' => 'integer',
-        'registration_id' => 'integer',
         'patient_id' => 'integer',
         'doctor_id' => 'integer',
-        'status' => 'string',
     ];
 
+    /**
+     * رابطه با جدول registrations از طریق reg_id
+     */
     public function registration()
     {
-        return $this->belongsTo(Registrations::class, 'registration_id');
+        return $this->belongsTo(Registrations::class, 'reg_id', 'reg_id');
+        //                          مدل مقصد      , کلید خارجی  , کلید محلی
     }
 
     public function patient()
@@ -61,22 +63,22 @@ class LaboratoryRequest extends Model
 
     public function fee()
     {
-        return $this->hasOne(LaboratoryFee::class, 'laboratory_request_id');
+        return $this->belongsTo(LaboratoryFee::class, 'fee_id');
     }
 
     public function getTestTypeLabelAttribute()
     {
         $labels = [
-            'blood' => '🩸 آزمایش خون',
-            'urine' => '💧 آزمایش ادرار',
-            'stool' => '💩 آزمایش مدفوع',
-            'biochemistry' => '🧪 بیوشیمی',
-            'hormonal' => '🧬 هورمونی',
-            'microbial' => '🦠 میکروبی',
-            'pathology' => '🔬 پاتولوژی',
-            'genetic' => '🧬 ژنتیک',
-            'imaging' => '📷 تصویربرداری',
-            'other' => '📋 سایر',
+            'blood' => 'خون',
+            'urine' => 'ادرار',
+            'stool' => 'مدفوع',
+            'biochemistry' => 'بیوشیمی',
+            'hormonal' => 'هورمونی',
+            'microbial' => 'میکروبی',
+            'pathology' => 'پاتولوژی',
+            'genetic' => 'ژنتیک',
+            'imaging' => 'تصویربرداری',
+            'other' => 'سایر',
         ];
 
         return $labels[$this->test_type] ?? $this->test_type;
@@ -111,4 +113,4 @@ class LaboratoryRequest extends Model
 
         return $colors[$this->status] ?? '#6b7280';
     }
-}
+} 

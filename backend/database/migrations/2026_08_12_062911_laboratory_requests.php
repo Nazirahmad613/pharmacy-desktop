@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('laboratory_fees', function (Blueprint $table) {
+        Schema::create('laboratory_requests', function (Blueprint $table) {
 
             $table->id();
 
@@ -16,9 +16,11 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | Registration
             |--------------------------------------------------------------------------
-            | کلید اصلی registrations = reg_id
+            | کلید اصلی جدول registrations برابر reg_id است.
+            | بنابراین در این جدول نیز فقط reg_id استفاده می‌شود.
             */
             $table->foreignId('reg_id')
+                ->nullable()
                 ->constrained('registrations', 'reg_id')
                 ->onDelete('cascade');
 
@@ -27,7 +29,6 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | Patient
             |--------------------------------------------------------------------------
-            | کلید اصلی patients = id
             */
             $table->foreignId('patient_id')
                 ->constrained('patients')
@@ -36,64 +37,76 @@ return new class extends Migration
 
             /*
             |--------------------------------------------------------------------------
-            | Laboratory Request
+            | Doctor
             |--------------------------------------------------------------------------
-            | این ID مربوط به رکورد laboratory_requests است،
-            | بنابراین همان id باقی می‌ماند.
             */
-            $table->foreignId('laboratory_request_id')
+            $table->foreignId('doctor_id')
                 ->nullable()
-                ->constrained('laboratory_requests', 'id')
+                ->constrained('users')
                 ->onDelete('set null');
 
 
             /*
             |--------------------------------------------------------------------------
-            | Amounts
+            | Test Information
             |--------------------------------------------------------------------------
             */
-            $table->decimal('amount', 12, 2);
+            $table->string('test_type');
 
-            $table->decimal('paid_amount', 12, 2)
-                ->default(0);
+            $table->string('test_name')
+                ->nullable();
 
-            $table->decimal('discount', 5, 2)
-                ->default(0);
+            $table->text('test_description')
+                ->nullable();
 
-            $table->decimal('remaining_amount', 12, 2)
-                ->default(0);
+            $table->text('clinical_indication')
+                ->nullable();
+
+            $table->text('special_notes')
+                ->nullable();
 
 
             /*
             |--------------------------------------------------------------------------
-            | Payment
+            | Dates
             |--------------------------------------------------------------------------
             */
-            $table->enum('payment_method', [
-                'cash',
-                'card',
-                'online',
-                'insurance'
-            ])->default('cash');
+            $table->date('request_date');
 
-            $table->enum('payment_status', [
+            $table->date('sample_collection_date')
+                ->nullable();
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Status
+            |--------------------------------------------------------------------------
+            */
+            $table->enum('status', [
                 'pending',
-                'partial',
-                'paid',
-                'refunded',
-                'cancelled'
+                'sample_taken',
+                'in_progress',
+                'completed',
+                'cancelled',
+                'rejected',
+                'sent_to_lab',
+                'waiting_for_result',
+                'result_ready'
             ])->default('pending');
 
 
             /*
             |--------------------------------------------------------------------------
-            | Description
+            | Results
             |--------------------------------------------------------------------------
             */
-            $table->text('description')
+            $table->text('results')
                 ->nullable();
 
-            $table->text('note')
+            $table->string('result_file_path')
+                ->nullable();
+
+            $table->date('result_date')
                 ->nullable();
 
 
@@ -109,24 +122,20 @@ return new class extends Migration
 
             /*
             |--------------------------------------------------------------------------
-            | QR Code
+            | Laboratory Fee
             |--------------------------------------------------------------------------
             */
-            $table->string('qr_code_path')
-                ->nullable();
-
-            $table->text('qr_code_data')
-                ->nullable();
+            $table->foreignId('fee_id')
+                ->nullable()
+                ->constrained('laboratory_fees')
+                ->onDelete('set null');
 
 
             /*
             |--------------------------------------------------------------------------
-            | Tracking
+            | Laboratory Dates
             |--------------------------------------------------------------------------
             */
-            $table->timestamp('confirmed_at')
-                ->nullable();
-
             $table->timestamp('sent_to_lab_at')
                 ->nullable();
 
@@ -149,29 +158,18 @@ return new class extends Migration
             | Indexes
             |--------------------------------------------------------------------------
             */
-            $table->index([
-                'reg_id',
-                'payment_status'
-            ]);
+            $table->index(['reg_id', 'status']);
 
-            $table->index([
-                'patient_id',
-                'payment_status'
-            ]);
+            $table->index(['patient_id', 'status']);
 
             $table->index('barcode');
 
-            $table->index('laboratory_request_id');
-
-            $table->index([
-                'payment_status',
-                'created_at'
-            ]);
+            $table->index('fee_id');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('laboratory_fees');
+        Schema::dropIfExists('laboratory_requests');
     }
 };

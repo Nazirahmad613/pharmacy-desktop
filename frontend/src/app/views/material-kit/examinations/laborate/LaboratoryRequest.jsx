@@ -16,12 +16,11 @@ export default function LaboratoryRequest({
   prevStep,
   isSubmitting,
   isTreatmentComplete,
-  // ============ Props جدید ============
-  savedTests,        // تست جاری
-  allTests,          // لیست تمام تست‌ها
-  isLabRequested,    // وضعیت درخواست
-  setIsLabRequested, // تابع به‌روزرسانی وضعیت
-  setAllTests        // تابع به‌روزرسانی لیست تست‌ها
+  savedTests,
+  allTests,
+  isLabRequested,
+  setIsLabRequested,
+  setAllTests
 }) {
   const [formData, setFormData] = useState({
     test_type: '',
@@ -83,7 +82,6 @@ export default function LaboratoryRequest({
       if (setIsLabRequested) {
         setIsLabRequested(true);
       }
-      // تنظیم بارکد از اولین تست
       if (allTests[0]?.barcode) {
         setBarcode(allTests[0].barcode);
       }
@@ -98,28 +96,16 @@ export default function LaboratoryRequest({
   // ============ بارگذاری اولیه از سرور ============
   useEffect(() => {
     if (registration?.reg_id) {
-      // اگر allTests از قبل وجود دارد، از آن استفاده کن
       if (allTests && Array.isArray(allTests) && allTests.length > 0) {
         setTests(allTests);
         if (setIsLabRequested) {
           setIsLabRequested(true);
         }
       } else {
-        // در غیر این صورت از سرور بارگذاری کن
         loadTestsFromServer();
       }
     }
   }, [registration?.reg_id]);
-
-  // ============ دیباگ وضعیت تست‌ها ============
-  useEffect(() => {
-    console.log('🔍 Current tests state:', {
-      testsLength: tests.length,
-      allTestsLength: allTests?.length || 0,
-      isLabRequested,
-      tests: tests
-    });
-  }, [tests, allTests, isLabRequested]);
 
   // ============ بارگذاری تست‌ها از سرور ============
   const loadTestsFromServer = async () => {
@@ -130,7 +116,7 @@ export default function LaboratoryRequest({
 
     setLoadingTests(true);
     try {
-      const url = `/laboratory-requests/registration/${registration.reg_id}/full`;
+      const url = `/laboratory-requests/registration-full/${registration.reg_id}`;
       console.log('📥 Loading full tests from:', url);
       
       const response = await api.get(url);
@@ -141,7 +127,6 @@ export default function LaboratoryRequest({
         
         let testsData = [];
         
-        // ✅ اولویت با all_tests (ساختار جدید)
         if (data.all_tests && Array.isArray(data.all_tests)) {
           testsData = data.all_tests;
         } else if (data.tests && Array.isArray(data.tests)) {
@@ -160,7 +145,6 @@ export default function LaboratoryRequest({
           setAllTests(testsData);
         }
         
-        // تنظیم بارکد از اولین تست یا از دیتا
         if (testsData.length > 0 && testsData[0].barcode) {
           setBarcode(testsData[0].barcode);
         } else if (data.barcode) {
@@ -261,7 +245,6 @@ export default function LaboratoryRequest({
         
         let testsData = [];
         
-        // ✅ اولویت با all_tests
         if (data.all_tests && Array.isArray(data.all_tests)) {
           testsData = data.all_tests;
         } else if (data.tests && Array.isArray(data.tests)) {
@@ -292,7 +275,6 @@ export default function LaboratoryRequest({
           onRefresh();
         }
         
-        // بارگذاری مجدد برای اطمینان
         setTimeout(() => {
           loadTestsFromServer();
         }, 500);
@@ -1094,37 +1076,87 @@ export default function LaboratoryRequest({
         </div>
       </form>
 
-      {/* ============ لیست تست‌های ثبت شده با جدول ============ */}
-      <div style={{ marginTop: '30px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h4 style={{ color: '#60a5fa', fontSize: '15px', margin: 0 }}>
-            📋 لیست تست‌های لابراتوار ({tests.length})
-            {loadingTests && <span style={{ marginLeft: '10px', fontSize: '13px', color: '#9ca3af' }}>⏳ در حال بارگذاری...</span>}
-          </h4>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={loadTestsFromServer}
-              style={{
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                padding: '4px 12px',
-                borderRadius: '4px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '11px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-            >
-              🔄 بارگذاری مجدد
-            </button>
-            {tests.length > 0 && (
+      {/* ============ اطلاعات مریض در بخش پایین ============ */}
+      <div style={{ marginTop: '30px' }}>
+        <div style={{
+          backgroundColor: '#0f1a2a',
+          padding: '15px 20px',
+          borderRadius: '8px',
+          marginBottom: '15px',
+          border: '1px solid #2a3a4a'
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '10px',
+            borderBottom: '1px solid #2a3a4a',
+            paddingBottom: '8px'
+          }}>
+            <h5 style={{ color: '#60a5fa', margin: 0, fontSize: '14px' }}>
+              👤 اطلاعات مریض
+            </h5>
+            <span style={{ color: '#9ca3af', fontSize: '11px' }}>
+              شماره مراجعه: {registration?.visit_number || '-'}
+            </span>
+          </div>
+          
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '8px 15px'
+          }}>
+            <div>
+              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>نام کامل</span>
+              <span style={{ color: 'white', fontSize: '13px', fontWeight: 'bold' }}>
+                {patient.first_name || ''} {patient.last_name || ''}
+              </span>
+            </div>
+            <div>
+              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>کد ملی</span>
+              <span style={{ color: 'white', fontSize: '13px' }}>{patient.national_id || '-'}</span>
+            </div>
+            <div>
+              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>سن</span>
+              <span style={{ color: 'white', fontSize: '13px' }}>{patient.age ? `${patient.age} سال` : '-'}</span>
+            </div>
+            <div>
+              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>جنسیت</span>
+              <span style={{ color: 'white', fontSize: '13px' }}>{getGenderText(patient.gender)}</span>
+            </div>
+            <div>
+              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>شماره تماس</span>
+              <span style={{ color: 'white', fontSize: '13px' }}>{patient.mobile || '-'}</span>
+            </div>
+            <div>
+              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>گروه خونی</span>
+              <span style={{ color: 'white', fontSize: '13px' }}>{patient.blood_group || '-'}</span>
+            </div>
+            <div>
+              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>شماره مراجعه</span>
+              <span style={{ color: '#fcd34d', fontSize: '13px', fontWeight: 'bold' }}>{registration?.visit_number || '-'}</span>
+            </div>
+            {barcode && (
+              <div>
+                <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>بارکد</span>
+                <span style={{ color: '#fcd34d', fontSize: '13px', fontFamily: 'monospace' }}>{barcode}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ============ لیست تست‌های ثبت شده با جدول ============ */}
+        <div style={{ borderTop: '2px solid #374151', paddingTop: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h4 style={{ color: '#60a5fa', fontSize: '15px', margin: 0 }}>
+              📋 لیست تست‌های لابراتوار ({tests.length})
+              {loadingTests && <span style={{ marginLeft: '10px', fontSize: '13px', color: '#9ca3af' }}>⏳ در حال بارگذاری...</span>}
+            </h4>
+            <div style={{ display: 'flex', gap: '8px' }}>
               <button
-                onClick={handlePrint}
-                className="no-print"
+                onClick={loadTestsFromServer}
                 style={{
-                  backgroundColor: '#10b981',
+                  backgroundColor: '#3b82f6',
                   color: 'white',
                   padding: '4px 12px',
                   borderRadius: '4px',
@@ -1136,124 +1168,144 @@ export default function LaboratoryRequest({
                   gap: '4px'
                 }}
               >
-                🖨️ پرینت
+                🔄 بارگذاری مجدد
               </button>
-            )}
+              {tests.length > 0 && (
+                <button
+                  onClick={handlePrint}
+                  className="no-print"
+                  style={{
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    padding: '4px 12px',
+                    borderRadius: '4px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  🖨️ پرینت
+                </button>
+              )}
+            </div>
           </div>
-        </div>
 
-        {tests.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '25px', color: '#9ca3af' }}>
-            <div style={{ fontSize: '35px', marginBottom: '8px' }}>📋</div>
-            <div>هیچ تست لابراتواری ثبت نشده است</div>
-            <div style={{ fontSize: '12px', marginTop: '5px' }}>برای ثبت درخواست، فرم بالا را پر کنید</div>
-          </div>
-        ) : (
-          <div style={{
-            overflowX: 'auto',
-            borderRadius: '8px',
-            border: '1px solid #374151'
-          }}>
-            <table style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              minWidth: '1000px',
-              fontSize: '13px'
+          {tests.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '25px', color: '#9ca3af' }}>
+              <div style={{ fontSize: '35px', marginBottom: '8px' }}>📋</div>
+              <div>هیچ تست لابراتواری ثبت نشده است</div>
+              <div style={{ fontSize: '12px', marginTop: '5px' }}>برای ثبت درخواست، فرم بالا را پر کنید</div>
+            </div>
+          ) : (
+            <div style={{
+              overflowX: 'auto',
+              borderRadius: '8px',
+              border: '1px solid #374151'
             }}>
-              <thead>
-                <tr style={{
-                  backgroundColor: '#0f1a2a',
-                  borderBottom: '2px solid #374151'
-                }}>
-                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>#</th>
-                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>🏷️ بارکد</th>
-                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>🔬 نوع تست</th>
-                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>📝 نام تست</th>
-                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>📅 تاریخ</th>
-                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>📊 وضعیت</th>
-                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>💰 فیس</th>
-                  <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', whiteSpace: 'nowrap' }}>عملیات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tests.map((test, index) => (
-                  <tr key={test.id || index} style={{ borderBottom: '1px solid #2a3a4a' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1a2a3a'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                    <td style={{ padding: '10px 12px', textAlign: 'center', color: '#9ca3af', fontWeight: 'bold', fontSize: '14px', borderLeft: '1px solid #2a3a4a' }}>{index + 1}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'center', color: '#fcd34d', fontSize: '12px', fontFamily: 'monospace', borderLeft: '1px solid #2a3a4a' }}>{test.barcode || '-'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'center', color: '#60a5fa', fontSize: '13px', fontWeight: 'bold', borderLeft: '1px solid #2a3a4a' }}>{test.test_type_label || test.test_type || '-'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'center', color: 'white', fontSize: '13px', borderLeft: '1px solid #2a3a4a', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{test.test_name || '-'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'center', color: '#9ca3af', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>{test.request_date ? new Date(test.request_date).toLocaleDateString('fa-IR') : '-'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
-                      <span style={{ backgroundColor: statusColors[test.status] || '#6b7280', color: 'white', padding: '2px 10px', borderRadius: '12px', fontSize: '11px', display: 'inline-block' }}>
-                        {statusLabels[test.status] || test.status || 'نامشخص'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
-                      {test.has_fee ? (
-                        <span style={{ backgroundColor: '#10b981', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>✅ ثبت شده</span>
-                      ) : (
-                        <span style={{ color: '#9ca3af', fontSize: '11px' }}>❌ ثبت نشده</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                        <button 
-                          onClick={() => handleEditTest(test)} 
-                          disabled={test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab'} 
-                          style={{ 
-                            backgroundColor: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? '#6b7280' : '#3b82f6', 
-                            color: 'white', 
-                            padding: '4px 8px', 
-                            borderRadius: '4px', 
-                            border: 'none', 
-                            fontSize: '11px', 
-                            cursor: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? 'not-allowed' : 'pointer', 
-                            opacity: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? 0.5 : 1 
-                          }}
-                          title="ویرایش"
-                        >
-                          ✏️
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteTest(test.id)} 
-                          disabled={test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee} 
-                          style={{ 
-                            backgroundColor: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? '#6b7280' : '#dc2626', 
-                            color: 'white', 
-                            padding: '4px 8px', 
-                            borderRadius: '4px', 
-                            border: 'none', 
-                            fontSize: '11px', 
-                            cursor: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? 'not-allowed' : 'pointer', 
-                            opacity: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? 0.5 : 1 
-                          }}
-                          title="حذف"
-                        >
-                          🗑️
-                        </button>
-                        <button 
-                          onClick={() => handlePrintTest(test)} 
-                          style={{ 
-                            backgroundColor: '#8b5cf6', 
-                            color: 'white', 
-                            padding: '4px 8px', 
-                            borderRadius: '4px', 
-                            border: 'none', 
-                            fontSize: '11px', 
-                            cursor: 'pointer' 
-                          }}
-                          title="پرینت"
-                        >
-                          🖨️
-                        </button>
-                      </div>
-                    </td>
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                minWidth: '1000px',
+                fontSize: '13px'
+              }}>
+                <thead>
+                  <tr style={{
+                    backgroundColor: '#0f1a2a',
+                    borderBottom: '2px solid #374151'
+                  }}>
+                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>#</th>
+                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>🏷️ بارکد</th>
+                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>🔬 نوع تست</th>
+                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>📝 نام تست</th>
+                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>📅 تاریخ</th>
+                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>📊 وضعیت</th>
+                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a', whiteSpace: 'nowrap' }}>💰 فیس</th>
+                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', whiteSpace: 'nowrap' }}>عملیات</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {tests.map((test, index) => (
+                    <tr key={test.id || index} style={{ borderBottom: '1px solid #2a3a4a' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1a2a3a'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                      <td style={{ padding: '10px 12px', textAlign: 'center', color: '#9ca3af', fontWeight: 'bold', fontSize: '14px', borderLeft: '1px solid #2a3a4a' }}>{index + 1}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center', color: '#fcd34d', fontSize: '12px', fontFamily: 'monospace', borderLeft: '1px solid #2a3a4a' }}>{test.barcode || '-'}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center', color: '#60a5fa', fontSize: '13px', fontWeight: 'bold', borderLeft: '1px solid #2a3a4a' }}>{test.test_type_label || test.test_type || '-'}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center', color: 'white', fontSize: '13px', borderLeft: '1px solid #2a3a4a', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{test.test_name || '-'}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center', color: '#9ca3af', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>{test.request_date ? new Date(test.request_date).toLocaleDateString('fa-IR') : '-'}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
+                        <span style={{ backgroundColor: statusColors[test.status] || '#6b7280', color: 'white', padding: '2px 10px', borderRadius: '12px', fontSize: '11px', display: 'inline-block' }}>
+                          {statusLabels[test.status] || test.status || 'نامشخص'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
+                        {test.has_fee ? (
+                          <span style={{ backgroundColor: '#10b981', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>✅ ثبت شده</span>
+                        ) : (
+                          <span style={{ color: '#9ca3af', fontSize: '11px' }}>❌ ثبت نشده</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                          <button 
+                            onClick={() => handleEditTest(test)} 
+                            disabled={test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab'} 
+                            style={{ 
+                              backgroundColor: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? '#6b7280' : '#3b82f6', 
+                              color: 'white', 
+                              padding: '4px 8px', 
+                              borderRadius: '4px', 
+                              border: 'none', 
+                              fontSize: '11px', 
+                              cursor: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? 'not-allowed' : 'pointer', 
+                              opacity: (test.status === 'completed' || test.status === 'cancelled' || test.status === 'sent_to_lab') ? 0.5 : 1 
+                            }}
+                            title="ویرایش"
+                          >
+                            ✏️
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteTest(test.id)} 
+                            disabled={test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee} 
+                            style={{ 
+                              backgroundColor: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? '#6b7280' : '#dc2626', 
+                              color: 'white', 
+                              padding: '4px 8px', 
+                              borderRadius: '4px', 
+                              border: 'none', 
+                              fontSize: '11px', 
+                              cursor: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? 'not-allowed' : 'pointer', 
+                              opacity: (test.status === 'completed' || test.status === 'in_progress' || test.status === 'sample_taken' || test.status === 'sent_to_lab' || test.has_fee) ? 0.5 : 1 
+                            }}
+                            title="حذف"
+                          >
+                            🗑️
+                          </button>
+                          <button 
+                            onClick={() => handlePrintTest(test)} 
+                            style={{ 
+                              backgroundColor: '#8b5cf6', 
+                              color: 'white', 
+                              padding: '4px 8px', 
+                              borderRadius: '4px', 
+                              border: 'none', 
+                              fontSize: '11px', 
+                              cursor: 'pointer' 
+                            }}
+                            title="پرینت"
+                          >
+                            🖨️
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* مودال ویرایش */}
