@@ -15,6 +15,9 @@ export default function RegistrationForm() {
 
   // ============ تب اصلی ============
   const [activeMainTab, setActiveMainTab] = useState("registration");
+  
+  // ============ state برای regId جاری ============
+  const [currentRegId, setCurrentRegId] = useState(null);
 
   const departmentNames = {
     Emergency: "اورژانس",
@@ -241,6 +244,11 @@ export default function RegistrationForm() {
       setRegistrations(regs);
       setCurrentPage(1);
       calculateStatisticsFromData(regs);
+      
+      // اگر regId جاری وجود نداشت و لیست خالی نبود، اولین مراجعه را به عنوان regId جاری تنظیم کن
+      if (!currentRegId && regs.length > 0) {
+        setCurrentRegId(regs[0].reg_id);
+      }
     } catch (err) {
       console.error("خطا در دریافت مریض‌ها:", err);
       setRegistrations([]);
@@ -576,6 +584,8 @@ export default function RegistrationForm() {
             new_address: newRegistration.patient.address || '',
           }));
         }
+        // به‌روزرسانی currentRegId
+        setCurrentRegId(editingId);
       } else {
         console.log("FINAL DATA SEND:", submitData);
         response = await api.post("/registrations", submitData);
@@ -601,6 +611,11 @@ export default function RegistrationForm() {
 
         if (newRegistration?.registration_fee > 0) {
           toast.info(`💰 فیس مراجعه به مبلغ ${parseFloat(newRegistration.registration_fee).toFixed(2)} افغانی در ژورنال ثبت شد`);
+        }
+
+        // تنظیم currentRegId به reg_id مراجعه جدید
+        if (newRegistration?.reg_id) {
+          setCurrentRegId(newRegistration.reg_id);
         }
 
         if (form.doctor_id) {
@@ -741,6 +756,12 @@ export default function RegistrationForm() {
         }
       }
       
+      // اگر regId جاری حذف شده بود، آن را به روزرسانی کن
+      if (currentRegId === reg_id) {
+        const remainingRegs = registrations.filter(r => r.reg_id !== reg_id);
+        setCurrentRegId(remainingRegs.length > 0 ? remainingRegs[0].reg_id : null);
+      }
+      
       fetchRegistrations();
       fetchStatistics();
     } catch (err) {
@@ -785,6 +806,10 @@ export default function RegistrationForm() {
     setSearchResults([]);
     setShowSearchResults(false);
     setShowNewPatientForm(true);
+    
+    // تنظیم currentRegId برای تب لابراتوار
+    setCurrentRegId(reg.reg_id);
+    
     window.scrollTo({ top: 0, behavior: "smooth" });
     
     toast.info(`✏️ در حال ویرایش مراجعه ${reg.visit_number} و اطلاعات مریض ${getPatientFullName(patient)}`);
@@ -1179,7 +1204,7 @@ export default function RegistrationForm() {
       case 'registration':
         return renderRegistrationTab();
       case 'laboratory':
-        return <LaboratoryFeeTab api={api} />;
+        return <LaboratoryFeeTab api={api} regId={currentRegId} />;
       case 'prescription':
         return <PrescriptionFeeTab api={api} />;
       default:

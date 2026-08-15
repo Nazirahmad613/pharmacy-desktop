@@ -8,170 +8,159 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('laboratory_fees', function (Blueprint $table) {
-
-            $table->id();
-
-            /*
-            |--------------------------------------------------------------------------
-            | Registration
-            |--------------------------------------------------------------------------
-            | کلید اصلی registrations = reg_id
-            */
-            $table->foreignId('reg_id')
-                ->constrained('registrations', 'reg_id')
-                ->onDelete('cascade');
-
+        Schema::create('registrations', function (Blueprint $table) {
+            $table->id('reg_id');
 
             /*
             |--------------------------------------------------------------------------
-            | Patient
+            | نوع ثبت
             |--------------------------------------------------------------------------
-            | کلید اصلی patients = id
             */
+            $table->enum('reg_type', [
+                'patient',
+            ])->comment('نوع مراجعه');
+
+            /*
+            |--------------------------------------------------------------------------
+            | ارتباطات سیستم شفاخانه
+            |--------------------------------------------------------------------------
+            */
+            // مریض اصلی از جدول patients
             $table->foreignId('patient_id')
                 ->constrained('patients')
-                ->onDelete('cascade');
+                ->cascadeOnDelete();
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | Laboratory Request
-            |--------------------------------------------------------------------------
-            | این ID مربوط به رکورد laboratory_requests است،
-            | بنابراین همان id باقی می‌ماند.
-            */
-            $table->foreignId('laboratory_request_id')
+            // بخش مربوطه
+            $table->foreignId('department_id')
                 ->nullable()
-                ->constrained('laboratory_requests', 'id')
-                ->onDelete('set null');
+                ->constrained('departments')
+                ->nullOnDelete();
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | Amounts
-            |--------------------------------------------------------------------------
-            */
-            $table->decimal('amount', 12, 2);
-
-            $table->decimal('paid_amount', 12, 2)
-                ->default(0);
-
-            $table->decimal('discount', 5, 2)
-                ->default(0);
-
-            $table->decimal('remaining_amount', 12, 2)
-                ->default(0);
-
+            // داکتر معالج
+            $table->foreignId('doctor_id')
+                ->nullable()
+                ->constrained('users')
+                ->nullOnDelete();
 
             /*
             |--------------------------------------------------------------------------
-            | Payment
+            | معلومات مراجعه
             |--------------------------------------------------------------------------
             */
-            $table->enum('payment_method', [
-                'cash',
-                'card',
-                'online',
-                'insurance'
-            ])->default('cash');
+            $table->string('visit_number', 50)->nullable();
 
-            $table->enum('payment_status', [
-                'pending',
-                'partial',
-                'paid',
-                'refunded',
-                'cancelled'
-            ])->default('pending');
+            $table->enum('visit_type', [
+                'OPD',
+                'IPD',
+                'Emergency',
+                'Laboratory',
+                'Radiology',
+                'Pharmacy'
+            ])->nullable();
 
+            $table->timestamp('sent_to_doctor_at')
+                ->nullable()
+                ->comment('زمان ارسال مریض به داکتر');
+
+            $table->timestamp('doctor_started_at')
+                ->nullable()
+                ->comment('زمان شروع معاینه توسط داکتر');
+
+            $table->integer('queue_number')->nullable();
 
             /*
             |--------------------------------------------------------------------------
-            | Description
+            | تاریخ صف (جدید)
             |--------------------------------------------------------------------------
             */
-            $table->text('description')
-                ->nullable();
+            $table->date('queue_date')
+                ->nullable()
+                ->after('queue_number')
+                ->comment('تاریخ قرارگیری در صف');
+$table->unique([
+    'doctor_id',
+    'queue_date',
+    'queue_number'
+]);
+            /*
+            |--------------------------------------------------------------------------
+            | فیس مراجعه
+            |--------------------------------------------------------------------------
+            */
 
-            $table->text('note')
-                ->nullable();
 
+$table->enum('queue_status', [
+    'Waiting',
+    'Called',
+    'Expired',
+    'Removed'
+])->default('Waiting');
+
+$table->timestamp('queue_expired_at')
+    ->nullable()
+    ->comment('زمان ختم اعتبار صف');
+            $table->decimal('registration_fee', 10, 2)
+                ->default(0)
+                ->comment('فیس ابتدایی مراجعه');
 
             /*
             |--------------------------------------------------------------------------
-            | Barcode
+            | گردش مریض (وضعیت‌های کامل)
             |--------------------------------------------------------------------------
             */
-            $table->string('barcode')
-                ->unique()
-                ->nullable();
-
+            $table->enum('visit_status', [
+                'Waiting',      // ثبت شده و در انتظار
+                'Doctor',       // ارسال به داکتر
+                'Examining',    // در حال معاینه
+                'Laboratory',   // در لابراتوار
+                'Radiology',    // در رادیولوژی
+                'Admission',    // بستری شده
+                'Ward',         // در بخش بستری
+                'Operation',    // در اتاق عمل
+                'Pharmacy',     // داروخانه
+                'Billing',      // حسابداری
+                'Completed',    // مراجعه پایان یافته
+                'Cancelled',
+                'Discharged'        
+            ])->default('Waiting');
 
             /*
             |--------------------------------------------------------------------------
-            | QR Code
+            | تاریخ و یادداشت
             |--------------------------------------------------------------------------
             */
-            $table->string('qr_code_path')
-                ->nullable();
+            $table->date('visit_date')->nullable();
 
-            $table->text('qr_code_data')
-                ->nullable();
-
+            $table->text('note')->nullable();
 
             /*
             |--------------------------------------------------------------------------
-            | Tracking
+            | معلومات طبی اولیه
             |--------------------------------------------------------------------------
             */
-            $table->timestamp('confirmed_at')
-                ->nullable();
+            $table->text('diagnosis')->nullable();
 
-            $table->timestamp('sent_to_lab_at')
-                ->nullable();
+            $table->decimal('weight', 5, 2)->nullable();
 
-            $table->timestamp('result_received_at')
-                ->nullable();
+            $table->string('blood_pressure', 20)->nullable();
 
+            $table->decimal('temperature', 4, 1)->nullable();
+
+            $table->tinyInteger('oxygen')->nullable();
 
             /*
             |--------------------------------------------------------------------------
-            | Timestamps
+            | وضعیت
             |--------------------------------------------------------------------------
             */
+            $table->tinyInteger('status')->default(1);
+
             $table->timestamps();
-
-            $table->softDeletes();
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Indexes
-            |--------------------------------------------------------------------------
-            */
-            $table->index([
-                'reg_id',
-                'payment_status'
-            ]);
-
-            $table->index([
-                'patient_id',
-                'payment_status'
-            ]);
-
-            $table->index('barcode');
-
-            $table->index('laboratory_request_id');
-
-            $table->index([
-                'payment_status',
-                'created_at'
-            ]);
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('laboratory_fees');
+        Schema::dropIfExists('registrations');
     }
 };

@@ -8,8 +8,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class QRCode extends Model
 {
-    use HasFactory;
+    
 
+    use HasFactory;
+protected $table = 'qr_codes';
     protected $fillable = [
         'laboratory_fee_id',
         'laboratory_request_id',
@@ -43,6 +45,6 @@ class QRCode extends Model
 
     public function registration()
     {
-        return $this->belongsTo(Registration::class);
+        return $this->belongsTo(Registrations::class);
     }
 }

@@ -1,8 +1,12 @@
 // src/app/pages/laboratory/LaboratoryFeeTab.jsx
+
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 
-export default function LaboratoryFeeTab({ api, registration }) {
+export default function LaboratoryFeeTab(props) {
+  console.log("🔥 تمام Props دریافتی LaboratoryFeeTab:", props);
+
+  const { api, regId } = props;
   const [loading, setLoading] = useState(false);
   const [patientInfo, setPatientInfo] = useState(null);
   const [barcode, setBarcode] = useState(null);
@@ -11,10 +15,10 @@ export default function LaboratoryFeeTab({ api, registration }) {
   const [selectedRequests, setSelectedRequests] = useState([]);
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [editingFee, setEditingFee] = useState(null);
-  const [registrationData, setRegistrationData] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null);
   const [allRequests, setAllRequests] = useState([]);
-  
+  const [apiResponseRaw, setApiResponseRaw] = useState(null);
+
   // فرم اخذ فیس
   const [feeFormData, setFeeFormData] = useState({
     amount: "",
@@ -25,31 +29,37 @@ export default function LaboratoryFeeTab({ api, registration }) {
     note: ""
   });
 
-  // ============ بارگذاری اطلاعات ============
+  // ============ بررسی reg_id ============
   useEffect(() => {
-    if (!registration?.reg_id) {
-      console.log("⚠️ registration.reg_id موجود نیست");
+    console.log("🔍 ====== بررسی reg_id ======");
+    console.log("📌 reg_id دریافتی:", regId);
+    console.log("📌 typeof regId:", typeof regId);
+
+    if (!regId) {
+      console.error("❌ reg_id موجود نیست!");
+      toast.error("شناسه مراجعه (reg_id) پیدا نشد");
       return;
     }
 
-    console.log("🚀 شروع بارگذاری برای reg_id:", registration.reg_id);
-    fetchAllData();
+    console.log("🚀 شروع بارگذاری با reg_id:", regId);
+    fetchAllData(regId);
 
-  }, [registration?.reg_id]);
+  }, [regId]);
 
   // ============ دریافت تمام داده‌ها ============
-  const fetchAllData = async () => {
+  const fetchAllData = async (id) => {
+    if (!id) {
+      console.error("❌ fetchAllData: reg_id موجود نیست");
+      return;
+    }
+
+    console.log("📡 fetchAllData با reg_id:", id);
     setLoading(true);
+    
     try {
-      // 1. دریافت اطلاعات مریض
-      await fetchPatientInfo();
-      
-      // 2. دریافت درخواست‌های لابراتوار
-      await fetchLaboratoryRequests();
-      
-      // 3. دریافت فیس‌های ثبت شده
-      await fetchFeeRecords();
-      
+      await fetchPatientInfo(id);
+      await fetchLaboratoryRequests(id);
+      await fetchFeeRecords(id);
     } catch (err) {
       console.error("❌ خطا در دریافت داده‌ها:", err);
       toast.error("خطا در دریافت اطلاعات");
@@ -59,10 +69,10 @@ export default function LaboratoryFeeTab({ api, registration }) {
   };
 
   // ============ دریافت اطلاعات مریض ============
-  const fetchPatientInfo = async () => {
+  const fetchPatientInfo = async (id) => {
     try {
-      console.log("📡 دریافت اطلاعات مریض...");
-      const response = await api.get(`/registrations/${registration.reg_id}`);
+      console.log("📡 دریافت اطلاعات مریض با ID:", id);
+      const response = await api.get(`/registrations/${id}`);
       console.log("✅ پاسخ اطلاعات مریض:", response.data);
       
       const data = response.data?.data || response.data;
@@ -82,230 +92,124 @@ export default function LaboratoryFeeTab({ api, registration }) {
   };
 
   // ============ دریافت درخواست‌های لابراتوار ============
-   // ============ دریافت درخواست‌های لابراتوار ============
-const fetchLaboratoryRequests = async () => {
-  try {
-    const regId = registration?.reg_id;
+  const fetchLaboratoryRequests = async (id) => {
+    try {
+      console.log("🔍 ====== دریافت درخواست‌های لابراتوار ======");
+      console.log("🆔 reg_id:", id);
 
-    if (!regId) {
-      console.error("❌ reg_id موجود نیست");
-      setAllRequests([]);
-      setUnpaidRequests([]);
-      return;
-    }
+      if (!id) {
+        console.error("❌ reg_id موجود نیست");
+        setAllRequests([]);
+        setUnpaidRequests([]);
+        return;
+      }
 
-    console.log("🔎 دریافت درخواست‌های لابراتوار برای reg_id:", regId);
+      // ✅ استفاده از آدرس جدید برای دریافت درخواست‌های بدون فیس
+      const url = `/laboratory-fees/unpaid/${id}`;
+      console.log("📡 GET:", url);
 
-    // =====================================================
-    // استفاده از endpoint اصلی درخواست‌های لابراتوار
-    // =====================================================
-    const url = `/laboratory-requests/registration/${regId}`;
+      const response = await api.get(url);
+      
+      setApiResponseRaw(response.data);
+      
+      console.log("📋 ====== پاسخ کامل API ======");
+      console.log("📋 Status:", response.status);
+      console.log("📋 Data (JSON):", JSON.stringify(response.data, null, 2));
 
-    console.log("📡 GET:", url);
-
-    const response = await api.get(url);
-
-    console.log(
-      "📋 پاسخ Laboratory Requests:",
-      JSON.stringify(response.data, null, 2)
-    );
-
-    // اطلاعات دیباگ
-    setDebugInfo({
-      url,
-      response: response.data,
-      timestamp: new Date().toISOString(),
-    });
-
-    // =====================================================
-    // استخراج response
-    // =====================================================
-    let responseData = response.data;
-
-    // اگر API به شکل:
-    // { success: true, data: [...] }
-    if (
-      responseData &&
-      responseData.success === true &&
-      responseData.data !== undefined
-    ) {
-      responseData = responseData.data;
-    }
-
-    // =====================================================
-    // استخراج آرایه درخواست‌ها
-    // =====================================================
-    let tests = [];
-
-    if (Array.isArray(responseData)) {
-      tests = responseData;
-    } else if (
-      responseData &&
-      Array.isArray(responseData.data)
-    ) {
-      tests = responseData.data;
-    } else if (
-      responseData &&
-      Array.isArray(responseData.tests)
-    ) {
-      tests = responseData.tests;
-    } else if (
-      responseData &&
-      Array.isArray(responseData.laboratory_requests)
-    ) {
-      tests = responseData.laboratory_requests;
-    } else if (
-      responseData &&
-      Array.isArray(responseData.requests)
-    ) {
-      tests = responseData.requests;
-    } else if (
-      responseData &&
-      responseData.data &&
-      Array.isArray(responseData.data.tests)
-    ) {
-      tests = responseData.data.tests;
-    } else if (
-      responseData &&
-      responseData.data &&
-      Array.isArray(responseData.data.laboratory_requests)
-    ) {
-      tests = responseData.data.laboratory_requests;
-    }
-
-    console.log("🧪 تعداد درخواست‌های دریافت شده:", tests.length);
-
-    // =====================================================
-    // اگر هیچ درخواست پیدا نشد
-    // =====================================================
-    if (tests.length === 0) {
-      console.warn(
-        `⚠️ هیچ درخواست لابراتواری برای registration_id=${regId} از API دریافت نشد`
-      );
-
-      setAllRequests([]);
-      setUnpaidRequests([]);
-
-      toast.info(
-        "هیچ درخواست لابراتواری برای این مراجعه دریافت نشد"
-      );
-
-      return;
-    }
-
-    // =====================================================
-    // ذخیره تمام درخواست‌ها
-    // =====================================================
-    setAllRequests(tests);
-
-    // =====================================================
-    // نمایش درخواست‌ها برای Debug
-    // =====================================================
-    tests.forEach((test, index) => {
-      console.log(`📌 درخواست ${index + 1}:`, {
-        id: test.id,
-        registration_id: test.registration_id,
-        test_type: test.test_type,
-        test_name: test.test_name,
-        barcode: test.barcode,
-        fee_id: test.fee_id,
-        status: test.status,
+      setDebugInfo({
+        url,
+        response: response.data,
+        timestamp: new Date().toISOString(),
+        status: response.status
       });
-    });
 
-    // =====================================================
-    // درخواست‌های بدون فیس
-    // =====================================================
-    const unpaid = tests.filter((test) => {
-      const feeId = test.fee_id;
+      // استخراج آرایه درخواست‌ها از پاسخ
+      let tests = [];
+      let extractionMethod = "none";
 
-      const isUnpaid =
-        feeId === null ||
-        feeId === undefined ||
-        feeId === "" ||
-        feeId === 0;
+      if (response.data?.success && response.data?.data?.unpaid_requests) {
+        tests = response.data.data.unpaid_requests;
+        extractionMethod = "response.data.data.unpaid_requests (success)";
+      } else if (response.data?.success && response.data?.data) {
+        const innerData = response.data.data;
+        if (Array.isArray(innerData)) {
+          tests = innerData;
+          extractionMethod = "response.data.data is array (success)";
+        }
+      } else if (Array.isArray(response.data)) {
+        tests = response.data;
+        extractionMethod = "response.data is array";
+      } else if (response.data && Array.isArray(response.data.data)) {
+        tests = response.data.data;
+        extractionMethod = "response.data.data is array";
+      } else if (response.data && Array.isArray(response.data.laboratory_requests)) {
+        tests = response.data.laboratory_requests;
+        extractionMethod = "response.data.laboratory_requests is array";
+      }
 
-      console.log(
-        `💰 Request ID ${test.id}: fee_id=${feeId} => ${
-          isUnpaid ? "بدون فیس" : "دارای فیس"
-        }`
-      );
+      console.log(`📊 روش استخراج: ${extractionMethod}`);
+      console.log(`🧪 تعداد درخواست‌های استخراج شده: ${tests.length}`);
 
-      return isUnpaid;
-    });
+      if (tests.length === 0) {
+        console.warn(`⚠️ هیچ درخواست لابراتواری برای reg_id=${id} دریافت نشد`);
+        console.warn("⚠️ ساختار پاسخ:", JSON.stringify(response.data, null, 2));
+        
+        toast.info("هیچ درخواست لابراتواری برای این مراجعه ثبت نشده است");
+        setAllRequests([]);
+        setUnpaidRequests([]);
+        return;
+      }
 
-    // =====================================================
-    // درخواست‌های دارای فیس
-    // =====================================================
-    const paid = tests.filter((test) => {
-      const feeId = test.fee_id;
+      // نمایش اولین آیتم برای بررسی
+      console.log("🔍 ====== بررسی اولین آیتم ======");
+      const firstItem = tests[0];
+      console.log("📌 اولین آیتم:", firstItem);
+      console.log("📌 reg_id در آیتم:", firstItem.reg_id);
+      console.log("📌 fee_id:", firstItem.fee_id);
 
-      return (
-        feeId !== null &&
-        feeId !== undefined &&
-        feeId !== "" &&
-        feeId !== 0
-      );
-    });
+      setAllRequests(tests);
+      setUnpaidRequests(tests);
 
-    console.log("🟡 درخواست‌های بدون فیس:", unpaid.length);
-    console.log("🟢 درخواست‌های دارای فیس:", paid.length);
+      if (tests.length > 0) {
+        console.log(`✅ ${tests.length} درخواست آماده اخذ فیس است`);
+        toast.success(`${tests.length} درخواست برای اخذ فیس آماده است`);
+      }
 
-    // =====================================================
-    // ذخیره در State
-    // =====================================================
-    setUnpaidRequests(unpaid);
+    } catch (err) {
+      console.error("❌ ====== خطا در دریافت درخواست‌های لابراتوار ======");
+      console.error("❌ Error:", err);
+      
+      if (err.response) {
+        console.error("❌ Status:", err.response.status);
+        console.error("❌ Data:", err.response.data);
+        setApiResponseRaw(err.response.data);
+        toast.error(`❌ خطا ${err.response.status}: ${err.response.data?.message || "خطا در دریافت درخواست‌ها"}`);
+      } else {
+        toast.error(`❌ خطا: ${err.message}`);
+      }
 
-    // =====================================================
-    // پیام‌ها
-    // =====================================================
-    if (unpaid.length > 0) {
-      console.log(
-        `✅ ${unpaid.length} درخواست آماده اخذ فیس است`
-      );
-    } else if (tests.length > 0) {
-      console.log(
-        "ℹ️ تمام درخواست‌های لابراتوار دارای فیس هستند"
-      );
+      setAllRequests([]);
+      setUnpaidRequests([]);
     }
-
-  } catch (err) {
-    console.error(
-      "❌ خطا در دریافت درخواست‌های لابراتوار:",
-      err
-    );
-
-    console.error(
-      "❌ Response:",
-      err.response?.data
-    );
-
-    console.error(
-      "❌ Status:",
-      err.response?.status
-    );
-
-    setAllRequests([]);
-    setUnpaidRequests([]);
-
-    toast.error(
-      err.response?.data?.message ||
-      "خطا در دریافت درخواست‌های لابراتوار"
-    );
-  }
-};
+  };
 
   // ============ دریافت فیس‌های ثبت شده ============
-  const fetchFeeRecords = async () => {
+  const fetchFeeRecords = async (id) => {
     try {
-      console.log("💳 دریافت فیس‌ها...");
-      const response = await api.get(`/laboratory-fees?registration_id=${registration.reg_id}`);
+      console.log("💳 دریافت فیس‌ها با reg_id:", id);
+      
+      // ✅ دریافت فیس‌های ثبت شده با reg_id
+      const response = await api.get(`/laboratory-fees?reg_id=${id}`);
       console.log("💳 پاسخ فیس‌ها:", response.data);
       
       let fees = [];
       
-      if (response.data?.success && response.data?.data?.data) {
-        fees = response.data.data.data;
+      if (response.data?.success && response.data?.data) {
+        if (Array.isArray(response.data.data)) {
+          fees = response.data.data;
+        } else if (response.data.data?.data && Array.isArray(response.data.data.data)) {
+          fees = response.data.data.data;
+        }
       } else if (response.data?.data && Array.isArray(response.data.data)) {
         fees = response.data.data;
       } else if (Array.isArray(response.data)) {
@@ -327,14 +231,14 @@ const fetchLaboratoryRequests = async () => {
     setSelectedRequests([request]);
     setEditingFee(null);
     
-    const defaultAmount = request.amount || 0;
+    const defaultAmount = request.amount || request.total_amount || 0;
     
     setFeeFormData({
       amount: defaultAmount.toString(),
       paid_amount: "",
       discount: "",
       payment_method: "cash",
-      description: `آزمایش: ${request.test_type_label || request.test_type} - ${request.test_name || ''}`,
+      description: `آزمایش: ${request.test_type_label || request.test_type || ''} - ${request.test_name || ''}`,
       note: `درخواست بارکد: ${request.barcode || ''}`
     });
     setShowFeeForm(true);
@@ -369,21 +273,23 @@ const fetchLaboratoryRequests = async () => {
         response = await api.put(`/laboratory-fees/${editingFee.id}`, payload);
         toast.success("✅ فیس لابراتوار با موفقیت ویرایش شد");
       } else {
-        response = await api.post(`/laboratory-fees/${registration.reg_id}`, payload);
+        // ✅ آدرس صحیح با reg_id در URL
+        response = await api.post(`/laboratory-fees/registration/${regId}`, payload);
         toast.success("✅ فیس لابراتوار با موفقیت ثبت شد");
       }
 
       console.log("✅ پاسخ ثبت فیس:", response.data);
 
-      // به‌روزرسانی لیست‌ها
-      await fetchAllData();
+      // به‌روزرسانی لیست درخواست‌ها و فیس‌ها
+      await fetchAllData(regId);
       handleCloseForm();
 
     } catch (err) {
       console.error("❌ خطا در ثبت فیس:", err);
-      console.error("پاسخ خطا:", err.response?.data);
       
-      if (err.response?.data?.errors) {
+      if (err.response?.status === 405) {
+        toast.error("❌ آدرس API اشتباه است. لطفاً Route را بررسی کنید");
+      } else if (err.response?.data?.errors) {
         Object.entries(err.response.data.errors).forEach(([field, messages]) => {
           toast.error(`❌ ${field}: ${messages[0]}`);
         });
@@ -438,11 +344,47 @@ const fetchLaboratoryRequests = async () => {
     return { label: 'در انتظار پرداخت', color: '#f59e0b' };
   };
 
-  const patient = patientInfo?.patient || registration?.patient || {};
+  // ✅ تابع کمکی برای تبدیل به عدد
+  const toNumber = (value) => {
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const patient = patientInfo?.patient || {};
   const isPatientInfoLoaded = patientInfo !== null;
+
+  // دکمه دیباگ
+  const handleShowRawResponse = () => {
+    if (apiResponseRaw) {
+      console.log("📋 پاسخ خام API:", JSON.stringify(apiResponseRaw, null, 2));
+      alert("پاسخ خام در کنسول (Console) نمایش داده شد");
+    } else {
+      alert("هنوز پاسخی دریافت نشده است");
+    }
+  };
 
   return (
     <div>
+      {/* نمایش reg_id فعلی برای دیباگ */}
+      <div style={{
+        backgroundColor: regId ? '#064e3b' : '#7f1d1d',
+        padding: '8px 15px',
+        borderRadius: '6px',
+        marginBottom: '15px',
+        fontSize: '13px',
+        color: 'white',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <span>
+          🆔 reg_id: {regId || '❌ پیدا نشد'}
+        </span>
+        <span style={{ fontSize: '11px', opacity: 0.7 }}>
+          تعداد درخواست‌ها: {allRequests.length}
+        </span>
+      </div>
+
       {/* ============ هدر با بارکد ============ */}
       {isPatientInfoLoaded && (
         <div style={{
@@ -460,11 +402,6 @@ const fetchLaboratoryRequests = async () => {
               <div style={{ color: '#9ca3af', fontSize: '13px', marginTop: '5px' }}>
                 {patient.first_name || ''} {patient.last_name || ''}
               </div>
-              {registrationData?.visit_number && (
-                <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '2px' }}>
-                  شماره مراجعه: {registrationData.visit_number}
-                </div>
-              )}
             </div>
             
             {barcode && (
@@ -502,7 +439,7 @@ const fetchLaboratoryRequests = async () => {
           }}>
             <div>
               <span style={{ color: '#9ca3af', fontSize: '11px' }}>شماره مراجعه</span>
-              <div style={{ color: 'white', fontWeight: 'bold' }}>{registration?.visit_number || registrationData?.visit_number || '-'}</div>
+              <div style={{ color: 'white', fontWeight: 'bold' }}>{regId || '-'}</div>
             </div>
             <div>
               <span style={{ color: '#9ca3af', fontSize: '11px' }}>نام کامل</span>
@@ -510,12 +447,48 @@ const fetchLaboratoryRequests = async () => {
             </div>
             <div>
               <span style={{ color: '#9ca3af', fontSize: '11px' }}>سن / جنسیت</span>
-              <div style={{ color: 'white' }}>{patient.age || '-'} سال / {patient.gender === 'male' ? 'مرد' : patient.gender === 'female' ? 'زن' : '-'}</div>
+              <div style={{ color: 'white' }}>{patient.age || '-'} سال / {patient.gender === 'Male' || patient.gender === 'male' ? 'مرد' : patient.gender === 'Female' || patient.gender === 'female' ? 'زن' : '-'}</div>
             </div>
             <div>
               <span style={{ color: '#9ca3af', fontSize: '11px' }}>تماس</span>
               <div style={{ color: 'white' }}>{patient.mobile || '-'}</div>
             </div>
+          </div>
+
+          {/* دکمه‌های دیباگ */}
+          <div style={{ marginTop: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              onClick={handleShowRawResponse}
+              style={{
+                backgroundColor: '#374151',
+                color: '#60a5fa',
+                padding: '5px 15px',
+                borderRadius: '4px',
+                border: '1px solid #60a5fa',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              🐛 نمایش پاسخ خام
+            </button>
+            <button
+              onClick={() => {
+                console.log("🔄 بارگذاری مجدد...");
+                if (regId) fetchAllData(regId);
+                else toast.error("reg_id پیدا نشد");
+              }}
+              style={{
+                backgroundColor: '#374151',
+                color: '#60a5fa',
+                padding: '5px 15px',
+                borderRadius: '4px',
+                border: '1px solid #60a5fa',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              🔄 بارگذاری مجدد
+            </button>
           </div>
 
           {/* اطلاعات دیباگ */}
@@ -527,13 +500,16 @@ const fetchLaboratoryRequests = async () => {
               borderRadius: '6px',
               fontSize: '11px',
               color: '#9ca3af',
-              maxHeight: '100px',
-              overflow: 'auto'
+              maxHeight: '150px',
+              overflow: 'auto',
+              fontFamily: 'monospace'
             }}>
               <div>📡 URL: {debugInfo.url}</div>
+              <div>📊 وضعیت: {debugInfo.status || 'N/A'}</div>
               <div>📊 تعداد تست‌ها: {allRequests.length}</div>
               <div>🟡 بدون فیس: {unpaidRequests.length}</div>
               <div>🟢 دارای فیس: {allRequests.length - unpaidRequests.length}</div>
+              <div>🕐 زمان: {debugInfo.timestamp}</div>
             </div>
           )}
         </div>
@@ -561,6 +537,20 @@ const fetchLaboratoryRequests = async () => {
           <div style={{ fontSize: '30px', marginBottom: '10px' }}>⏳</div>
           <div>در حال بارگذاری...</div>
         </div>
+      ) : !regId ? (
+        <div style={{
+          backgroundColor: '#7f1d1d',
+          padding: '30px',
+          borderRadius: '8px',
+          textAlign: 'center',
+          color: 'white'
+        }}>
+          <div style={{ fontSize: '40px', marginBottom: '10px' }}>❌</div>
+          <div>شناسه مراجعه (reg_id) پیدا نشد</div>
+          <div style={{ fontSize: '12px', marginTop: '10px', opacity: 0.7 }}>
+            لطفاً از بخش مراجعه، یک مراجعه را انتخاب کنید
+          </div>
+        </div>
       ) : unpaidRequests.length === 0 ? (
         <div style={{
           backgroundColor: '#1a2a3a',
@@ -571,9 +561,6 @@ const fetchLaboratoryRequests = async () => {
         }}>
           <div style={{ fontSize: '40px', marginBottom: '10px' }}>✅</div>
           <div>همه درخواست‌های لابراتوار دارای فیس هستند</div>
-          <div style={{ fontSize: '12px', marginTop: '10px', color: '#6b7280' }}>
-            برای ثبت درخواست جدید به بخش درخواست لابراتوار مراجعه کنید
-          </div>
           {allRequests.length === 0 && (
             <div style={{ fontSize: '12px', marginTop: '5px', color: '#f59e0b' }}>
               ⚠️ هیچ درخواست لابراتواری برای این مراجعه ثبت نشده است
@@ -600,7 +587,7 @@ const fetchLaboratoryRequests = async () => {
               <div style={{ flex: 1, minWidth: '200px' }}>
                 <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>
-                    {request.test_type_label || request.test_type}
+                    {request.test_type_label || request.test_type || request.test_category || 'آزمایش'}
                   </span>
                   {request.test_name && (
                     <span style={{ color: 'white' }}>{request.test_name}</span>
@@ -617,31 +604,29 @@ const fetchLaboratoryRequests = async () => {
                       🏷️ {request.barcode}
                     </span>
                   )}
-                  {request.status && (
-                    <span style={{
-                      backgroundColor: request.status === 'pending' ? '#f59e0b' : '#6b7280',
-                      color: 'white',
-                      padding: '2px 10px',
-                      borderRadius: '12px',
-                      fontSize: '10px'
-                    }}>
-                      {request.status_label || request.status}
-                    </span>
-                  )}
+                  <span style={{
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    padding: '2px 10px',
+                    borderRadius: '12px',
+                    fontSize: '10px',
+                    fontWeight: 'bold'
+                  }}>
+                    بدون فیس
+                  </span>
                 </div>
-                {request.test_description && (
-                  <div style={{ color: '#9ca3af', fontSize: '12px', marginTop: '5px' }}>
-                    {request.test_description}
-                  </div>
-                )}
-                {request.clinical_indication && (
-                  <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>
-                    اندیکاسیون: {request.clinical_indication}
-                  </div>
-                )}
                 <div style={{ color: '#9ca3af', fontSize: '11px', marginTop: '3px' }}>
-                  📅 {formatDate(request.request_date)}
+                  📅 {formatDate(request.request_date || request.created_at)}
                 </div>
+                <div style={{ color: '#6b7280', fontSize: '10px', marginTop: '2px' }}>
+                  ID: {request.id} | fee_id: {request.fee_id !== undefined ? request.fee_id : 'ندارد'}
+                  {request.reg_id && ` | reg_id: ${request.reg_id}`}
+                </div>
+                {request.amount && (
+                  <div style={{ color: '#fcd34d', fontSize: '12px', marginTop: '2px' }}>
+                    💰 مبلغ: {toNumber(request.amount).toFixed(2)} افغانی
+                  </div>
+                )}
               </div>
               
               <button
@@ -679,7 +664,12 @@ const fetchLaboratoryRequests = async () => {
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {feeRecords.map((fee) => {
-              const status = getPaymentStatus(fee.amount, fee.paid_amount, fee.discount);
+              // ✅ تبدیل مقادیر به عدد با استفاده از toNumber
+              const amount = toNumber(fee.amount);
+              const paidAmount = toNumber(fee.paid_amount);
+              const discount = toNumber(fee.discount);
+              
+              const status = getPaymentStatus(amount, paidAmount, discount);
               return (
                 <div
                   key={fee.id}
@@ -725,13 +715,13 @@ const fetchLaboratoryRequests = async () => {
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: '20px', marginTop: '5px', flexWrap: 'wrap' }}>
-                      <span style={{ color: '#fcd34d' }}>💰 {fee.amount?.toFixed(2)}</span>
-                      <span style={{ color: '#22c55e' }}>پرداخت: {fee.paid_amount?.toFixed(2)}</span>
-                      {fee.discount > 0 && (
-                        <span style={{ color: '#f59e0b' }}>تخفیف: {fee.discount}%</span>
+                      <span style={{ color: '#fcd34d' }}>💰 {amount.toFixed(2)}</span>
+                      <span style={{ color: '#22c55e' }}>پرداخت: {paidAmount.toFixed(2)}</span>
+                      {discount > 0 && (
+                        <span style={{ color: '#f59e0b' }}>تخفیف: {discount}%</span>
                       )}
                       <span style={{ color: '#ef4444' }}>
-                        باقیمانده: {calculateRemaining(fee.amount, fee.paid_amount, fee.discount).toFixed(2)}
+                        باقیمانده: {calculateRemaining(amount, paidAmount, discount).toFixed(2)}
                       </span>
                     </div>
                     {fee.description && (
@@ -783,7 +773,6 @@ const fetchLaboratoryRequests = async () => {
               {editingFee ? '✏️ تصحیح فیس لابراتوار' : '💰 اخذ فیس لابراتوار'}
             </h4>
 
-            {/* اطلاعات درخواست‌های انتخاب شده */}
             {selectedRequests.length > 0 && (
               <div style={{
                 backgroundColor: '#0f1a2a',
@@ -802,7 +791,7 @@ const fetchLaboratoryRequests = async () => {
                     padding: '4px 0',
                     borderBottom: index < selectedRequests.length - 1 ? '1px solid #2a3a4a' : 'none'
                   }}>
-                    {index + 1}. {req.test_type_label || req.test_type}
+                    {index + 1}. {req.test_type_label || req.test_type || req.test_category || 'آزمایش'}
                     {req.test_name && ` - ${req.test_name}`}
                     {req.barcode && ` (🏷️ ${req.barcode})`}
                   </div>
@@ -947,7 +936,6 @@ const fetchLaboratoryRequests = async () => {
                 </div>
               </div>
 
-              {/* نمایش مبلغ باقیمانده */}
               {feeFormData.amount && (
                 <div style={{
                   marginTop: '15px',

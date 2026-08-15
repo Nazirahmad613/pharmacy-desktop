@@ -5,15 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\LaboratoryFee;
 use App\Models\Registrations;
 use App\Models\LaboratoryRequest;
-use App\Models\QRCode;
-use App\Models\JournalEntry;
 
+use App\Models\Journal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;  // ✅ اضافه شده
 
 class LaboratoryFeeController extends Controller
 {
@@ -31,8 +31,8 @@ class LaboratoryFeeController extends Controller
             'qrCode'
         ]);
 
-        if ($request->filled('registration_id')) {
-            $query->where('reg_id', $request->registration_id);
+        if ($request->filled('reg_id')) {
+            $query->where('reg_id', $request->reg_id);
         }
 
         if ($request->filled('patient_id')) {
@@ -88,9 +88,9 @@ class LaboratoryFeeController extends Controller
      * دریافت درخواست‌های لابراتوار بدون فیس
      * ============================================================
      */
-    public function getUnpaidRequests($registrationId)
+    public function getUnpaidRequests($regId)
     {
-        $registration = Registrations::where('reg_id', $registrationId)->first();
+        $registration = Registrations::where('reg_id', $regId)->first();
 
         if (!$registration) {
             return response()->json([
@@ -99,20 +99,20 @@ class LaboratoryFeeController extends Controller
             ], 404);
         }
 
-        // دریافت تمام درخواست‌ها با اطلاعات کامل
-        $allRequests = LaboratoryRequest::where('registration_id', $registration->reg_id)
+        // دریافت درخواست‌ها با reg_id
+        $allRequests = LaboratoryRequest::where('reg_id', $registration->reg_id)
             ->with(['doctor', 'fee', 'patient'])
             ->orderByDesc('created_at')
             ->get();
 
-        // ✅ درخواست‌هایی که fee_id ندارند (بدون فیس)
+        // درخواست‌هایی که fee_id ندارند (بدون فیس)
         $unpaidRequests = $allRequests
             ->filter(function ($request) {
                 return is_null($request->fee_id);
             })
             ->values();
 
-        // ✅ درخواست‌هایی که fee_id دارند (دارای فیس)
+        // درخواست‌هایی که fee_id دارند (دارای فیس)
         $paidRequests = $allRequests
             ->filter(function ($request) {
                 return !is_null($request->fee_id);
@@ -123,7 +123,7 @@ class LaboratoryFeeController extends Controller
         $formattedUnpaid = $unpaidRequests->map(function($request) {
             return [
                 'id' => $request->id,
-                'registration_id' => $request->registration_id,
+                'reg_id' => $request->reg_id,
                 'patient_id' => $request->patient_id,
                 'test_type' => $request->test_type,
                 'test_type_label' => $this->getTestTypeLabel($request->test_type),
@@ -147,7 +147,7 @@ class LaboratoryFeeController extends Controller
         $formattedPaid = $paidRequests->map(function($request) {
             return [
                 'id' => $request->id,
-                'registration_id' => $request->registration_id,
+                'reg_id' => $request->reg_id,
                 'patient_id' => $request->patient_id,
                 'test_type' => $request->test_type,
                 'test_type_label' => $this->getTestTypeLabel($request->test_type),
@@ -192,10 +192,10 @@ class LaboratoryFeeController extends Controller
      * ثبت فیس جدید
      * ============================================================
      */
-    public function store(Request $request, $registrationId)
+    public function store(Request $request, $regId)
     {
-        // registrationId = reg_id
-        $registration = Registrations::where('reg_id', $registrationId)->first();
+        // دریافت رجیستریشن با reg_id
+        $registration = Registrations::where('reg_id', $regId)->first();
 
         if (!$registration) {
             return response()->json([
@@ -252,9 +252,9 @@ class LaboratoryFeeController extends Controller
         DB::beginTransaction();
 
         try {
-            // ✅ ایجاد فیس با reg_id
+            // ایجاد فیس با reg_id
             $fee = LaboratoryFee::create([
-                'reg_id' => $registration->reg_id,  // ← استفاده از reg_id
+                'reg_id' => $registration->reg_id,
                 'patient_id' => $registration->patient_id,
                 'barcode' => $barcode,
                 'amount' => $amount,
@@ -268,17 +268,17 @@ class LaboratoryFeeController extends Controller
                 'laboratory_request_id' => null,
             ]);
 
-            // ✅ اتصال درخواست‌های لابراتوار به فیس
+            // اتصال درخواست‌های لابراتوار به فیس
             $laboratoryRequestIds = $request->laboratory_request_ids ?? [];
             $updatedRequests = collect();
 
             if (!empty($laboratoryRequestIds)) {
                 LaboratoryRequest::whereIn('id', $laboratoryRequestIds)
-                    ->where('registration_id', $registration->reg_id)
+                    ->where('reg_id', $registration->reg_id)
                     ->update(['fee_id' => $fee->id]);
 
                 $updatedRequests = LaboratoryRequest::whereIn('id', $laboratoryRequestIds)
-                    ->where('registration_id', $registration->reg_id)
+                    ->where('reg_id', $registration->reg_id)
                     ->get();
 
                 if ($updatedRequests->isNotEmpty()) {
@@ -286,11 +286,26 @@ class LaboratoryFeeController extends Controller
                 }
             }
 
-            // ✅ تولید QR
-            $this->generateQRCode($fee);
+            // ✅ تولید QR با try-catch
+            try {
+                $this->generateQRCode($fee);
+            } catch (\Throwable $e) {
+                Log::error('خطا در تولید QR Code', [
+                    'fee_id' => $fee->id,
+                    'message' => $e->getMessage()
+                ]);
+            }
 
-            // ✅ Journal
-            $this->syncJournal($fee);
+            // ✅ همگام‌سازی با Journal با try-catch
+            try {
+                $this->syncJournal($fee);
+            } catch (\Throwable $e) {
+                Log::error('خطا در همگام‌سازی ژورنال', [
+                    'fee_id' => $fee->id,
+                    'reg_id' => $fee->reg_id,
+                    'message' => $e->getMessage()
+                ]);
+            }
 
             DB::commit();
 
@@ -306,7 +321,7 @@ class LaboratoryFeeController extends Controller
             DB::rollBack();
             Log::error('خطا در ثبت فیس لابراتوار', [
                 'message' => $e->getMessage(),
-                'registration_id' => $registration->reg_id,
+                'reg_id' => $regId,
                 'trace' => $e->getTraceAsString()
             ]);
 
@@ -345,77 +360,88 @@ class LaboratoryFeeController extends Controller
      * تولید QR Code
      * ============================================================
      */
-    private function generateQRCode($fee, $forceNew = false)
+    private function generateQRCode($fee)
     {
-        $patient = $fee->patient;
-        $registration = $fee->registration;
+        try {
+            $patient = $fee->patient;
+            $registration = $fee->registration;
 
-        $labRequests = LaboratoryRequest::where('fee_id', $fee->id)
-            ->orderBy('created_at')
-            ->get();
+            $labRequests = LaboratoryRequest::where('fee_id', $fee->id)
+                ->orderBy('created_at')
+                ->get();
 
-        $firstRequest = $labRequests->first();
+            $firstRequest = $labRequests->first();
 
-        $qrData = [
-            'fee_id' => $fee->id,
-            'patient_name' => $patient ? trim($patient->first_name . ' ' . $patient->last_name) : 'نامشخص',
-            'patient_id' => $patient ? $patient->id : null,
-            'patient_mobile' => $patient ? $patient->mobile : null,
-            'registration_id' => $registration ? $registration->reg_id : $fee->reg_id, // ← استفاده از reg_id
-            'visit_number' => $registration ? $registration->visit_number : null,
-            'barcode' => $fee->barcode,
-            'amount' => (float) $fee->amount,
-            'discount' => (float) $fee->discount,
-            'net_amount' => (float) ($fee->amount - ($fee->amount * $fee->discount / 100)),
-            'paid_amount' => (float) $fee->paid_amount,
-            'remaining' => (float) $fee->remaining_amount,
-            'payment_status' => $fee->payment_status,
-            'payment_method' => $fee->payment_method,
-            'created_at' => $fee->created_at ? $fee->created_at->toISOString() : null,
-            'tests' => $labRequests->map(function ($req) {
-                return [
-                    'id' => $req->id,
-                    'test_type' => $req->test_type,
-                    'test_type_label' => $this->getTestTypeLabel($req->test_type),
-                    'test_name' => $req->test_name,
-                    'test_description' => $req->test_description,
-                    'clinical_indication' => $req->clinical_indication,
-                    'status' => $req->status,
-                    'barcode' => $req->barcode,
-                ];
-            })->values()->toArray(),
-            'total_tests' => $labRequests->count(),
-        ];
-
-        $qrJson = json_encode($qrData, JSON_UNESCAPED_UNICODE);
-
-        $directory = storage_path('app/public/qrcodes');
-        if (!is_dir($directory)) {
-            mkdir($directory, 0777, true);
-        }
-
-        $fileName = 'qr_' . $fee->barcode . '_' . time() . '_' . Str::random(5) . '.png';
-        $path = $directory . DIRECTORY_SEPARATOR . $fileName;
-
-        \QrCode::format('png')
-            ->size(300)
-            ->errorCorrection('H')
-            ->generate($qrJson, $path);
-
-        $qrCode = QRCode::updateOrCreate(
-            ['laboratory_fee_id' => $fee->id],
-            [
-                'laboratory_request_id' => $firstRequest ? $firstRequest->id : null,
+            $qrData = [
+                'fee_id' => $fee->id,
+                'patient_name' => $patient ? trim($patient->first_name . ' ' . $patient->last_name) : 'نامشخص',
                 'patient_id' => $patient ? $patient->id : null,
-                'registration_id' => $registration ? $registration->reg_id : $fee->reg_id, // ← استفاده از reg_id
-                'qr_code_path' => 'storage/qrcodes/' . $fileName,
-                'qr_code_data' => $qrJson,
-                'qr_code_type' => 'laboratory_fee',
-                'is_active' => true,
-            ]
-        );
+                'patient_mobile' => $patient ? $patient->mobile : null,
+                'reg_id' => $registration ? $registration->reg_id : $fee->reg_id,
+                'visit_number' => $registration ? $registration->visit_number : null,
+                'barcode' => $fee->barcode,
+                'amount' => (float) $fee->amount,
+                'discount' => (float) $fee->discount,
+                'net_amount' => (float) ($fee->amount - ($fee->amount * $fee->discount / 100)),
+                'paid_amount' => (float) $fee->paid_amount,
+                'remaining' => (float) $fee->remaining_amount,
+                'payment_status' => $fee->payment_status,
+                'payment_method' => $fee->payment_method,
+                'created_at' => $fee->created_at ? $fee->created_at->toISOString() : null,
+                'tests' => $labRequests->map(function ($req) {
+                    return [
+                        'id' => $req->id,
+                        'test_type' => $req->test_type,
+                        'test_type_label' => $this->getTestTypeLabel($req->test_type),
+                        'test_name' => $req->test_name,
+                        'test_description' => $req->test_description,
+                        'clinical_indication' => $req->clinical_indication,
+                        'status' => $req->status,
+                        'barcode' => $req->barcode,
+                    ];
+                })->values()->toArray(),
+                'total_tests' => $labRequests->count(),
+            ];
 
-        return $qrCode;
+            $qrJson = json_encode($qrData, JSON_UNESCAPED_UNICODE);
+
+            $directory = storage_path('app/public/qrcodes');
+            if (!is_dir($directory)) {
+                mkdir($directory, 0777, true);
+            }
+
+            $fileName = 'qr_' . $fee->barcode . '_' . time() . '_' . Str::random(5) . '.png';
+            $path = $directory . DIRECTORY_SEPARATOR . $fileName;
+
+            // ✅ استفاده از QrCode با use اضافه شده
+            QrCode::format('png')
+                ->size(300)
+                ->errorCorrection('H')
+                ->generate($qrJson, $path);
+
+            // ذخیره در دیتابیس
+            $qrCode = QRCode::updateOrCreate(
+                ['laboratory_fee_id' => $fee->id],
+                [
+                    'laboratory_request_id' => $firstRequest ? $firstRequest->id : null,
+                    'patient_id' => $patient ? $patient->id : null,
+                    'reg_id' => $registration ? $registration->reg_id : $fee->reg_id,
+                    'qr_code_path' => 'storage/qrcodes/' . $fileName,
+                    'qr_code_data' => $qrJson,
+                    'qr_code_type' => 'laboratory_fee',
+                    'is_active' => true,
+                ]
+            );
+
+            return $qrCode;
+
+        } catch (\Throwable $e) {
+            Log::error('خطا در تولید QR Code', [
+                'fee_id' => $fee->id,
+                'message' => $e->getMessage()
+            ]);
+            return null;
+        }
     }
 
     /**
@@ -423,71 +449,72 @@ class LaboratoryFeeController extends Controller
      * همگام‌سازی با Journal
      * ============================================================
      */
-    private function syncJournal($fee)
-    {
-        try {
-            JournalEntry::where('reference_type', 'laboratory_fee')
-                ->where('reference_id', $fee->id)
-                ->delete();
+/**
+ * ============================================================
+ * همگام‌سازی با Journal (اصلاح شده بر اساس ساختار جدول)
+ * ============================================================
+ */
+private function syncJournal($fee)
+{
+    try {
+        // حذف رکوردهای قبلی
+        Journal::where('ref_type', 'laboratory_fee')
+            ->where('ref_id', $fee->id)
+            ->delete();
 
-            $patient = $fee->patient;
-            $patientName = $patient ? trim($patient->first_name . ' ' . $patient->last_name) : 'نامشخص';
+        $patient = $fee->patient;
+        $patientName = $patient ? trim($patient->first_name . ' ' . $patient->last_name) : 'نامشخص';
+        $patientTazkira = $patient ? $patient->national_id : null;
 
-            $requests = LaboratoryRequest::where('fee_id', $fee->id)->get();
-            $testTypes = $requests->pluck('test_type')->filter()->unique()->implode('، ');
-            $testNames = $requests->pluck('test_name')->filter()->unique()->implode('، ');
+        $requests = LaboratoryRequest::where('fee_id', $fee->id)->get();
+        $testTypes = $requests->pluck('test_type')->filter()->unique()->implode('، ');
+        $testNames = $requests->pluck('test_name')->filter()->unique()->implode('، ');
 
-            $description = 'فیس لابراتوار - ' . $patientName;
-            if ($testNames) {
-                $description .= ' - تست‌ها: ' . $testNames;
-            } elseif ($testTypes) {
-                $description .= ' - نوع تست: ' . $testTypes;
-            }
-            $description .= ' - بارکد: ' . $fee->barcode;
-
-            $totalAmount = (float) $fee->amount;
-            $discountAmount = $totalAmount * ((float) $fee->discount / 100);
-            $netAmount = $totalAmount - $discountAmount;
-            $remaining = $netAmount - (float) $fee->paid_amount;
-
-            JournalEntry::create([
-                'registration_id' => $fee->reg_id, // ← استفاده از reg_id
-                'patient_id' => $fee->patient_id,
-                'reference_type' => 'laboratory_fee',
-                'reference_id' => $fee->id,
-                'description' => $description,
-                'debit' => $netAmount,
-                'credit' => $fee->paid_amount,
-                'balance' => $remaining,
-                'payment_method' => $fee->payment_method,
-                'payment_status' => $fee->payment_status,
-                'transaction_date' => Carbon::now(),
-                'barcode' => $fee->barcode,
-                'metadata' => json_encode([
-                    'fee_amount' => $fee->amount,
-                    'discount' => $fee->discount,
-                    'discount_amount' => $discountAmount,
-                    'net_amount' => $netAmount,
-                    'paid_amount' => $fee->paid_amount,
-                    'remaining' => $remaining,
-                    'registration_id' => $fee->reg_id, // ← استفاده از reg_id
-                    'laboratory_request_ids' => $requests->pluck('id')->toArray(),
-                    'test_types' => $requests->pluck('test_type')->toArray(),
-                    'test_names' => $requests->pluck('test_name')->filter()->toArray(),
-                    'patient_name' => $patientName,
-                    'patient_mobile' => $patient ? $patient->mobile : null,
-                ], JSON_UNESCAPED_UNICODE)
-            ]);
-
-        } catch (\Throwable $e) {
-            Log::error('خطا در همگام‌سازی ژورنال', [
-                'fee_id' => $fee->id,
-                'registration_id' => $fee->reg_id,
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+        $description = 'فیس لابراتوار - ' . $patientName;
+        if ($testNames) {
+            $description .= ' - تست‌ها: ' . $testNames;
+        } elseif ($testTypes) {
+            $description .= ' - نوع تست: ' . $testTypes;
         }
+        $description .= ' - بارکد: ' . $fee->barcode;
+
+        $totalAmount = (float) $fee->amount;
+        $discountAmount = $totalAmount * ((float) $fee->discount / 100);
+        $netAmount = $totalAmount - $discountAmount;
+        $remaining = $netAmount - (float) $fee->paid_amount;
+
+        // ✅ ثبت در Journal با ساختار صحیح
+        Journal::create([
+            'journal_date' => Carbon::now()->format('Y-m-d'),
+            'description' => $description,
+            'entry_type' => 'credit', // یا 'debit' بسته به نوع تراکنش
+            'amount' => $netAmount,
+            'tazkira_number' => $patientTazkira,
+            'ref_type' => 'laboratory_fee',
+            'ref_id' => $fee->id,
+            'user_id' => auth()->user()?->id, // کاربر فعلی
+            'patient_id' => $fee->patient_id,
+            'reg_id' => $fee->reg_id,
+            // فیلدهای دیگر می‌توانند null باشند
+            'doc_id' => null,
+            'cust_id' => null,
+            'supplier_id' => null,
+            'med_id' => null,
+            'pres_id' => null,
+            'parchase_id' => null,
+            'pres_num' => null,
+        ]);
+
+    } catch (\Throwable $e) {
+        Log::error('خطا در همگام‌سازی ژورنال', [
+            'fee_id' => $fee->id,
+            'reg_id' => $fee->reg_id,
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        // پرتاب نمی‌کنیم تا تراکنش اصلی متوقف نشود
     }
+}
 
     /**
      * ============================================================
