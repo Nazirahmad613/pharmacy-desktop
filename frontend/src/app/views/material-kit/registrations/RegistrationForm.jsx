@@ -248,6 +248,9 @@ export default function RegistrationForm() {
       // اگر regId جاری وجود نداشت و لیست خالی نبود، اولین مراجعه را به عنوان regId جاری تنظیم کن
       if (!currentRegId && regs.length > 0) {
         setCurrentRegId(regs[0].reg_id);
+      } else if (currentRegId && !regs.some(r => r.reg_id === currentRegId)) {
+        // اگر regId جاری در لیست جدید نیست، اولین مورد را انتخاب کن
+        setCurrentRegId(regs.length > 0 ? regs[0].reg_id : null);
       }
     } catch (err) {
       console.error("خطا در دریافت مریض‌ها:", err);
@@ -665,8 +668,11 @@ export default function RegistrationForm() {
       toast.success(`✅ معلومات به داکتر ارسال شد`);
       setShowSendModal(false);
       setSelectedRegistration(null);
-      fetchRegistrations();
-      fetchStatistics();
+      
+      // ============ تغییر: بارگذاری مجدد لیست ============
+      await fetchRegistrations();
+      await fetchStatistics();
+      
     } catch (err) {
       console.error("خطا در ارسال به داکتر:", err);
       if (err.response?.data?.message) {
@@ -697,8 +703,11 @@ export default function RegistrationForm() {
       });
 
       toast.success(`✅ معلومات به داکتر ارسال شد`);
-      fetchRegistrations();
-      fetchStatistics();
+      
+      // ============ تغییر: بارگذاری مجدد لیست ============
+      await fetchRegistrations();
+      await fetchStatistics();
+      
     } catch (err) {
       console.error("خطا در ارسال به داکتر:", err);
       if (err.response?.data?.message) {
@@ -1938,6 +1947,9 @@ export default function RegistrationForm() {
                     const department = departments.find((d) => d.id === r.department_id);
                     const doctorName = r.doctor_id ? getDoctorName(r.doctor_id) : "-";
                     
+                    // ============ بررسی وضعیت‌هایی که دکمه ارسال نباید نمایش داده شود ============
+                    const isFinalStatus = ['Doctor', 'Completed', 'Cancelled', 'Admission', 'Ward', 'Operation'].includes(r.visit_status);
+                    
                     return (
                       <tr key={r.reg_id} className="hover:bg-gray-800 transition-colors border-t border-gray-700">
                         <td className="px-3 py-2 text-center">{r.reg_id}</td>
@@ -2010,7 +2022,8 @@ export default function RegistrationForm() {
                               🖨️ پرینت
                             </button>
 
-                            {r.visit_status !== 'Doctor' && r.visit_status !== 'Completed' && r.visit_status !== 'Cancelled' && (
+                            {/* ============ تغییر: شرط نمایش دکمه ارسال به داکتر ============ */}
+                            {!isFinalStatus && (
                               <button
                                 onClick={() => handleSendToDoctorFromList(r)}
                                 style={{
@@ -2025,6 +2038,20 @@ export default function RegistrationForm() {
                               >
                                 ارسال به داکتر
                               </button>
+                            )}
+
+                            {/* ============ تغییر: نمایش وضعیت ارسال ============ */}
+                            {r.visit_status === 'Doctor' && (
+                              <span style={{
+                                backgroundColor: '#8b5cf6',
+                                color: 'white',
+                                padding: '4px 10px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                opacity: 0.7
+                              }}>
+                                ✅ ارسال شد
+                              </span>
                             )}
                           </div>
                         </td>

@@ -10,14 +10,15 @@ export default function LaboratoryFeeTab(props) {
   const [loading, setLoading] = useState(false);
   const [patientInfo, setPatientInfo] = useState(null);
   const [barcode, setBarcode] = useState(null);
-  const [unpaidRequests, setUnpaidRequests] = useState([]);
+  const [allRequests, setAllRequests] = useState([]);
   const [feeRecords, setFeeRecords] = useState([]);
-  const [selectedRequests, setSelectedRequests] = useState([]);
+  const [selectedRequest, setSelectedRequest] = useState(null);
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [editingFee, setEditingFee] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null);
-  const [allRequests, setAllRequests] = useState([]);
   const [apiResponseRaw, setApiResponseRaw] = useState(null);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
 
   // فرم اخذ فیس
   const [feeFormData, setFeeFormData] = useState({
@@ -55,13 +56,15 @@ export default function LaboratoryFeeTab(props) {
 
     console.log("📡 fetchAllData با reg_id:", id);
     setLoading(true);
+    setFetchError(null);
     
     try {
       await fetchPatientInfo(id);
-      await fetchLaboratoryRequests(id);
-      await fetchFeeRecords(id);
+      await fetchAllLaboratoryRequests();
+      await fetchFeeRecords();
     } catch (err) {
       console.error("❌ خطا در دریافت داده‌ها:", err);
+      setFetchError(err.message);
       toast.error("خطا در دریافت اطلاعات");
     } finally {
       setLoading(false);
@@ -91,144 +94,144 @@ export default function LaboratoryFeeTab(props) {
     }
   };
 
-  // ============ دریافت درخواست‌های لابراتوار ============
-  const fetchLaboratoryRequests = async (id) => {
+  // ============ دریافت تمام درخواست‌های لابراتوار ============
+ const fetchAllLaboratoryRequests = async () => {
     try {
-      console.log("🔍 ====== دریافت درخواست‌های لابراتوار ======");
-      console.log("🆔 reg_id:", id);
+        console.log("🔍 ====== دریافت تمام درخواست‌های لابراتوار ======");
 
-      if (!id) {
-        console.error("❌ reg_id موجود نیست");
-        setAllRequests([]);
-        setUnpaidRequests([]);
-        return;
-      }
+        setLoadingRequests(true);
+        setFetchError(null);
 
-      // ✅ استفاده از آدرس جدید برای دریافت درخواست‌های بدون فیس
-      const url = `/laboratory-fees/unpaid/${id}`;
-      console.log("📡 GET:", url);
+        const response = await api.get('/laboratory-requests/all');
 
-      const response = await api.get(url);
-      
-      setApiResponseRaw(response.data);
-      
-      console.log("📋 ====== پاسخ کامل API ======");
-      console.log("📋 Status:", response.status);
-      console.log("📋 Data (JSON):", JSON.stringify(response.data, null, 2));
+        console.log("📋 پاسخ تمام درخواست‌های لابراتوار:");
+        console.log(JSON.stringify(response.data, null, 2));
 
-      setDebugInfo({
-        url,
-        response: response.data,
-        timestamp: new Date().toISOString(),
-        status: response.status
-      });
+        let requests = [];
 
-      // استخراج آرایه درخواست‌ها از پاسخ
-      let tests = [];
-      let extractionMethod = "none";
-
-      if (response.data?.success && response.data?.data?.unpaid_requests) {
-        tests = response.data.data.unpaid_requests;
-        extractionMethod = "response.data.data.unpaid_requests (success)";
-      } else if (response.data?.success && response.data?.data) {
-        const innerData = response.data.data;
-        if (Array.isArray(innerData)) {
-          tests = innerData;
-          extractionMethod = "response.data.data is array (success)";
+        if (response.data?.success && Array.isArray(response.data?.data)) {
+            requests = response.data.data;
+        } 
+        else if (Array.isArray(response.data?.data)) {
+            requests = response.data.data;
+        } 
+        else if (Array.isArray(response.data)) {
+            requests = response.data;
         }
-      } else if (Array.isArray(response.data)) {
-        tests = response.data;
-        extractionMethod = "response.data is array";
-      } else if (response.data && Array.isArray(response.data.data)) {
-        tests = response.data.data;
-        extractionMethod = "response.data.data is array";
-      } else if (response.data && Array.isArray(response.data.laboratory_requests)) {
-        tests = response.data.laboratory_requests;
-        extractionMethod = "response.data.laboratory_requests is array";
-      }
 
-      console.log(`📊 روش استخراج: ${extractionMethod}`);
-      console.log(`🧪 تعداد درخواست‌های استخراج شده: ${tests.length}`);
+        console.log("🧪 تعداد کل درخواست‌ها:", requests.length);
 
-      if (tests.length === 0) {
-        console.warn(`⚠️ هیچ درخواست لابراتواری برای reg_id=${id} دریافت نشد`);
-        console.warn("⚠️ ساختار پاسخ:", JSON.stringify(response.data, null, 2));
-        
-        toast.info("هیچ درخواست لابراتواری برای این مراجعه ثبت نشده است");
-        setAllRequests([]);
-        setUnpaidRequests([]);
-        return;
-      }
+        const sortedRequests = [...requests].sort((a, b) => {
+            const dateA = new Date(
+                a.request_date || a.created_at || 0
+            );
 
-      // نمایش اولین آیتم برای بررسی
-      console.log("🔍 ====== بررسی اولین آیتم ======");
-      const firstItem = tests[0];
-      console.log("📌 اولین آیتم:", firstItem);
-      console.log("📌 reg_id در آیتم:", firstItem.reg_id);
-      console.log("📌 fee_id:", firstItem.fee_id);
+            const dateB = new Date(
+                b.request_date || b.created_at || 0
+            );
 
-      setAllRequests(tests);
-      setUnpaidRequests(tests);
+            return dateB - dateA;
+        });
 
-      if (tests.length > 0) {
-        console.log(`✅ ${tests.length} درخواست آماده اخذ فیس است`);
-        toast.success(`${tests.length} درخواست برای اخذ فیس آماده است`);
-      }
+        setAllRequests(sortedRequests);
+
+        setDebugInfo(prev => ({
+            ...prev,
+            apiUsed: "laboratory-requests/all",
+            totalRequests: sortedRequests.length,
+            unpaidCount: sortedRequests.filter(req => !hasFee(req)).length,
+            paidCount: sortedRequests.filter(req => hasFee(req)).length,
+            timestamp: new Date().toISOString()
+        }));
+
+        if (sortedRequests.length === 0) {
+            toast.info("هیچ درخواست لابراتواری ثبت نشده است");
+        } else {
+            console.log(
+                `✅ ${sortedRequests.length} درخواست لابراتواری دریافت شد`
+            );
+        }
 
     } catch (err) {
-      console.error("❌ ====== خطا در دریافت درخواست‌های لابراتوار ======");
-      console.error("❌ Error:", err);
-      
-      if (err.response) {
-        console.error("❌ Status:", err.response.status);
-        console.error("❌ Data:", err.response.data);
-        setApiResponseRaw(err.response.data);
-        toast.error(`❌ خطا ${err.response.status}: ${err.response.data?.message || "خطا در دریافت درخواست‌ها"}`);
-      } else {
-        toast.error(`❌ خطا: ${err.message}`);
-      }
+        console.error(
+            "❌ خطا در دریافت تمام درخواست‌های لابراتوار:",
+            err
+        );
 
-      setAllRequests([]);
-      setUnpaidRequests([]);
+        setFetchError(err.message);
+        setAllRequests([]);
+
+        if (err.response) {
+            console.error("Status:", err.response.status);
+            console.error("Data:", err.response.data);
+
+            toast.error(
+                err.response.data?.message ||
+                "خطا در دریافت درخواست‌های لابراتوار"
+            );
+        } else {
+            toast.error("خطا در ارتباط با سرور");
+        }
+
+    } finally {
+        setLoadingRequests(false);
     }
-  };
-
+};
   // ============ دریافت فیس‌های ثبت شده ============
-  const fetchFeeRecords = async (id) => {
+ const fetchFeeRecords = async () => {
     try {
-      console.log("💳 دریافت فیس‌ها با reg_id:", id);
-      
-      // ✅ دریافت فیس‌های ثبت شده با reg_id
-      const response = await api.get(`/laboratory-fees?reg_id=${id}`);
-      console.log("💳 پاسخ فیس‌ها:", response.data);
-      
-      let fees = [];
-      
-      if (response.data?.success && response.data?.data) {
-        if (Array.isArray(response.data.data)) {
-          fees = response.data.data;
-        } else if (response.data.data?.data && Array.isArray(response.data.data.data)) {
-          fees = response.data.data.data;
-        }
-      } else if (response.data?.data && Array.isArray(response.data.data)) {
-        fees = response.data.data;
-      } else if (Array.isArray(response.data)) {
-        fees = response.data;
-      }
-      
-      console.log(`💳 تعداد فیس‌ها: ${fees.length} عدد`);
-      setFeeRecords(fees);
-      
-    } catch (err) {
-      console.error("❌ خطا در دریافت فیس‌ها:", err);
-      setFeeRecords([]);
-    }
-  };
+        console.log("💳 ====== دریافت تمام فیس‌های لابراتوار ======");
 
+        const response = await api.get('/laboratory-fees');
+
+        console.log(
+            "💳 پاسخ تمام فیس‌ها:",
+            response.data
+        );
+
+        let fees = [];
+
+        if (
+            response.data?.success &&
+            Array.isArray(response.data?.data)
+        ) {
+            fees = response.data.data;
+        }
+        else if (
+            Array.isArray(response.data?.data?.data)
+        ) {
+            fees = response.data.data.data;
+        }
+        else if (
+            Array.isArray(response.data?.data)
+        ) {
+            fees = response.data.data;
+        }
+        else if (
+            Array.isArray(response.data)
+        ) {
+            fees = response.data;
+        }
+
+        console.log(
+            `💳 تعداد تمام فیس‌ها: ${fees.length}`
+        );
+
+        setFeeRecords(fees);
+
+    } catch (err) {
+        console.error(
+            "❌ خطا در دریافت تمام فیس‌ها:",
+            err
+        );
+
+        setFeeRecords([]);
+    }
+};
   // ============ باز کردن فرم اخذ فیس ============
   const handleOpenFeeForm = (request) => {
     console.log("💰 باز کردن فرم اخذ فیس برای:", request);
-    setSelectedRequests([request]);
+    setSelectedRequest(request);
     setEditingFee(null);
     
     const defaultAmount = request.amount || request.total_amount || 0;
@@ -253,6 +256,11 @@ export default function LaboratoryFeeTab(props) {
       return;
     }
 
+    if (!selectedRequest) {
+      toast.error("❌ هیچ درخواستی انتخاب نشده است");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -263,7 +271,7 @@ export default function LaboratoryFeeTab(props) {
         payment_method: feeFormData.payment_method,
         description: feeFormData.description,
         note: feeFormData.note,
-        laboratory_request_ids: selectedRequests.map(r => r.id)
+        laboratory_request_ids: [selectedRequest.id]
       };
 
       console.log("📤 ارسال payload:", payload);
@@ -273,14 +281,12 @@ export default function LaboratoryFeeTab(props) {
         response = await api.put(`/laboratory-fees/${editingFee.id}`, payload);
         toast.success("✅ فیس لابراتوار با موفقیت ویرایش شد");
       } else {
-        // ✅ آدرس صحیح با reg_id در URL
         response = await api.post(`/laboratory-fees/registration/${regId}`, payload);
         toast.success("✅ فیس لابراتوار با موفقیت ثبت شد");
       }
 
       console.log("✅ پاسخ ثبت فیس:", response.data);
 
-      // به‌روزرسانی لیست درخواست‌ها و فیس‌ها
       await fetchAllData(regId);
       handleCloseForm();
 
@@ -304,7 +310,7 @@ export default function LaboratoryFeeTab(props) {
   // ============ بستن فرم ============
   const handleCloseForm = () => {
     setShowFeeForm(false);
-    setSelectedRequests([]);
+    setSelectedRequest(null);
     setEditingFee(null);
     setFeeFormData({
       amount: "",
@@ -344,7 +350,6 @@ export default function LaboratoryFeeTab(props) {
     return { label: 'در انتظار پرداخت', color: '#f59e0b' };
   };
 
-  // ✅ تابع کمکی برای تبدیل به عدد
   const toNumber = (value) => {
     const num = parseFloat(value);
     return isNaN(num) ? 0 : num;
@@ -353,7 +358,6 @@ export default function LaboratoryFeeTab(props) {
   const patient = patientInfo?.patient || {};
   const isPatientInfoLoaded = patientInfo !== null;
 
-  // دکمه دیباگ
   const handleShowRawResponse = () => {
     if (apiResponseRaw) {
       console.log("📋 پاسخ خام API:", JSON.stringify(apiResponseRaw, null, 2));
@@ -362,6 +366,82 @@ export default function LaboratoryFeeTab(props) {
       alert("هنوز پاسخی دریافت نشده است");
     }
   };
+
+  // ============ تابع تشخیص وجود فیس ============
+  const hasFee = (request) => {
+    // از هر دو فیلد fee_id و has_fee استفاده کن
+    if (request.has_fee !== undefined) {
+      return request.has_fee === true;
+    }
+    // اگر has_fee وجود نداشت، fee_id را بررسی کن
+    return request.fee_id !== null && request.fee_id !== undefined && request.fee_id !== 0;
+  };
+
+  // ============ دریافت اطلاعات فیس برای یک درخواست ============
+  const getFeeForRequest = (requestId) => {
+    // ابتدا در خود درخواست بررسی کن
+    const request = allRequests.find(r => r.id === requestId);
+    if (request && request.fee) {
+      return request.fee;
+    }
+    // سپس در feeRecords جستجو کن
+    return feeRecords.find(fee => 
+      fee.laboratory_request_ids && fee.laboratory_request_ids.includes(requestId)
+    );
+  };
+
+  // ============ دریافت اطلاعات مریض از درخواست ============
+  const getPatientFromRequest = (request) => {
+    // اگر درخواست خودش اطلاعات مریض دارد
+    if (request.patient) {
+      return request.patient;
+    }
+    // اگر patientInfo کلی موجود است
+    if (patientInfo?.patient) {
+      return patientInfo.patient;
+    }
+    // اگر patientInfo خودش اطلاعات دارد
+    if (patientInfo && patientInfo.first_name) {
+      return patientInfo;
+    }
+    return null;
+  };
+
+  // ============ دریافت نام کامل مریض از درخواست ============
+  const getPatientFullName = (request) => {
+    const patientData = getPatientFromRequest(request);
+    if (patientData) {
+      return `${patientData.first_name || ''} ${patientData.last_name || ''}`.trim() || 'نامشخص';
+    }
+    return 'نامشخص';
+  };
+
+  // ============ دریافت سن مریض از درخواست ============
+  const getPatientAge = (request) => {
+    const patientData = getPatientFromRequest(request);
+    if (patientData && patientData.age) {
+      return `${patientData.age} سال`;
+    }
+    return '-';
+  };
+
+  // ============ دریافت جنسیت مریض از درخواست ============
+  const getPatientGender = (request) => {
+    const patientData = getPatientFromRequest(request);
+    if (patientData && patientData.gender) {
+      const genderMap = {
+        'Male': 'مرد',
+        'male': 'مرد',
+        'Female': 'زن',
+        'female': 'زن',
+        'other': 'دیگر'
+      };
+      return genderMap[patientData.gender] || patientData.gender;
+    }
+    return '-';
+  };
+
+  const unpaidRequests = allRequests.filter(r => !hasFee(r));
 
   return (
     <div>
@@ -382,6 +462,11 @@ export default function LaboratoryFeeTab(props) {
         </span>
         <span style={{ fontSize: '11px', opacity: 0.7 }}>
           تعداد درخواست‌ها: {allRequests.length}
+          {allRequests.length > 0 && (
+            <span style={{ marginRight: '10px' }}>
+              (بدون فیس: {unpaidRequests.length})
+            </span>
+          )}
         </span>
       </div>
 
@@ -504,12 +589,24 @@ export default function LaboratoryFeeTab(props) {
               overflow: 'auto',
               fontFamily: 'monospace'
             }}>
-              <div>📡 URL: {debugInfo.url}</div>
-              <div>📊 وضعیت: {debugInfo.status || 'N/A'}</div>
-              <div>📊 تعداد تست‌ها: {allRequests.length}</div>
+              <div>📡 روش: {debugInfo.apiUsed || 'N/A'}</div>
+              <div>📊 تعداد درخواست‌ها: {allRequests.length}</div>
               <div>🟡 بدون فیس: {unpaidRequests.length}</div>
-              <div>🟢 دارای فیس: {allRequests.length - unpaidRequests.length}</div>
-              <div>🕐 زمان: {debugInfo.timestamp}</div>
+              <div>🟢 دارای فیس: {allRequests.filter(r => hasFee(r)).length}</div>
+              <div>🕐 زمان: {debugInfo.timestamp || new Date().toISOString()}</div>
+            </div>
+          )}
+
+          {fetchError && (
+            <div style={{
+              marginTop: '10px',
+              padding: '10px',
+              backgroundColor: '#7f1d1d',
+              borderRadius: '6px',
+              color: '#fca5a5',
+              fontSize: '12px'
+            }}>
+              ⚠️ خطا: {fetchError}
             </div>
           )}
         </div>
@@ -518,15 +615,15 @@ export default function LaboratoryFeeTab(props) {
       {/* ============ نمایش تعداد درخواست‌ها ============ */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <h4 style={{ color: '#60a5fa', margin: 0 }}>
-          📋 درخواست‌های لابراتوار
+          📋 لیست درخواست‌های لابراتوار
         </h4>
         <span style={{ fontSize: '14px', color: '#9ca3af' }}>
           {unpaidRequests.length} درخواست بدون فیس
         </span>
       </div>
 
-      {/* ============ لیست درخواست‌های بدون فیس ============ */}
-      {loading ? (
+      {/* ============ لیست تمام درخواست‌ها ============ */}
+      {loading || loadingRequests ? (
         <div style={{
           backgroundColor: '#1a2a3a',
           padding: '30px',
@@ -551,7 +648,7 @@ export default function LaboratoryFeeTab(props) {
             لطفاً از بخش مراجعه، یک مراجعه را انتخاب کنید
           </div>
         </div>
-      ) : unpaidRequests.length === 0 ? (
+      ) : allRequests.length === 0 ? (
         <div style={{
           backgroundColor: '#1a2a3a',
           padding: '30px',
@@ -559,96 +656,181 @@ export default function LaboratoryFeeTab(props) {
           textAlign: 'center',
           color: '#9ca3af'
         }}>
-          <div style={{ fontSize: '40px', marginBottom: '10px' }}>✅</div>
-          <div>همه درخواست‌های لابراتوار دارای فیس هستند</div>
-          {allRequests.length === 0 && (
-            <div style={{ fontSize: '12px', marginTop: '5px', color: '#f59e0b' }}>
-              ⚠️ هیچ درخواست لابراتواری برای این مراجعه ثبت نشده است
-            </div>
-          )}
+          <div style={{ fontSize: '40px', marginBottom: '10px' }}>📭</div>
+          <div>هیچ درخواست لابراتواری برای این مراجعه ثبت نشده است</div>
+          <div style={{ fontSize: '12px', marginTop: '10px', color: '#6b7280' }}>
+            💡 اگر درخواست ثبت شده است، لطفاً دکمه "بارگذاری مجدد" را کلیک کنید
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '30px' }}>
-          {unpaidRequests.map((request) => (
-            <div
-              key={request.id}
-              style={{
-                backgroundColor: '#1a2a3a',
-                padding: '15px 20px',
-                borderRadius: '8px',
-                borderRight: '4px solid #f59e0b',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '10px'
-              }}
-            >
-              <div style={{ flex: 1, minWidth: '200px' }}>
-                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>
-                    {request.test_type_label || request.test_type || request.test_category || 'آزمایش'}
-                  </span>
-                  {request.test_name && (
-                    <span style={{ color: 'white' }}>{request.test_name}</span>
-                  )}
-                  {request.barcode && (
-                    <span style={{ 
-                      color: '#fcd34d', 
-                      fontSize: '12px',
-                      fontFamily: 'monospace',
-                      backgroundColor: '#0f1a2a',
-                      padding: '2px 10px',
-                      borderRadius: '4px'
-                    }}>
-                      🏷️ {request.barcode}
-                    </span>
-                  )}
-                  <span style={{
-                    backgroundColor: '#ef4444',
-                    color: 'white',
-                    padding: '2px 10px',
-                    borderRadius: '12px',
-                    fontSize: '10px',
-                    fontWeight: 'bold'
-                  }}>
-                    بدون فیس
-                  </span>
-                </div>
-                <div style={{ color: '#9ca3af', fontSize: '11px', marginTop: '3px' }}>
-                  📅 {formatDate(request.request_date || request.created_at)}
-                </div>
-                <div style={{ color: '#6b7280', fontSize: '10px', marginTop: '2px' }}>
-                  ID: {request.id} | fee_id: {request.fee_id !== undefined ? request.fee_id : 'ندارد'}
-                  {request.reg_id && ` | reg_id: ${request.reg_id}`}
-                </div>
-                {request.amount && (
-                  <div style={{ color: '#fcd34d', fontSize: '12px', marginTop: '2px' }}>
-                    💰 مبلغ: {toNumber(request.amount).toFixed(2)} افغانی
-                  </div>
-                )}
-              </div>
-              
-              <button
-                onClick={() => handleOpenFeeForm(request)}
+          {allRequests.map((request, index) => {
+            const hasFeeRecord = hasFee(request);
+            const feeInfo = getFeeForRequest(request.id);
+            const patientData = getPatientFromRequest(request);
+            
+            const statusText = hasFeeRecord ? '✅ دارای فیس' : '❌ بدون فیس';
+            const statusColor = hasFeeRecord ? '#22c55e' : '#ef4444';
+            const borderColor = hasFeeRecord ? '#22c55e' : '#f59e0b';
+            
+            return (
+              <div
+                key={request.id || index}
                 style={{
-                  backgroundColor: '#22c55e',
-                  color: 'white',
-                  padding: '8px 20px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  fontSize: '13px',
+                  backgroundColor: '#1a2a3a',
+                  padding: '15px 20px',
+                  borderRadius: '8px',
+                  borderRight: `4px solid ${borderColor}`,
                   display: 'flex',
+                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  gap: '8px'
+                  flexWrap: 'wrap',
+                  gap: '10px'
                 }}
               >
-                💰 اخذ فیس
-              </button>
-            </div>
-          ))}
+                <div style={{ flex: 1, minWidth: '250px' }}>
+                  {/* اطلاعات اصلی درخواست */}
+                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>#{index + 1}</span>
+                    <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>
+                      {request.test_type_label || request.test_type || request.test_category || 'آزمایش'}
+                    </span>
+                    {request.test_name && (
+                      <span style={{ color: 'white' }}>{request.test_name}</span>
+                    )}
+                    {request.barcode && (
+                      <span style={{ 
+                        color: '#fcd34d', 
+                        fontSize: '12px',
+                        fontFamily: 'monospace',
+                        backgroundColor: '#0f1a2a',
+                        padding: '2px 10px',
+                        borderRadius: '4px'
+                      }}>
+                        🏷️ {request.barcode}
+                      </span>
+                    )}
+                    <span style={{
+                      backgroundColor: statusColor,
+                      color: 'white',
+                      padding: '2px 10px',
+                      borderRadius: '12px',
+                      fontSize: '10px',
+                      fontWeight: 'bold'
+                    }}>
+                      {statusText}
+                    </span>
+                  </div>
+                  
+                  {/* 🔥 اطلاعات مریض مربوط به این درخواست */}
+                  <div style={{
+                    display: 'flex',
+                    gap: '15px',
+                    flexWrap: 'wrap',
+                    marginTop: '5px',
+                    padding: '5px 10px',
+                    backgroundColor: '#0f1a2a',
+                    borderRadius: '4px',
+                    border: '1px solid #1a3a4a'
+                  }}>
+                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>👤 مریض:</span>
+                    <span style={{ color: '#34d399', fontWeight: 'bold', fontSize: '12px' }}>
+                      {getPatientFullName(request)}
+                    </span>
+                    {patientData && (
+                      <>
+                        {patientData.age && (
+                          <span style={{ color: '#9ca3af', fontSize: '11px' }}>
+                            🎂 {getPatientAge(request)}
+                          </span>
+                        )}
+                        {patientData.gender && (
+                          <span style={{ color: '#9ca3af', fontSize: '11px' }}>
+                            ⚤ {getPatientGender(request)}
+                          </span>
+                        )}
+                        {patientData.mobile && (
+                          <span style={{ color: '#9ca3af', fontSize: '11px' }}>
+                            📞 {patientData.mobile}
+                          </span>
+                        )}
+                        {patientData.national_id && (
+                          <span style={{ color: '#9ca3af', fontSize: '11px' }}>
+                            🆔 {patientData.national_id}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  
+                  {/* تاریخ و اطلاعات دیگر */}
+                  <div style={{ color: '#9ca3af', fontSize: '11px', marginTop: '3px' }}>
+                    📅 {formatDate(request.request_date || request.created_at)}
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '10px', marginTop: '2px' }}>
+                    ID: {request.id} | fee_id: {request.fee_id !== undefined && request.fee_id !== 0 && request.fee_id !== null ? request.fee_id : 'ندارد'}
+                    {request.reg_id && ` | reg_id: ${request.reg_id}`}
+                  </div>
+                  {request.amount && (
+                    <div style={{ color: '#fcd34d', fontSize: '12px', marginTop: '2px' }}>
+                      💰 مبلغ: {toNumber(request.amount).toFixed(2)} افغانی
+                    </div>
+                  )}
+                  
+                  {hasFeeRecord && feeInfo && (
+                    <div style={{
+                      marginTop: '5px',
+                      padding: '5px 10px',
+                      backgroundColor: '#0f1a2a',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      color: '#9ca3af'
+                    }}>
+                      <span style={{ color: '#10b981' }}>✅ فیس ثبت شده: </span>
+                      💰 {toNumber(feeInfo.amount || feeInfo?.amount || 0).toFixed(2)} | 
+                      پرداخت: {toNumber(feeInfo.paid_amount || feeInfo?.paid_amount || 0).toFixed(2)} | 
+                      روش: {getMethodLabel(feeInfo.payment_method || feeInfo?.payment_method)}
+                      {feeInfo.remaining_amount !== undefined && (
+                        <> | باقیمانده: {toNumber(feeInfo.remaining_amount).toFixed(2)}</>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                {!hasFeeRecord ? (
+                  <button
+                    onClick={() => handleOpenFeeForm(request)}
+                    style={{
+                      backgroundColor: '#22c55e',
+                      color: 'white',
+                      padding: '8px 20px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    💰 اخذ فیس
+                  </button>
+                ) : (
+                  <span style={{
+                    backgroundColor: '#1a3a2a',
+                    color: '#22c55e',
+                    padding: '8px 15px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    border: '1px solid #22c55e'
+                  }}>
+                    ✅ فیس اخذ شده
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -656,7 +838,7 @@ export default function LaboratoryFeeTab(props) {
       {feeRecords.length > 0 && (
         <>
           <h4 style={{ color: '#10b981', marginTop: '20px', marginBottom: '10px' }}>
-            ✅ فیس‌های ثبت شده
+            ✅ خلاصه فیس‌های ثبت شده
             <span style={{ fontSize: '12px', color: '#9ca3af', marginRight: '10px' }}>
               ({feeRecords.length} فیس)
             </span>
@@ -664,7 +846,6 @@ export default function LaboratoryFeeTab(props) {
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {feeRecords.map((fee) => {
-              // ✅ تبدیل مقادیر به عدد با استفاده از toNumber
               const amount = toNumber(fee.amount);
               const paidAmount = toNumber(fee.paid_amount);
               const discount = toNumber(fee.discount);
@@ -746,7 +927,7 @@ export default function LaboratoryFeeTab(props) {
       )}
 
       {/* ============ مودال فرم اخذ فیس ============ */}
-      {showFeeForm && (
+      {showFeeForm && selectedRequest && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -773,31 +954,71 @@ export default function LaboratoryFeeTab(props) {
               {editingFee ? '✏️ تصحیح فیس لابراتوار' : '💰 اخذ فیس لابراتوار'}
             </h4>
 
-            {selectedRequests.length > 0 && (
-              <div style={{
-                backgroundColor: '#0f1a2a',
-                padding: '15px',
-                borderRadius: '6px',
-                marginBottom: '20px',
-                border: '1px solid #374151'
-              }}>
-                <div style={{ color: '#9ca3af', fontSize: '12px', marginBottom: '5px' }}>
-                  📋 تعداد درخواست‌ها: {selectedRequests.length}
-                </div>
-                {selectedRequests.map((req, index) => (
-                  <div key={req.id} style={{ 
-                    color: 'white', 
-                    fontSize: '13px',
-                    padding: '4px 0',
-                    borderBottom: index < selectedRequests.length - 1 ? '1px solid #2a3a4a' : 'none'
-                  }}>
-                    {index + 1}. {req.test_type_label || req.test_type || req.test_category || 'آزمایش'}
-                    {req.test_name && ` - ${req.test_name}`}
-                    {req.barcode && ` (🏷️ ${req.barcode})`}
+            <div style={{
+              backgroundColor: '#0f1a2a',
+              padding: '15px',
+              borderRadius: '6px',
+              marginBottom: '20px',
+              border: '1px solid #374151'
+            }}>
+              {/* اطلاعات مریض از درخواست انتخاب شده */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                <div>
+                  <span style={{ color: '#9ca3af', fontSize: '11px' }}>👤 نام مریض</span>
+                  <div style={{ color: 'white', fontWeight: 'bold' }}>
+                    {getPatientFullName(selectedRequest)}
                   </div>
-                ))}
+                </div>
+                <div>
+                  <span style={{ color: '#9ca3af', fontSize: '11px' }}>🆔 شماره مراجعه</span>
+                  <div style={{ color: 'white', fontWeight: 'bold' }}>{selectedRequest.reg_id || regId}</div>
+                </div>
+                <div>
+                  <span style={{ color: '#9ca3af', fontSize: '11px' }}>🎂 سن</span>
+                  <div style={{ color: 'white' }}>{getPatientAge(selectedRequest)}</div>
+                </div>
+                <div>
+                  <span style={{ color: '#9ca3af', fontSize: '11px' }}>⚤ جنسیت</span>
+                  <div style={{ color: 'white' }}>{getPatientGender(selectedRequest)}</div>
+                </div>
+                <div>
+                  <span style={{ color: '#9ca3af', fontSize: '11px' }}>📞 تماس</span>
+                  <div style={{ color: 'white' }}>
+                    {getPatientFromRequest(selectedRequest)?.mobile || '-'}
+                  </div>
+                </div>
+                <div>
+                  <span style={{ color: '#9ca3af', fontSize: '11px' }}>📊 بارکد</span>
+                  <div style={{ color: '#fcd34d', fontFamily: 'monospace' }}>
+                    {selectedRequest.barcode || barcode || '-'}
+                  </div>
+                </div>
               </div>
-            )}
+              
+              <div style={{
+                borderTop: '1px solid #2a3a4a',
+                paddingTop: '10px',
+                marginTop: '5px'
+              }}>
+                <div style={{ color: '#9ca3af', fontSize: '11px', marginBottom: '5px' }}>
+                  📋 اطلاعات درخواست انتخاب شده
+                </div>
+                <div style={{ 
+                  color: 'white', 
+                  fontSize: '13px',
+                  padding: '4px 0'
+                }}>
+                  {selectedRequest.test_type_label || selectedRequest.test_type || selectedRequest.test_category || 'آزمایش'}
+                  {selectedRequest.test_name && ` - ${selectedRequest.test_name}`}
+                  {selectedRequest.barcode && ` (🏷️ ${selectedRequest.barcode})`}
+                </div>
+                {selectedRequest.amount && (
+                  <div style={{ color: '#fcd34d', fontSize: '12px', marginTop: '3px' }}>
+                    💰 مبلغ پیش‌فرض: {toNumber(selectedRequest.amount).toFixed(2)} افغانی
+                  </div>
+                )}
+              </div>
+            </div>
 
             <form onSubmit={handleSubmitFee}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>

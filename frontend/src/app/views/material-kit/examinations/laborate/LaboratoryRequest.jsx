@@ -108,62 +108,54 @@ export default function LaboratoryRequest({
   }, [registration?.reg_id]);
 
   // ============ بارگذاری تست‌ها از سرور ============
-  const loadTestsFromServer = async () => {
-    if (!registration || !registration.reg_id) {
-      console.log('⚠️ No registration ID available');
-      return;
-    }
+ // ============ بارگذاری تست‌ها از سرور ============
+const loadTestsFromServer = async () => {
+  if (!registration || !registration.reg_id) {
+    console.log('⚠️ No registration ID available');
+    return;
+  }
 
-    setLoadingTests(true);
-    try {
-      const url = `/laboratory-requests/registration-full/${registration.reg_id}`;
-      console.log('📥 Loading full tests from:', url);
+  setLoadingTests(true);
+  try {
+    // ✅ اصلاح مسیر - از registration-full به registration/full
+    const url = `/laboratory-requests/registration/${registration.reg_id}/full`;
+    console.log('📥 Loading full tests from:', url);
+    
+    const response = await api.get(url);
+    console.log('📥 Full Response:', JSON.stringify(response.data, null, 2));
+    
+    if (response.data?.success) {
+      const data = response.data.data;
       
-      const response = await api.get(url);
-      console.log('📥 Full Response:', JSON.stringify(response.data, null, 2));
+      let testsData = [];
       
-      if (response.data?.success) {
-        const data = response.data.data;
-        
-        let testsData = [];
-        
-        if (data.all_tests && Array.isArray(data.all_tests)) {
-          testsData = data.all_tests;
-        } else if (data.tests && Array.isArray(data.tests)) {
-          testsData = data.tests;
-        } else if (Array.isArray(data)) {
-          testsData = data;
-        }
-        
-        console.log(`✅ Loaded ${testsData.length} tests from server`);
-        setTests(testsData);
-        
-        if (setIsLabRequested) {
-          setIsLabRequested(testsData.length > 0);
-        }
-        if (setAllTests) {
-          setAllTests(testsData);
-        }
-        
-        if (testsData.length > 0 && testsData[0].barcode) {
-          setBarcode(testsData[0].barcode);
-        } else if (data.barcode) {
-          setBarcode(data.barcode);
-        }
-        
-        console.log(`✅ Successfully loaded ${testsData.length} tests`);
-      } else {
-        console.log('⚠️ No tests found or success false');
-        setTests([]);
-        if (setIsLabRequested) {
-          setIsLabRequested(false);
-        }
-        if (setAllTests) {
-          setAllTests([]);
-        }
+      if (data.all_tests && Array.isArray(data.all_tests)) {
+        testsData = data.all_tests;
+      } else if (data.tests && Array.isArray(data.tests)) {
+        testsData = data.tests;
+      } else if (Array.isArray(data)) {
+        testsData = data;
       }
-    } catch (err) {
-      console.error("❌ Error loading tests:", err);
+      
+      console.log(`✅ Loaded ${testsData.length} tests from server`);
+      setTests(testsData);
+      
+      if (setIsLabRequested) {
+        setIsLabRequested(testsData.length > 0);
+      }
+      if (setAllTests) {
+        setAllTests(testsData);
+      }
+      
+      if (testsData.length > 0 && testsData[0].barcode) {
+        setBarcode(testsData[0].barcode);
+      } else if (data.barcode) {
+        setBarcode(data.barcode);
+      }
+      
+      console.log(`✅ Successfully loaded ${testsData.length} tests`);
+    } else {
+      console.log('⚠️ No tests found or success false');
       setTests([]);
       if (setIsLabRequested) {
         setIsLabRequested(false);
@@ -171,14 +163,24 @@ export default function LaboratoryRequest({
       if (setAllTests) {
         setAllTests([]);
       }
-      
-      if (err.response?.status !== 404) {
-        toast.error(`❌ خطا در بارگذاری تست‌ها: ${err.response?.data?.message || err.message}`);
-      }
-    } finally {
-      setLoadingTests(false);
     }
-  };
+  } catch (err) {
+    console.error("❌ Error loading tests:", err);
+    setTests([]);
+    if (setIsLabRequested) {
+      setIsLabRequested(false);
+    }
+    if (setAllTests) {
+      setAllTests([]);
+    }
+    
+    if (err.response?.status !== 404) {
+      toast.error(`❌ خطا در بارگذاری تست‌ها: ${err.response?.data?.message || err.message}`);
+    }
+  } finally {
+    setLoadingTests(false);
+  }
+};
 
   // ============ هندلرهای فرم ============
   const handleChange = (e) => {

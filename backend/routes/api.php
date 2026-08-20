@@ -192,13 +192,14 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // لیست تمام درخواست‌ها
         Route::get('/', [LaboratoryRequestController::class, 'index']);
-  Route::get('/registration/{registrationId}/full', [LaboratoryRequestController::class, 'getByRegistrationFull']);
-    
-        // درخواست‌های یک مراجعه (GET - ساده)
-        Route::get('/registration/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
-
+        
         // ✅ درخواست‌های یک مراجعه با جزئیات کامل (GET - با جزئیات کامل برای جدول)
+        // ⚠️ این مسیر باید قبل از مسیر ساده قرار گیرد
         Route::get('/registration/{registrationId}/full', [LaboratoryRequestController::class, 'getByRegistrationFull']);
+
+        // درخواست‌های یک مراجعه (GET - ساده)
+        // ⚠️ این مسیر باید بعد از مسیر کامل قرار گیرد
+        Route::get('/registration/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
 
         // ثبت درخواست جدید (POST)
         Route::post('/registration/{registrationId}', [LaboratoryRequestController::class, 'store']);
@@ -219,29 +220,25 @@ Route::middleware('auth:sanctum')->group(function () {
     // ============================================================
     // ROUTES مدیریت فیس‌های لابراتوار
     // ============================================================
- 
-// ============================================================
-// Route‌های Laboratory Fee
-// ============================================================
-Route::prefix('laboratory-fees')->group(function () {
-    // ✅ لیست فیس‌ها
-    Route::get('/', [LaboratoryFeeController::class, 'index']);
-    
-    // ✅ دریافت درخواست‌های بدون فیس با reg_id
-    Route::get('/unpaid/{regId}', [LaboratoryFeeController::class, 'getUnpaidRequests']);
-    
-    // ✅ ثبت فیس جدید با reg_id
-    Route::post('/registration/{regId}', [LaboratoryFeeController::class, 'store']);
-    
-    // ✅ ویرایش فیس
-    Route::put('/{id}', [LaboratoryFeeController::class, 'update']);
-    
-    // ✅ حذف فیس
-    Route::delete('/{id}', [LaboratoryFeeController::class, 'destroy']);
-    
-    // ✅ نمایش یک فیس
-    Route::get('/{id}', [LaboratoryFeeController::class, 'show']);
-});
+    Route::prefix('laboratory-fees')->group(function () {
+        // ✅ لیست فیس‌ها
+        Route::get('/', [LaboratoryFeeController::class, 'index']);
+        
+        // ✅ دریافت درخواست‌های بدون فیس با reg_id
+       Route::get('/unpaid', [LaboratoryFeeController::class, 'getUnpaidRequests']);
+        
+        // ✅ ثبت فیس جدید با reg_id
+        Route::post('/registration/{regId}', [LaboratoryFeeController::class, 'store']);
+        
+        // ✅ ویرایش فیس
+        Route::put('/{id}', [LaboratoryFeeController::class, 'update']);
+        
+        // ✅ حذف فیس
+        Route::delete('/{id}', [LaboratoryFeeController::class, 'destroy']);
+        
+        // ✅ نمایش یک فیس
+        Route::get('/{id}', [LaboratoryFeeController::class, 'show']);
+    });
 
     // ============================================================
     // مسیرهای فیس نسخه
