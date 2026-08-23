@@ -152,6 +152,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/wards', [DoctorTreatmentController::class, 'getWards']);
         Route::post('/admission', [DoctorTreatmentController::class, 'storeAdmission']);
 
+
+
+        
+        // ✅ ارسال نتیجه به بخش معالجه
+        Route::post('/{id}/send-to-treatment', [LaboratoryRequestController::class, 'sendToTreatment']);
+    
+
         // ============================================================
         // ✅ مسیرهای معاینات (ExaminationController)
         // ============================================================

@@ -1,6 +1,6 @@
 import { lazy } from "react";
 import Loadable from "app/components/Loadable";
-import AdminRoute from "./AdminRoute"; // ✅ Route Guard
+import AdminRoute from "./AdminRoute";
 
 // ===== Material UI Samples =====
 const AppForm = Loadable(lazy(() => import("./forms/AppForm")));
@@ -28,7 +28,7 @@ const AppRegistrationForm = Loadable(lazy(() => import("./registrations/Registra
 
 // ===== Reports =====
 const AppHospital_report = Loadable(lazy(() => import("./reports/Hospital_Report")));
-const AppAccountSummaryPage = Loadable(lazy(() => import("./reports/AccountSummaryPage.jsx")));  
+const AppAccountSummaryPage = Loadable(lazy(() => import("./reports/AccountSummaryPage.jsx")));
 const AppAddlogs = Loadable(lazy(() => import("./logs/logs")));
 const AppMedicationStockTable = Loadable(lazy(() => import("./reports/medication-stock/MedicationStockTable")));
 const AppMedicationStockChart = Loadable(lazy(() => import("./reports/medication-stock/MedicationStockChart")));
@@ -36,11 +36,24 @@ const AppSalesTable = Loadable(lazy(() => import("./reports/sales/SalesTable")))
 const AppSalesChart = Loadable(lazy(() => import("./reports/sales/SalesChart")));
 const AppDashboardDailyChart = Loadable(lazy(() => import("./reports/dashboard/DashboardDailyChart")));
 const AppDashboardDailyTable = Loadable(lazy(() => import("./reports/dashboard/DashboardDailyTable")));
-const ExaminationPage = Loadable(
-  lazy(() => import("./examinations/ExaminationPage"))
-);
-// ===== ✅ صفحه استاک (مدیریت موجودی انبار) =====
+const ExaminationPage = Loadable(lazy(() => import("./examinations/ExaminationPage")));
+
+// ===== Stock =====
 const AppStock = Loadable(lazy(() => import("./stock/Stock")));
+
+// ============================================================
+// ===== ✅ صفحات لابراتوار =====
+// ============================================================
+const AppLabHematology = Loadable(lazy(() => import("./laboratory/LabHematology")));
+const AppLabUrine = Loadable(lazy(() => import("./laboratory/LabUrine")));
+const AppLabBiochemistry = Loadable(lazy(() => import("./laboratory/LabBiochemistry")));
+const AppLabBloodSugar = Loadable(lazy(() => import("./laboratory/LabBloodSugar")));
+const AppLabHIV = Loadable(lazy(() => import("./laboratory/LabHIV")));
+const AppLabHepatitisB = Loadable(lazy(() => import("./laboratory/LabHepatitisB")));
+const AppLabHepatitisC = Loadable(lazy(() => import("./laboratory/LabHepatitisC")));
+const AppLabMalaria = Loadable(lazy(() => import("./laboratory/LabMalaria")));
+const AppLabBloodGroup = Loadable(lazy(() => import("./laboratory/LabBloodGroup")));
+const AppLabResults = Loadable(lazy(() => import("./laboratory/LabResults")));
 
 // ===== Routes =====
 const materialRoutes = [
@@ -56,10 +69,7 @@ const materialRoutes = [
   { path: "/material/expansion-panel", element: <AppExpansionPanel /> },
   { path: "/material/dialog", element: <AppDialog /> },
   { path: "/material/snackbar", element: <AppSnackbar /> },
-  {
-  path: "/material/examinations",
-  element: <ExaminationPage />,
-},
+  { path: "/material/examinations", element: <ExaminationPage /> },
 
   // ===== Forms & Data Entry =====
   { path: "/material/addinformation", element: <AppAddmedication /> },
@@ -81,13 +91,24 @@ const materialRoutes = [
   { path: "/material/dashboard-daily-chart", element: <AppDashboardDailyChart /> },
   { path: "/material/dashboard-daily-table", element: <AppDashboardDailyTable /> },
 
-  // ===== ✅ مسیر استاک (مدیریت موجودی انبار) =====
-  {
-    path: "/material/stock",
-    element: <AppStock />,
-  },
+  // ===== Stock =====
+  { path: "/material/stock", element: <AppStock /> },
 
-  // ===== مسیر مدیریت کاربران فقط برای ادمین و سوپر ادمین =====
+  // ============================================================
+  // ===== ✅ صفحات لابراتوار =====
+  // ============================================================
+  { path: "/material/lab-hematology", element: <AppLabHematology /> },
+  { path: "/material/lab-urine", element: <AppLabUrine /> },
+  { path: "/material/lab-biochemistry", element: <AppLabBiochemistry /> },
+  { path: "/material/lab-blood-sugar", element: <AppLabBloodSugar /> },
+  { path: "/material/lab-hiv", element: <AppLabHIV /> },
+  { path: "/material/lab-hepatitis-b", element: <AppLabHepatitisB /> },
+  { path: "/material/lab-hepatitis-c", element: <AppLabHepatitisC /> },
+  { path: "/material/lab-malaria", element: <AppLabMalaria /> },
+  { path: "/material/lab-blood-group", element: <AppLabBloodGroup /> },
+  { path: "/material/lab-results", element: <AppLabResults /> },
+
+  // ===== Users Management (Admin Only) =====
   {
     path: "/material/users",
     element: (
@@ -96,8 +117,6 @@ const materialRoutes = [
       </AdminRoute>
     ),
   },
-
-  // ===== مسیر مدیریت رول‌ها و پرمیشن‌ها فقط برای ادمین و سوپر ادمین =====
   {
     path: "/material/roles-permissions",
     element: (
@@ -105,7 +124,7 @@ const materialRoutes = [
         <AppRolesPermissionsPage />
       </AdminRoute>
     ),
-  }
+  },
 ];
 
 export default materialRoutes;

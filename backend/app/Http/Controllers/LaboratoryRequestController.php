@@ -1053,6 +1053,62 @@ class LaboratoryRequestController extends Controller
         return $colors[$status] ?? 'secondary';
     }
 
+
+
+    // app/Http/Controllers/LaboratoryRequestController.php
+
+/**
+ * ارسال نتیجه آزمایش به بخش معالجه
+ */
+public function sendToTreatment(Request $request, $id)
+{
+    try {
+        $laboratoryRequest = LaboratoryRequest::find($id);
+        
+        if (!$laboratoryRequest) {
+            return response()->json([
+                'success' => false,
+                'message' => 'درخواست لابراتوار یافت نشد'
+            ], 404);
+        }
+
+        if ($laboratoryRequest->status !== 'completed') {
+            return response()->json([
+                'success' => false,
+                'message' => 'نتیجه آزمایش هنوز ثبت نشده است'
+            ], 400);
+        }
+
+        // به‌روزرسانی وضعیت
+        $laboratoryRequest->update([
+            'status' => 'sent_to_treatment',
+            'sent_to_treatment_at' => Carbon::now(),
+            'treatment_note' => $request->note,
+        ]);
+
+        // ثبت در لاگ
+        Log::info('نتیجه آزمایش به بخش معالجه ارسال شد', [
+            'laboratory_request_id' => $laboratoryRequest->id,
+            'reg_id' => $laboratoryRequest->reg_id,
+            'patient_id' => $laboratoryRequest->patient_id,
+            'sent_by' => auth()->user()?->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $laboratoryRequest,
+            'message' => 'نتیجه آزمایش با موفقیت به بخش معالجه ارسال شد'
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Error in sendToTreatment: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'خطا در ارسال به معالجه: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
     /**
      * تولید بارکد یکتا
      */
