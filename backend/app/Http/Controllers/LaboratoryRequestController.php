@@ -76,15 +76,179 @@ class LaboratoryRequestController extends Controller
     }
 
     /**
+     * ============================================================
+     * دریافت تمام درخواست‌های لابراتوار با اطلاعات کامل
+     * ✅ این متد برای صفحه اخذ فیس استفاده می‌شود
+     * ============================================================
+     */
+    public function getAllRequests()
+    {
+        try {
+            Log::info('📡 دریافت تمام درخواست‌های لابراتوار');
+
+            $requests = LaboratoryRequest::with([
+                'patient',
+                'registration',
+                'doctor',
+                'fee'
+            ])
+            ->orderByDesc('created_at')
+            ->get();
+
+            Log::info('✅ تعداد کل درخواست‌ها: ' . $requests->count());
+
+            // فرمت کردن داده‌ها برای فرانت‌اند
+            $formattedRequests = $requests->map(function ($request) {
+                $hasFee = !is_null($request->fee_id);
+                $fee = $request->fee;
+
+                return [
+                    'id' => $request->id,
+                    'reg_id' => $request->reg_id,
+                    'patient_id' => $request->patient_id,
+                    'doctor_id' => $request->doctor_id,
+                    
+                    // اطلاعات مریض
+                    'patient' => $request->patient ? [
+                        'id' => $request->patient->id,
+                        'first_name' => $request->patient->first_name ?? '',
+                        'last_name' => $request->patient->last_name ?? '',
+                        'full_name' => trim(($request->patient->first_name ?? '') . ' ' . ($request->patient->last_name ?? '')),
+                        'age' => $request->patient->age ?? null,
+                        'gender' => $request->patient->gender ?? null,
+                        'mobile' => $request->patient->mobile ?? null,
+                        'national_id' => $request->patient->national_id ?? null,
+                    ] : null,
+
+                    // اطلاعات مراجعه
+                    'registration' => $request->registration ? [
+                        'reg_id' => $request->registration->reg_id,
+                        'visit_number' => $request->registration->visit_number ?? null,
+                    ] : null,
+
+                    // اطلاعات داکتر
+                    'doctor' => $request->doctor ? [
+                        'id' => $request->doctor->id,
+                        'name' => $request->doctor->name ?? '',
+                    ] : null,
+
+                    // نوع و مشخصات تست
+                    'test_type' => $request->test_type,
+                    'test_type_label' => $this->getTestTypeLabel($request->test_type),
+                    'test_name' => $request->test_name ?? '',
+                    'test_description' => $request->test_description ?? '',
+                    'clinical_indication' => $request->clinical_indication ?? '',
+                    'special_notes' => $request->special_notes ?? '',
+
+                    // تاریخ‌ها
+                    'request_date' => $request->request_date,
+                    'sample_collection_date' => $request->sample_collection_date,
+                    'result_date' => $request->result_date,
+
+                    // وضعیت
+                    'status' => $request->status,
+                    'status_label' => $this->getStatusLabel($request->status),
+
+                    // بارکد
+                    'barcode' => $request->barcode,
+
+                    // فیس
+                    'fee_id' => $request->fee_id,
+                    'has_fee' => $hasFee,
+
+                    // اطلاعات فیس (اگر وجود داشته باشد)
+                    'fee' => $hasFee ? [
+                        'id' => $fee->id,
+                        'amount' => (float) $fee->amount,
+                        'paid_amount' => (float) $fee->paid_amount,
+                        'discount' => (float) $fee->discount,
+                        'remaining_amount' => (float) $fee->remaining_amount,
+                        'payment_status' => $fee->payment_status,
+                        'payment_method' => $fee->payment_method,
+                        'barcode' => $fee->barcode,
+                        'description' => $fee->description,
+                        'note' => $fee->note,
+                        'created_at' => $fee->created_at,
+                        'reg_id' => $fee->reg_id,
+                        'patient_id' => $fee->patient_id,
+                    ] : null,
+
+                    // فیلدهای مبلغ (برای نمایش در لیست)
+                    'amount' => $hasFee ? (float) $fee->amount : 0,
+                    'paid_amount' => $hasFee ? (float) $fee->paid_amount : 0,
+                    'discount_percent' => $hasFee ? (float) $fee->discount : 0,
+                    'remaining_amount' => $hasFee ? (float) $fee->remaining_amount : 0,
+                    'payment_status' => $hasFee ? $fee->payment_status : null,
+                    'payment_method' => $hasFee ? $fee->payment_method : null,
+
+                    // زمان ایجاد و ویرایش
+                    'created_at' => $request->created_at,
+                    'updated_at' => $request->updated_at,
+                ];
+            });
+
+            // جدا کردن درخواست‌های دارای فیس و بدون فیس
+            $unpaidRequests = $formattedRequests->filter(function ($request) {
+                return !$request['has_fee'];
+            })->values();
+
+            $paidRequests = $formattedRequests->filter(function ($request) {
+                return $request['has_fee'];
+            })->values();
+
+            // گروه‌بندی بر اساس reg_id برای نمایش بهتر
+            $groupedByRegId = $formattedRequests->groupBy('reg_id')->map(function ($requests, $regId) {
+                $firstRequest = $requests->first();
+                $patientName = $firstRequest['patient']['full_name'] ?? 'نامشخص';
+                $hasFeeCount = $requests->filter(function ($r) { return $r['has_fee']; })->count();
+                $unpaidCount = $requests->filter(function ($r) { return !$r['has_fee']; })->count();
+                
+                return [
+                    'reg_id' => $regId,
+                    'patient_name' => $patientName,
+                    'total_requests' => $requests->count(),
+                    'has_fee_count' => $hasFeeCount,
+                    'unpaid_count' => $unpaidCount,
+                    'requests' => $requests->values()->toArray()
+                ];
+            })->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'all_requests' => $formattedRequests->toArray(),
+                    'unpaid_requests' => $unpaidRequests->toArray(),
+                    'paid_requests' => $paidRequests->toArray(),
+                    'grouped_by_reg_id' => $groupedByRegId->toArray(),
+                    'total_requests' => $formattedRequests->count(),
+                    'total_unpaid' => $unpaidRequests->count(),
+                    'total_paid' => $paidRequests->count(),
+                    'total_registrations' => $groupedByRegId->count(),
+                ],
+                'message' => 'تمام درخواست‌های لابراتوار با موفقیت دریافت شد'
+            ], 200);
+
+        } catch (\Throwable $e) {
+            Log::error('❌ خطا در دریافت تمام درخواست‌های لابراتوار', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت درخواست‌ها: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * دریافت درخواست‌های لابراتوار یک مراجعه با جزئیات کامل
-     * ✅ این متد برای فرانت‌اند (تب اخذ فیس) استفاده می‌شود
      */
     public function getByRegistrationFull($registrationId)
     {
         try {
             Log::info('🔬 getByRegistrationFull called for registration: ' . $registrationId);
             
-            // ✅ دریافت مراجعه بر اساس reg_id
             $registration = Registrations::with(['patient', 'department', 'doctor'])
                 ->where('reg_id', $registrationId)
                 ->first();
@@ -99,7 +263,6 @@ class LaboratoryRequestController extends Controller
 
             Log::info('Registration found with reg_id: ' . $registration->reg_id);
 
-            // ✅ دریافت درخواست‌های جاری این مراجعه با reg_id
             $currentTests = LaboratoryRequest::where('reg_id', $registration->reg_id)
                 ->with(['patient', 'doctor', 'fee'])
                 ->orderBy('created_at', 'desc')
@@ -107,105 +270,20 @@ class LaboratoryRequestController extends Controller
 
             Log::info('Found ' . $currentTests->count() . ' tests for reg_id: ' . $registration->reg_id);
 
-            // دریافت تاریخچه درخواست‌های قبلی این مریض
             $historyTests = LaboratoryRequest::where('patient_id', $registration->patient_id)
                 ->where('reg_id', '!=', $registration->reg_id)
                 ->with(['patient', 'doctor', 'fee', 'registration'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // فرمت کردن اطلاعات برای فرانت‌اند
             $formattedCurrent = $currentTests->map(function($test) {
-                return [
-                    'id' => $test->id,
-                    'reg_id' => $test->reg_id,
-                    'patient_id' => $test->patient_id,
-                    'doctor_id' => $test->doctor_id,
-                    'test_type' => $test->test_type,
-                    'test_type_label' => $this->getTestTypeLabel($test->test_type),
-                    'test_name' => $test->test_name ?? '',
-                    'test_description' => $test->test_description ?? '',
-                    'clinical_indication' => $test->clinical_indication ?? '',
-                    'special_notes' => $test->special_notes ?? '',
-                    'request_date' => $test->request_date,
-                    'sample_collection_date' => $test->sample_collection_date,
-                    'status' => $test->status,
-                    'status_label' => $this->getStatusLabel($test->status),
-                    'barcode' => $test->barcode,
-                    'fee_id' => $test->fee_id,
-                    'has_fee' => $test->fee_id !== null,
-                    'amount' => $test->fee ? (float) $test->fee->amount : 0,
-                    'paid_amount' => $test->fee ? (float) $test->fee->paid_amount : 0,
-                    'discount' => $test->fee ? (float) $test->fee->discount : 0,
-                    'remaining_amount' => $test->fee ? (float) $test->fee->remaining_amount : 0,
-                    'payment_status' => $test->fee ? $test->fee->payment_status : null,
-                    'payment_method' => $test->fee ? $test->fee->payment_method : null,
-                    'results' => $test->results,
-                    'result_date' => $test->result_date,
-                    'result_file_path' => $test->result_file_path,
-                    'created_at' => $test->created_at,
-                    'updated_at' => $test->updated_at,
-                    'doctor' => $test->doctor ? [
-                        'id' => $test->doctor->id,
-                        'name' => $test->doctor->name ?? $test->doctor->full_name ?? null,
-                    ] : null,
-                    'fee' => $test->fee ? [
-                        'id' => $test->fee->id,
-                        'amount' => (float) $test->fee->amount,
-                        'paid_amount' => (float) $test->fee->paid_amount,
-                        'discount' => (float) $test->fee->discount,
-                        'remaining_amount' => (float) $test->fee->remaining_amount,
-                        'payment_status' => $test->fee->payment_status,
-                        'payment_method' => $test->fee->payment_method,
-                    ] : null,
-                    'patient' => $test->patient ? [
-                        'id' => $test->patient->id,
-                        'first_name' => $test->patient->first_name,
-                        'last_name' => $test->patient->last_name,
-                        'mobile' => $test->patient->mobile,
-                    ] : null,
-                    'can_edit' => !in_array($test->status, ['completed', 'cancelled', 'sent_to_lab']),
-                    'can_delete' => !in_array($test->status, ['completed', 'in_progress', 'sample_taken', 'sent_to_lab']) && !$test->fee_id,
-                    'can_print' => true,
-                    'can_send_to_lab' => $test->status === 'pending' && $test->fee_id !== null,
-                ];
+                return $this->formatForFrontend($test);
             });
 
             $formattedHistory = $historyTests->map(function($test) {
-                return [
-                    'id' => $test->id,
-                    'reg_id' => $test->reg_id,
-                    'patient_id' => $test->patient_id,
-                    'doctor_id' => $test->doctor_id,
-                    'test_type' => $test->test_type,
-                    'test_type_label' => $this->getTestTypeLabel($test->test_type),
-                    'test_name' => $test->test_name ?? '',
-                    'test_description' => $test->test_description ?? '',
-                    'clinical_indication' => $test->clinical_indication ?? '',
-                    'special_notes' => $test->special_notes ?? '',
-                    'request_date' => $test->request_date,
-                    'sample_collection_date' => $test->sample_collection_date,
-                    'status' => $test->status,
-                    'status_label' => $this->getStatusLabel($test->status),
-                    'barcode' => $test->barcode,
-                    'fee_id' => $test->fee_id,
-                    'has_fee' => $test->fee_id !== null,
-                    'amount' => $test->fee ? (float) $test->fee->amount : 0,
-                    'created_at' => $test->created_at,
-                    'updated_at' => $test->updated_at,
-                    'doctor' => $test->doctor ? [
-                        'id' => $test->doctor->id,
-                        'name' => $test->doctor->name ?? $test->doctor->full_name ?? null,
-                    ] : null,
-                    'registration' => $test->registration ? [
-                        'id' => $test->registration->id,
-                        'reg_id' => $test->registration->reg_id,
-                        'visit_number' => $test->registration->visit_number,
-                    ] : null,
-                ];
+                return $this->formatForFrontend($test);
             });
 
-            // اطلاعات کامل مریض
             $patient = $registration->patient;
             $patientInfo = $patient ? [
                 'id' => $patient->id,
@@ -222,7 +300,6 @@ class LaboratoryRequestController extends Controller
 
             Log::info('✅ Found ' . $currentTests->count() . ' current tests and ' . $historyTests->count() . ' history tests');
 
-            // ✅ پاسخ با ساختار مورد انتظار فرانت‌اند
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -269,51 +346,11 @@ class LaboratoryRequestController extends Controller
     }
 
     /**
-     * دریافت برچسب نوع تست
-     */
-    private function getTestTypeLabel($type)
-    {
-        $labels = [
-            'blood' => 'خون',
-            'urine' => 'ادرار',
-            'stool' => 'مدفوع',
-            'biochemistry' => 'بیوشیمی',
-            'hormonal' => 'هورمونی',
-            'microbial' => 'میکروبی',
-            'pathology' => 'پاتولوژی',
-            'genetic' => 'ژنتیک',
-            'imaging' => 'تصویربرداری',
-            'other' => 'سایر'
-        ];
-        
-        return $labels[$type] ?? $type;
-    }
-
-    /**
-     * دریافت برچسب وضعیت
-     */
-    private function getStatusLabel($status)
-    {
-        $labels = [
-            'pending' => 'در انتظار',
-            'sample_taken' => 'نمونه گرفته شده',
-            'in_progress' => 'در حال انجام',
-            'sent_to_lab' => 'ارسال به لابراتوار',
-            'completed' => 'تکمیل شده',
-            'cancelled' => 'لغو شده',
-            'rejected' => 'رد شده'
-        ];
-        
-        return $labels[$status] ?? $status;
-    }
-
-    /**
      * دریافت درخواست‌های لابراتوار یک مراجعه خاص
      */
     public function getByRegistration($registrationId)
     {
         try {
-            // ✅ دریافت با reg_id
             $registration = Registrations::with(['patient'])
                 ->where('reg_id', $registrationId)
                 ->first();
@@ -325,7 +362,6 @@ class LaboratoryRequestController extends Controller
                 ], 404);
             }
 
-            // ✅ استفاده از reg_id
             $tests = LaboratoryRequest::where('reg_id', $registration->reg_id)
                 ->with(['fee', 'doctor'])
                 ->orderBy('created_at', 'desc')
@@ -365,7 +401,6 @@ class LaboratoryRequestController extends Controller
         Log::info('Request Data: ' . json_encode($request->all()));
         
         try {
-            // ✅ دریافت با reg_id
             $registration = Registrations::with(['patient'])
                 ->where('reg_id', $registrationId)
                 ->first();
@@ -410,7 +445,6 @@ class LaboratoryRequestController extends Controller
 
             DB::beginTransaction();
 
-            // ✅ ذخیره با reg_id
             $laboratoryRequest = LaboratoryRequest::create([
                 'reg_id' => $registration->reg_id,
                 'patient_id' => $registration->patient_id,
@@ -436,7 +470,6 @@ class LaboratoryRequestController extends Controller
             Log::info('Laboratory request saved with ID: ' . $laboratoryRequest->id);
             Log::info('Saved with reg_id: ' . $laboratoryRequest->reg_id);
 
-            // ✅ دریافت درخواست‌های جاری این مراجعه با reg_id
             $currentTests = LaboratoryRequest::where('reg_id', $registration->reg_id)
                 ->with(['doctor', 'fee'])
                 ->orderBy('created_at', 'desc')
@@ -444,7 +477,6 @@ class LaboratoryRequestController extends Controller
 
             Log::info('Current tests count after store: ' . $currentTests->count());
 
-            // دریافت تمام درخواست‌های قبلی این مریض (تاریخچه)
             $historyTests = LaboratoryRequest::where('patient_id', $registration->patient_id)
                 ->where('reg_id', '!=', $registration->reg_id)
                 ->with(['doctor', 'fee', 'registration'])
@@ -886,6 +918,9 @@ class LaboratoryRequestController extends Controller
     {
         if (!$test) return null;
 
+        $hasFee = !is_null($test->fee_id);
+        $fee = $test->fee;
+
         return [
             'id' => $test->id,
             'reg_id' => $test->reg_id,
@@ -904,20 +939,39 @@ class LaboratoryRequestController extends Controller
             'status_badge_color' => $this->getStatusBadgeColor($test->status),
             'barcode' => $test->barcode,
             'fee_id' => $test->fee_id,
-            'has_fee' => $test->fee_id !== null,
+            'has_fee' => $hasFee,
             'results' => $test->results,
             'result_date' => $test->result_date,
             'result_file_path' => $test->result_file_path,
             'created_at' => $test->created_at,
             'updated_at' => $test->updated_at,
+            
+            // اطلاعات کامل فیس
+            'fee' => $hasFee ? [
+                'id' => $fee->id,
+                'amount' => (float) $fee->amount,
+                'paid_amount' => (float) $fee->paid_amount,
+                'discount' => (float) $fee->discount,
+                'remaining_amount' => (float) $fee->remaining_amount,
+                'payment_status' => $fee->payment_status,
+                'payment_method' => $fee->payment_method,
+                'barcode' => $fee->barcode,
+                'description' => $fee->description,
+                'note' => $fee->note,
+                'created_at' => $fee->created_at,
+            ] : null,
+            
+            // فیلدهای مبلغ برای نمایش
+            'amount' => $hasFee ? (float) $fee->amount : 0,
+            'paid_amount' => $hasFee ? (float) $fee->paid_amount : 0,
+            'discount_percent' => $hasFee ? (float) $fee->discount : 0,
+            'remaining_amount' => $hasFee ? (float) $fee->remaining_amount : 0,
+            'payment_status' => $hasFee ? $fee->payment_status : null,
+            'payment_method' => $hasFee ? $fee->payment_method : null,
+            
             'doctor' => $test->doctor ? [
                 'id' => $test->doctor->id,
                 'name' => $test->doctor->name ?? $test->doctor->full_name ?? null,
-            ] : null,
-            'fee' => $test->fee ? [
-                'id' => $test->fee->id,
-                'amount' => $test->fee->amount,
-                'status' => $test->fee->status,
             ] : null,
             'registration' => $test->registration ? [
                 'id' => $test->registration->id,
@@ -928,6 +982,7 @@ class LaboratoryRequestController extends Controller
                 'id' => $test->patient->id,
                 'first_name' => $test->patient->first_name,
                 'last_name' => $test->patient->last_name,
+                'full_name' => trim(($test->patient->first_name ?? '') . ' ' . ($test->patient->last_name ?? '')),
                 'national_id' => $test->patient->national_id,
                 'mobile' => $test->patient->mobile,
                 'gender' => $test->patient->gender,
@@ -939,6 +994,45 @@ class LaboratoryRequestController extends Controller
             'can_print' => true,
             'can_send_to_lab' => $test->status === 'pending' && $test->fee_id !== null,
         ];
+    }
+
+    /**
+     * دریافت برچسب نوع تست
+     */
+    private function getTestTypeLabel($type)
+    {
+        $labels = [
+            'blood' => 'خون',
+            'urine' => 'ادرار',
+            'stool' => 'مدفوع',
+            'biochemistry' => 'بیوشیمی',
+            'hormonal' => 'هورمونی',
+            'microbial' => 'میکروبی',
+            'pathology' => 'پاتولوژی',
+            'genetic' => 'ژنتیک',
+            'imaging' => 'تصویربرداری',
+            'other' => 'سایر'
+        ];
+        
+        return $labels[$type] ?? $type;
+    }
+
+    /**
+     * دریافت برچسب وضعیت
+     */
+    private function getStatusLabel($status)
+    {
+        $labels = [
+            'pending' => 'در انتظار',
+            'sample_taken' => 'نمونه گرفته شده',
+            'in_progress' => 'در حال انجام',
+            'sent_to_lab' => 'ارسال به لابراتوار',
+            'completed' => 'تکمیل شده',
+            'cancelled' => 'لغو شده',
+            'rejected' => 'رد شده'
+        ];
+        
+        return $labels[$status] ?? $status;
     }
 
     /**

@@ -136,7 +136,6 @@ Route::middleware('auth:sanctum')->group(function () {
     // ============================================================
     Route::prefix('doctor')->group(function () {
         
-        // ===== مسیرهای درمانی (DoctorTreatmentController) =====
         Route::get('/treatment/active', [DoctorTreatmentController::class,'activePatients']);
         Route::get('/queue', [DoctorTreatmentController::class, 'doctorQueue']);
         Route::post('/treatment/progress/save', [DoctorTreatmentController::class, 'saveProgress']);
@@ -190,15 +189,16 @@ Route::middleware('auth:sanctum')->group(function () {
     // ============================================================
     Route::prefix('laboratory-requests')->group(function () {
 
+        // ✅ دریافت تمام درخواست‌های لابراتوار (برای صفحه فیس)
+        Route::get('/all', [LaboratoryRequestController::class, 'getAllRequests']);
+
         // لیست تمام درخواست‌ها
         Route::get('/', [LaboratoryRequestController::class, 'index']);
         
-        // ✅ درخواست‌های یک مراجعه با جزئیات کامل (GET - با جزئیات کامل برای جدول)
-        // ⚠️ این مسیر باید قبل از مسیر ساده قرار گیرد
+        // درخواست‌های یک مراجعه با جزئیات کامل
         Route::get('/registration/{registrationId}/full', [LaboratoryRequestController::class, 'getByRegistrationFull']);
 
         // درخواست‌های یک مراجعه (GET - ساده)
-        // ⚠️ این مسیر باید بعد از مسیر کامل قرار گیرد
         Route::get('/registration/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
 
         // ثبت درخواست جدید (POST)
@@ -218,25 +218,31 @@ Route::middleware('auth:sanctum')->group(function () {
     });
     
     // ============================================================
-    // ROUTES مدیریت فیس‌های لابراتوار
+    // مسیرهای مدیریت فیس‌های لابراتوار
     // ============================================================
     Route::prefix('laboratory-fees')->group(function () {
-        // ✅ لیست فیس‌ها
+        // لیست فیس‌ها
         Route::get('/', [LaboratoryFeeController::class, 'index']);
         
-        // ✅ دریافت درخواست‌های بدون فیس با reg_id
-       Route::get('/unpaid', [LaboratoryFeeController::class, 'getUnpaidRequests']);
+        // دریافت تمام درخواست‌های لابراتوار تمام مراجعه‌کنندگان
+        Route::get('/all-requests', [LaboratoryFeeController::class, 'getAllRequests']);
         
-        // ✅ ثبت فیس جدید با reg_id
+        // دریافت درخواست‌های یک مراجعه خاص
+        Route::get('/reg-id/{regId}', [LaboratoryFeeController::class, 'getRequestsByRegId']);
+        
+        // دریافت درخواست‌های بدون فیس با reg_id
+        Route::get('/unpaid/{regId}', [LaboratoryFeeController::class, 'getUnpaidRequests']);
+        
+        // ثبت فیس جدید با reg_id
         Route::post('/registration/{regId}', [LaboratoryFeeController::class, 'store']);
         
-        // ✅ ویرایش فیس
+        // ویرایش فیس
         Route::put('/{id}', [LaboratoryFeeController::class, 'update']);
         
-        // ✅ حذف فیس
+        // حذف فیس
         Route::delete('/{id}', [LaboratoryFeeController::class, 'destroy']);
         
-        // ✅ نمایش یک فیس
+        // نمایش یک فیس
         Route::get('/{id}', [LaboratoryFeeController::class, 'show']);
     });
 
@@ -297,7 +303,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/', [RegistrationsController::class, 'store']);
         Route::get('/', [RegistrationsController::class, 'index']);
 
-        // مسیرهای ثابت باید قبل از {reg_id} باشند
         Route::get('/statistics', [RegistrationsController::class, 'statistics']);
         Route::get('/today', [RegistrationsController::class, 'todayRegistrations']);
 

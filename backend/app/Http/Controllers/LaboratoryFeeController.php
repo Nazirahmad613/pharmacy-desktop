@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\LaboratoryFee;
 use App\Models\Registrations;
 use App\Models\LaboratoryRequest;
-
+use App\Models\QRCode;
 use App\Models\Journal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;  // ✅ اضافه شده
+ 
 
 class LaboratoryFeeController extends Controller
 {
@@ -85,254 +85,179 @@ class LaboratoryFeeController extends Controller
 
     /**
      * ============================================================
-     * دریافت درخواست‌های لابراتوار بدون فیس
+     * دریافت درخواست‌های لابراتوار بر اساس reg_id
      * ============================================================
      */
-   /**
- * ============================================================
- * دریافت تمام درخواست‌های لابراتوار تمام مریضان
- * ============================================================
- *
- * نکته:
- * این متد عمداً بر اساس reg_id فیلتر نمی‌کند.
- * هدف این است که تمام درخواست‌های لابراتوار مربوط به تمام
- * مریضان سیستم نمایش داده شود؛ چه دارای فیس و چه بدون فیس.
- */
-public function getUnpaidRequests($regId = null)
-{
-    try {
+    public function getUnpaidRequests($regId = null)
+    {
+        try {
+            // اگر reg_id مشخص شده، فقط درخواست‌های آن مراجعه را بگیر
+            if ($regId) {
+                $allRequests = LaboratoryRequest::with([
+                    'doctor',
+                    'fee',
+                    'patient',
+                    'registration'
+                ])
+                ->where('reg_id', $regId)
+                ->orderByDesc('created_at')
+                ->get();
+            } else {
+                // اگر reg_id مشخص نشده، تمام درخواست‌ها را بگیر
+                $allRequests = LaboratoryRequest::with([
+                    'doctor',
+                    'fee',
+                    'patient',
+                    'registration'
+                ])
+                ->orderByDesc('created_at')
+                ->get();
+            }
 
-        /*
-        |--------------------------------------------------------------------------
-        | دریافت تمام درخواست‌های لابراتوار
-        |--------------------------------------------------------------------------
-        |
-        | هیچ where('reg_id', ...) در اینجا وجود ندارد.
-        | بنابراین درخواست‌های تمام مریضان دریافت می‌شود.
-        |
-        */
-        $allRequests = LaboratoryRequest::with([
-            'doctor',
-            'fee',
-            'patient',
-            'registration'
-        ])
-        ->orderByDesc('created_at')
-        ->get();
+            // فرمت کردن درخواست‌ها
+            $formattedRequests = $allRequests->map(function ($request) {
+                $fee = $request->fee;
+                $hasFee = !is_null($fee);
 
+                return [
+                    'id' => $request->id,
+                    'reg_id' => $request->reg_id,
+                    'patient_id' => $request->patient_id,
+                    'doctor_id' => $request->doctor_id,
+                    
+                    // اطلاعات مریض
+                    'patient' => $request->patient ? [
+                        'id' => $request->patient->id,
+                        'first_name' => $request->patient->first_name ?? '',
+                        'last_name' => $request->patient->last_name ?? '',
+                        'full_name' => trim(($request->patient->first_name ?? '') . ' ' . ($request->patient->last_name ?? '')),
+                        'age' => $request->patient->age ?? null,
+                        'gender' => $request->patient->gender ?? null,
+                        'mobile' => $request->patient->mobile ?? null,
+                        'national_id' => $request->patient->national_id ?? null,
+                    ] : null,
 
-        /*
-        |--------------------------------------------------------------------------
-        | درخواست‌های بدون فیس
-        |--------------------------------------------------------------------------
-        */
-        $unpaidRequests = $allRequests
-            ->filter(function ($request) {
-                return is_null($request->fee_id);
-            })
-            ->values();
+                    // اطلاعات مراجعه
+                    'registration' => $request->registration ? [
+                        'reg_id' => $request->registration->reg_id,
+                        'visit_number' => $request->registration->visit_number ?? null,
+                    ] : null,
 
+                    // اطلاعات داکتر
+                    'doctor' => $request->doctor ? [
+                        'id' => $request->doctor->id,
+                        'name' => $request->doctor->name ?? '',
+                    ] : null,
 
-        /*
-        |--------------------------------------------------------------------------
-        | درخواست‌های دارای فیس
-        |--------------------------------------------------------------------------
-        */
-        $paidRequests = $allRequests
-            ->filter(function ($request) {
-                return !is_null($request->fee_id);
-            })
-            ->values();
+                    // نوع و مشخصات تست
+                    'test_type' => $request->test_type,
+                    'test_type_label' => $this->getTestTypeLabel($request->test_type),
+                    'test_name' => $request->test_name ?? '',
+                    'test_description' => $request->test_description ?? '',
+                    'clinical_indication' => $request->clinical_indication ?? '',
+                    'special_notes' => $request->special_notes ?? '',
 
+                    // تاریخ‌ها
+                    'request_date' => $request->request_date,
+                    'sample_collection_date' => $request->sample_collection_date,
+                    'result_date' => $request->result_date,
 
-        /*
-        |--------------------------------------------------------------------------
-        | فرمت کردن درخواست‌های بدون فیس
-        |--------------------------------------------------------------------------
-        */
-        $formattedUnpaid = $unpaidRequests->map(function ($request) {
+                    // وضعیت
+                    'status' => $request->status,
+                    'status_label' => $this->getStatusLabel($request->status),
 
-            return [
-                'id' => $request->id,
+                    // بارکد
+                    'barcode' => $request->barcode,
 
-                // اطلاعات مراجعه
-                'reg_id' => $request->reg_id,
+                    // فیس
+                    'fee_id' => $request->fee_id,
+                    'has_fee' => $hasFee,
 
-                // اطلاعات مریض
-                'patient_id' => $request->patient_id,
+                    // اطلاعات فیس (اگر وجود داشته باشد)
+                    'fee' => $hasFee ? [
+                        'id' => $fee->id,
+                        'amount' => (float) $fee->amount,
+                        'paid_amount' => (float) $fee->paid_amount,
+                        'discount' => (float) $fee->discount,
+                        'remaining_amount' => (float) $fee->remaining_amount,
+                        'payment_status' => $fee->payment_status,
+                        'payment_method' => $fee->payment_method,
+                        'barcode' => $fee->barcode,
+                        'description' => $fee->description,
+                        'note' => $fee->note,
+                        'created_at' => $fee->created_at,
+                    ] : null,
 
-                // اطلاعات داکتر
-                'doctor_id' => $request->doctor_id,
+                    // فیلدهای مبلغ (برای نمایش در لیست)
+                    'amount' => $hasFee ? (float) $fee->amount : 0,
+                    'paid_amount' => $hasFee ? (float) $fee->paid_amount : 0,
+                    'discount_percent' => $hasFee ? (float) $fee->discount : 0,
+                    'remaining_amount' => $hasFee ? (float) $fee->remaining_amount : 0,
+                    'payment_status' => $hasFee ? $fee->payment_status : null,
+                    'payment_method' => $hasFee ? $fee->payment_method : null,
 
-                // نوع و مشخصات تست
-                'test_type' => $request->test_type,
-                'test_type_label' => $this->getTestTypeLabel(
-                    $request->test_type
-                ),
+                    // زمان ایجاد و ویرایش
+                    'created_at' => $request->created_at,
+                    'updated_at' => $request->updated_at,
+                ];
+            });
 
-                'test_name' => $request->test_name ?? '',
-                'test_description' => $request->test_description ?? '',
-                'clinical_indication' => $request->clinical_indication ?? '',
-                'special_notes' => $request->special_notes ?? '',
+            // جدا کردن درخواست‌های دارای فیس و بدون فیس
+            $unpaidRequests = $formattedRequests->filter(function ($request) {
+                return !$request['has_fee'];
+            })->values();
 
-                // تاریخ‌ها
-                'request_date' => $request->request_date,
-                'sample_collection_date' => $request->sample_collection_date,
+            $paidRequests = $formattedRequests->filter(function ($request) {
+                return $request['has_fee'];
+            })->values();
 
-                // وضعیت
-                'status' => $request->status,
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'all_requests' => $formattedRequests->toArray(),
+                    'unpaid_requests' => $unpaidRequests->toArray(),
+                    'paid_requests' => $paidRequests->toArray(),
+                    'total_requests' => $formattedRequests->count(),
+                    'total_unpaid' => $unpaidRequests->count(),
+                    'total_paid' => $paidRequests->count(),
+                ],
+                'message' => $regId 
+                    ? "درخواست‌های لابراتوار مراجعه {$regId} با موفقیت دریافت شد"
+                    : "تمام درخواست‌های لابراتوار با موفقیت دریافت شد",
+            ], 200);
 
-                // بارکد
-                'barcode' => $request->barcode,
+        } catch (\Throwable $e) {
+            Log::error('خطا در دریافت درخواست‌های لابراتوار', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'reg_id' => $regId,
+            ]);
 
-                // فیس
-                'fee_id' => $request->fee_id,
-                'has_fee' => false,
-
-                // چون فیس ندارد
-                'amount' => 0,
-                'paid_amount' => 0,
-                'discount' => 0,
-                'remaining_amount' => 0,
-                'payment_status' => null,
-                'payment_method' => null,
-
-                // زمان ایجاد و ویرایش
-                'created_at' => $request->created_at,
-                'updated_at' => $request->updated_at,
-            ];
-        });
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | فرمت کردن درخواست‌های دارای فیس
-        |--------------------------------------------------------------------------
-        */
-        $formattedPaid = $paidRequests->map(function ($request) {
-
-            $fee = $request->fee;
-
-            return [
-                'id' => $request->id,
-
-                // اطلاعات مراجعه
-                'reg_id' => $request->reg_id,
-
-                // اطلاعات مریض
-                'patient_id' => $request->patient_id,
-
-                // اطلاعات داکتر
-                'doctor_id' => $request->doctor_id,
-
-                // نوع و مشخصات تست
-                'test_type' => $request->test_type,
-                'test_type_label' => $this->getTestTypeLabel(
-                    $request->test_type
-                ),
-
-                'test_name' => $request->test_name ?? '',
-                'test_description' => $request->test_description ?? '',
-                'clinical_indication' => $request->clinical_indication ?? '',
-                'special_notes' => $request->special_notes ?? '',
-
-                // تاریخ‌ها
-                'request_date' => $request->request_date,
-                'sample_collection_date' => $request->sample_collection_date,
-
-                // وضعیت
-                'status' => $request->status,
-
-                // بارکد
-                'barcode' => $request->barcode,
-
-                // فیس
-                'fee_id' => $request->fee_id,
-                'has_fee' => true,
-
-                'amount' => $fee
-                    ? (float) $fee->amount
-                    : 0,
-
-                'paid_amount' => $fee
-                    ? (float) $fee->paid_amount
-                    : 0,
-
-                'discount' => $fee
-                    ? (float) $fee->discount
-                    : 0,
-
-                'remaining_amount' => $fee
-                    ? (float) $fee->remaining_amount
-                    : 0,
-
-                'payment_status' => $fee
-                    ? $fee->payment_status
-                    : null,
-
-                'payment_method' => $fee
-                    ? $fee->payment_method
-                    : null,
-
-                // زمان‌ها
-                'created_at' => $request->created_at,
-                'updated_at' => $request->updated_at,
-            ];
-        });
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | پاسخ نهایی
-        |--------------------------------------------------------------------------
-        */
-        return response()->json([
-            'success' => true,
-
-            'data' => [
-
-                // تمام درخواست‌های بدون فیس
-                'unpaid_requests' => $formattedUnpaid->toArray(),
-
-                // تمام درخواست‌های دارای فیس
-                'paid_requests' => $formattedPaid->toArray(),
-
-                // اطلاعات آماری
-                'has_unpaid_requests' => $unpaidRequests->isNotEmpty(),
-
-                'total_unpaid_requests' => $unpaidRequests->count(),
-
-                'has_paid_requests' => $paidRequests->isNotEmpty(),
-
-                'total_paid_requests' => $paidRequests->count(),
-
-                'total_requests' => $allRequests->count(),
-            ],
-
-            'message' => 'تمام درخواست‌های لابراتوار تمام مریضان با موفقیت دریافت شد',
-
-        ], 200);
-
-
-    } catch (\Throwable $e) {
-
-        /*
-        |--------------------------------------------------------------------------
-        | مدیریت خطا
-        |--------------------------------------------------------------------------
-        */
-        Log::error('خطا در دریافت درخواست‌های لابراتوار', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'خطا در دریافت درخواست‌های لابراتوار',
-            'error' => $e->getMessage(),
-        ], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت درخواست‌های لابراتوار',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
-}
+
+    /**
+     * ============================================================
+     * دریافت برچسب وضعیت
+     * ============================================================
+     */
+    private function getStatusLabel($status)
+    {
+        $labels = [
+            'pending' => 'در انتظار',
+            'sample_collected' => 'نمونه گرفته شده',
+            'in_progress' => 'در حال انجام',
+            'completed' => 'تکمیل شده',
+            'rejected' => 'رد شده',
+            'cancelled' => 'لغو شده',
+        ];
+        return $labels[$status] ?? $status;
+    }
 
     /**
      * ============================================================
@@ -433,7 +358,7 @@ public function getUnpaidRequests($regId = null)
                 }
             }
 
-            // ✅ تولید QR با try-catch
+            // تولید QR با try-catch
             try {
                 $this->generateQRCode($fee);
             } catch (\Throwable $e) {
@@ -443,7 +368,7 @@ public function getUnpaidRequests($regId = null)
                 ]);
             }
 
-            // ✅ همگام‌سازی با Journal با try-catch
+            // همگام‌سازی با Journal با try-catch
             try {
                 $this->syncJournal($fee);
             } catch (\Throwable $e) {
@@ -475,6 +400,244 @@ public function getUnpaidRequests($regId = null)
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در ثبت فیس: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ============================================================
+     * نمایش یک فیس
+     * ============================================================
+     */
+    public function show($id)
+    {
+        try {
+            $fee = LaboratoryFee::with([
+                'patient',
+                'registration',
+                'laboratoryRequest',
+                'qrCode',
+                'laboratoryRequests'
+            ])->find($id);
+
+            if (!$fee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'فیس یافت نشد'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $fee,
+                'message' => 'فیس با موفقیت دریافت شد'
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('خطا در نمایش فیس', [
+                'id' => $id,
+                'message' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در نمایش فیس'
+            ], 500);
+        }
+    }
+
+    /**
+     * ============================================================
+     * ویرایش فیس
+     * ============================================================
+     */
+    public function update(Request $request, $id)
+    {
+        try {
+            $fee = LaboratoryFee::find($id);
+
+            if (!$fee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'فیس یافت نشد'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'amount' => ['nullable', 'numeric', 'min:0'],
+                'paid_amount' => ['nullable', 'numeric', 'min:0'],
+                'payment_method' => ['nullable', 'in:cash,card,online,insurance'],
+                'discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'description' => ['nullable', 'string'],
+                'note' => ['nullable', 'string'],
+                'payment_status' => ['nullable', 'in:pending,partial,paid'],
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'خطا در اعتبارسنجی',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                // به‌روزرسانی فیلدها
+                if ($request->has('amount')) {
+                    $fee->amount = (float) $request->amount;
+                }
+
+                if ($request->has('paid_amount')) {
+                    $fee->paid_amount = (float) $request->paid_amount;
+                }
+
+                if ($request->has('discount')) {
+                    $fee->discount = (float) $request->discount;
+                }
+
+                if ($request->has('payment_method')) {
+                    $fee->payment_method = $request->payment_method;
+                }
+
+                if ($request->has('description')) {
+                    $fee->description = $request->description;
+                }
+
+                if ($request->has('note')) {
+                    $fee->note = $request->note;
+                }
+
+                // محاسبه مجدد مقادیر
+                $amount = (float) $fee->amount;
+                $discount = (float) $fee->discount;
+                $discountAmount = $amount * ($discount / 100);
+                $netAmount = $amount - $discountAmount;
+                $paidAmount = (float) $fee->paid_amount;
+
+                if ($paidAmount > $netAmount) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'مبلغ پرداختی نمی‌تواند بیشتر از مبلغ قابل پرداخت باشد'
+                    ], 422);
+                }
+
+                $fee->remaining_amount = $netAmount - $paidAmount;
+
+                // به‌روزرسانی وضعیت پرداخت
+                if ($fee->remaining_amount <= 0) {
+                    $fee->payment_status = 'paid';
+                } elseif ($fee->paid_amount > 0) {
+                    $fee->payment_status = 'partial';
+                } else {
+                    $fee->payment_status = 'pending';
+                }
+
+                // اگر payment_status در ریکوئست ارسال شده، آن را اعمال کن
+                if ($request->has('payment_status')) {
+                    $fee->payment_status = $request->payment_status;
+                }
+
+                $fee->save();
+
+                // همگام‌سازی مجدد با Journal
+                try {
+                    $this->syncJournal($fee);
+                } catch (\Throwable $e) {
+                    Log::error('خطا در همگام‌سازی ژورنال', [
+                        'fee_id' => $fee->id,
+                        'message' => $e->getMessage()
+                    ]);
+                }
+
+                DB::commit();
+
+                $fee->load(['patient', 'registration', 'laboratoryRequest', 'qrCode']);
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $fee,
+                    'message' => 'فیس با موفقیت ویرایش شد'
+                ]);
+
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Throwable $e) {
+            Log::error('خطا در ویرایش فیس', [
+                'id' => $id,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در ویرایش فیس: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ============================================================
+     * حذف فیس
+     * ============================================================
+     */
+    public function destroy($id)
+    {
+        try {
+            $fee = LaboratoryFee::find($id);
+
+            if (!$fee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'فیس یافت نشد'
+                ], 404);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                // آپدیت کردن درخواست‌های لابراتوار
+                LaboratoryRequest::where('fee_id', $fee->id)
+                    ->update(['fee_id' => null]);
+
+                // حذف QR Code
+                if ($fee->qrCode) {
+                    $fee->qrCode->delete();
+                }
+
+                // حذف از Journal
+                Journal::where('ref_type', 'laboratory_fee')
+                    ->where('ref_id', $fee->id)
+                    ->delete();
+
+                // حذف فیس
+                $fee->delete();
+
+                DB::commit();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'فیس با موفقیت حذف شد'
+                ]);
+
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Throwable $e) {
+            Log::error('خطا در حذف فیس', [
+                'id' => $id,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در حذف فیس: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -560,7 +723,6 @@ public function getUnpaidRequests($regId = null)
             $fileName = 'qr_' . $fee->barcode . '_' . time() . '_' . Str::random(5) . '.png';
             $path = $directory . DIRECTORY_SEPARATOR . $fileName;
 
-            // ✅ استفاده از QrCode با use اضافه شده
             QrCode::format('png')
                 ->size(300)
                 ->errorCorrection('H')
@@ -596,72 +758,63 @@ public function getUnpaidRequests($regId = null)
      * همگام‌سازی با Journal
      * ============================================================
      */
-/**
- * ============================================================
- * همگام‌سازی با Journal (اصلاح شده بر اساس ساختار جدول)
- * ============================================================
- */
-private function syncJournal($fee)
-{
-    try {
-        // حذف رکوردهای قبلی
-        Journal::where('ref_type', 'laboratory_fee')
-            ->where('ref_id', $fee->id)
-            ->delete();
+    private function syncJournal($fee)
+    {
+        try {
+            // حذف رکوردهای قبلی
+            Journal::where('ref_type', 'laboratory_fee')
+                ->where('ref_id', $fee->id)
+                ->delete();
 
-        $patient = $fee->patient;
-        $patientName = $patient ? trim($patient->first_name . ' ' . $patient->last_name) : 'نامشخص';
-        $patientTazkira = $patient ? $patient->national_id : null;
+            $patient = $fee->patient;
+            $patientName = $patient ? trim($patient->first_name . ' ' . $patient->last_name) : 'نامشخص';
+            $patientTazkira = $patient ? $patient->national_id : null;
 
-        $requests = LaboratoryRequest::where('fee_id', $fee->id)->get();
-        $testTypes = $requests->pluck('test_type')->filter()->unique()->implode('، ');
-        $testNames = $requests->pluck('test_name')->filter()->unique()->implode('، ');
+            $requests = LaboratoryRequest::where('fee_id', $fee->id)->get();
+            $testTypes = $requests->pluck('test_type')->filter()->unique()->implode('، ');
+            $testNames = $requests->pluck('test_name')->filter()->unique()->implode('، ');
 
-        $description = 'فیس لابراتوار - ' . $patientName;
-        if ($testNames) {
-            $description .= ' - تست‌ها: ' . $testNames;
-        } elseif ($testTypes) {
-            $description .= ' - نوع تست: ' . $testTypes;
+            $description = 'فیس لابراتوار - ' . $patientName;
+            if ($testNames) {
+                $description .= ' - تست‌ها: ' . $testNames;
+            } elseif ($testTypes) {
+                $description .= ' - نوع تست: ' . $testTypes;
+            }
+            $description .= ' - بارکد: ' . $fee->barcode;
+
+            $totalAmount = (float) $fee->amount;
+            $discountAmount = $totalAmount * ((float) $fee->discount / 100);
+            $netAmount = $totalAmount - $discountAmount;
+
+            Journal::create([
+                'journal_date' => Carbon::now()->format('Y-m-d'),
+                'description' => $description,
+                'entry_type' => 'credit',
+                'amount' => $netAmount,
+                'tazkira_number' => $patientTazkira,
+                'ref_type' => 'laboratory_fee',
+                'ref_id' => $fee->id,
+                'user_id' => auth()->user()?->id,
+                'patient_id' => $fee->patient_id,
+                'reg_id' => $fee->reg_id,
+                'doc_id' => null,
+                'cust_id' => null,
+                'supplier_id' => null,
+                'med_id' => null,
+                'pres_id' => null,
+                'parchase_id' => null,
+                'pres_num' => null,
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('خطا در همگام‌سازی ژورنال', [
+                'fee_id' => $fee->id,
+                'reg_id' => $fee->reg_id,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
         }
-        $description .= ' - بارکد: ' . $fee->barcode;
-
-        $totalAmount = (float) $fee->amount;
-        $discountAmount = $totalAmount * ((float) $fee->discount / 100);
-        $netAmount = $totalAmount - $discountAmount;
-        $remaining = $netAmount - (float) $fee->paid_amount;
-
-        // ✅ ثبت در Journal با ساختار صحیح
-        Journal::create([
-            'journal_date' => Carbon::now()->format('Y-m-d'),
-            'description' => $description,
-            'entry_type' => 'credit', // یا 'debit' بسته به نوع تراکنش
-            'amount' => $netAmount,
-            'tazkira_number' => $patientTazkira,
-            'ref_type' => 'laboratory_fee',
-            'ref_id' => $fee->id,
-            'user_id' => auth()->user()?->id, // کاربر فعلی
-            'patient_id' => $fee->patient_id,
-            'reg_id' => $fee->reg_id,
-            // فیلدهای دیگر می‌توانند null باشند
-            'doc_id' => null,
-            'cust_id' => null,
-            'supplier_id' => null,
-            'med_id' => null,
-            'pres_id' => null,
-            'parchase_id' => null,
-            'pres_num' => null,
-        ]);
-
-    } catch (\Throwable $e) {
-        Log::error('خطا در همگام‌سازی ژورنال', [
-            'fee_id' => $fee->id,
-            'reg_id' => $fee->reg_id,
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        // پرتاب نمی‌کنیم تا تراکنش اصلی متوقف نشود
     }
-}
 
     /**
      * ============================================================
