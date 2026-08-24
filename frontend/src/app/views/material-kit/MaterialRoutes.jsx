@@ -45,6 +45,7 @@ const AppStock = Loadable(lazy(() => import("./stock/Stock")));
 // ===== ✅ صفحات لابراتوار =====
 // ============================================================
 const AppLabHematology = Loadable(lazy(() => import("./laboratory/LabHematology")));
+const AppLabBlood = Loadable(lazy(() => import("./laboratory/LabBlood")));
 const AppLabUrine = Loadable(lazy(() => import("./laboratory/LabUrine")));
 const AppLabBiochemistry = Loadable(lazy(() => import("./laboratory/LabBiochemistry")));
 const AppLabBloodSugar = Loadable(lazy(() => import("./laboratory/LabBloodSugar")));
@@ -95,9 +96,10 @@ const materialRoutes = [
   { path: "/material/stock", element: <AppStock /> },
 
   // ============================================================
-  // ===== ✅ صفحات لابراتوار =====
+  // ===== ✅ صفحات لابراتوار (همه مسیرها یک بار تعریف شده‌اند) =====
   // ============================================================
   { path: "/material/lab-hematology", element: <AppLabHematology /> },
+  { path: "/material/lab-blood", element: <AppLabBlood /> },
   { path: "/material/lab-urine", element: <AppLabUrine /> },
   { path: "/material/lab-biochemistry", element: <AppLabBiochemistry /> },
   { path: "/material/lab-blood-sugar", element: <AppLabBloodSugar /> },

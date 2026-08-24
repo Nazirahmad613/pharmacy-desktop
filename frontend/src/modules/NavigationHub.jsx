@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Grid,
@@ -35,6 +35,7 @@ const renderIcon = (icon, size = 48) => {
 
 export default function NavigationHub() {
   const { t } = useTranslation();
+  const navigate = useNavigate(); // ✅ اضافه شده
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [navigationStack, setNavigationStack] = useState([]);
 
@@ -68,11 +69,34 @@ export default function NavigationHub() {
   }, [navigations]);
 
   const handleGroupClick = (group) => {
+    // ✅ اگر گروه "لابراتوار" است، مستقیماً به صفحه اصلی لابراتوار هدایت کن
+    if (group.name === "لابراتوار" || group.name === "Laboratory") {
+      navigate("/material/lab-hematology");
+      return;
+    }
+
+    // ✅ اگر گروه "رادیولوژی" است، به صفحه اصلی رادیولوژی هدایت کن (اگر وجود دارد)
+    if (group.name === "رادیولوژی" || group.name === "Radiology") {
+      // اگر مسیر مشخصی دارد به آن هدایت کن، در غیر این صورت زیرمجموعه‌ها را نمایش بده
+      if (group.path) {
+        navigate(group.path);
+        return;
+      }
+      // اگر زیرمجموعه دارد، آنها را نمایش بده
+      if (group.children && group.children.length > 0) {
+        setNavigationStack([...navigationStack, selectedGroup].filter(Boolean));
+        setSelectedGroup(group);
+        return;
+      }
+      return;
+    }
+
+    // ✅ رفتار قبلی برای سایر گروه‌ها
     if (group.children && group.children.length > 0) {
       setNavigationStack([...navigationStack, selectedGroup].filter(Boolean));
       setSelectedGroup(group);
     } else if (group.path) {
-      window.location.href = group.path;
+      navigate(group.path);
     }
   };
 

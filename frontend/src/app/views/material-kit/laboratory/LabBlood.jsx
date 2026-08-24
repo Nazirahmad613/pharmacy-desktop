@@ -1,20 +1,20 @@
-// src/app/pages/laboratory/LabBloodGroup.jsx
+// src/app/pages/laboratory/LabBlood.jsx
 import React, { useState } from "react";
 import LabBasePage from "./LabBasePage";
 import BloodtypeIcon from "@mui/icons-material/Bloodtype";
 
-export default function LabBloodGroup() {
+export default function LabBlood() {
   const [badgeCount, setBadgeCount] = useState(0);
 
   return (
     <LabBasePage
-      title="🩸 گروپ خون"
-      icon={<BloodtypeIcon sx={{ color: "#3b82f6" }} />}
-      testType=""  // ❌ بدون testType - فقط با کلمات کلیدی
-      testKeywords={["گروپ خون", "blood group", "خون"]}
+      title="🧪 آزمایش خون (هماتولوژی)"
+      icon={<BloodtypeIcon sx={{ color: "#ef4444" }} />}
+      testType="blood"  // ✅ مقدار صحیح
+      testKeywords={["خون", "blood", "هماتولوژی", "hematology", "CBC"]}
       backPath="/material/lab-hematology"
       badgeCount={badgeCount}
       onBadgeCountChange={setBadgeCount}
     />
   );
-} 
+}

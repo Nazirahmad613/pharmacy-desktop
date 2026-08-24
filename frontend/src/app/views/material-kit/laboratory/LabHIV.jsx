@@ -1,5 +1,4 @@
 // src/app/pages/laboratory/LabHIV.jsx
-
 import React, { useState } from "react";
 import LabBasePage from "./LabBasePage";
 import HealingIcon from "@mui/icons-material/Healing";
@@ -9,9 +8,11 @@ export default function LabHIV() {
 
   return (
     <LabBasePage
-      title="تست HIV / AIDS"
+      title="🧫 تست HIV / AIDS"
       icon={<HealingIcon sx={{ color: "#ef4444" }} />}
+      testType=""  // ❌ بدون testType - فقط با کلمات کلیدی
       testKeywords={["hiv", "ایدز", "aids"]}
+      backPath="/material/lab-hematology"
       badgeCount={badgeCount}
       onBadgeCountChange={setBadgeCount}
     />
