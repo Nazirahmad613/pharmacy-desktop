@@ -16,6 +16,41 @@ use Illuminate\Support\Facades\DB;
 class LaboratoryRequestController extends Controller
 {
     /**
+     * ============================================================
+     * لیست کامل test_type‌های مجاز (مطابق با فرانت‌اند)
+     * ============================================================
+     */
+    private function getAllowedTestTypes()
+    {
+        return [
+            // 🩸 خون
+            'blood', 'cbc', 'blood_sugar', 'blood_group',
+            // 🧪 بیوشیمی
+            'biochemistry', 'lipid_profile', 'liver_function', 'kidney_function', 'thyroid',
+            // 🧬 هورمونی
+            'hormonal', 'reproductive_hormones', 'adrenal_hormones',
+            // 🦠 میکروبی
+            'microbial', 'bacterial_culture', 'fungal_culture', 'antibiotic_sensitivity',
+            // 🧫 سرولوژی
+            'serology', 'hepatitis_b', 'hepatitis_c', 'hiv', 'syphilis', 'rubella', 'toxoplasmosis',
+            // 💧 ادرار
+            'urine', 'urine_culture',
+            // 💩 مدفوع
+            'stool', 'stool_culture', 'occult_blood',
+            // 🔬 پاتولوژی
+            'pathology', 'biopsy', 'cytology',
+            // 🧬 ژنتیک
+            'genetic', 'pcr', 'karyotyping',
+            // 🦟 انگل‌شناسی
+            'malaria', 'parasitology', 'kala_azar', 'leishmaniasis',
+            // 📷 تصویربرداری
+            'imaging', 'ultrasound', 'xray', 'ct_scan', 'mri',
+            // 📋 سایر
+            'other', 'general',
+        ];
+    }
+
+    /**
      * دریافت لیست درخواست‌های لابراتوار
      */
     public function index(Request $request)
@@ -415,8 +450,12 @@ class LaboratoryRequestController extends Controller
 
             Log::info('Registration found with reg_id: ' . $registration->reg_id);
 
+            // ✅ استفاده از لیست کامل test_type‌ها
+            $allowedTestTypes = $this->getAllowedTestTypes();
+            $testTypesString = implode(',', $allowedTestTypes);
+
             $validator = Validator::make($request->all(), [
-                'test_type' => 'required|string|in:blood,urine,stool,biochemistry,hormonal,microbial,pathology,genetic,imaging,other',
+                'test_type' => 'required|string|in:' . $testTypesString,
                 'test_name' => 'nullable|string|max:255',
                 'test_description' => 'nullable|string',
                 'clinical_indication' => 'nullable|string',
@@ -469,6 +508,7 @@ class LaboratoryRequestController extends Controller
 
             Log::info('Laboratory request saved with ID: ' . $laboratoryRequest->id);
             Log::info('Saved with reg_id: ' . $laboratoryRequest->reg_id);
+            Log::info('Saved with test_type: ' . $laboratoryRequest->test_type);
 
             $currentTests = LaboratoryRequest::where('reg_id', $registration->reg_id)
                 ->with(['doctor', 'fee'])
@@ -584,8 +624,12 @@ class LaboratoryRequestController extends Controller
                 ], 400);
             }
 
+            // ✅ استفاده از لیست کامل test_type‌ها
+            $allowedTestTypes = $this->getAllowedTestTypes();
+            $testTypesString = implode(',', $allowedTestTypes);
+
             $validator = Validator::make($request->all(), [
-                'test_type' => 'sometimes|string|in:blood,urine,stool,biochemistry,hormonal,microbial,pathology,genetic,imaging,other',
+                'test_type' => 'sometimes|string|in:' . $testTypesString,
                 'test_name' => 'nullable|string|max:255',
                 'test_description' => 'nullable|string',
                 'clinical_indication' => 'nullable|string',
@@ -912,6 +956,56 @@ class LaboratoryRequestController extends Controller
     }
 
     /**
+     * ارسال نتیجه آزمایش به بخش معالجه
+     */
+    public function sendToTreatment(Request $request, $id)
+    {
+        try {
+            $laboratoryRequest = LaboratoryRequest::find($id);
+            
+            if (!$laboratoryRequest) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'درخواست لابراتوار یافت نشد'
+                ], 404);
+            }
+
+            if ($laboratoryRequest->status !== 'completed') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'نتیجه آزمایش هنوز ثبت نشده است'
+                ], 400);
+            }
+
+            $laboratoryRequest->update([
+                'status' => 'sent_to_treatment',
+                'sent_to_treatment_at' => Carbon::now(),
+                'treatment_note' => $request->note,
+            ]);
+
+            Log::info('نتیجه آزمایش به بخش معالجه ارسال شد', [
+                'laboratory_request_id' => $laboratoryRequest->id,
+                'reg_id' => $laboratoryRequest->reg_id,
+                'patient_id' => $laboratoryRequest->patient_id,
+                'sent_by' => auth()->user()?->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'data' => $laboratoryRequest,
+                'message' => 'نتیجه آزمایش با موفقیت به بخش معالجه ارسال شد'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in sendToTreatment: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در ارسال به معالجه: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * فرمت کردن یک درخواست لابراتوار برای فرانت‌اند
      */
     private function formatForFrontend($test)
@@ -946,7 +1040,6 @@ class LaboratoryRequestController extends Controller
             'created_at' => $test->created_at,
             'updated_at' => $test->updated_at,
             
-            // اطلاعات کامل فیس
             'fee' => $hasFee ? [
                 'id' => $fee->id,
                 'amount' => (float) $fee->amount,
@@ -961,7 +1054,6 @@ class LaboratoryRequestController extends Controller
                 'created_at' => $fee->created_at,
             ] : null,
             
-            // فیلدهای مبلغ برای نمایش
             'amount' => $hasFee ? (float) $fee->amount : 0,
             'paid_amount' => $hasFee ? (float) $fee->paid_amount : 0,
             'discount_percent' => $hasFee ? (float) $fee->discount : 0,
@@ -1002,16 +1094,63 @@ class LaboratoryRequestController extends Controller
     private function getTestTypeLabel($type)
     {
         $labels = [
+            // خون
             'blood' => 'خون',
-            'urine' => 'ادرار',
-            'stool' => 'مدفوع',
+            'cbc' => 'شمارش کامل خون (CBC)',
+            'blood_sugar' => 'قند خون',
+            'blood_group' => 'گروپ خون',
+            // بیوشیمی
             'biochemistry' => 'بیوشیمی',
+            'lipid_profile' => 'پروفایل چربی',
+            'liver_function' => 'عملکرد کبد',
+            'kidney_function' => 'عملکرد کلیه',
+            'thyroid' => 'هورمون‌های تیروئید',
+            // هورمونی
             'hormonal' => 'هورمونی',
+            'reproductive_hormones' => 'هورمون‌های تولیدمثل',
+            'adrenal_hormones' => 'هورمون‌های آدرنال',
+            // میکروبی
             'microbial' => 'میکروبی',
+            'bacterial_culture' => 'کشت باکتری',
+            'fungal_culture' => 'کشت قارچ',
+            'antibiotic_sensitivity' => 'آنتی‌بیوگرام',
+            // سرولوژی
+            'serology' => 'سرولوژی',
+            'hepatitis_b' => 'هپاتیت B',
+            'hepatitis_c' => 'هپاتیت C',
+            'hiv' => 'HIV / AIDS',
+            'syphilis' => 'سیفلیس',
+            'rubella' => 'روبلا',
+            'toxoplasmosis' => 'توکسوپلاسموز',
+            // ادرار
+            'urine' => 'ادرار',
+            'urine_culture' => 'کشت ادرار',
+            // مدفوع
+            'stool' => 'مدفوع',
+            'stool_culture' => 'کشت مدفوع',
+            'occult_blood' => 'خون مخفی مدفوع',
+            // پاتولوژی
             'pathology' => 'پاتولوژی',
+            'biopsy' => 'بیوپسی',
+            'cytology' => 'سیتولوژی',
+            // ژنتیک
             'genetic' => 'ژنتیک',
+            'pcr' => 'PCR',
+            'karyotyping' => 'کاریوتایپینگ',
+            // انگل‌شناسی
+            'malaria' => 'مالاریا',
+            'parasitology' => 'انگل‌شناسی',
+            'kala_azar' => 'کالا آزار',
+            'leishmaniasis' => 'لیشمانیوز',
+            // تصویربرداری
             'imaging' => 'تصویربرداری',
-            'other' => 'سایر'
+            'ultrasound' => 'سونوگرافی',
+            'xray' => 'رادیوگرافی',
+            'ct_scan' => 'سی‌تی اسکن',
+            'mri' => 'ام‌آرآی',
+            // سایر
+            'other' => 'سایر',
+            'general' => 'عمومی',
         ];
         
         return $labels[$type] ?? $type;
@@ -1029,7 +1168,8 @@ class LaboratoryRequestController extends Controller
             'sent_to_lab' => 'ارسال به لابراتوار',
             'completed' => 'تکمیل شده',
             'cancelled' => 'لغو شده',
-            'rejected' => 'رد شده'
+            'rejected' => 'رد شده',
+            'sent_to_treatment' => 'ارسال به معالجه',
         ];
         
         return $labels[$status] ?? $status;
@@ -1048,66 +1188,11 @@ class LaboratoryRequestController extends Controller
             'completed' => 'success',
             'cancelled' => 'danger',
             'rejected' => 'dark',
+            'sent_to_treatment' => 'success',
         ];
         
         return $colors[$status] ?? 'secondary';
     }
-
-
-
-    // app/Http/Controllers/LaboratoryRequestController.php
-
-/**
- * ارسال نتیجه آزمایش به بخش معالجه
- */
-public function sendToTreatment(Request $request, $id)
-{
-    try {
-        $laboratoryRequest = LaboratoryRequest::find($id);
-        
-        if (!$laboratoryRequest) {
-            return response()->json([
-                'success' => false,
-                'message' => 'درخواست لابراتوار یافت نشد'
-            ], 404);
-        }
-
-        if ($laboratoryRequest->status !== 'completed') {
-            return response()->json([
-                'success' => false,
-                'message' => 'نتیجه آزمایش هنوز ثبت نشده است'
-            ], 400);
-        }
-
-        // به‌روزرسانی وضعیت
-        $laboratoryRequest->update([
-            'status' => 'sent_to_treatment',
-            'sent_to_treatment_at' => Carbon::now(),
-            'treatment_note' => $request->note,
-        ]);
-
-        // ثبت در لاگ
-        Log::info('نتیجه آزمایش به بخش معالجه ارسال شد', [
-            'laboratory_request_id' => $laboratoryRequest->id,
-            'reg_id' => $laboratoryRequest->reg_id,
-            'patient_id' => $laboratoryRequest->patient_id,
-            'sent_by' => auth()->user()?->id,
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'data' => $laboratoryRequest,
-            'message' => 'نتیجه آزمایش با موفقیت به بخش معالجه ارسال شد'
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Error in sendToTreatment: ' . $e->getMessage());
-        return response()->json([
-            'success' => false,
-            'message' => 'خطا در ارسال به معالجه: ' . $e->getMessage()
-        ], 500);
-    }
-}
 
     /**
      * تولید بارکد یکتا
