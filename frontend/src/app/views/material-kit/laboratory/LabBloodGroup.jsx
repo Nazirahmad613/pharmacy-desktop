@@ -9,12 +9,12 @@ export default function LabBloodGroup() {
   return (
     <LabBasePage
       title="🩸 گروپ خون"
-      icon={<BloodtypeIcon sx={{ color: "#3b82f6" }} />}
-      testType=""  // ❌ بدون testType - فقط با کلمات کلیدی
-      testKeywords={["گروپ خون", "blood group", "خون"]}
+      icon={<BloodtypeIcon sx={{ fontSize: 40, color: "#3b82f6" }} />}
+      testType=""
+      testKeywords={["گروپ خون", "blood group", "ABO"]}
       backPath="/material/lab-hematology"
       badgeCount={badgeCount}
       onBadgeCountChange={setBadgeCount}
     />
   );
-} 
+}

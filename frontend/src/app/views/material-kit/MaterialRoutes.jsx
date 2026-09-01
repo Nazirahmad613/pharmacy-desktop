@@ -1,4 +1,4 @@
-import { lazy } from "react";
+ import { lazy } from "react";
 import Loadable from "app/components/Loadable";
 import AdminRoute from "./AdminRoute";
 
@@ -44,19 +44,13 @@ const AppStock = Loadable(lazy(() => import("./stock/Stock")));
 // ============================================================
 // ===== ✅ صفحات لابراتوار =====
 // ============================================================
+// فقط دو صفحه اصلی لابراتوار
 const AppLabHematology = Loadable(lazy(() => import("./laboratory/LabHematology")));
-const AppLabBlood = Loadable(lazy(() => import("./laboratory/LabBlood")));
-const AppLabUrine = Loadable(lazy(() => import("./laboratory/LabUrine")));
-const AppLabBiochemistry = Loadable(lazy(() => import("./laboratory/LabBiochemistry")));
-const AppLabBloodSugar = Loadable(lazy(() => import("./laboratory/LabBloodSugar")));
-const AppLabHIV = Loadable(lazy(() => import("./laboratory/LabHIV")));
-const AppLabHepatitisB = Loadable(lazy(() => import("./laboratory/LabHepatitisB")));
-const AppLabHepatitisC = Loadable(lazy(() => import("./laboratory/LabHepatitisC")));
-const AppLabMalaria = Loadable(lazy(() => import("./laboratory/LabMalaria")));
-const AppLabBloodGroup = Loadable(lazy(() => import("./laboratory/LabBloodGroup")));
 const AppLabResults = Loadable(lazy(() => import("./laboratory/LabResults")));
 
+// ============================================================
 // ===== Routes =====
+// ============================================================
 const materialRoutes = [
   // ===== Material UI Samples =====
   { path: "/material/form", element: <AppForm /> },
@@ -96,18 +90,9 @@ const materialRoutes = [
   { path: "/material/stock", element: <AppStock /> },
 
   // ============================================================
-  // ===== ✅ صفحات لابراتوار (همه مسیرها یک بار تعریف شده‌اند) =====
+  // ===== ✅ صفحات لابراتوار (فقط دو مسیر اصلی) =====
   // ============================================================
   { path: "/material/lab-hematology", element: <AppLabHematology /> },
-  { path: "/material/lab-blood", element: <AppLabBlood /> },
-  { path: "/material/lab-urine", element: <AppLabUrine /> },
-  { path: "/material/lab-biochemistry", element: <AppLabBiochemistry /> },
-  { path: "/material/lab-blood-sugar", element: <AppLabBloodSugar /> },
-  { path: "/material/lab-hiv", element: <AppLabHIV /> },
-  { path: "/material/lab-hepatitis-b", element: <AppLabHepatitisB /> },
-  { path: "/material/lab-hepatitis-c", element: <AppLabHepatitisC /> },
-  { path: "/material/lab-malaria", element: <AppLabMalaria /> },
-  { path: "/material/lab-blood-group", element: <AppLabBloodGroup /> },
   { path: "/material/lab-results", element: <AppLabResults /> },
 
   // ===== Users Management (Admin Only) =====

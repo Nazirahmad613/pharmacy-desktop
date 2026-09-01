@@ -9,8 +9,8 @@ export default function LabUrine() {
   return (
     <LabBasePage
       title="💧 آنالیز ادرار"
-      icon={<WaterIcon sx={{ color: "#fcd34d" }} />}
-      testType="urine"  // ✅ مقدار صحیح
+      icon={<WaterIcon sx={{ fontSize: 40, color: "#fcd34d" }} />}
+      testType="urine"
       testKeywords={["ادرار", "urine", "آنالیز ادرار"]}
       backPath="/material/lab-hematology"
       badgeCount={badgeCount}

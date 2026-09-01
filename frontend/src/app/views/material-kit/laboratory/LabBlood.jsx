@@ -9,9 +9,9 @@ export default function LabBlood() {
   return (
     <LabBasePage
       title="🧪 آزمایش خون (هماتولوژی)"
-      icon={<BloodtypeIcon sx={{ color: "#ef4444" }} />}
-      testType="blood"  // ✅ مقدار صحیح
-      testKeywords={["خون", "blood", "هماتولوژی", "hematology", "CBC"]}
+      icon={<BloodtypeIcon sx={{ fontSize: 40, color: "#ef4444" }} />}
+      testType="blood"
+      testKeywords={["خون", "blood", "هماتولوژی", "hematology", "cbc"]}
       backPath="/material/lab-hematology"
       badgeCount={badgeCount}
       onBadgeCountChange={setBadgeCount}

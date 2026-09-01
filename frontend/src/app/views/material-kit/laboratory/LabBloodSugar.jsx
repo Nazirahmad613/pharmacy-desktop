@@ -8,10 +8,10 @@ export default function LabBloodSugar() {
 
   return (
     <LabBasePage
-      title="🩸 قند خون (Blood Sugar)"
-      icon={<MonitorHeartIcon sx={{ color: "#ec4899" }} />}
-      testType=""  // ❌ بدون testType - فقط با کلمات کلیدی
-      testKeywords={["قند", "blood sugar", "گلوکز", "glucose"]}
+      title="🩸 قند خون"
+      icon={<MonitorHeartIcon sx={{ fontSize: 40, color: "#ec4899" }} />}
+      testType=""
+      testKeywords={["قند", "blood sugar", "گلوکز", "glucose", "FBS"]}
       backPath="/material/lab-hematology"
       badgeCount={badgeCount}
       onBadgeCountChange={setBadgeCount}

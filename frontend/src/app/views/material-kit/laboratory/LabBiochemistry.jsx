@@ -9,8 +9,8 @@ export default function LabBiochemistry() {
   return (
     <LabBasePage
       title="🧬 بیوشیمی خون"
-      icon={<BiotechIcon sx={{ color: "#8b5cf6" }} />}
-      testType="biochemistry"  // ✅ مقدار صحیح
+      icon={<BiotechIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />}
+      testType="biochemistry"
       testKeywords={["بیوشیمی", "biochemistry", "شیمیایی", "شیمی خون"]}
       backPath="/material/lab-hematology"
       badgeCount={badgeCount}

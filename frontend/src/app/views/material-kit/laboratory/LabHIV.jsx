@@ -9,8 +9,8 @@ export default function LabHIV() {
   return (
     <LabBasePage
       title="🧫 تست HIV / AIDS"
-      icon={<HealingIcon sx={{ color: "#ef4444" }} />}
-      testType=""  // ❌ بدون testType - فقط با کلمات کلیدی
+      icon={<HealingIcon sx={{ fontSize: 40, color: "#ef4444" }} />}
+      testType=""
       testKeywords={["hiv", "ایدز", "aids"]}
       backPath="/material/lab-hematology"
       badgeCount={badgeCount}

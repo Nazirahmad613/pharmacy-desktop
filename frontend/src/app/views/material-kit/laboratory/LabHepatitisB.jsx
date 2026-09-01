@@ -1,17 +1,17 @@
-// src/app/pages/laboratory/LabHepatitisB.jsx
+// src/app/pages/laboratory/LabBloodSugar.jsx
 import React, { useState } from "react";
 import LabBasePage from "./LabBasePage";
-import HealingIcon from "@mui/icons-material/Healing";
+import MonitorHeartIcon from "@mui/icons-material/MonitorHeart";
 
-export default function LabHepatitisB() {
+export default function LabBloodSugar() {
   const [badgeCount, setBadgeCount] = useState(0);
 
   return (
     <LabBasePage
-      title="🧪 تست هپاتیت B"
-      icon={<HealingIcon sx={{ color: "#f97316" }} />}
-      testType=""  // ❌ بدون testType - فقط با کلمات کلیدی
-      testKeywords={["هپاتیت b", "hepatitis b", "hbsag"]}
+      title="🩸 قند خون"
+      icon={<MonitorHeartIcon sx={{ fontSize: 40, color: "#ec4899" }} />}
+      testType=""
+      testKeywords={["قند", "blood sugar", "گلوکز", "glucose", "FBS"]}
       backPath="/material/lab-hematology"
       badgeCount={badgeCount}
       onBadgeCountChange={setBadgeCount}

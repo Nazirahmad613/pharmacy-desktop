@@ -44,6 +44,150 @@ export default function LaboratoryRequest({
   const [loadingTests, setLoadingTests] = useState(false);
   const printRef = useRef();
 
+  // ============ انواع تست با برچسب ============
+  const testTypes = [
+    // 🩸 آزمایش خون
+    { value: 'blood', label: '🩸 آزمایش خون (هماتولوژی)', category: 'خون' },
+    { value: 'cbc', label: '🩸 شمارش کامل خون (CBC)', category: 'خون' },
+    { value: 'blood_sugar', label: '🩸 قند خون (FBS / BS)', category: 'خون' },
+    { value: 'blood_group', label: '🩸 گروپ خون', category: 'خون' },
+    
+    // 🧪 بیوشیمی
+    { value: 'biochemistry', label: '🧪 بیوشیمی خون', category: 'بیوشیمی' },
+    { value: 'lipid_profile', label: '🧪 پروفایل چربی (Lipid Profile)', category: 'بیوشیمی' },
+    { value: 'liver_function', label: '🧪 عملکرد کبد (LFT)', category: 'بیوشیمی' },
+    { value: 'kidney_function', label: '🧪 عملکرد کلیه (RFT)', category: 'بیوشیمی' },
+    { value: 'thyroid', label: '🧪 هورمون‌های تیروئید (T3/T4/TSH)', category: 'بیوشیمی' },
+    
+    // 🧬 هورمونی
+    { value: 'hormonal', label: '🧬 هورمون‌ها', category: 'هورمونی' },
+    { value: 'reproductive_hormones', label: '🧬 هورمون‌های تولیدمثل', category: 'هورمونی' },
+    { value: 'adrenal_hormones', label: '🧬 هورمون‌های آدرنال', category: 'هورمونی' },
+    
+    // 🦠 میکروبی
+    { value: 'microbial', label: '🦠 آزمایش میکروبی', category: 'میکروبی' },
+    { value: 'bacterial_culture', label: '🦠 کشت باکتری', category: 'میکروبی' },
+    { value: 'fungal_culture', label: '🦠 کشت قارچ', category: 'میکروبی' },
+    { value: 'antibiotic_sensitivity', label: '🦠 آنتی‌بیوگرام', category: 'میکروبی' },
+    
+    // 🧫 سرولوژی
+    { value: 'serology', label: '🧫 سرولوژی', category: 'سرولوژی' },
+    { value: 'hepatitis_b', label: '🧪 تست هپاتیت B (HBsAg)', category: 'سرولوژی' },
+    { value: 'hepatitis_c', label: '🧪 تست هپاتیت C (Anti-HCV)', category: 'سرولوژی' },
+    { value: 'hiv', label: '🧫 تست HIV / AIDS', category: 'سرولوژی' },
+    { value: 'syphilis', label: '🧫 تست سیفلیس (VDRL)', category: 'سرولوژی' },
+    { value: 'rubella', label: '🧫 تست روبلا', category: 'سرولوژی' },
+    { value: 'toxoplasmosis', label: '🧫 تست توکسوپلاسموز', category: 'سرولوژی' },
+    
+    // 💧 ادرار
+    { value: 'urine', label: '💧 آنالیز ادرار', category: 'ادرار' },
+    { value: 'urine_culture', label: '💧 کشت ادرار', category: 'ادرار' },
+    
+    // 💩 مدفوع
+    { value: 'stool', label: '💩 آزمایش مدفوع', category: 'مدفوع' },
+    { value: 'stool_culture', label: '💩 کشت مدفوع', category: 'مدفوع' },
+    { value: 'occult_blood', label: '💩 خون مخفی مدفوع', category: 'مدفوع' },
+    
+    // 🔬 پاتولوژی
+    { value: 'pathology', label: '🔬 پاتولوژی', category: 'پاتولوژی' },
+    { value: 'biopsy', label: '🔬 بیوپسی', category: 'پاتولوژی' },
+    { value: 'cytology', label: '🔬 سیتولوژی', category: 'پاتولوژی' },
+    
+    // 🧬 ژنتیک
+    { value: 'genetic', label: '🧬 آزمایش ژنتیک', category: 'ژنتیک' },
+    { value: 'pcr', label: '🧬 PCR', category: 'ژنتیک' },
+    { value: 'karyotyping', label: '🧬 کاریوتایپینگ', category: 'ژنتیک' },
+    
+    // 🦟 انگل‌شناسی
+    { value: 'malaria', label: '🦟 تست مالاریا', category: 'انگل‌شناسی' },
+    { value: 'parasitology', label: '🦟 انگل‌شناسی', category: 'انگل‌شناسی' },
+    { value: 'kala_azar', label: '🦟 کالا آزار (لیشمانیوز احشایی)', category: 'انگل‌شناسی' },
+    { value: 'leishmaniasis', label: '🦟 لیشمانیوز', category: 'انگل‌شناسی' },
+    
+    // 📷 تصویربرداری
+    { value: 'imaging', label: '📷 تصویربرداری', category: 'تصویربرداری' },
+    { value: 'ultrasound', label: '📷 سونوگرافی', category: 'تصویربرداری' },
+    { value: 'xray', label: '📷 رادیوگرافی (X-Ray)', category: 'تصویربرداری' },
+    { value: 'ct_scan', label: '📷 سی‌تی اسکن (CT Scan)', category: 'تصویربرداری' },
+    { value: 'mri', label: '📷 ام‌آرآی (MRI)', category: 'تصویربرداری' },
+    
+    // 📋 سایر
+    { value: 'other', label: '📋 سایر آزمایشات', category: 'سایر' },
+    { value: 'general', label: '📋 عمومی', category: 'سایر' },
+  ];
+
+  // ============ نقشه نوع تست به برچسب ============
+  const testTypeLabels = {
+    // خون
+    blood: 'آزمایش خون (هماتولوژی)',
+    cbc: 'شمارش کامل خون (CBC)',
+    blood_sugar: 'قند خون',
+    blood_group: 'گروپ خون',
+    
+    // بیوشیمی
+    biochemistry: 'بیوشیمی خون',
+    lipid_profile: 'پروفایل چربی',
+    liver_function: 'عملکرد کبد',
+    kidney_function: 'عملکرد کلیه',
+    thyroid: 'هورمون‌های تیروئید',
+    
+    // هورمونی
+    hormonal: 'هورمون‌ها',
+    reproductive_hormones: 'هورمون‌های تولیدمثل',
+    adrenal_hormones: 'هورمون‌های آدرنال',
+    
+    // میکروبی
+    microbial: 'آزمایش میکروبی',
+    bacterial_culture: 'کشت باکتری',
+    fungal_culture: 'کشت قارچ',
+    antibiotic_sensitivity: 'آنتی‌بیوگرام',
+    
+    // سرولوژی
+    serology: 'سرولوژی',
+    hepatitis_b: 'تست هپاتیت B',
+    hepatitis_c: 'تست هپاتیت C',
+    hiv: 'تست HIV / AIDS',
+    syphilis: 'تست سیفلیس',
+    rubella: 'تست روبلا',
+    toxoplasmosis: 'تست توکسوپلاسموز',
+    
+    // ادرار
+    urine: 'آنالیز ادرار',
+    urine_culture: 'کشت ادرار',
+    
+    // مدفوع
+    stool: 'آزمایش مدفوع',
+    stool_culture: 'کشت مدفوع',
+    occult_blood: 'خون مخفی مدفوع',
+    
+    // پاتولوژی
+    pathology: 'پاتولوژی',
+    biopsy: 'بیوپسی',
+    cytology: 'سیتولوژی',
+    
+    // ژنتیک
+    genetic: 'آزمایش ژنتیک',
+    pcr: 'PCR',
+    karyotyping: 'کاریوتایپینگ',
+    
+    // انگل‌شناسی
+    malaria: 'تست مالاریا',
+    parasitology: 'انگل‌شناسی',
+    kala_azar: 'کالا آزار',
+    leishmaniasis: 'لیشمانیوز',
+    
+    // تصویربرداری
+    imaging: 'تصویربرداری',
+    ultrasound: 'سونوگرافی',
+    xray: 'رادیوگرافی',
+    ct_scan: 'سی‌تی اسکن',
+    mri: 'ام‌آرآی',
+    
+    // سایر
+    other: 'سایر آزمایشات',
+    general: 'عمومی',
+  };
+
   // ============ دریافت اطلاعات مریض ============
   useEffect(() => {
     if (!registration || !registration.reg_id) return;
@@ -108,54 +252,62 @@ export default function LaboratoryRequest({
   }, [registration?.reg_id]);
 
   // ============ بارگذاری تست‌ها از سرور ============
- // ============ بارگذاری تست‌ها از سرور ============
-const loadTestsFromServer = async () => {
-  if (!registration || !registration.reg_id) {
-    console.log('⚠️ No registration ID available');
-    return;
-  }
+  const loadTestsFromServer = async () => {
+    if (!registration || !registration.reg_id) {
+      console.log('⚠️ No registration ID available');
+      return;
+    }
 
-  setLoadingTests(true);
-  try {
-    // ✅ اصلاح مسیر - از registration-full به registration/full
-    const url = `/laboratory-requests/registration/${registration.reg_id}/full`;
-    console.log('📥 Loading full tests from:', url);
-    
-    const response = await api.get(url);
-    console.log('📥 Full Response:', JSON.stringify(response.data, null, 2));
-    
-    if (response.data?.success) {
-      const data = response.data.data;
+    setLoadingTests(true);
+    try {
+      const url = `/laboratory-requests/registration/${registration.reg_id}/full`;
+      console.log('📥 Loading full tests from:', url);
       
-      let testsData = [];
+      const response = await api.get(url);
+      console.log('📥 Full Response:', JSON.stringify(response.data, null, 2));
       
-      if (data.all_tests && Array.isArray(data.all_tests)) {
-        testsData = data.all_tests;
-      } else if (data.tests && Array.isArray(data.tests)) {
-        testsData = data.tests;
-      } else if (Array.isArray(data)) {
-        testsData = data;
+      if (response.data?.success) {
+        const data = response.data.data;
+        
+        let testsData = [];
+        
+        if (data.all_tests && Array.isArray(data.all_tests)) {
+          testsData = data.all_tests;
+        } else if (data.tests && Array.isArray(data.tests)) {
+          testsData = data.tests;
+        } else if (Array.isArray(data)) {
+          testsData = data;
+        }
+        
+        console.log(`✅ Loaded ${testsData.length} tests from server`);
+        setTests(testsData);
+        
+        if (setIsLabRequested) {
+          setIsLabRequested(testsData.length > 0);
+        }
+        if (setAllTests) {
+          setAllTests(testsData);
+        }
+        
+        if (testsData.length > 0 && testsData[0].barcode) {
+          setBarcode(testsData[0].barcode);
+        } else if (data.barcode) {
+          setBarcode(data.barcode);
+        }
+        
+        console.log(`✅ Successfully loaded ${testsData.length} tests`);
+      } else {
+        console.log('⚠️ No tests found or success false');
+        setTests([]);
+        if (setIsLabRequested) {
+          setIsLabRequested(false);
+        }
+        if (setAllTests) {
+          setAllTests([]);
+        }
       }
-      
-      console.log(`✅ Loaded ${testsData.length} tests from server`);
-      setTests(testsData);
-      
-      if (setIsLabRequested) {
-        setIsLabRequested(testsData.length > 0);
-      }
-      if (setAllTests) {
-        setAllTests(testsData);
-      }
-      
-      if (testsData.length > 0 && testsData[0].barcode) {
-        setBarcode(testsData[0].barcode);
-      } else if (data.barcode) {
-        setBarcode(data.barcode);
-      }
-      
-      console.log(`✅ Successfully loaded ${testsData.length} tests`);
-    } else {
-      console.log('⚠️ No tests found or success false');
+    } catch (err) {
+      console.error("❌ Error loading tests:", err);
       setTests([]);
       if (setIsLabRequested) {
         setIsLabRequested(false);
@@ -163,24 +315,14 @@ const loadTestsFromServer = async () => {
       if (setAllTests) {
         setAllTests([]);
       }
+      
+      if (err.response?.status !== 404) {
+        toast.error(`❌ خطا در بارگذاری تست‌ها: ${err.response?.data?.message || err.message}`);
+      }
+    } finally {
+      setLoadingTests(false);
     }
-  } catch (err) {
-    console.error("❌ Error loading tests:", err);
-    setTests([]);
-    if (setIsLabRequested) {
-      setIsLabRequested(false);
-    }
-    if (setAllTests) {
-      setAllTests([]);
-    }
-    
-    if (err.response?.status !== 404) {
-      toast.error(`❌ خطا در بارگذاری تست‌ها: ${err.response?.data?.message || err.message}`);
-    }
-  } finally {
-    setLoadingTests(false);
-  }
-};
+  };
 
   // ============ هندلرهای فرم ============
   const handleChange = (e) => {
@@ -270,13 +412,18 @@ const loadTestsFromServer = async () => {
           setBarcode(testsData[0].barcode);
         }
 
-        toast.success(`✅ درخواست لابراتوار با موفقیت ثبت شد (${testsData.length} تست)`);
+        // ✅ نمایش پیام موفقیت
+        const testLabel = testTypeLabels[formData.test_type] || formData.test_type;
+        toast.success(`✅ درخواست "${testLabel}" با موفقیت ثبت شد و به لابراتوار ارسال گردید`);
+
+        // ✅ فقط فرم را ریست می‌کنیم و در همان صفحه می‌مانیم
         resetForm();
         
         if (onRefresh) {
           onRefresh();
         }
         
+        // ✅ فقط لیست تست‌ها را به‌روز می‌کنیم
         setTimeout(() => {
           loadTestsFromServer();
         }, 500);
@@ -566,19 +713,6 @@ const loadTestsFromServer = async () => {
     return genderMap[gender] || gender;
   };
 
-  const testTypes = [
-    { value: 'blood', label: '🩸 آزمایش خون' },
-    { value: 'urine', label: '💧 آزمایش ادرار' },
-    { value: 'stool', label: '💩 آزمایش مدفوع' },
-    { value: 'biochemistry', label: '🧪 بیوشیمی' },
-    { value: 'hormonal', label: '🧬 هورمونی' },
-    { value: 'microbial', label: '🦠 میکروبی' },
-    { value: 'pathology', label: '🔬 پاتولوژی' },
-    { value: 'genetic', label: '🧬 ژنتیک' },
-    { value: 'imaging', label: '📷 تصویربرداری' },
-    { value: 'other', label: '📋 سایر' }
-  ];
-
   const statusColors = {
     pending: '#f59e0b',
     sample_taken: '#3b82f6',
@@ -801,6 +935,11 @@ const loadTestsFromServer = async () => {
                   <option key={type.value} value={type.value}>{type.label}</option>
                 ))}
               </select>
+              {formData.test_type && (
+                <div style={{ marginTop: '5px', fontSize: '11px', color: '#60a5fa' }}>
+                  📋 درخواست "{testTypeLabels[formData.test_type] || formData.test_type}" پس از ثبت به لابراتوار ارسال می‌شود
+                </div>
+              )}
             </div>
 
             <div style={{ marginBottom: '12px' }}>
@@ -1078,7 +1217,7 @@ const loadTestsFromServer = async () => {
         </div>
       </form>
 
-      {/* ============ اطلاعات مریض در بخش پایین ============ */}
+      {/* ============ لیست تست‌های ثبت شده با جدول ============ */}
       <div style={{ marginTop: '30px' }}>
         <div style={{
           backgroundColor: '#0f1a2a',
@@ -1129,10 +1268,6 @@ const loadTestsFromServer = async () => {
             <div>
               <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>شماره تماس</span>
               <span style={{ color: 'white', fontSize: '13px' }}>{patient.mobile || '-'}</span>
-            </div>
-            <div>
-              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>گروه خونی</span>
-              <span style={{ color: 'white', fontSize: '13px' }}>{patient.blood_group || '-'}</span>
             </div>
             <div>
               <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>شماره مراجعه</span>

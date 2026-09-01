@@ -9,8 +9,8 @@ export default function LabHepatitisC() {
   return (
     <LabBasePage
       title="🧪 تست هپاتیت C"
-      icon={<HealingIcon sx={{ color: "#f59e0b" }} />}
-      testType=""  // ❌ بدون testType - فقط با کلمات کلیدی
+      icon={<HealingIcon sx={{ fontSize: 40, color: "#f59e0b" }} />}
+      testType=""
       testKeywords={["هپاتیت c", "hepatitis c", "hcv"]}
       backPath="/material/lab-hematology"
       badgeCount={badgeCount}

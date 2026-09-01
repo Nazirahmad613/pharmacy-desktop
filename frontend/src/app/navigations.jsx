@@ -24,6 +24,9 @@ import BiotechIcon from "@mui/icons-material/Biotech";
 import HealingIcon from "@mui/icons-material/Healing";
 import MonitorHeartIcon from "@mui/icons-material/MonitorHeart";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
+import BugReportIcon from "@mui/icons-material/BugReport";
+import PsychologyIcon from "@mui/icons-material/Psychology";
+import ImageIcon from "@mui/icons-material/Image";
 
 const navigations = [
   {
@@ -89,7 +92,7 @@ const navigations = [
   },
 
   // ============================================================
-  // ✅ اصلاح شده: بخش لابراتوار
+  // ✅ بخش لابراتوار (فقط یک آیتم - همه چیز در یک صفحه)
   // ============================================================
   {
     label: "لابراتوار",
@@ -97,61 +100,10 @@ const navigations = [
   },
 
   {
-    name: "لابراتوار",
+    name: "🧪 لابراتوار",
     icon: <ScienceIcon />,
-    // ❌ حذف path تا وقتی کلیک شود باز نشود
-    children: [
-      {
-        name: "🧪 آزمایش خون (هماتولوژی)",
-        path: "/material/lab-hematology",
-        icon: <BloodtypeIcon />,
-      },
-      {
-        name: "💧 آنالیز ادرار",
-        path: "/material/lab-urine",
-        icon: <WaterIcon />,
-      },
-      {
-        name: "🧬 بیوشیمی خون",
-        path: "/material/lab-biochemistry",
-        icon: <BiotechIcon />,
-      },
-      {
-        name: "🩸 قند خون (Blood Sugar)",
-        path: "/material/lab-blood-sugar",
-        icon: <MonitorHeartIcon />,
-      },
-      {
-        name: "🧫 تست HIV / AIDS",
-        path: "/material/lab-hiv",
-        icon: <HealingIcon />,
-      },
-      {
-        name: "🧪 تست هپاتیت B",
-        path: "/material/lab-hepatitis-b",
-        icon: <HealingIcon />,
-      },
-      {
-        name: "🧪 تست هپاتیت C",
-        path: "/material/lab-hepatitis-c",
-        icon: <HealingIcon />,
-      },
-      {
-        name: "🦟 تست مالاریا",
-        path: "/material/lab-malaria",
-        icon: <HealingIcon />,
-      },
-      {
-        name: "🩸 گروپ خون",
-        path: "/material/lab-blood-group",
-        icon: <BloodtypeIcon />,
-      },
-      {
-        name: "📄 ثبت نتایج آزمایش",
-        path: "/material/lab-results",
-        icon: <FactCheckIcon />,
-      },
-    ],
+    path: "/material/lab-hematology",
+    // ❌ بدون children - همه بخش‌ها در صفحه اصلی نمایش داده می‌شوند
   },
 
   // ============================================================
