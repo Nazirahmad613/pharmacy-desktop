@@ -24,11 +24,13 @@ class LaboratoryResultController extends Controller
     public function getRequestsWithResults(Request $request)
     {
         try {
+            Log::info('📡 دریافت درخواست‌های لابراتوار با نتایج');
+
             $query = LaboratoryRequest::with([
                 'patient',
                 'registration',
                 'doctor',
-                'result'  // ← رابطه با LaboratoryResult
+                'result'
             ]);
 
             if ($request->filled('registration_id')) {
@@ -45,6 +47,8 @@ class LaboratoryResultController extends Controller
                 ->orderByDesc('created_at')
                 ->get();
 
+            Log::info('✅ تعداد درخواست‌های دریافت شده: ' . $requests->count());
+
             $formattedRequests = $requests->map(function ($request) {
                 return $this->formatRequestWithResult($request);
             });
@@ -56,7 +60,7 @@ class LaboratoryResultController extends Controller
             ], 200);
 
         } catch (\Throwable $e) {
-            Log::error('خطا در دریافت درخواست‌ها با نتایج', [
+            Log::error('❌ خطا در دریافت درخواست‌ها با نتایج', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -77,6 +81,8 @@ class LaboratoryResultController extends Controller
     public function index(Request $request)
     {
         try {
+            Log::info('📋 دریافت لیست نتایج لابراتوار');
+
             $query = LaboratoryResult::with([
                 'patient',
                 'registration',
@@ -132,7 +138,7 @@ class LaboratoryResultController extends Controller
             ], 200);
 
         } catch (\Throwable $e) {
-            Log::error('خطا در دریافت نتایج لابراتوار', [
+            Log::error('❌ خطا در دریافت نتایج لابراتوار', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -147,118 +153,27 @@ class LaboratoryResultController extends Controller
 
     /**
      * ============================================================
-     * ثبت نتیجه جدید (کامل با تمام اطلاعات)
-     * ============================================================
-     */
-    public function store(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'laboratory_request_id' => ['required', 'exists:laboratory_requests,id'],
-            'registration_id' => ['required', 'exists:registrations,reg_id'],
-            'patient_id' => ['required', 'exists:patients,id'],
-            'result_status' => ['required', 'in:Draft,Completed,Verified,Delivered,Cancelled'],
-            
-            // نتیجه اصلی
-            'result' => ['nullable', 'string'],
-            'normal_range' => ['nullable', 'string'],
-            'interpretation' => ['nullable', 'string'],
-            'remarks' => ['nullable', 'string'],
-            'recommendation' => ['nullable', 'string'],
-            
-            // فایل
-            'pdf_file' => ['nullable', 'string'],
-            'pdf_file_name' => ['nullable', 'string'],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در اعتبارسنجی',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        DB::beginTransaction();
-
-        try {
-            // تولید شماره گزارش یکتا
-            $reportNo = 'LAB' . Carbon::now()->format('Ymd') . strtoupper(Str::random(6));
-
-            $result = LaboratoryResult::create([
-                'laboratory_request_id' => $request->laboratory_request_id,
-                'registration_id' => $request->registration_id,
-                'patient_id' => $request->patient_id,
-                'report_no' => $reportNo,
-                'result_status' => $request->result_status ?? 'Draft',
-                
-                // نتیجه اصلی
-                'result' => $request->result,
-                'normal_range' => $request->normal_range,
-                'interpretation' => $request->interpretation,
-                'remarks' => $request->remarks,
-                'recommendation' => $request->recommendation,
-                
-                // فایل
-                'pdf_file' => $request->pdf_file,
-                'pdf_file_name' => $request->pdf_file_name,
-                
-                // تاریخ‌ها
-                'sample_received_at' => now(),
-                'analysis_started_at' => now(),
-                'analysis_completed_at' => $request->result_status === 'Completed' ? now() : null,
-            ]);
-
-            // به‌روزرسانی وضعیت درخواست اصلی
-            $laboratoryRequest = LaboratoryRequest::find($request->laboratory_request_id);
-            if ($laboratoryRequest) {
-                $laboratoryRequest->status = 'completed';
-                $laboratoryRequest->result_date = now();
-                $laboratoryRequest->save();
-            }
-
-            DB::commit();
-
-            // بارگذاری روابط
-            $result->load([
-                'patient',
-                'registration',
-                'laboratoryRequest'
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'data' => $this->formatResultData($result),
-                'message' => 'نتیجه لابراتوار با موفقیت ثبت شد'
-            ], 201);
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            Log::error('خطا در ثبت نتیجه لابراتوار', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در ثبت نتیجه لابراتوار',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * ============================================================
-     * آپلود فایل PDF
+     * آپلود فایل PDF (نسخه اول - با لاگ کامل)
      * ============================================================
      */
     public function uploadPdf(Request $request)
     {
+        Log::info('📤 شروع آپلود PDF', [
+            'request_data' => $request->all(),
+            'has_file' => $request->hasFile('pdf_file'),
+            'files' => $request->hasFile('pdf_file') ? 'فایل وجود دارد' : 'فایل وجود ندارد'
+        ]);
+
         $validator = Validator::make($request->all(), [
-            'pdf_file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
+            'pdf_file' => ['required', 'file', 'mimes:pdf', 'max:10240'], // 10MB
             'laboratory_request_id' => ['required', 'exists:laboratory_requests,id'],
         ]);
 
         if ($validator->fails()) {
+            Log::error('❌ خطا در اعتبارسنجی آپلود PDF', [
+                'errors' => $validator->errors()->toArray()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در اعتبارسنجی',
@@ -269,13 +184,36 @@ class LaboratoryResultController extends Controller
         try {
             $file = $request->file('pdf_file');
             $originalName = $file->getClientOriginalName();
+            $fileSize = $file->getSize();
+            $fileMime = $file->getMimeType();
+            
             $fileName = 'lab_result_' . time() . '_' . Str::random(8) . '.pdf';
+            
+            Log::info('📄 اطلاعات فایل', [
+                'original_name' => $originalName,
+                'size' => $fileSize,
+                'mime' => $fileMime,
+                'new_name' => $fileName
+            ]);
+
+            // ذخیره فایل
             $path = $file->storeAs('laboratory_results', $fileName, 'public');
+            
+            if (!$path) {
+                throw new \Exception('ذخیره فایل با شکست مواجه شد');
+            }
+            
+            $fullUrl = asset('storage/' . $path);
+            
+            Log::info('✅ فایل ذخیره شد', [
+                'path' => $path,
+                'full_url' => $fullUrl
+            ]);
 
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'pdf_url' => asset('storage/' . $path),
+                    'pdf_url' => $fullUrl,
                     'pdf_file_name' => $originalName,
                     'pdf_path' => $path,
                 ],
@@ -283,18 +221,144 @@ class LaboratoryResultController extends Controller
             ], 200);
 
         } catch (\Throwable $e) {
-            Log::error('خطا در آپلود PDF', [
+            Log::error('❌ خطا در آپلود PDF', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در آپلود فایل PDF',
+                'message' => 'خطا در آپلود فایل PDF: ' . $e->getMessage(),
                 'error' => $e->getMessage()
             ], 500);
         }
     }
+
+    /**
+     * ============================================================
+     * ثبت نتیجه جدید (نسخه اصلی با لاگ کامل)
+     * ============================================================
+     */
+  /**
+ * ============================================================
+ * ثبت نتیجه جدید با آپلود فایل (ترکیبی)
+ * ============================================================
+ */
+public function store(Request $request)
+{
+    Log::info('📝 شروع ثبت نتیجه جدید (ترکیبی)', [
+        'request_data' => $request->all(),
+        'has_file' => $request->hasFile('pdf_file')
+    ]);
+
+    $validator = Validator::make($request->all(), [
+        'laboratory_request_id' => ['required', 'exists:laboratory_requests,id'],
+        'registration_id' => ['required'],
+        'patient_id' => ['required', 'exists:patients,id'],
+        'result_status' => ['required', 'in:Draft,Completed,Verified,Delivered,Cancelled'],
+        'result' => ['nullable', 'string'],
+        'normal_range' => ['nullable', 'string'],
+        'remarks' => ['nullable', 'string'],
+        'pdf_file' => ['nullable', 'file', 'mimes:pdf', 'max:10240'], // 10MB
+    ]);
+
+    if ($validator->fails()) {
+        Log::error('❌ خطا در اعتبارسنجی ثبت نتیجه', [
+            'errors' => $validator->errors()->toArray()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'خطا در اعتبارسنجی',
+            'errors' => $validator->errors()
+        ], 422);
+    }
+
+    DB::beginTransaction();
+
+    try {
+        // آپلود فایل اگر وجود داشته باشد
+        $pdfFile = null;
+        $pdfFileName = null;
+        
+        if ($request->hasFile('pdf_file')) {
+            $file = $request->file('pdf_file');
+            $pdfFileName = $file->getClientOriginalName();
+            $fileName = 'lab_result_' . time() . '_' . Str::random(8) . '.pdf';
+            $path = $file->storeAs('laboratory_results', $fileName, 'public');
+            $pdfFile = $path;
+            
+            Log::info('📄 فایل آپلود شد', [
+                'path' => $path,
+                'original_name' => $pdfFileName
+            ]);
+        }
+
+        // تولید شماره گزارش
+        $reportNo = 'LAB' . Carbon::now()->format('Ymd') . strtoupper(Str::random(6));
+        
+        Log::info('📝 ایجاد نتیجه جدید', [
+            'report_no' => $reportNo,
+            'request_id' => $request->laboratory_request_id
+        ]);
+
+        $result = LaboratoryResult::create([
+            'laboratory_request_id' => $request->laboratory_request_id,
+            'registration_id' => $request->registration_id,
+            'patient_id' => $request->patient_id,
+            'report_no' => $reportNo,
+            'result_status' => $request->result_status ?? 'Completed',
+            'result' => $request->result,
+            'normal_range' => $request->normal_range,
+            'remarks' => $request->remarks,
+            'pdf_file' => $pdfFile,
+            'pdf_file_name' => $pdfFileName,
+            'sample_received_at' => now(),
+            'analysis_started_at' => now(),
+            'analysis_completed_at' => $request->result_status === 'Completed' ? now() : null,
+        ]);
+
+        Log::info('✅ نتیجه ایجاد شد', [
+            'result_id' => $result->id,
+            'report_no' => $result->report_no
+        ]);
+
+        // به‌روزرسانی وضعیت درخواست
+        $laboratoryRequest = LaboratoryRequest::find($request->laboratory_request_id);
+        if ($laboratoryRequest) {
+            $laboratoryRequest->status = 'completed';
+            $laboratoryRequest->result_date = now();
+            $laboratoryRequest->save();
+            
+            Log::info('✅ وضعیت درخواست به‌روزرسانی شد', [
+                'request_id' => $laboratoryRequest->id,
+                'new_status' => 'completed'
+            ]);
+        }
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->formatResultData($result),
+            'message' => 'نتیجه لابراتوار با موفقیت ثبت شد'
+        ], 201);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        
+        Log::error('❌ خطا در ثبت نتیجه', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'خطا در ثبت نتیجه: ' . $e->getMessage(),
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
 
     /**
      * ============================================================
@@ -304,6 +368,8 @@ class LaboratoryResultController extends Controller
     public function show($id)
     {
         try {
+            Log::info('🔍 نمایش نتیجه', ['id' => $id]);
+
             $result = LaboratoryResult::with([
                 'patient',
                 'registration',
@@ -311,6 +377,8 @@ class LaboratoryResultController extends Controller
             ])->find($id);
 
             if (!$result) {
+                Log::warning('⚠️ نتیجه یافت نشد', ['id' => $id]);
+                
                 return response()->json([
                     'success' => false,
                     'message' => 'نتیجه یافت نشد'
@@ -324,7 +392,7 @@ class LaboratoryResultController extends Controller
             ], 200);
 
         } catch (\Throwable $e) {
-            Log::error('خطا در نمایش نتیجه', [
+            Log::error('❌ خطا در نمایش نتیجه', [
                 'id' => $id,
                 'message' => $e->getMessage()
             ]);
@@ -344,9 +412,16 @@ class LaboratoryResultController extends Controller
     public function update(Request $request, $id)
     {
         try {
+            Log::info('✏️ ویرایش نتیجه', [
+                'id' => $id,
+                'data' => $request->all()
+            ]);
+
             $result = LaboratoryResult::find($id);
 
             if (!$result) {
+                Log::warning('⚠️ نتیجه یافت نشد', ['id' => $id]);
+                
                 return response()->json([
                     'success' => false,
                     'message' => 'نتیجه یافت نشد'
@@ -357,9 +432,7 @@ class LaboratoryResultController extends Controller
                 'result_status' => ['nullable', 'in:Draft,Completed,Verified,Delivered,Cancelled'],
                 'result' => ['nullable', 'string'],
                 'normal_range' => ['nullable', 'string'],
-                'interpretation' => ['nullable', 'string'],
                 'remarks' => ['nullable', 'string'],
-                'recommendation' => ['nullable', 'string'],
                 'pdf_file' => ['nullable', 'string'],
                 'pdf_file_name' => ['nullable', 'string'],
             ]);
@@ -379,9 +452,7 @@ class LaboratoryResultController extends Controller
                     'result_status',
                     'result',
                     'normal_range',
-                    'interpretation',
                     'remarks',
-                    'recommendation',
                     'pdf_file',
                     'pdf_file_name',
                 ]));
@@ -399,6 +470,8 @@ class LaboratoryResultController extends Controller
                     'laboratoryRequest'
                 ]);
 
+                Log::info('✅ نتیجه ویرایش شد', ['id' => $id]);
+
                 return response()->json([
                     'success' => true,
                     'data' => $this->formatResultData($result),
@@ -411,7 +484,7 @@ class LaboratoryResultController extends Controller
             }
 
         } catch (\Throwable $e) {
-            Log::error('خطا در ویرایش نتیجه', [
+            Log::error('❌ خطا در ویرایش نتیجه', [
                 'id' => $id,
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -433,9 +506,13 @@ class LaboratoryResultController extends Controller
     public function destroy($id)
     {
         try {
+            Log::info('🗑️ حذف نتیجه', ['id' => $id]);
+
             $result = LaboratoryResult::find($id);
 
             if (!$result) {
+                Log::warning('⚠️ نتیجه یافت نشد', ['id' => $id]);
+                
                 return response()->json([
                     'success' => false,
                     'message' => 'نتیجه یافت نشد'
@@ -447,10 +524,13 @@ class LaboratoryResultController extends Controller
                 $path = str_replace('storage/', '', $result->pdf_file);
                 if (Storage::disk('public')->exists($path)) {
                     Storage::disk('public')->delete($path);
+                    Log::info('🗑️ فایل PDF حذف شد', ['path' => $path]);
                 }
             }
 
             $result->delete();
+            
+            Log::info('✅ نتیجه حذف شد', ['id' => $id]);
 
             return response()->json([
                 'success' => true,
@@ -458,7 +538,7 @@ class LaboratoryResultController extends Controller
             ], 200);
 
         } catch (\Throwable $e) {
-            Log::error('خطا در حذف نتیجه', [
+            Log::error('❌ خطا در حذف نتیجه', [
                 'id' => $id,
                 'message' => $e->getMessage()
             ]);
@@ -483,51 +563,42 @@ class LaboratoryResultController extends Controller
             'laboratory_request_id' => $result->laboratory_request_id,
             'report_no' => $result->report_no,
             'result_status' => $result->result_status,
-            'status_label' => $result->status_label,
+            'status_label' => $result->status_label ?? $this->getStatusLabel($result->result_status),
             
             // نتیجه اصلی
             'result' => $result->result,
             'normal_range' => $result->normal_range,
-            'interpretation' => $result->interpretation,
             'remarks' => $result->remarks,
-            'recommendation' => $result->recommendation,
             
             // فایل
             'pdf_file' => $result->pdf_file,
             'pdf_file_name' => $result->pdf_file_name,
-            'pdf_url' => $result->pdf_url,
+            'pdf_url' => $result->pdf_url ?? ($result->pdf_file ? asset('storage/' . $result->pdf_file) : null),
             
-            // اطلاعات بیمار (کامل)
+            // اطلاعات بیمار
             'patient' => $result->patient ? [
                 'id' => $result->patient->id,
                 'first_name' => $result->patient->first_name,
                 'last_name' => $result->patient->last_name,
-                'full_name' => $result->patient_full_name,
+                'full_name' => trim($result->patient->first_name . ' ' . $result->patient->last_name),
                 'mobile' => $result->patient->mobile,
                 'email' => $result->patient->email,
                 'age' => $result->patient->age,
                 'gender' => $result->patient->gender,
                 'national_id' => $result->patient->national_id,
-                'address' => $result->patient->address,
             ] : null,
             
             // اطلاعات مراجعه
             'registration' => $result->registration ? [
                 'reg_id' => $result->registration->reg_id,
                 'visit_number' => $result->registration->visit_number,
-                'visit_date' => $result->registration->visit_date,
             ] : null,
             
             // اطلاعات تست
             'test' => $result->laboratoryRequest ? [
                 'id' => $result->laboratoryRequest->id,
                 'test_type' => $result->laboratoryRequest->test_type,
-                'test_type_label' => $result->laboratoryRequest->test_type_label,
                 'test_name' => $result->laboratoryRequest->test_name,
-                'test_description' => $result->laboratoryRequest->test_description,
-                'clinical_indication' => $result->laboratoryRequest->clinical_indication,
-                'special_notes' => $result->laboratoryRequest->special_notes,
-                'barcode' => $result->laboratoryRequest->barcode,
             ] : null,
             
             // تاریخ‌ها
@@ -536,16 +607,6 @@ class LaboratoryResultController extends Controller
             'analysis_completed_at' => $result->analysis_completed_at,
             'created_at' => $result->created_at,
             'updated_at' => $result->updated_at,
-            
-            // وضعیت‌ها
-            'is_printed' => $result->is_printed,
-            'print_count' => $result->print_count,
-            'last_printed_at' => $result->last_printed_at,
-            'is_delivered' => $result->is_delivered,
-            'delivery_method' => $result->delivery_method,
-            'delivered_to' => $result->delivered_to,
-            'is_abnormal' => $result->is_abnormal,
-            'is_critical' => $result->is_critical,
         ];
     }
 
@@ -603,15 +664,33 @@ class LaboratoryResultController extends Controller
             ];
         }
 
-        // نتیجه (با تمام جزئیات)
+        // نتیجه
         if ($result) {
             $formatted['laboratory_result'] = $this->formatResultData($result);
             $formatted['has_result'] = true;
+            $formatted['pdf_url'] = $result->pdf_url ?? ($result->pdf_file ? asset('storage/' . $result->pdf_file) : null);
         } else {
             $formatted['laboratory_result'] = null;
             $formatted['has_result'] = false;
+            $formatted['pdf_url'] = null;
         }
 
         return $formatted;
+    }
+
+    /**
+     * دریافت برچسب وضعیت
+     */
+    private function getStatusLabel($status)
+    {
+        $labels = [
+            'Draft' => 'پیش‌نویس',
+            'Completed' => 'تکمیل شده',
+            'Verified' => 'تأیید شده',
+            'Delivered' => 'تحویل شده',
+            'Cancelled' => 'لغو شده',
+        ];
+
+        return $labels[$status] ?? $status;
     }
 }

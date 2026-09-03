@@ -38,6 +38,7 @@ use App\Http\Controllers\LaboratoryRequestController;
 use App\Http\Controllers\LaboratoryFeeController;
 use App\Http\Controllers\PrescriptionFeeController;
 use App\Http\Controllers\LaboratoryController;
+use App\Http\Controllers\LaboratoryResultController;
 
 /*
 |--------------------------------------------------------------------------
@@ -132,7 +133,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/medications/{med_id}', [MedicationController::class, 'destroy']);
 
     // ============================================================
-    // ✅ مسیرهای داکتر (Doctor)
+    // ✅ مسیرهای داکتر (Doctor) - اینجا مسیرهای laboratory-results
+    // باید از اینجا خارج شوند
     // ============================================================
     Route::prefix('doctor')->group(function () {
         
@@ -152,12 +154,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/wards', [DoctorTreatmentController::class, 'getWards']);
         Route::post('/admission', [DoctorTreatmentController::class, 'storeAdmission']);
 
-
-
-        
         // ✅ ارسال نتیجه به بخش معالجه
         Route::post('/{id}/send-to-treatment', [LaboratoryRequestController::class, 'sendToTreatment']);
-    
 
         // ============================================================
         // ✅ مسیرهای معاینات (ExaminationController)
@@ -201,7 +199,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // لیست تمام درخواست‌ها
         Route::get('/', [LaboratoryRequestController::class, 'index']);
-        
+
         // درخواست‌های یک مراجعه با جزئیات کامل
         Route::get('/registration/{registrationId}/full', [LaboratoryRequestController::class, 'getByRegistrationFull']);
 
@@ -223,7 +221,40 @@ Route::middleware('auth:sanctum')->group(function () {
         // ارسال به لابراتوار
         Route::post('/{id}/send-to-lab', [LaboratoryRequestController::class, 'sendToLab']);
     });
-    
+
+    // ============================================================
+    // ✅ ROUTES مدیریت نتایج لابراتوار (در سطح اصلی - خارج از doctor)
+    // ============================================================
+    Route::prefix('laboratory-results')->group(function () {
+        
+        // ✅ مسیرهای سفارشی (بدون پارامتر) - اینها باید قبل از مسیرهای با پارامتر بیایند
+        Route::post('upload-pdf', [LaboratoryResultController::class, 'uploadPdf'])
+            ->name('laboratory-results.upload-pdf');
+        
+        Route::get('all', [LaboratoryResultController::class, 'getRequestsWithResults'])
+            ->name('laboratory-results.all');
+        
+        // ✅ مسیرهای CRUD اصلی
+        Route::get('/', [LaboratoryResultController::class, 'index'])
+            ->name('laboratory-results.index');
+        
+        Route::post('/', [LaboratoryResultController::class, 'store'])
+            ->name('laboratory-results.store');
+        
+        // ✅ مسیرهای با پارامتر با محدودیت (باید بعد از مسیرهای ثابت بیایند)
+        Route::get('/{id}', [LaboratoryResultController::class, 'show'])
+            ->name('laboratory-results.show')
+            ->where('id', '[0-9]+');
+        
+        Route::put('/{id}', [LaboratoryResultController::class, 'update'])
+            ->name('laboratory-results.update')
+            ->where('id', '[0-9]+');
+        
+        Route::delete('/{id}', [LaboratoryResultController::class, 'destroy'])
+            ->name('laboratory-results.destroy')
+            ->where('id', '[0-9]+');
+    });
+
     // ============================================================
     // مسیرهای مدیریت فیس‌های لابراتوار
     // ============================================================
