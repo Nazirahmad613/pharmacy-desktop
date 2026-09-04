@@ -1,5 +1,4 @@
 <?php
-// database/migrations/2024_01_01_create_qr_codes_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -7,24 +6,87 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
-        Schema::create('qr_codes', function (Blueprint $table) {
+        Schema::create('laboratory_results', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('laboratory_fee_id')->constrained('laboratory_fees')->onDelete('cascade');
-            $table->foreignId('laboratory_request_id')->nullable()->constrained('laboratory_requests')->onDelete('set null');
-            $table->foreignId('patient_id')->nullable()->constrained('patients')->onDelete('set null');
-            $table->foreignId('registration_id')->nullable()->constrained('registrations')->onDelete('set null');
-            $table->string('qr_code_path');
-            $table->json('qr_code_data');
-            $table->string('qr_code_type')->default('laboratory_fee');
-            $table->boolean('is_active')->default(true);
+
+            // ===== ارتباطات =====
+            $table->unsignedBigInteger('laboratory_request_id');
+            $table->unsignedBigInteger('registration_id');
+            $table->unsignedBigInteger('patient_id');
+
+            // ===== اطلاعات نتیجه =====
+            $table->string('report_no')->unique();
+            
+            $table->enum('result_status', [
+                'Draft',
+                'Completed',
+                'Verified',
+                'Delivered',
+                'Cancelled',
+            ])->default('Draft');
+
+            // ===== نتیجه اصلی (متن) =====
+            $table->text('result')->nullable();              // نتیجه آزمایش
+            $table->string('normal_range')->nullable();      // محدوده نرمال
+            $table->longText('interpretation')->nullable();  // تفسیر نتیجه
+            $table->longText('remarks')->nullable();         // یادداشت‌ها
+            $table->longText('recommendation')->nullable();  // توصیه‌ها
+
+            // ===== فایل‌ها =====
+            $table->string('pdf_file')->nullable();          // مسیر فایل PDF
+            $table->string('pdf_file_name')->nullable();     // نام اصلی فایل
+
+            // ===== تاریخ‌ها =====
+            $table->dateTime('sample_received_at')->nullable();
+            $table->dateTime('analysis_started_at')->nullable();
+            $table->dateTime('analysis_completed_at')->nullable();
+
+            // ===== چاپ =====
+            $table->boolean('is_printed')->default(false);
+            $table->integer('print_count')->default(0);
+            $table->timestamp('last_printed_at')->nullable();
+
+            // ===== تحویل =====
+            $table->boolean('is_delivered')->default(false);
+            $table->string('delivery_method')->nullable();
+            $table->string('delivered_to')->nullable();
+
+            // ===== وضعیت =====
+            $table->boolean('is_abnormal')->default(false);
+            $table->boolean('is_critical')->default(false);
+
             $table->timestamps();
+            $table->softDeletes();
+
+            // ===== کلیدهای خارجی =====
+            $table->foreign('laboratory_request_id')
+                ->references('id')
+                ->on('laboratory_requests')
+                ->cascadeOnDelete();
+
+            $table->foreign('registration_id')
+                ->references('reg_id')
+                ->on('registrations')
+                ->cascadeOnDelete();
+
+            $table->foreign('patient_id')
+                ->references('id')
+                ->on('patients')
+                ->cascadeOnDelete();
+
+            // ===== ایندکس‌ها =====
+            $table->index('laboratory_request_id');
+            $table->index('registration_id');
+            $table->index('patient_id');
+            $table->index('report_no');
+            $table->index('result_status');
         });
     }
 
-    public function down()
+    public function down(): void
     {
-        Schema::dropIfExists('qr_codes');
+        Schema::dropIfExists('laboratory_results');
     }
 };

@@ -35,6 +35,7 @@ import {
   ListItemIcon,
   LinearProgress,
   MenuItem,
+  Snackbar,
 } from "@mui/material";
 import {
   Bloodtype as BloodtypeIcon,
@@ -63,7 +64,7 @@ import {
   Psychology as PsychologyIcon,
   Image as ImageIcon,
   LocalHospital as LocalHospitalIcon,
-  Coronavirus as CoronavirusIcon,
+  Download as DownloadIcon,
 } from "@mui/icons-material";
 
 export default function LabHematology() {
@@ -71,6 +72,7 @@ export default function LabHematology() {
   const [allRequests, setAllRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [filteredRequests, setFilteredRequests] = useState([]);
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
@@ -80,9 +82,16 @@ export default function LabHematology() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef(null);
   
+  // ============ State برای Toast/Snackbar ============
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
+
   const [resultData, setResultData] = useState({
     result: "",
-    status: "completed",
+    status: "Completed",
     notes: "",
     normal_range: "",
     pdf_file: null,
@@ -90,363 +99,102 @@ export default function LabHematology() {
     pdf_url: "",
   });
 
-  // ============ دسته‌بندی تست‌ها (مطابق با LaboratoryRequest.jsx) ============
+  // ============ دسته‌بندی تست‌ها ============
   const categories = [
-    // 🩸 آزمایش خون
-    {
-      id: "blood",
-      title: "🩸 آزمایش خون (هماتولوژی)",
-      icon: <BloodtypeIcon sx={{ fontSize: 40, color: "#ef4444" }} />,
-      testType: "blood",
-      keywords: ["خون", "blood", "هماتولوژی", "hematology", "cbc", "CBC"],
-    },
-    {
-      id: "cbc",
-      title: "🩸 شمارش کامل خون (CBC)",
-      icon: <BloodtypeIcon sx={{ fontSize: 40, color: "#dc2626" }} />,
-      testType: "cbc",
-      keywords: ["cbc", "شمارش خون", "complete blood count"],
-    },
-    {
-      id: "blood_sugar",
-      title: "🩸 قند خون (FBS / BS)",
-      icon: <MonitorHeartIcon sx={{ fontSize: 40, color: "#ec4899" }} />,
-      testType: "blood_sugar",
-      keywords: ["قند", "blood sugar", "گلوکز", "glucose", "FBS", "BS"],
-    },
-    {
-      id: "blood_group",
-      title: "🩸 گروپ خون",
-      icon: <BloodtypeIcon sx={{ fontSize: 40, color: "#3b82f6" }} />,
-      testType: "blood_group",
-      keywords: ["گروپ خون", "blood group", "ABO", "Rh"],
-    },
-
-    // 🧪 بیوشیمی
-    {
-      id: "biochemistry",
-      title: "🧪 بیوشیمی خون",
-      icon: <BiotechIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />,
-      testType: "biochemistry",
-      keywords: ["بیوشیمی", "biochemistry", "شیمیایی"],
-    },
-    {
-      id: "lipid_profile",
-      title: "🧪 پروفایل چربی (Lipid Profile)",
-      icon: <BiotechIcon sx={{ fontSize: 40, color: "#7c3aed" }} />,
-      testType: "lipid_profile",
-      keywords: ["چربی", "lipid", "کلسترول", "cholesterol", "triglyceride"],
-    },
-    {
-      id: "liver_function",
-      title: "🧪 عملکرد کبد (LFT)",
-      icon: <BiotechIcon sx={{ fontSize: 40, color: "#f59e0b" }} />,
-      testType: "liver_function",
-      keywords: ["کبد", "liver", "LFT", "ALT", "AST", "ALP"],
-    },
-    {
-      id: "kidney_function",
-      title: "🧪 عملکرد کلیه (RFT)",
-      icon: <BiotechIcon sx={{ fontSize: 40, color: "#10b981" }} />,
-      testType: "kidney_function",
-      keywords: ["کلیه", "kidney", "RFT", "BUN", "Creatinine"],
-    },
-    {
-      id: "thyroid",
-      title: "🧪 هورمون‌های تیروئید (T3/T4/TSH)",
-      icon: <BiotechIcon sx={{ fontSize: 40, color: "#f472b6" }} />,
-      testType: "thyroid",
-      keywords: ["تیروئید", "thyroid", "T3", "T4", "TSH"],
-    },
-
-    // 🧬 هورمونی
-    {
-      id: "hormonal",
-      title: "🧬 هورمون‌ها",
-      icon: <PsychologyIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />,
-      testType: "hormonal",
-      keywords: ["هورمون", "hormonal", "هورمونی"],
-    },
-    {
-      id: "reproductive_hormones",
-      title: "🧬 هورمون‌های تولیدمثل",
-      icon: <PsychologyIcon sx={{ fontSize: 40, color: "#ec4899" }} />,
-      testType: "reproductive_hormones",
-      keywords: ["تولیدمثل", "reproductive", "FSH", "LH", "استروژن", "تستوسترون"],
-    },
-    {
-      id: "adrenal_hormones",
-      title: "🧬 هورمون‌های آدرنال",
-      icon: <PsychologyIcon sx={{ fontSize: 40, color: "#f59e0b" }} />,
-      testType: "adrenal_hormones",
-      keywords: ["آدرنال", "adrenal", "کورتیزول", "cortisol"],
-    },
-
-    // 🦠 میکروبی
-    {
-      id: "microbial",
-      title: "🦠 آزمایش میکروبی",
-      icon: <BugReportIcon sx={{ fontSize: 40, color: "#22c55e" }} />,
-      testType: "microbial",
-      keywords: ["میکروبی", "microbial", "باکتری"],
-    },
-    {
-      id: "bacterial_culture",
-      title: "🦠 کشت باکتری",
-      icon: <BugReportIcon sx={{ fontSize: 40, color: "#16a34a" }} />,
-      testType: "bacterial_culture",
-      keywords: ["کشت باکتری", "bacterial culture", "باکتری"],
-    },
-    {
-      id: "fungal_culture",
-      title: "🦠 کشت قارچ",
-      icon: <BugReportIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />,
-      testType: "fungal_culture",
-      keywords: ["کشت قارچ", "fungal culture", "قارچ"],
-    },
-    {
-      id: "antibiotic_sensitivity",
-      title: "🦠 آنتی‌بیوگرام",
-      icon: <BugReportIcon sx={{ fontSize: 40, color: "#dc2626" }} />,
-      testType: "antibiotic_sensitivity",
-      keywords: ["آنتی‌بیوگرام", "antibiotic", "حساسیت"],
-    },
-
-    // 🧫 سرولوژی
-    {
-      id: "serology",
-      title: "🧫 سرولوژی",
-      icon: <HealingIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />,
-      testType: "serology",
-      keywords: ["سرولوژی", "serology"],
-    },
-    {
-      id: "hepatitis_b",
-      title: "🧪 تست هپاتیت B (HBsAg)",
-      icon: <HealingIcon sx={{ fontSize: 40, color: "#f97316" }} />,
-      testType: "hepatitis_b",
-      keywords: ["هپاتیت b", "hepatitis b", "hbsag", "HBsAg", "HBV"],
-    },
-    {
-      id: "hepatitis_c",
-      title: "🧪 تست هپاتیت C (Anti-HCV)",
-      icon: <HealingIcon sx={{ fontSize: 40, color: "#f59e0b" }} />,
-      testType: "hepatitis_c",
-      keywords: ["هپاتیت c", "hepatitis c", "hcv", "HCV"],
-    },
-    {
-      id: "hiv",
-      title: "🧫 تست HIV / AIDS",
-      icon: <HealingIcon sx={{ fontSize: 40, color: "#ef4444" }} />,
-      testType: "hiv",
-      keywords: ["hiv", "ایدز", "aids", "HIV", "AIDS"],
-    },
-    {
-      id: "syphilis",
-      title: "🧫 تست سیفلیس (VDRL)",
-      icon: <HealingIcon sx={{ fontSize: 40, color: "#ec4899" }} />,
-      testType: "syphilis",
-      keywords: ["سیفلیس", "syphilis", "VDRL"],
-    },
-    {
-      id: "rubella",
-      title: "🧫 تست روبلا",
-      icon: <HealingIcon sx={{ fontSize: 40, color: "#f472b6" }} />,
-      testType: "rubella",
-      keywords: ["روبلا", "rubella"],
-    },
-    {
-      id: "toxoplasmosis",
-      title: "🧫 تست توکسوپلاسموز",
-      icon: <HealingIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />,
-      testType: "toxoplasmosis",
-      keywords: ["توکسوپلاسموز", "toxoplasmosis"],
-    },
-
-    // 💧 ادرار
-    {
-      id: "urine",
-      title: "💧 آنالیز ادرار",
-      icon: <WaterIcon sx={{ fontSize: 40, color: "#fcd34d" }} />,
-      testType: "urine",
-      keywords: ["ادرار", "urine", "آنالیز ادرار", "U/A"],
-    },
-    {
-      id: "urine_culture",
-      title: "💧 کشت ادرار",
-      icon: <WaterIcon sx={{ fontSize: 40, color: "#fbbf24" }} />,
-      testType: "urine_culture",
-      keywords: ["کشت ادرار", "urine culture"],
-    },
-
-    // 💩 مدفوع
-    {
-      id: "stool",
-      title: "💩 آزمایش مدفوع",
-      icon: <LocalHospitalIcon sx={{ fontSize: 40, color: "#92400e" }} />,
-      testType: "stool",
-      keywords: ["مدفوع", "stool"],
-    },
-    {
-      id: "stool_culture",
-      title: "💩 کشت مدفوع",
-      icon: <LocalHospitalIcon sx={{ fontSize: 40, color: "#78350f" }} />,
-      testType: "stool_culture",
-      keywords: ["کشت مدفوع", "stool culture"],
-    },
-    {
-      id: "occult_blood",
-      title: "💩 خون مخفی مدفوع",
-      icon: <LocalHospitalIcon sx={{ fontSize: 40, color: "#dc2626" }} />,
-      testType: "occult_blood",
-      keywords: ["خون مخفی", "occult blood", "FOBT"],
-    },
-
-    // 🔬 پاتولوژی
-    {
-      id: "pathology",
-      title: "🔬 پاتولوژی",
-      icon: <ScienceIcon sx={{ fontSize: 40, color: "#ef4444" }} />,
-      testType: "pathology",
-      keywords: ["پاتولوژی", "pathology"],
-    },
-    {
-      id: "biopsy",
-      title: "🔬 بیوپسی",
-      icon: <ScienceIcon sx={{ fontSize: 40, color: "#dc2626" }} />,
-      testType: "biopsy",
-      keywords: ["بیوپسی", "biopsy"],
-    },
-    {
-      id: "cytology",
-      title: "🔬 سیتولوژی",
-      icon: <ScienceIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />,
-      testType: "cytology",
-      keywords: ["سیتولوژی", "cytology"],
-    },
-
-    // 🧬 ژنتیک
-    {
-      id: "genetic",
-      title: "🧬 آزمایش ژنتیک",
-      icon: <BiotechIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />,
-      testType: "genetic",
-      keywords: ["ژنتیک", "genetic"],
-    },
-    {
-      id: "pcr",
-      title: "🧬 PCR",
-      icon: <BiotechIcon sx={{ fontSize: 40, color: "#3b82f6" }} />,
-      testType: "pcr",
-      keywords: ["PCR", "pcr"],
-    },
-    {
-      id: "karyotyping",
-      title: "🧬 کاریوتایپینگ",
-      icon: <BiotechIcon sx={{ fontSize: 40, color: "#7c3aed" }} />,
-      testType: "karyotyping",
-      keywords: ["کاریوتایپ", "karyotyping"],
-    },
-
-    // 🦟 انگل‌شناسی
-    {
-      id: "malaria",
-      title: "🦟 تست مالاریا",
-      icon: <BugReportIcon sx={{ fontSize: 40, color: "#22c55e" }} />,
-      testType: "malaria",
-      keywords: ["مالاریا", "malaria", "پلاسمودیوم", "plasmodium"],
-    },
-    {
-      id: "parasitology",
-      title: "🦟 انگل‌شناسی",
-      icon: <BugReportIcon sx={{ fontSize: 40, color: "#f59e0b" }} />,
-      testType: "parasitology",
-      keywords: ["انگل", "parasitology", "parasite"],
-    },
-    {
-      id: "kala_azar",
-      title: "🦟 کالا آزار (لیشمانیوز احشایی)",
-      icon: <BugReportIcon sx={{ fontSize: 40, color: "#dc2626" }} />,
-      testType: "kala_azar",
-      keywords: ["کالا آزار", "kala azar", "لیشمانیوز"],
-    },
-    {
-      id: "leishmaniasis",
-      title: "🦟 لیشمانیوز",
-      icon: <BugReportIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />,
-      testType: "leishmaniasis",
-      keywords: ["لیشمانیوز", "leishmaniasis"],
-    },
-
-    // 📷 تصویربرداری
-    {
-      id: "imaging",
-      title: "📷 تصویربرداری",
-      icon: <ImageIcon sx={{ fontSize: 40, color: "#3b82f6" }} />,
-      testType: "imaging",
-      keywords: ["تصویربرداری", "imaging"],
-    },
-    {
-      id: "ultrasound",
-      title: "📷 سونوگرافی",
-      icon: <ImageIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />,
-      testType: "ultrasound",
-      keywords: ["سونوگرافی", "ultrasound"],
-    },
-    {
-      id: "xray",
-      title: "📷 رادیوگرافی (X-Ray)",
-      icon: <ImageIcon sx={{ fontSize: 40, color: "#6b7280" }} />,
-      testType: "xray",
-      keywords: ["رادیوگرافی", "xray", "X-Ray"],
-    },
-    {
-      id: "ct_scan",
-      title: "📷 سی‌تی اسکن (CT Scan)",
-      icon: <ImageIcon sx={{ fontSize: 40, color: "#3b82f6" }} />,
-      testType: "ct_scan",
-      keywords: ["سی‌تی اسکن", "ct scan", "CT"],
-    },
-    {
-      id: "mri",
-      title: "📷 ام‌آرآی (MRI)",
-      icon: <ImageIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />,
-      testType: "mri",
-      keywords: ["ام‌آرآی", "mri", "MRI"],
-    },
-
-    // 📋 سایر
-    {
-      id: "other",
-      title: "📋 سایر آزمایشات",
-      icon: <ScienceIcon sx={{ fontSize: 40, color: "#6b7280" }} />,
-      testType: "other",
-      keywords: ["سایر", "other", "عمومی"],
-    },
-    {
-      id: "general",
-      title: "📋 عمومی",
-      icon: <ScienceIcon sx={{ fontSize: 40, color: "#9ca3af" }} />,
-      testType: "general",
-      keywords: ["عمومی", "general"],
-    },
-
-    // 📄 ثبت نتایج
-    {
-      id: "results",
-      title: "📄 ثبت نتایج",
-      icon: <ScienceIcon sx={{ fontSize: 40, color: "#06b6d4" }} />,
-      testType: "",
-      keywords: [],
-      isSpecial: true,
-    },
+    { id: "blood", title: "🩸 آزمایش خون (هماتولوژی)", icon: <BloodtypeIcon sx={{ fontSize: 40, color: "#ef4444" }} />, testType: "blood", keywords: ["خون", "blood", "هماتولوژی", "hematology"] },
+    { id: "cbc", title: "🩸 شمارش کامل خون (CBC)", icon: <BloodtypeIcon sx={{ fontSize: 40, color: "#dc2626" }} />, testType: "cbc", keywords: ["cbc", "شمارش خون", "complete blood count"] },
+    { id: "blood_sugar", title: "🩸 قند خون (FBS / BS)", icon: <MonitorHeartIcon sx={{ fontSize: 40, color: "#ec4899" }} />, testType: "blood_sugar", keywords: ["قند", "blood sugar", "گلوکز", "glucose", "FBS", "BS"] },
+    { id: "blood_group", title: "🩸 گروپ خون", icon: <BloodtypeIcon sx={{ fontSize: 40, color: "#3b82f6" }} />, testType: "blood_group", keywords: ["گروپ خون", "blood group", "ABO", "Rh"] },
+    { id: "biochemistry", title: "🧪 بیوشیمی خون", icon: <BiotechIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "biochemistry", keywords: ["بیوشیمی", "biochemistry"] },
+    { id: "lipid_profile", title: "🧪 پروفایل چربی (Lipid Profile)", icon: <BiotechIcon sx={{ fontSize: 40, color: "#7c3aed" }} />, testType: "lipid_profile", keywords: ["چربی", "lipid", "کلسترول", "cholesterol", "triglyceride"] },
+    { id: "liver_function", title: "🧪 عملکرد کبد (LFT)", icon: <BiotechIcon sx={{ fontSize: 40, color: "#f59e0b" }} />, testType: "liver_function", keywords: ["کبد", "liver", "LFT", "ALT", "AST", "ALP"] },
+    { id: "kidney_function", title: "🧪 عملکرد کلیه (RFT)", icon: <BiotechIcon sx={{ fontSize: 40, color: "#10b981" }} />, testType: "kidney_function", keywords: ["کلیه", "kidney", "RFT", "BUN", "Creatinine"] },
+    { id: "thyroid", title: "🧪 هورمون‌های تیروئید (T3/T4/TSH)", icon: <BiotechIcon sx={{ fontSize: 40, color: "#f472b6" }} />, testType: "thyroid", keywords: ["تیروئید", "thyroid", "T3", "T4", "TSH"] },
+    { id: "hormonal", title: "🧬 هورمون‌ها", icon: <PsychologyIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "hormonal", keywords: ["هورمون", "hormonal"] },
+    { id: "reproductive_hormones", title: "🧬 هورمون‌های تولیدمثل", icon: <PsychologyIcon sx={{ fontSize: 40, color: "#ec4899" }} />, testType: "reproductive_hormones", keywords: ["تولیدمثل", "reproductive", "FSH", "LH", "استروژن", "تستوسترون"] },
+    { id: "adrenal_hormones", title: "🧬 هورمون‌های آدرنال", icon: <PsychologyIcon sx={{ fontSize: 40, color: "#f59e0b" }} />, testType: "adrenal_hormones", keywords: ["آدرنال", "adrenal", "کورتیزول", "cortisol"] },
+    { id: "microbial", title: "🦠 آزمایش میکروبی", icon: <BugReportIcon sx={{ fontSize: 40, color: "#22c55e" }} />, testType: "microbial", keywords: ["میکروبی", "microbial"] },
+    { id: "bacterial_culture", title: "🦠 کشت باکتری", icon: <BugReportIcon sx={{ fontSize: 40, color: "#16a34a" }} />, testType: "bacterial_culture", keywords: ["کشت باکتری", "bacterial culture"] },
+    { id: "fungal_culture", title: "🦠 کشت قارچ", icon: <BugReportIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "fungal_culture", keywords: ["کشت قارچ", "fungal culture"] },
+    { id: "antibiotic_sensitivity", title: "🦠 آنتی‌بیوگرام", icon: <BugReportIcon sx={{ fontSize: 40, color: "#dc2626" }} />, testType: "antibiotic_sensitivity", keywords: ["آنتی‌بیوگرام", "antibiotic", "حساسیت"] },
+    { id: "serology", title: "🧫 سرولوژی", icon: <HealingIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "serology", keywords: ["سرولوژی", "serology"] },
+    { id: "hepatitis_b", title: "🧪 تست هپاتیت B (HBsAg)", icon: <HealingIcon sx={{ fontSize: 40, color: "#f97316" }} />, testType: "hepatitis_b", keywords: ["هپاتیت b", "hepatitis b", "hbsag", "HBsAg", "HBV"] },
+    { id: "hepatitis_c", title: "🧪 تست هپاتیت C (Anti-HCV)", icon: <HealingIcon sx={{ fontSize: 40, color: "#f59e0b" }} />, testType: "hepatitis_c", keywords: ["هپاتیت c", "hepatitis c", "hcv", "HCV"] },
+    { id: "hiv", title: "🧫 تست HIV / AIDS", icon: <HealingIcon sx={{ fontSize: 40, color: "#ef4444" }} />, testType: "hiv", keywords: ["hiv", "ایدز", "aids", "HIV", "AIDS"] },
+    { id: "syphilis", title: "🧫 تست سیفلیس (VDRL)", icon: <HealingIcon sx={{ fontSize: 40, color: "#ec4899" }} />, testType: "syphilis", keywords: ["سیفلیس", "syphilis", "VDRL"] },
+    { id: "rubella", title: "🧫 تست روبلا", icon: <HealingIcon sx={{ fontSize: 40, color: "#f472b6" }} />, testType: "rubella", keywords: ["روبلا", "rubella"] },
+    { id: "toxoplasmosis", title: "🧫 تست توکسوپلاسموز", icon: <HealingIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "toxoplasmosis", keywords: ["توکسوپلاسموز", "toxoplasmosis"] },
+    { id: "urine", title: "💧 آنالیز ادرار", icon: <WaterIcon sx={{ fontSize: 40, color: "#fcd34d" }} />, testType: "urine", keywords: ["ادرار", "urine", "آنالیز ادرار"] },
+    { id: "urine_culture", title: "💧 کشت ادرار", icon: <WaterIcon sx={{ fontSize: 40, color: "#fbbf24" }} />, testType: "urine_culture", keywords: ["کشت ادرار", "urine culture"] },
+    { id: "stool", title: "💩 آزمایش مدفوع", icon: <LocalHospitalIcon sx={{ fontSize: 40, color: "#92400e" }} />, testType: "stool", keywords: ["مدفوع", "stool"] },
+    { id: "stool_culture", title: "💩 کشت مدفوع", icon: <LocalHospitalIcon sx={{ fontSize: 40, color: "#78350f" }} />, testType: "stool_culture", keywords: ["کشت مدفوع", "stool culture"] },
+    { id: "occult_blood", title: "💩 خون مخفی مدفوع", icon: <LocalHospitalIcon sx={{ fontSize: 40, color: "#dc2626" }} />, testType: "occult_blood", keywords: ["خون مخفی", "occult blood", "FOBT"] },
+    { id: "pathology", title: "🔬 پاتولوژی", icon: <ScienceIcon sx={{ fontSize: 40, color: "#ef4444" }} />, testType: "pathology", keywords: ["پاتولوژی", "pathology"] },
+    { id: "biopsy", title: "🔬 بیوپسی", icon: <ScienceIcon sx={{ fontSize: 40, color: "#dc2626" }} />, testType: "biopsy", keywords: ["بیوپسی", "biopsy"] },
+    { id: "cytology", title: "🔬 سیتولوژی", icon: <ScienceIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "cytology", keywords: ["سیتولوژی", "cytology"] },
+    { id: "genetic", title: "🧬 آزمایش ژنتیک", icon: <BiotechIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "genetic", keywords: ["ژنتیک", "genetic"] },
+    { id: "pcr", title: "🧬 PCR", icon: <BiotechIcon sx={{ fontSize: 40, color: "#3b82f6" }} />, testType: "pcr", keywords: ["PCR", "pcr"] },
+    { id: "karyotyping", title: "🧬 کاریوتایپینگ", icon: <BiotechIcon sx={{ fontSize: 40, color: "#7c3aed" }} />, testType: "karyotyping", keywords: ["کاریوتایپ", "karyotyping"] },
+    { id: "malaria", title: "🦟 تست مالاریا", icon: <BugReportIcon sx={{ fontSize: 40, color: "#22c55e" }} />, testType: "malaria", keywords: ["مالاریا", "malaria", "پلاسمودیوم"] },
+    { id: "parasitology", title: "🦟 انگل‌شناسی", icon: <BugReportIcon sx={{ fontSize: 40, color: "#f59e0b" }} />, testType: "parasitology", keywords: ["انگل", "parasitology", "parasite"] },
+    { id: "kala_azar", title: "🦟 کالا آزار (لیشمانیوز احشایی)", icon: <BugReportIcon sx={{ fontSize: 40, color: "#dc2626" }} />, testType: "kala_azar", keywords: ["کالا آزار", "kala azar", "لیشمانیوز"] },
+    { id: "leishmaniasis", title: "🦟 لیشمانیوز", icon: <BugReportIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "leishmaniasis", keywords: ["لیشمانیوز", "leishmaniasis"] },
+    { id: "imaging", title: "📷 تصویربرداری", icon: <ScienceIcon sx={{ fontSize: 40, color: "#3b82f6" }} />, testType: "imaging", keywords: ["تصویربرداری", "imaging"] },
+    { id: "ultrasound", title: "📷 سونوگرافی", icon: <ScienceIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "ultrasound", keywords: ["سونوگرافی", "ultrasound"] },
+    { id: "xray", title: "📷 رادیوگرافی (X-Ray)", icon: <ScienceIcon sx={{ fontSize: 40, color: "#6b7280" }} />, testType: "xray", keywords: ["رادیوگرافی", "xray", "X-Ray"] },
+    { id: "ct_scan", title: "📷 سی‌تی اسکن (CT Scan)", icon: <ScienceIcon sx={{ fontSize: 40, color: "#3b82f6" }} />, testType: "ct_scan", keywords: ["سی‌تی اسکن", "ct scan", "CT"] },
+    { id: "mri", title: "📷 ام‌آرآی (MRI)", icon: <ScienceIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "mri", keywords: ["ام‌آرآی", "mri", "MRI"] },
+    { id: "other", title: "📋 سایر آزمایشات", icon: <ScienceIcon sx={{ fontSize: 40, color: "#6b7280" }} />, testType: "other", keywords: ["سایر", "other"] },
+    { id: "general", title: "📋 عمومی", icon: <ScienceIcon sx={{ fontSize: 40, color: "#9ca3af" }} />, testType: "general", keywords: ["عمومی", "general"] },
+    { id: "results", title: "📄 ثبت نتایج", icon: <ScienceIcon sx={{ fontSize: 40, color: "#06b6d4" }} />, testType: "", keywords: [], isSpecial: true },
   ];
+
+  // ============ دریافت نتیجه با جزئیات کامل از سرور ============
+  const fetchResultDetails = async (requestId) => {
+    try {
+      const token = localStorage.getItem("token");
+      console.log("🔍 دریافت نتیجه برای درخواست:", requestId);
+      
+      const response = await fetch(
+        `http://localhost:8000/api/laboratory-results/request/${requestId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log("📡 وضعیت پاسخ:", response.status);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log("⚠️ نتیجه‌ای برای این درخواست یافت نشد");
+          return null;
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("📋 نتیجه دریافت شد:", result);
+      
+      if (result.success) {
+        return result.data;
+      } else {
+        return null;
+      }
+    } catch (err) {
+      console.error("❌ خطا در دریافت نتیجه:", err);
+      return null;
+    }
+  };
 
   // ============ دریافت درخواست‌ها ============
   const fetchRequests = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
+      
       const response = await fetch(
         "http://localhost:8000/api/laboratory-requests/all",
         {
@@ -472,9 +220,6 @@ export default function LabHematology() {
         }
       }
 
-      console.log("📋 همه درخواست‌ها از API:", allRequests);
-
-      // پردازش اطلاعات بیمار
       const processedRequests = allRequests.map((req) => {
         let patientName = "نامشخص";
         let patientPhone = "";
@@ -509,12 +254,6 @@ export default function LabHematology() {
           if (!patientNationalId && regPatient.national_id) patientNationalId = regPatient.national_id;
         }
 
-        if (!patientName || patientName === "نامشخص") {
-          if (req.patient_name) patientName = req.patient_name;
-          else if (req.patientName) patientName = req.patientName;
-          else if (req.name) patientName = req.name;
-        }
-
         return {
           ...req,
           patient_name: patientName,
@@ -529,9 +268,7 @@ export default function LabHematology() {
         };
       });
 
-      // فقط درخواست‌های دارای فیس
       const paidRequests = processedRequests.filter((r) => r.has_fee === true);
-      console.log("✅ درخواست‌های دارای فیس:", paidRequests.length);
       setAllRequests(paidRequests);
       setError(null);
     } catch (err) {
@@ -572,7 +309,6 @@ export default function LabHematology() {
       return false;
     });
 
-    console.log(`✅ درخواست‌های فیلتر شده برای ${category.title}:`, filtered.length);
     setFilteredRequests(filtered);
   };
 
@@ -582,23 +318,49 @@ export default function LabHematology() {
     setFilteredRequests([]);
   };
 
-  // ============ مشاهده جزئیات ============
-  const handleViewDetails = (request) => {
+  // ============ مشاهده جزئیات با دریافت نتیجه از سرور ============
+  const handleViewDetails = async (request) => {
+    console.log("📋 مشاهده جزئیات درخواست:", request.id);
     setSelectedRequest(request);
     setOpenDetailDialog(true);
+    
+    if (request.status === "completed") {
+      const resultData = await fetchResultDetails(request.id);
+      if (resultData) {
+        console.log("✅ نتیجه دریافت شد:", resultData);
+        console.log("✅ normal_range دریافت شده:", resultData.normal_range);
+        
+        setSelectedRequest(prev => ({
+          ...prev,
+          result_details: resultData,
+          result_value: resultData.result || "",
+          normal_range: resultData.normal_range || "",
+          result_remarks: resultData.remarks || "",
+          result_date: resultData.analysis_completed_at || resultData.created_at,
+          pdf_url: resultData.pdf_url,
+          pdf_file_name: resultData.pdf_file_name,
+          report_no: resultData.report_no,
+          doctor_name: resultData.doctor?.name || prev.doctor_name,
+          patient_gender: resultData.patient?.gender_label || prev.patient_gender,
+          patient_full_name: resultData.patient?.full_name || prev.patient_name,
+          patient_age: resultData.patient?.age || prev.patient_age,
+          patient_phone: resultData.patient?.mobile || prev.patient_phone,
+        }));
+      }
+    }
   };
 
   // ============ باز کردن دیالوگ ثبت نتیجه ============
   const handleOpenResultDialog = (request) => {
     setSelectedRequest(request);
     setResultData({
-      result: request.result || "",
-      status: request.status || "pending",
-      notes: request.notes || "",
-      normal_range: request.normal_range || "",
+      result: "",
+      status: "Completed",
+      notes: "",
+      normal_range: "",
       pdf_file: null,
-      pdf_file_name: request.pdf_file_name || "",
-      pdf_url: request.pdf_url || "",
+      pdf_file_name: "",
+      pdf_url: "",
     });
     setOpenResultDialog(true);
   };
@@ -613,57 +375,27 @@ export default function LabHematology() {
           pdf_file: file,
           pdf_file_name: file.name,
         });
+        setError(null);
       } else {
         setError("لطفاً فقط فایل PDF انتخاب کنید");
       }
     }
   };
 
-  // ============ آپلود فایل PDF ============
-  const uploadPdfFile = async (requestId) => {
-    if (!resultData.pdf_file) return null;
+  // ============ نمایش Toast ============
+  const showToast = (message, severity = "success") => {
+    setSnackbar({
+      open: true,
+      message: message,
+      severity: severity,
+    });
+  };
 
-    try {
-      setUploading(true);
-      setUploadProgress(0);
-
-      const token = localStorage.getItem("token");
-      const formData = new FormData();
-      formData.append("pdf_file", resultData.pdf_file);
-      formData.append("request_id", requestId);
-
-      const xhr = new XMLHttpRequest();
-      
-      return new Promise((resolve, reject) => {
-        xhr.open("POST", "http://localhost:8000/api/laboratory-requests/upload-pdf", true);
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const progress = Math.round((event.loaded / event.total) * 100);
-            setUploadProgress(progress);
-          }
-        };
-
-        xhr.onload = () => {
-          if (xhr.status === 200) {
-            const response = JSON.parse(xhr.responseText);
-            resolve(response);
-          } else {
-            reject(new Error("خطا در آپلود فایل"));
-          }
-        };
-
-        xhr.onerror = () => reject(new Error("خطا در آپلود فایل"));
-        xhr.send(formData);
-      });
-    } catch (error) {
-      console.error("❌ خطا در آپلود:", error);
-      throw error;
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-    }
+  const handleCloseSnackbar = () => {
+    setSnackbar({
+      ...snackbar,
+      open: false,
+    });
   };
 
   // ============ حذف فایل PDF ============
@@ -679,63 +411,496 @@ export default function LabHematology() {
     }
   };
 
-  // ============ دانلود فایل PDF ============
-  const handleDownloadPdf = (pdfUrl) => {
-    if (pdfUrl) {
-      window.open(pdfUrl, "_blank");
+  // ============ دانلود فایل PDF با fetch و توکن ============
+  const handleDownloadPdf = async (pdfUrl) => {
+    if (!pdfUrl) {
+      showToast("❌ آدرس فایل PDF موجود نیست", "error");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      showToast("⏳ در حال دانلود فایل...", "info");
+      
+      // دریافت فایل با fetch و توکن
+      const response = await fetch(pdfUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`خطا در دانلود: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      
+      // ایجاد URL برای دانلود
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = pdfUrl.split('/').pop() || 'result.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      showToast("✅ دانلود فایل با موفقیت انجام شد", "success");
+      
+    } catch (error) {
+      console.error("❌ خطا در دانلود PDF:", error);
+      showToast("❌ خطا در دانلود فایل: " + error.message, "error");
+    }
+  };
+
+  // ============ پرینت نتیجه با دریافت اطلاعات کامل از سرور ============
+  const handlePrintResult = async (request) => {
+    console.log("🖨️ شروع پرینت نتیجه برای:", request.id);
+    
+    try {
+      let resultData = await fetchResultDetails(request.id);
+      
+      if (!resultData) {
+        resultData = request.result_details || {};
+        console.log("📋 استفاده از داده‌های موجود در request");
+      } else {
+        console.log("📋 استفاده از داده‌های دریافت شده از سرور");
+      }
+
+      const patient = resultData.patient || {};
+      const test = resultData.test || {};
+      const doctor = resultData.doctor || {};
+      const registration = resultData.registration || {};
+      
+      const patientName = patient.full_name || request.patient_full_name || request.patient_name || "نامشخص";
+      const patientPhone = patient.mobile || request.patient_phone || "";
+      const patientAge = patient.age || request.patient_age || "";
+      const patientGender = patient.gender_label || request.patient_gender || "";
+      const testName = test.test_name || request.test_name || request.test_type || "نامشخص";
+      const resultValue = resultData.result || request.result_value || "نتیجه ثبت نشده";
+      const normalRange = resultData.normal_range || request.normal_range || "-";
+      const resultNotes = resultData.remarks || request.result_remarks || "";
+      const resultDate = resultData.analysis_completed_at || resultData.created_at || request.result_date || request.created_at || new Date().toISOString();
+      const pdfUrl = resultData.pdf_url || request.pdf_url || "";
+      const pdfFileName = resultData.pdf_file_name || request.pdf_file_name || "";
+      const doctorName = doctor.name || request.doctor_name || "نامشخص";
+      const regId = registration.reg_id || request.registration_id || request.reg_id || "-";
+      const reportNo = resultData.report_no || request.report_no || "";
+      
+      const hasResult = !!(resultData.result || request.result_value);
+      const statusLabel = hasResult ? "ثبت شده" : "تکمیل شده";
+      const statusColor = hasResult ? "#10b981" : "#3b82f6";
+      
+      const now = new Date();
+      const printDate = now.toLocaleDateString('fa-IR');
+      const printTime = now.toLocaleTimeString('fa-IR');
+      
+      const printHtml = `
+        <!DOCTYPE html>
+        <html dir="rtl">
+        <head>
+          <meta charset="UTF-8">
+          <title>نتیجه آزمایش - ${patientName}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: 'Tahoma', 'Arial', sans-serif; 
+              padding: 20px; 
+              direction: rtl;
+              background: #ffffff;
+              color: #1a1a2e;
+            }
+            .print-container {
+              max-width: 800px;
+              margin: 0 auto;
+              border: 2px solid #1a2a3a;
+              border-radius: 12px;
+              padding: 25px;
+              background: white;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 3px solid #1a2a3a;
+              padding-bottom: 12px;
+              margin-bottom: 18px;
+            }
+            .header h1 {
+              font-size: 22px;
+              color: #1a2a3a;
+              margin-bottom: 3px;
+            }
+            .header .subtitle {
+              font-size: 13px;
+              color: #6b7280;
+            }
+            .hospital-info {
+              text-align: center;
+              font-size: 12px;
+              color: #6b7280;
+              margin-bottom: 15px;
+            }
+            .patient-info {
+              display: grid;
+              grid-template-columns: 1fr 1fr 1fr;
+              gap: 8px;
+              background: #f3f4f6;
+              padding: 12px 15px;
+              border-radius: 8px;
+              margin-bottom: 18px;
+            }
+            .patient-info .item {
+              display: flex;
+              flex-direction: column;
+            }
+            .patient-info .label {
+              font-size: 10px;
+              color: #6b7280;
+              font-weight: bold;
+            }
+            .patient-info .value {
+              font-size: 13px;
+              color: #1a2a3a;
+              font-weight: bold;
+            }
+            .result-section {
+              margin: 15px 0;
+              border: 1px solid #e5e7eb;
+              border-radius: 8px;
+              overflow: hidden;
+            }
+            .result-section .title {
+              background: #1a2a3a;
+              color: white;
+              padding: 8px 15px;
+              font-weight: bold;
+              font-size: 15px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+            .result-section .title .report-no {
+              font-size: 11px;
+              color: #9ca3af;
+              font-weight: normal;
+            }
+            .result-section .body {
+              padding: 12px 15px;
+            }
+            .result-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 6px 0;
+              border-bottom: 1px solid #f3f4f6;
+            }
+            .result-row:last-child {
+              border-bottom: none;
+            }
+            .result-row .label {
+              color: #6b7280;
+              font-weight: bold;
+              font-size: 12px;
+            }
+            .result-row .value {
+              color: #1a2a3a;
+              font-weight: bold;
+              font-size: 13px;
+            }
+            .result-row .value.normal {
+              color: #10b981;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 2px 12px;
+              border-radius: 20px;
+              font-size: 11px;
+              font-weight: bold;
+              color: white;
+              background: ${statusColor};
+            }
+            .footer {
+              margin-top: 20px;
+              padding-top: 12px;
+              border-top: 2px solid #e5e7eb;
+              display: flex;
+              justify-content: space-between;
+              font-size: 11px;
+              color: #6b7280;
+            }
+            .signature {
+              margin-top: 18px;
+              display: flex;
+              justify-content: space-between;
+              padding-top: 12px;
+              border-top: 1px solid #e5e7eb;
+            }
+            .signature .field {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+            }
+            .signature .field .label {
+              font-size: 10px;
+              color: #6b7280;
+              margin-bottom: 3px;
+            }
+            .signature .field .line {
+              width: 120px;
+              border-bottom: 1px solid #1a2a3a;
+              height: 18px;
+            }
+            .print-footer {
+              text-align: center;
+              font-size: 10px;
+              color: #9ca3af;
+              margin-top: 15px;
+              border-top: 1px solid #e5e7eb;
+              padding-top: 10px;
+            }
+            @media print {
+              body { padding: 10px; }
+              .print-container { border: none; padding: 10px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-container">
+            <div class="header">
+              <h1>🏥 نتیجه لابراتوار</h1>
+              <div class="subtitle">نتیجه لابراتواری</div>
+            </div>
+            <div class="hospital-info">
+              تاریخ چاپ: ${printDate} - ساعت: ${printTime}
+            </div>
+
+            <div class="patient-info">
+              <div class="item">
+                <span class="label">👤 نام بیمار</span>
+                <span class="value">${patientName}</span>
+              </div>
+              <div class="item">
+                <span class="label">📱 شماره تماس</span>
+                <span class="value">${patientPhone || '-'}</span>
+              </div>
+              <div class="item">
+                <span class="label">🎂 سن</span>
+                <span class="value">${patientAge || '-'}</span>
+              </div>
+              <div class="item">
+                <span class="label">⚧ جنسیت</span>
+                <span class="value">${patientGender || '-'}</span>
+              </div>
+              <div class="item">
+                <span class="label">📋 شماره مراجعه</span>
+                <span class="value">${regId}</span>
+              </div>
+              <div class="item">
+                <span class="label">👨‍⚕️ داکتر معالج</span>
+                <span class="value">${doctorName}</span>
+              </div>
+            </div>
+
+            <div class="result-section">
+              <div class="title">
+                <span>🔬 ${testName}</span>
+                <span class="report-no">شماره گزارش: ${reportNo || '-'}</span>
+              </div>
+              <div class="body">
+                <div class="result-row">
+                  <span class="label">نوع تست</span>
+                  <span class="value">${testName}</span>
+                </div>
+                <div class="result-row">
+                  <span class="label">نتیجه</span>
+                  <span class="value normal">${resultValue}</span>
+                </div>
+                <div class="result-row">
+                  <span class="label">محدوده نرمال</span>
+                  <span class="value">${normalRange}</span>
+                </div>
+                <div class="result-row">
+                  <span class="label">وضعیت</span>
+                  <span class="value"><span class="status-badge">${statusLabel}</span></span>
+                </div>
+                ${resultNotes ? `
+                <div class="result-row">
+                  <span class="label">یادداشت</span>
+                  <span class="value">${resultNotes}</span>
+                </div>
+                ` : ''}
+                <div class="result-row">
+                  <span class="label">تاریخ نتیجه</span>
+                  <span class="value">${new Date(resultDate).toLocaleDateString('fa-IR')}</span>
+                </div>
+                ${pdfUrl ? `
+                <div class="result-row">
+                  <span class="label">فایل ضمیمه</span>
+                  <span class="value">📎 ${pdfFileName || 'PDF'}</span>
+                </div>
+                ` : ''}
+              </div>
+            </div>
+
+            <div class="signature">
+              <div class="field">
+                <span class="label">امضاء داکتر</span>
+                <div class="line"></div>
+              </div>
+              <div class="field">
+                <span class="label">امضاء مسئول لابراتوار</span>
+                <div class="line"></div>
+              </div>
+              <div class="field">
+                <span class="label">تاریخ</span>
+                <div class="line"></div>
+              </div>
+            </div>
+
+            <div class="footer">
+              <span>🔬 ${testName}</span>
+              <span>کد: ${regId}</span>
+              <span>${printDate}</span>
+            </div>
+            
+            <div class="print-footer">
+              این نتیجه توسط سیستم مدیریت درمانگاه تهیه شده است
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const printWindow = window.open('', '_blank', 'width=900,height=700,scrollbars=yes');
+      if (!printWindow) {
+        showToast("❌ پنجره پرینت باز نشد. لطفاً pop-up را فعال کنید.", "error");
+        return;
+      }
+      
+      printWindow.document.write(printHtml);
+      printWindow.document.close();
+      printWindow.focus();
+      
+      setTimeout(() => {
+        try {
+          printWindow.print();
+        } catch (e) {
+          console.error("خطا در پرینت:", e);
+          showToast("❌ خطا در پرینت. لطفاً مجدداً تلاش کنید.", "error");
+        }
+      }, 800);
+      
+    } catch (error) {
+      console.error("❌ خطا در پرینت:", error);
+      showToast("❌ خطا در پرینت: " + error.message, "error");
     }
   };
 
   // ============ ثبت نتیجه با آپلود PDF ============
   const handleSaveResult = async () => {
+    if (!resultData.result || resultData.result.trim() === "") {
+      showToast("لطفاً نتیجه آزمایش را وارد کنید", "error");
+      return;
+    }
+
     try {
       setUploading(true);
+      setError(null);
       
       const token = localStorage.getItem("token");
-      let pdfUrl = resultData.pdf_url;
-
+      const formData = new FormData();
+      
+      formData.append("laboratory_request_id", selectedRequest.id);
+      formData.append("registration_id", selectedRequest.reg_id || selectedRequest.registration_id);
+      formData.append("patient_id", selectedRequest.patient_id);
+      formData.append("result_status", resultData.status);
+      formData.append("result", resultData.result.trim());
+      formData.append("normal_range", resultData.normal_range || "");
+      formData.append("remarks", resultData.notes || "");
+      
       if (resultData.pdf_file) {
-        const uploadResult = await uploadPdfFile(selectedRequest.id);
-        if (uploadResult && uploadResult.success) {
-          pdfUrl = uploadResult.pdf_url;
-        }
+        formData.append("pdf_file", resultData.pdf_file);
       }
 
       const response = await fetch(
-        `http://localhost:8000/api/laboratory-requests/${selectedRequest.id}`,
+        "http://localhost:8000/api/laboratory-results",
         {
-          method: "PUT",
+          method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
+            Accept: "application/json",
           },
-          body: JSON.stringify({
-            result: resultData.result,
-            status: resultData.status,
-            notes: resultData.notes,
-            normal_range: resultData.normal_range,
-            pdf_url: pdfUrl,
-            pdf_file_name: resultData.pdf_file_name,
-          }),
+          body: formData,
         }
       );
 
-      if (!response.ok) throw new Error("خطا در ثبت نتیجه");
+      const responseText = await response.text();
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        showToast("پاسخ نامعتبر از سرور دریافت شد", "error");
+        return;
+      }
 
-      const result = await response.json();
+      if (!response.ok) {
+        const errorMessage = result.message || result.error || "خطا در ثبت نتیجه";
+        showToast(errorMessage, "error");
+        return;
+      }
+
       if (result.success) {
+        showToast("✅ نتیجه با موفقیت ثبت شد", "success");
         setOpenResultDialog(false);
-        setUploading(false);
-        await fetchRequests();
-        if (selectedCategory) {
-          handleCategoryClick(selectedCategory);
+        
+        setResultData({
+          result: "",
+          status: "Completed",
+          notes: "",
+          normal_range: "",
+          pdf_file: null,
+          pdf_file_name: "",
+          pdf_url: "",
+        });
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
         }
-        setError(null);
+        
+        await fetchRequests();
+        
+        if (selectedCategory) {
+          const filtered = allRequests.filter((r) => {
+            if (selectedCategory.testType && r.test_type === selectedCategory.testType) {
+              return true;
+            }
+            if (selectedCategory.keywords.length > 0) {
+              const testName = (r.test_name || "").toLowerCase();
+              const testTypeName = (r.test_type || "").toLowerCase();
+              return selectedCategory.keywords.some((keyword) =>
+                testName.includes(keyword.toLowerCase()) ||
+                testTypeName.includes(keyword.toLowerCase())
+              );
+            }
+            return false;
+          });
+          setFilteredRequests(filtered);
+        }
+        
+        setAllRequests(prevRequests => 
+          prevRequests.map(req => 
+            req.id === selectedRequest.id 
+              ? { ...req, status: "completed" } 
+              : req
+          )
+        );
+      } else {
+        const errorMessage = result.message || "خطا در ثبت نتیجه";
+        showToast(errorMessage, "error");
       }
     } catch (err) {
       console.error("❌ خطا در ثبت نتیجه:", err);
-      setError("خطا در ثبت نتیجه یا آپلود فایل");
+      showToast(err.message || "خطا در ثبت نتیجه یا آپلود فایل", "error");
+    } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -760,7 +925,7 @@ export default function LabHematology() {
     return colors[index];
   };
 
-  // ============ دریافت جنسیت به فارسی ============
+  // ============ دریافت جنسیت به فارسی/دری ============
   const getGenderLabel = (gender) => {
     const genders = {
       male: "مرد",
@@ -781,7 +946,27 @@ export default function LabHematology() {
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ 
+            width: "100%",
+            fontSize: "16px",
+            fontWeight: "bold",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+          }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+
       <Paper
         sx={{
           p: 3,
@@ -837,8 +1022,12 @@ export default function LabHematology() {
           {error}
         </Alert>
       )}
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage(null)}>
+          {successMessage}
+        </Alert>
+      )}
 
-      {/* نمایش کارت‌های دسته‌بندی یا لیست درخواست‌ها */}
       {!selectedCategory ? (
         <Grid container spacing={3}>
           {categories.map((category) => {
@@ -858,32 +1047,45 @@ export default function LabHematology() {
               return false;
             }).length;
 
+            const hasRequests = count > 0;
+
             return (
               <Grid item xs={12} sm={6} md={4} lg={3} key={category.id}>
                 <Card
                   sx={{
-                    bgcolor: "#1a2a3a",
+                    bgcolor: hasRequests ? "#1a2a3a" : "#0d1520",
                     borderRadius: "12px",
-                    border: "1px solid #374151",
+                    border: hasRequests ? "1px solid #374151" : "1px solid #1f2a3a",
                     transition: "all 0.3s",
-                    cursor: "pointer",
+                    cursor: hasRequests || category.isSpecial ? "pointer" : "not-allowed",
+                    opacity: hasRequests ? 1 : 0.6,
                     "&:hover": {
-                      transform: "translateY(-4px)",
-                      borderColor: "#60a5fa",
-                      boxShadow: "0 8px 25px rgba(0,0,0,0.3)",
+                      transform: hasRequests ? "translateY(-4px)" : "none",
+                      borderColor: hasRequests ? "#60a5fa" : "#1f2a3a",
+                      boxShadow: hasRequests ? "0 8px 25px rgba(0,0,0,0.3)" : "none",
+                      opacity: hasRequests ? 1 : 0.7,
                     },
                   }}
-                  onClick={() => handleCategoryClick(category)}
+                  onClick={() => {
+                    if (hasRequests || category.isSpecial) {
+                      handleCategoryClick(category);
+                    }
+                  }}
                 >
                   <CardContent sx={{ textAlign: "center", p: 3 }}>
-                    <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
+                    <Box sx={{ 
+                      display: "flex", 
+                      justifyContent: "center", 
+                      mb: 2,
+                      opacity: hasRequests ? 1 : 0.5,
+                    }}>
                       {category.icon}
                     </Box>
                     <Typography 
                       variant="h6" 
                       sx={{ 
-                        color: "white", 
-                        fontWeight: "bold", 
+                        color: hasRequests ? "white" : "#6b7280",
+                        fontWeight: hasRequests ? "bold" : "normal",
                         fontSize: "13px",
                         lineHeight: 1.3,
                         minHeight: "36px",
@@ -898,7 +1100,7 @@ export default function LabHematology() {
                       <Typography variant="body2" sx={{ color: "#60a5fa", mt: 1, fontSize: "12px" }}>
                         کلیک کنید →
                       </Typography>
-                    ) : count > 0 ? (
+                    ) : hasRequests ? (
                       <Badge
                         badgeContent={count}
                         color="error"
@@ -918,8 +1120,8 @@ export default function LabHematology() {
                         </Typography>
                       </Badge>
                     ) : (
-                      <Typography variant="body2" sx={{ color: "#6b7280", mt: 1 }}>
-                        هیچ درخواستی
+                      <Typography variant="body2" sx={{ color: "#4b5563", mt: 1, fontSize: "12px" }}>
+                        ◻️ بدون درخواست
                       </Typography>
                     )}
                   </CardContent>
@@ -929,7 +1131,6 @@ export default function LabHematology() {
           })}
         </Grid>
       ) : (
-        // ============ نمایش لیست درخواست‌های فیلتر شده ============
         filteredRequests.length === 0 ? (
           <Paper
             sx={{
@@ -974,15 +1175,8 @@ export default function LabHematology() {
                 {filteredRequests.map((req, index) => {
                   const patientName = req.patient_name || "نامشخص";
                   const patientPhone = req.patient_phone || "";
-                  const patientAge = req.patient_age || "";
-                  const patientGender = req.patient_gender || "";
-                  const patientNationalId = req.patient_national_id || "";
-                  const registrationId = req.registration_id || req.reg_id || "";
-                  const doctorName = req.doctor_name || "";
-                  
-                  const initials = getInitials(patientName);
-                  const avatarColor = getAvatarColor(patientName);
-                  const genderLabel = getGenderLabel(patientGender);
+                  const isCompleted = req.status === "completed";
+                  const hasResult = !!(req.laboratory_result?.result || req.result);
                   
                   return (
                     <TableRow
@@ -990,6 +1184,7 @@ export default function LabHematology() {
                       sx={{
                         "&:hover": { bgcolor: "#243647" },
                         borderBottom: "1px solid #374151",
+                        opacity: isCompleted ? 0.7 : 1,
                       }}
                     >
                       <TableCell sx={{ color: "#9ca3af" }}>{index + 1}</TableCell>
@@ -997,48 +1192,25 @@ export default function LabHematology() {
                         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                           <Avatar
                             sx={{
-                              bgcolor: avatarColor,
+                              bgcolor: getAvatarColor(patientName),
                               width: 45,
                               height: 45,
                               fontSize: 18,
                               fontWeight: "bold",
                             }}
                           >
-                            {initials}
+                            {getInitials(patientName)}
                           </Avatar>
                           <Box>
                             <Typography sx={{ color: "white", fontWeight: "bold", fontSize: "15px" }}>
                               {patientName}
                             </Typography>
-                            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 0.5 }}>
-                              {patientPhone && (
-                                <Typography sx={{ color: "#9ca3af", fontSize: "12px", display: "flex", alignItems: "center", gap: 0.5 }}>
-                                  <PhoneIcon sx={{ fontSize: 12 }} />
-                                  {patientPhone}
-                                </Typography>
-                              )}
-                              {patientAge && (
-                                <Typography sx={{ color: "#9ca3af", fontSize: "12px", display: "flex", alignItems: "center", gap: 0.5 }}>
-                                  <AccessTimeIcon sx={{ fontSize: 12 }} />
-                                  {patientAge} سال
-                                </Typography>
-                              )}
-                              {patientGender && (
-                                <Typography sx={{ color: "#9ca3af", fontSize: "12px", display: "flex", alignItems: "center", gap: 0.5 }}>
-                                  <BadgeIcon sx={{ fontSize: 12 }} />
-                                  {genderLabel}
-                                </Typography>
-                              )}
-                            </Box>
-                            {patientNationalId && (
-                              <Typography sx={{ color: "#6b7280", fontSize: "11px" }}>
-                                تذکره: {patientNationalId}
+                            {patientPhone && (
+                              <Typography sx={{ color: "#9ca3af", fontSize: "12px" }}>
+                                <PhoneIcon sx={{ fontSize: 12, verticalAlign: "middle" }} />
+                                {patientPhone}
                               </Typography>
                             )}
-                            <Typography sx={{ color: "#4b5563", fontSize: "10px" }}>
-                              مراجعه: {registrationId || "N/A"}
-                              {doctorName && ` | داکتر: ${doctorName}`}
-                            </Typography>
                           </Box>
                         </Box>
                       </TableCell>
@@ -1047,44 +1219,36 @@ export default function LabHematology() {
                           label={req.test_name || req.test_type || "نامشخص"}
                           size="small"
                           sx={{
-                            bgcolor: "rgba(96, 165, 250, 0.2)",
-                            color: "#60a5fa",
+                            bgcolor: isCompleted ? "rgba(34, 197, 94, 0.2)" : "rgba(96, 165, 250, 0.2)",
+                            color: isCompleted ? "#22c55e" : "#60a5fa",
                             fontWeight: "bold",
                           }}
                         />
                       </TableCell>
                       <TableCell sx={{ color: "#9ca3af" }}>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                          <CalendarIcon sx={{ fontSize: 16, color: "#6b7280" }} />
-                          {new Date(req.created_at).toLocaleDateString("fa-IR")}
-                        </Box>
+                        {new Date(req.created_at).toLocaleDateString("fa-IR")}
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={req.status === "completed" ? "✅ تکمیل شده" : "⏳ در انتظار"}
-                          color={req.status === "completed" ? "success" : "warning"}
+                          label={isCompleted && hasResult ? "✅ ثبت شده" : isCompleted ? "✅ تکمیل شده" : "⏳ در انتظار"}
+                          color={isCompleted && hasResult ? "success" : isCompleted ? "primary" : "warning"}
                           size="small"
                           sx={{ fontWeight: "bold" }}
                         />
                       </TableCell>
                       <TableCell>
                         {req.pdf_url ? (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<PdfIcon />}
-                            onClick={() => handleDownloadPdf(req.pdf_url)}
-                            sx={{
-                              color: "#ef4444",
-                              borderColor: "#ef4444",
-                              "&:hover": {
-                                borderColor: "#f87171",
-                                backgroundColor: "rgba(239, 68, 68, 0.1)",
-                              },
-                            }}
-                          >
-                            PDF
-                          </Button>
+                          <Stack direction="row" spacing={0.5}>
+                            <Tooltip title="دانلود PDF">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDownloadPdf(req.pdf_url)}
+                                sx={{ color: "#22c55e" }}
+                              >
+                                <DownloadIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
                         ) : (
                           <Typography sx={{ color: "#6b7280", fontSize: "12px" }}>
                             ندارد
@@ -1111,7 +1275,7 @@ export default function LabHematology() {
                               جزئیات
                             </Button>
                           </Tooltip>
-                          {req.status !== "completed" && (
+                          {!isCompleted && (
                             <Tooltip title="ثبت نتیجه">
                               <Button
                                 size="small"
@@ -1127,25 +1291,36 @@ export default function LabHematology() {
                               </Button>
                             </Tooltip>
                           )}
-                          {req.status === "completed" && (
-                            <Tooltip title="چاپ نتیجه">
-                              <Button
+                          {isCompleted && (
+                            <>
+                              <Tooltip title="پرینت نتیجه">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<PrintIcon />}
+                                  onClick={() => handlePrintResult(req)}
+                                  sx={{
+                                    color: "#8b5cf6",
+                                    borderColor: "#8b5cf6",
+                                    "&:hover": {
+                                      borderColor: "#a78bfa",
+                                      backgroundColor: "rgba(139, 92, 246, 0.1)",
+                                    },
+                                  }}
+                                >
+                                  پرینت
+                                </Button>
+                              </Tooltip>
+                              <Chip
+                                label={hasResult ? "نتیجه ثبت شده" : "تکمیل شده"}
                                 size="small"
-                                variant="outlined"
-                                startIcon={<PrintIcon />}
-                                onClick={() => window.print()}
                                 sx={{
-                                  color: "#f59e0b",
-                                  borderColor: "#f59e0b",
-                                  "&:hover": {
-                                    borderColor: "#fbbf24",
-                                    backgroundColor: "rgba(245, 158, 11, 0.1)",
-                                  },
+                                  bgcolor: hasResult ? "rgba(34, 197, 94, 0.2)" : "rgba(59, 130, 246, 0.2)",
+                                  color: hasResult ? "#22c55e" : "#3b82f6",
+                                  fontWeight: "bold",
                                 }}
-                              >
-                                چاپ
-                              </Button>
-                            </Tooltip>
+                              />
+                            </>
                           )}
                         </Stack>
                       </TableCell>
@@ -1158,7 +1333,7 @@ export default function LabHematology() {
         )
       )}
 
-      {/* ============ دیالوگ جزئیات ============ */}
+      {/* ============ دیالوگ جزئیات با نمایش کامل نتیجه ============ */}
       <Dialog
         open={openDetailDialog}
         onClose={() => setOpenDetailDialog(false)}
@@ -1187,7 +1362,7 @@ export default function LabHematology() {
         <DialogContent sx={{ mt: 2 }}>
           {selectedRequest && (
             <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12}>
                 <Card sx={{ bgcolor: "#0d1b2a", border: "1px solid #374151" }}>
                   <CardContent>
                     <Typography variant="subtitle2" sx={{ color: "#9ca3af", mb: 1 }}>
@@ -1195,63 +1370,47 @@ export default function LabHematology() {
                       اطلاعات بیمار
                     </Typography>
                     <Divider sx={{ mb: 2, borderColor: "#374151" }} />
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                        <Avatar
-                          sx={{
-                            bgcolor: getAvatarColor(selectedRequest.patient_name || "User"),
-                            width: 60,
-                            height: 60,
-                            fontSize: 24,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {getInitials(selectedRequest.patient_name || "کاربر")}
-                        </Avatar>
-                        <Box>
-                          <Typography sx={{ color: "white", fontWeight: "bold", fontSize: "18px" }}>
-                            {selectedRequest.patient_name || "نامشخص"}
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      <Avatar
+                        sx={{
+                          bgcolor: getAvatarColor(selectedRequest.patient_full_name || selectedRequest.patient_name || "User"),
+                          width: 60,
+                          height: 60,
+                          fontSize: 24,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {getInitials(selectedRequest.patient_full_name || selectedRequest.patient_name || "کاربر")}
+                      </Avatar>
+                      <Box>
+                        <Typography sx={{ color: "white", fontWeight: "bold", fontSize: "18px" }}>
+                          {selectedRequest.patient_full_name || selectedRequest.patient_name || "نامشخص"}
+                        </Typography>
+                        {selectedRequest.patient_phone && (
+                          <Typography sx={{ color: "#9ca3af", fontSize: "14px" }}>
+                            <PhoneIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
+                            {selectedRequest.patient_phone}
                           </Typography>
-                          {selectedRequest.patient_phone && (
-                            <Typography sx={{ color: "#9ca3af", fontSize: "14px" }}>
-                              <PhoneIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
-                              {selectedRequest.patient_phone}
-                            </Typography>
-                          )}
-                          {selectedRequest.patient_email && (
-                            <Typography sx={{ color: "#9ca3af", fontSize: "14px" }}>
-                              <EmailIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
-                              {selectedRequest.patient_email}
-                            </Typography>
-                          )}
-                        </Box>
+                        )}
+                        {selectedRequest.patient_age && (
+                          <Typography sx={{ color: "#9ca3af", fontSize: "14px" }}>
+                            <AccessTimeIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
+                            سن: {selectedRequest.patient_age} سال
+                          </Typography>
+                        )}
+                        {selectedRequest.patient_gender && (
+                          <Typography sx={{ color: "#9ca3af", fontSize: "14px" }}>
+                            <BadgeIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
+                            جنسیت: {getGenderLabel(selectedRequest.patient_gender)}
+                          </Typography>
+                        )}
                       </Box>
-                      <Grid container spacing={1}>
-                        <Grid item xs={6}>
-                          <Typography variant="body2" sx={{ color: "#6b7280" }}>سن:</Typography>
-                          <Typography sx={{ color: "white" }}>
-                            {selectedRequest.patient_age || "ندارد"}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={6}>
-                          <Typography variant="body2" sx={{ color: "#6b7280" }}>جنسیت:</Typography>
-                          <Typography sx={{ color: "white" }}>
-                            {getGenderLabel(selectedRequest.patient_gender)}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={12}>
-                          <Typography variant="body2" sx={{ color: "#6b7280" }}>تذکره:</Typography>
-                          <Typography sx={{ color: "white" }}>
-                            {selectedRequest.patient_national_id || "ندارد"}
-                          </Typography>
-                        </Grid>
-                      </Grid>
                     </Box>
                   </CardContent>
                 </Card>
               </Grid>
-
-              <Grid item xs={12} md={6}>
+              
+              <Grid item xs={12}>
                 <Card sx={{ bgcolor: "#0d1b2a", border: "1px solid #374151" }}>
                   <CardContent>
                     <Typography variant="subtitle2" sx={{ color: "#9ca3af", mb: 1 }}>
@@ -1267,24 +1426,6 @@ export default function LabHematology() {
                         </Typography>
                       </Box>
                       <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography sx={{ color: "#9ca3af" }}>شماره مراجعه:</Typography>
-                        <Typography sx={{ color: "white" }}>
-                          {selectedRequest.registration_id || selectedRequest.reg_id || "N/A"}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography sx={{ color: "#9ca3af" }}>داکتر:</Typography>
-                        <Typography sx={{ color: "white" }}>
-                          {selectedRequest.doctor_name || "نامشخص"}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography sx={{ color: "#9ca3af" }}>تاریخ درخواست:</Typography>
-                        <Typography sx={{ color: "white" }}>
-                          {new Date(selectedRequest.created_at).toLocaleDateString("fa-IR")}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                         <Typography sx={{ color: "#9ca3af" }}>وضعیت:</Typography>
                         <Chip
                           label={selectedRequest.status === "completed" ? "تکمیل شده" : "در انتظار"}
@@ -1292,59 +1433,74 @@ export default function LabHematology() {
                           size="small"
                         />
                       </Box>
-                      {selectedRequest.result && (
-                        <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                          <Typography sx={{ color: "#9ca3af" }}>نتیجه:</Typography>
-                          <Typography sx={{ color: "#22c55e", fontWeight: "bold" }}>
-                            {selectedRequest.result}
-                          </Typography>
-                        </Box>
-                      )}
-                      {selectedRequest.pdf_url && (
-                        <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                          <Typography sx={{ color: "#9ca3af" }}>فایل PDF:</Typography>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<PdfIcon />}
-                            onClick={() => handleDownloadPdf(selectedRequest.pdf_url)}
-                            sx={{
-                              color: "#ef4444",
-                              borderColor: "#ef4444",
-                            }}
-                          >
-                            مشاهده PDF
-                          </Button>
-                        </Box>
+                      {selectedRequest.status === "completed" && (
+                        <>
+                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                            <Typography sx={{ color: "#9ca3af" }}>شماره گزارش:</Typography>
+                            <Typography sx={{ color: "#fcd34d", fontWeight: "bold" }}>
+                              {selectedRequest.report_no || "-"}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                            <Typography sx={{ color: "#9ca3af" }}>نتیجه:</Typography>
+                            <Typography sx={{ color: "#22c55e", fontWeight: "bold" }}>
+                              {selectedRequest.result_value || selectedRequest.result || selectedRequest.laboratory_result?.result || "ثبت شده"}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                            <Typography sx={{ color: "#9ca3af" }}>محدوده نرمال:</Typography>
+                            <Typography sx={{ color: "white", fontWeight: "bold" }}>
+                              {selectedRequest.normal_range || "-"}
+                            </Typography>
+                          </Box>
+                          {selectedRequest.result_remarks && (
+                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                              <Typography sx={{ color: "#9ca3af" }}>یادداشت:</Typography>
+                              <Typography sx={{ color: "white" }}>
+                                {selectedRequest.result_remarks}
+                              </Typography>
+                            </Box>
+                          )}
+                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                            <Typography sx={{ color: "#9ca3af" }}>تاریخ نتیجه:</Typography>
+                            <Typography sx={{ color: "white" }}>
+                              {selectedRequest.result_date ? new Date(selectedRequest.result_date).toLocaleDateString("fa-IR") : "-"}
+                            </Typography>
+                          </Box>
+                          {selectedRequest.pdf_url && (
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <Typography sx={{ color: "#9ca3af" }}>فایل PDF:</Typography>
+                              <Stack direction="row" spacing={1}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<DownloadIcon />}
+                                  onClick={() => handleDownloadPdf(selectedRequest.pdf_url)}
+                                  sx={{
+                                    color: "#22c55e",
+                                    borderColor: "#22c55e",
+                                    "&:hover": {
+                                      borderColor: "#4ade80",
+                                      backgroundColor: "rgba(34, 197, 94, 0.1)",
+                                    },
+                                  }}
+                                >
+                                  دانلود
+                                </Button>
+                              </Stack>
+                            </Box>
+                          )}
+                        </>
                       )}
                     </Box>
                   </CardContent>
                 </Card>
               </Grid>
-
-              {selectedRequest.notes && (
-                <Grid item xs={12}>
-                  <Card sx={{ bgcolor: "#0d1b2a", border: "1px solid #374151" }}>
-                    <CardContent>
-                      <Typography variant="subtitle2" sx={{ color: "#9ca3af", mb: 1 }}>
-                        یادداشت‌ها
-                      </Typography>
-                      <Divider sx={{ mb: 2, borderColor: "#374151" }} />
-                      <Typography sx={{ color: "white" }}>
-                        {selectedRequest.notes}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              )}
             </Grid>
           )}
         </DialogContent>
         <DialogActions sx={{ borderTop: "1px solid #374151", p: 2 }}>
-          <Button
-            onClick={() => setOpenDetailDialog(false)}
-            sx={{ color: "#9ca3af" }}
-          >
+          <Button onClick={() => setOpenDetailDialog(false)} sx={{ color: "#9ca3af" }}>
             بستن
           </Button>
           {selectedRequest?.status !== "completed" && (
@@ -1363,10 +1519,27 @@ export default function LabHematology() {
               ثبت نتیجه
             </Button>
           )}
+          {selectedRequest?.status === "completed" && (
+            <Button
+              variant="outlined"
+              startIcon={<PrintIcon />}
+              onClick={() => handlePrintResult(selectedRequest)}
+              sx={{
+                color: "#8b5cf6",
+                borderColor: "#8b5cf6",
+                "&:hover": {
+                  borderColor: "#a78bfa",
+                  backgroundColor: "rgba(139, 92, 246, 0.1)",
+                },
+              }}
+            >
+              پرینت نتیجه
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 
-      {/* ============ دیالوگ ثبت نتیجه با آپلود PDF ============ */}
+      {/* ============ دیالوگ ثبت نتیجه ============ */}
       <Dialog
         open={openResultDialog}
         onClose={() => !uploading && setOpenResultDialog(false)}
@@ -1429,50 +1602,16 @@ export default function LabHematology() {
                       <Typography variant="body2" sx={{ color: "#9ca3af" }}>
                         نام بیمار:
                       </Typography>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
-                        <Avatar
-                          sx={{
-                            bgcolor: getAvatarColor(selectedRequest.patient_name || "User"),
-                            width: 32,
-                            height: 32,
-                            fontSize: 14,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {getInitials(selectedRequest.patient_name || "کاربر")}
-                        </Avatar>
-                        <Typography sx={{ color: "white", fontWeight: "bold", fontSize: "16px" }}>
-                          {selectedRequest.patient_name || "نامشخص"}
-                        </Typography>
-                        {selectedRequest.patient_phone && (
-                          <Typography sx={{ color: "#9ca3af", fontSize: "12px", ml: 1 }}>
-                            <PhoneIcon sx={{ fontSize: 12, verticalAlign: "middle" }} />
-                            {selectedRequest.patient_phone}
-                          </Typography>
-                        )}
-                      </Box>
-                      <Box sx={{ display: "flex", gap: 2, mt: 0.5 }}>
-                        {selectedRequest.patient_age && (
-                          <Typography sx={{ color: "#6b7280", fontSize: "12px" }}>
-                            سن: {selectedRequest.patient_age} سال
-                          </Typography>
-                        )}
-                        {selectedRequest.patient_gender && (
-                          <Typography sx={{ color: "#6b7280", fontSize: "12px" }}>
-                            جنسیت: {getGenderLabel(selectedRequest.patient_gender)}
-                          </Typography>
-                        )}
-                      </Box>
+                      <Typography sx={{ color: "white", fontWeight: "bold", mt: 0.5 }}>
+                        {selectedRequest.patient_name || "نامشخص"}
+                      </Typography>
                     </Grid>
                     <Grid item xs={12} md={6}>
                       <Typography variant="body2" sx={{ color: "#9ca3af" }}>
                         نوع تست:
                       </Typography>
-                      <Typography sx={{ color: "white", fontWeight: "bold", mt: 0.5, fontSize: "16px" }}>
+                      <Typography sx={{ color: "white", fontWeight: "bold", mt: 0.5 }}>
                         {selectedRequest.test_name || selectedRequest.test_type || "نامشخص"}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: "#6b7280", mt: 0.5 }}>
-                        شماره مراجعه: {selectedRequest.registration_id || selectedRequest.reg_id || "N/A"}
                       </Typography>
                     </Grid>
                   </Grid>
@@ -1548,19 +1687,21 @@ export default function LabHematology() {
                     "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
                   }}
                 >
-                  <MenuItem value="pending" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
-                    در انتظار
+                  <MenuItem value="Draft" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
+                    پیش‌نویس
                   </MenuItem>
-                  <MenuItem value="completed" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
+                  <MenuItem value="Completed" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
                     تکمیل شده
                   </MenuItem>
-                  <MenuItem value="cancelled" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
+                  <MenuItem value="Verified" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
+                    تأیید شده
+                  </MenuItem>
+                  <MenuItem value="Cancelled" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
                     لغو شده
                   </MenuItem>
                 </TextField>
               </Grid>
 
-              {/* بخش آپلود PDF */}
               <Grid item xs={12}>
                 <Paper
                   sx={{
@@ -1634,7 +1775,7 @@ export default function LabHematology() {
                         برای آپلود فایل PDF کلیک کنید
                       </Typography>
                       <Typography variant="caption" sx={{ color: "#6b7280" }}>
-                        فقط فایل‌های PDF پذیرفته می‌شوند
+                        فقط فایل‌های PDF پذیرفته می‌شوند (حداکثر 10 مگابایت)
                       </Typography>
                       <Box sx={{ mt: 2 }}>
                         <Button

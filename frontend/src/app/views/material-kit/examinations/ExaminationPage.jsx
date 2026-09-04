@@ -191,8 +191,9 @@ export default function TreatmentPage() {
         });
       }
       
-      // بارگذاری لابراتوار
+      // ============ بارگذاری لابراتوار با نتایج ============
       try {
+        // دریافت درخواست‌های لابراتوار با جزئیات کامل
         const labResponse = await api.get(`/laboratory-requests/registration/${registrationId}/full`);
         console.log('📥 Lab Response:', labResponse.data);
         
@@ -202,10 +203,45 @@ export default function TreatmentPage() {
           
           console.log(`✅ Found ${tests.length} laboratory tests`);
           
+          // برای هر تست، نتیجه را هم دریافت کن
+          let testsWithResults = [];
+          for (const test of tests) {
+            try {
+              // دریافت نتیجه برای این تست
+              const resultResponse = await api.get(`/laboratory-results/request/${test.id}`);
+              if (resultResponse.data?.success) {
+                test.result_details = resultResponse.data.data;
+                test.has_result = true;
+                console.log(`✅ Result found for test ${test.id}`);
+              } else {
+                test.result_details = null;
+                test.has_result = false;
+              }
+            } catch (resultErr) {
+              // اگر نتیجه‌ای وجود نداشت
+              test.result_details = null;
+              test.has_result = false;
+            }
+            testsWithResults.push(test);
+          }
+          
+          // بررسی اینکه آیا نتیجه‌ای وجود دارد
+          const hasAnyResult = testsWithResults.some(t => t.has_result);
+          console.log(`📊 Has result: ${hasAnyResult}`);
+          
           updatePatientData(registrationId, 'laboratory', {
-            data: tests.length > 0 ? tests[0] : null,
-            allTests: tests,
-            isRequested: tests.length > 0
+            data: testsWithResults.length > 0 ? testsWithResults[0] : null,
+            allTests: testsWithResults,
+            isRequested: testsWithResults.length > 0,
+            hasResult: hasAnyResult
+          });
+        } else {
+          console.log('⚠️ No laboratory data');
+          updatePatientData(registrationId, 'laboratory', {
+            data: null,
+            allTests: [],
+            isRequested: false,
+            hasResult: false
           });
         }
       } catch (err) {
@@ -213,7 +249,8 @@ export default function TreatmentPage() {
         updatePatientData(registrationId, 'laboratory', {
           data: null,
           allTests: [],
-          isRequested: false
+          isRequested: false,
+          hasResult: false
         });
       }
       
@@ -379,12 +416,15 @@ export default function TreatmentPage() {
         const currentIdx = progress.currentStepIndex || 0;
         
         // ✅ فقط مریض‌هایی که مرحله فعلی‌شان همین تب باشد
-        // اگر مریض در مرحله currentIdx باشد، در همان تب نمایش داده می‌شود
         if (currentIdx === stageIndex) {
+          // ✅ برای مرحله لابراتوار، اطلاعات نتیجه را هم اضافه کن
+          const labData = patient.data?.laboratory || {};
           patients.push({
             reg_id: parseInt(id),
             ...patient.registration,
-            progress: progress
+            progress: progress,
+            has_lab_result: labData.hasResult || false,
+            lab_results: labData.allTests?.filter(t => t.has_result) || []
           });
         }
       }
@@ -762,7 +802,8 @@ export default function TreatmentPage() {
                     alignItems: 'center',
                     gap: '10px',
                     border: selectedPatientId === p.reg_id ? '2px solid #60a5fa' : '1px solid #374151',
-                    transition: 'all 0.3s'
+                    transition: 'all 0.3s',
+                    position: 'relative'
                   }}
                 >
                   <div>
@@ -775,6 +816,25 @@ export default function TreatmentPage() {
                   </div>
                   {p.progress?.completedSteps?.includes(activeTab) && (
                     <span style={{ color: '#10b981', fontSize: '14px' }}>✅</span>
+                  )}
+                  {/* ✅ نمایش نشانگر نتیجه لابراتوار */}
+                  {activeTab === 'laboratory' && p.has_lab_result && (
+                    <span style={{
+                      position: 'absolute',
+                      top: '-5px',
+                      right: '-5px',
+                      backgroundColor: '#22c55e',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: '20px',
+                      height: '20px',
+                      fontSize: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      📋
+                    </span>
                   )}
                 </div>
               ))}
@@ -850,7 +910,8 @@ export default function TreatmentPage() {
         const labData = patientData.laboratory || { 
           data: null, 
           allTests: [], 
-          isRequested: false 
+          isRequested: false,
+          hasResult: false
         };
         
         return (
@@ -877,6 +938,7 @@ export default function TreatmentPage() {
             savedTests={labData.data}
             allTests={labData.allTests || []}
             isLabRequested={labData.isRequested || false}
+            hasLabResult={labData.hasResult || false}
             setIsLabRequested={(val) => {
               updatePatientData(regId, 'laboratory', {
                 ...labData,

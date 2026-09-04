@@ -46,31 +46,22 @@ export default function LaboratoryRequest({
 
   // ============ انواع تست با برچسب ============
   const testTypes = [
-    // 🩸 آزمایش خون
     { value: 'blood', label: '🩸 آزمایش خون (هماتولوژی)', category: 'خون' },
     { value: 'cbc', label: '🩸 شمارش کامل خون (CBC)', category: 'خون' },
     { value: 'blood_sugar', label: '🩸 قند خون (FBS / BS)', category: 'خون' },
     { value: 'blood_group', label: '🩸 گروپ خون', category: 'خون' },
-    
-    // 🧪 بیوشیمی
     { value: 'biochemistry', label: '🧪 بیوشیمی خون', category: 'بیوشیمی' },
     { value: 'lipid_profile', label: '🧪 پروفایل چربی (Lipid Profile)', category: 'بیوشیمی' },
     { value: 'liver_function', label: '🧪 عملکرد کبد (LFT)', category: 'بیوشیمی' },
     { value: 'kidney_function', label: '🧪 عملکرد کلیه (RFT)', category: 'بیوشیمی' },
     { value: 'thyroid', label: '🧪 هورمون‌های تیروئید (T3/T4/TSH)', category: 'بیوشیمی' },
-    
-    // 🧬 هورمونی
     { value: 'hormonal', label: '🧬 هورمون‌ها', category: 'هورمونی' },
     { value: 'reproductive_hormones', label: '🧬 هورمون‌های تولیدمثل', category: 'هورمونی' },
     { value: 'adrenal_hormones', label: '🧬 هورمون‌های آدرنال', category: 'هورمونی' },
-    
-    // 🦠 میکروبی
     { value: 'microbial', label: '🦠 آزمایش میکروبی', category: 'میکروبی' },
     { value: 'bacterial_culture', label: '🦠 کشت باکتری', category: 'میکروبی' },
     { value: 'fungal_culture', label: '🦠 کشت قارچ', category: 'میکروبی' },
     { value: 'antibiotic_sensitivity', label: '🦠 آنتی‌بیوگرام', category: 'میکروبی' },
-    
-    // 🧫 سرولوژی
     { value: 'serology', label: '🧫 سرولوژی', category: 'سرولوژی' },
     { value: 'hepatitis_b', label: '🧪 تست هپاتیت B (HBsAg)', category: 'سرولوژی' },
     { value: 'hepatitis_c', label: '🧪 تست هپاتیت C (Anti-HCV)', category: 'سرولوژی' },
@@ -78,71 +69,48 @@ export default function LaboratoryRequest({
     { value: 'syphilis', label: '🧫 تست سیفلیس (VDRL)', category: 'سرولوژی' },
     { value: 'rubella', label: '🧫 تست روبلا', category: 'سرولوژی' },
     { value: 'toxoplasmosis', label: '🧫 تست توکسوپلاسموز', category: 'سرولوژی' },
-    
-    // 💧 ادرار
     { value: 'urine', label: '💧 آنالیز ادرار', category: 'ادرار' },
     { value: 'urine_culture', label: '💧 کشت ادرار', category: 'ادرار' },
-    
-    // 💩 مدفوع
     { value: 'stool', label: '💩 آزمایش مدفوع', category: 'مدفوع' },
     { value: 'stool_culture', label: '💩 کشت مدفوع', category: 'مدفوع' },
     { value: 'occult_blood', label: '💩 خون مخفی مدفوع', category: 'مدفوع' },
-    
-    // 🔬 پاتولوژی
     { value: 'pathology', label: '🔬 پاتولوژی', category: 'پاتولوژی' },
     { value: 'biopsy', label: '🔬 بیوپسی', category: 'پاتولوژی' },
     { value: 'cytology', label: '🔬 سیتولوژی', category: 'پاتولوژی' },
-    
-    // 🧬 ژنتیک
     { value: 'genetic', label: '🧬 آزمایش ژنتیک', category: 'ژنتیک' },
     { value: 'pcr', label: '🧬 PCR', category: 'ژنتیک' },
     { value: 'karyotyping', label: '🧬 کاریوتایپینگ', category: 'ژنتیک' },
-    
-    // 🦟 انگل‌شناسی
     { value: 'malaria', label: '🦟 تست مالاریا', category: 'انگل‌شناسی' },
     { value: 'parasitology', label: '🦟 انگل‌شناسی', category: 'انگل‌شناسی' },
     { value: 'kala_azar', label: '🦟 کالا آزار (لیشمانیوز احشایی)', category: 'انگل‌شناسی' },
     { value: 'leishmaniasis', label: '🦟 لیشمانیوز', category: 'انگل‌شناسی' },
-    
-    // 📷 تصویربرداری
     { value: 'imaging', label: '📷 تصویربرداری', category: 'تصویربرداری' },
     { value: 'ultrasound', label: '📷 سونوگرافی', category: 'تصویربرداری' },
     { value: 'xray', label: '📷 رادیوگرافی (X-Ray)', category: 'تصویربرداری' },
     { value: 'ct_scan', label: '📷 سی‌تی اسکن (CT Scan)', category: 'تصویربرداری' },
     { value: 'mri', label: '📷 ام‌آرآی (MRI)', category: 'تصویربرداری' },
-    
-    // 📋 سایر
     { value: 'other', label: '📋 سایر آزمایشات', category: 'سایر' },
     { value: 'general', label: '📋 عمومی', category: 'سایر' },
   ];
 
   // ============ نقشه نوع تست به برچسب ============
   const testTypeLabels = {
-    // خون
     blood: 'آزمایش خون (هماتولوژی)',
     cbc: 'شمارش کامل خون (CBC)',
     blood_sugar: 'قند خون',
     blood_group: 'گروپ خون',
-    
-    // بیوشیمی
     biochemistry: 'بیوشیمی خون',
     lipid_profile: 'پروفایل چربی',
     liver_function: 'عملکرد کبد',
     kidney_function: 'عملکرد کلیه',
     thyroid: 'هورمون‌های تیروئید',
-    
-    // هورمونی
     hormonal: 'هورمون‌ها',
     reproductive_hormones: 'هورمون‌های تولیدمثل',
     adrenal_hormones: 'هورمون‌های آدرنال',
-    
-    // میکروبی
     microbial: 'آزمایش میکروبی',
     bacterial_culture: 'کشت باکتری',
     fungal_culture: 'کشت قارچ',
     antibiotic_sensitivity: 'آنتی‌بیوگرام',
-    
-    // سرولوژی
     serology: 'سرولوژی',
     hepatitis_b: 'تست هپاتیت B',
     hepatitis_c: 'تست هپاتیت C',
@@ -150,40 +118,26 @@ export default function LaboratoryRequest({
     syphilis: 'تست سیفلیس',
     rubella: 'تست روبلا',
     toxoplasmosis: 'تست توکسوپلاسموز',
-    
-    // ادرار
     urine: 'آنالیز ادرار',
     urine_culture: 'کشت ادرار',
-    
-    // مدفوع
     stool: 'آزمایش مدفوع',
     stool_culture: 'کشت مدفوع',
     occult_blood: 'خون مخفی مدفوع',
-    
-    // پاتولوژی
     pathology: 'پاتولوژی',
     biopsy: 'بیوپسی',
     cytology: 'سیتولوژی',
-    
-    // ژنتیک
     genetic: 'آزمایش ژنتیک',
     pcr: 'PCR',
     karyotyping: 'کاریوتایپینگ',
-    
-    // انگل‌شناسی
     malaria: 'تست مالاریا',
     parasitology: 'انگل‌شناسی',
     kala_azar: 'کالا آزار',
     leishmaniasis: 'لیشمانیوز',
-    
-    // تصویربرداری
     imaging: 'تصویربرداری',
     ultrasound: 'سونوگرافی',
     xray: 'رادیوگرافی',
     ct_scan: 'سی‌تی اسکن',
     mri: 'ام‌آرآی',
-    
-    // سایر
     other: 'سایر آزمایشات',
     general: 'عمومی',
   };
@@ -412,18 +366,15 @@ export default function LaboratoryRequest({
           setBarcode(testsData[0].barcode);
         }
 
-        // ✅ نمایش پیام موفقیت
         const testLabel = testTypeLabels[formData.test_type] || formData.test_type;
         toast.success(`✅ درخواست "${testLabel}" با موفقیت ثبت شد و به لابراتوار ارسال گردید`);
 
-        // ✅ فقط فرم را ریست می‌کنیم و در همان صفحه می‌مانیم
         resetForm();
         
         if (onRefresh) {
           onRefresh();
         }
         
-        // ✅ فقط لیست تست‌ها را به‌روز می‌کنیم
         setTimeout(() => {
           loadTestsFromServer();
         }, 500);
@@ -696,6 +647,203 @@ export default function LaboratoryRequest({
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
+  };
+
+  // ============ دریافت و دانلود PDF با استفاده از API جدید ============
+ const handleDownloadPdf = async (resultId, fileName) => {
+  if (!resultId) {
+    toast.error("❌ شناسه نتیجه موجود نیست");
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem("token");
+    toast.info("⏳ در حال دانلود فایل...");
+    
+    const response = await fetch(`http://localhost:8000/api/laboratory-results/download/${resultId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/pdf',
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        toast.error("❌ نشست شما منقضی شده است");
+        return;
+      }
+      if (response.status === 404) {
+        toast.error("❌ فایل یافت نشد");
+        return;
+      }
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName || 'result.pdf';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 5000);
+    
+    toast.success("✅ دانلود با موفقیت انجام شد");
+    
+  } catch (error) {
+    console.error("❌ خطا:", error);
+    toast.error("❌ خطا در دانلود فایل: " + error.message);
+  }
+};
+  // ============ نمایش نتایج ثبت شده ============
+  const renderResults = () => {
+    if (!tests || tests.length === 0) return null;
+    
+    const testsWithResults = tests.filter(test => test.has_result && test.result_details);
+    
+    if (testsWithResults.length === 0) {
+      return (
+        <div style={{
+          textAlign: 'center',
+          padding: '20px',
+          color: '#9ca3af',
+          backgroundColor: '#0f1a2a',
+          borderRadius: '8px',
+          border: '1px dashed #374151',
+          marginTop: '25px'
+        }}>
+          <div style={{ fontSize: '30px' }}>📋</div>
+          <div>هنوز نتیجه‌ای برای تست‌ها ثبت نشده است</div>
+          <div style={{ fontSize: '12px', marginTop: '5px' }}>
+            نتایج پس از ثبت در بخش لابراتوار در اینجا نمایش داده می‌شود
+          </div>
+        </div>
+      );
+    }
+    
+    return (
+      <div style={{ marginTop: '25px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
+        <h4 style={{ color: '#22c55e', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span>✅</span>
+          نتایج ثبت شده لابراتوار
+          <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'normal' }}>
+            ({testsWithResults.length} نتیجه)
+          </span>
+        </h4>
+        
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gap: '15px'
+        }}>
+          {testsWithResults.map((test) => {
+            const result = test.result_details || {};
+            const patient = patientInfo?.patient || registration?.patient || {};
+            
+            return (
+              <div
+                key={test.id}
+                style={{
+                  backgroundColor: '#0f1a2a',
+                  border: '1px solid #2a3a4a',
+                  borderRadius: '8px',
+                  padding: '15px',
+                  transition: 'all 0.3s'
+                }}
+              >
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderBottom: '1px solid #2a3a4a',
+                  paddingBottom: '10px',
+                  marginBottom: '10px'
+                }}>
+                  <div>
+                    <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '14px' }}>
+                      {test.test_type_label || test.test_type}
+                    </span>
+                    {test.test_name && (
+                      <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>
+                        {test.test_name}
+                      </span>
+                    )}
+                  </div>
+                  <span style={{
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    padding: '2px 10px',
+                    borderRadius: '12px',
+                    fontSize: '11px'
+                  }}>
+                    ثبت شده
+                  </span>
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <span style={{ color: '#6b7280', fontSize: '11px' }}>نتیجه:</span>
+                    <div style={{ color: 'white', fontWeight: 'bold', fontSize: '15px' }}>
+                      {result.result || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <span style={{ color: '#6b7280', fontSize: '11px' }}>محدوده نرمال:</span>
+                    <div style={{ color: '#9ca3af', fontSize: '14px' }}>
+                      {result.normal_range || '-'}
+                    </div>
+                  </div>
+                  {result.remarks && (
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <span style={{ color: '#6b7280', fontSize: '11px' }}>یادداشت:</span>
+                      <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                        {result.remarks}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <span style={{ color: '#6b7280', fontSize: '11px' }}>تاریخ نتیجه:</span>
+                    <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                      {result.analysis_completed_at ? new Date(result.analysis_completed_at).toLocaleDateString('fa-IR') : '-'}
+                    </div>
+                  </div>
+                  {result.pdf_url && (
+                    <div style={{ gridColumn: 'span 2', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => handleDownloadPdf(test.id, result.pdf_file_name || 'result.pdf')}
+                        style={{
+                          backgroundColor: '#22c55e',
+                          color: 'white',
+                          padding: '6px 14px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          transition: 'all 0.3s'
+                        }}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = '#16a34a'}
+                        onMouseLeave={(e) => e.target.style.backgroundColor = '#22c55e'}
+                      >
+                        ⬇️ دانلود
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   // ============ وضعیت‌ها ============
@@ -1444,6 +1592,9 @@ export default function LaboratoryRequest({
           )}
         </div>
       </div>
+
+      {/* ============ نمایش نتایج ثبت شده ============ */}
+      {renderResults()}
 
       {/* مودال ویرایش */}
       {showEditModal && (
