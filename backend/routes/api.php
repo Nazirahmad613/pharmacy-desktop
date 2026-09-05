@@ -39,6 +39,7 @@ use App\Http\Controllers\LaboratoryFeeController;
 use App\Http\Controllers\PrescriptionFeeController;
 use App\Http\Controllers\LaboratoryController;
 use App\Http\Controllers\LaboratoryResultController;
+use App\Http\Controllers\RadiologyRequestController;
 
 /*
 |--------------------------------------------------------------------------
@@ -201,49 +202,41 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{id}', [LaboratoryRequestController::class, 'destroy']);
         Route::post('/{id}/send-to-lab', [LaboratoryRequestController::class, 'sendToLab']);
         
-        // ✅ ========== مسیرهای جدید برای دریافت نتایج در تب درخواست‌ها ==========
-        // ✅ دریافت درخواست‌های یک دکتر با نتایج
+        // مسیرهای دریافت نتایج
         Route::get('/doctor/{doctorId}/with-results', [LaboratoryResultController::class, 'getDoctorRequestsWithResults'])
             ->name('laboratory-requests.doctor-with-results')
             ->where('doctorId', '[0-9]+');
         
-        // ✅ دریافت درخواست‌های یک بیمار با نتایج
         Route::get('/patient/{patientId}/with-results', [LaboratoryResultController::class, 'getPatientRequestsWithResults'])
             ->name('laboratory-requests.patient-with-results')
             ->where('patientId', '[0-9]+');
     });
 
     // ============================================================
-    // ✅ ROUTES مدیریت نتایج لابراتوار (اصلاح شده)
+    // ✅ ROUTES مدیریت نتایج لابراتوار
     // ============================================================
     Route::prefix('laboratory-results')->group(function () {
         
-        // ✅ آپلود فایل
         Route::post('upload-pdf', [LaboratoryResultController::class, 'uploadPdf'])
             ->name('laboratory-results.upload-pdf');
         
-        // ✅ دریافت نتیجه بر اساس laboratory_request_id
         Route::get('request/{requestId}', [LaboratoryResultController::class, 'getResultByRequestId'])
             ->name('laboratory-results.by-request')
             ->where('requestId', '[0-9]+');
         
-        // ✅ دریافت تمام نتایج یک بیمار
         Route::get('patient/{patientId}', [LaboratoryResultController::class, 'getResultsByPatient'])
             ->name('laboratory-results.by-patient')
             ->where('patientId', '[0-9]+');
         
-        // ✅ دریافت تمام درخواست‌ها با نتایج
         Route::get('all', [LaboratoryResultController::class, 'getRequestsWithResults'])
             ->name('laboratory-results.all');
         
-        // ✅ مسیرهای CRUD اصلی
         Route::get('/', [LaboratoryResultController::class, 'index'])
             ->name('laboratory-results.index');
         
         Route::post('/', [LaboratoryResultController::class, 'store'])
             ->name('laboratory-results.store');
         
-        // ✅ مسیرهای با پارامتر
         Route::get('/{id}', [LaboratoryResultController::class, 'show'])
             ->name('laboratory-results.show')
             ->where('id', '[0-9]+');
@@ -256,10 +249,36 @@ Route::middleware('auth:sanctum')->group(function () {
             ->name('laboratory-results.destroy')
             ->where('id', '[0-9]+');
         
-        // ✅ مسیر دانلود فایل PDF (اضافه شده)
         Route::get('download/{id}', [LaboratoryResultController::class, 'downloadPdf'])
             ->name('laboratory-results.download')
             ->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ ============ رادیولوژی (داخل middleware) ============
+    // ============================================================
+    Route::prefix('radiology-requests')->group(function () {
+        
+        // دریافت همه درخواست‌های یک مراجعه
+        Route::get('/registration/{regId}', [RadiologyRequestController::class, 'getByRegistration']);
+        
+        // دریافت اطلاعات کامل یک مراجعه با تمام درخواست‌ها
+        Route::get('/registration/{regId}/full', [RadiologyRequestController::class, 'getFullByRegistration']);
+        
+        // دریافت یک درخواست خاص
+        Route::get('/{id}', [RadiologyRequestController::class, 'show']);
+        
+        // ثبت درخواست جدید
+        Route::post('/registration/{regId}', [RadiologyRequestController::class, 'store']);
+        
+        // بروزرسانی درخواست
+        Route::put('/{id}', [RadiologyRequestController::class, 'update']);
+        
+        // حذف درخواست
+        Route::delete('/{id}', [RadiologyRequestController::class, 'destroy']);
+        
+        // تغییر وضعیت درخواست
+        Route::patch('/{id}/status', [RadiologyRequestController::class, 'updateStatus']);
     });
 
     // ============================================================

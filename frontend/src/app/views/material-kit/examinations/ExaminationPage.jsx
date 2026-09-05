@@ -25,6 +25,7 @@ const STEPS = [
   { key: 'admission', label: 'بستری', icon: '🏥', color: '#ef4444' },
   { key: 'history', label: 'تاریخچه', icon: '📜', color: '#8b5cf6' }
 ];
+
 const statusLabelsMap = {
   'pending': 'در انتظار',
   'sample_taken': 'نمونه گرفته شده',
@@ -115,9 +116,10 @@ export default function TreatmentPage() {
     });
   };
 
+  // ✅ اصلاح شده: تغییر مسیر به /doctor/patient
   const fetchPatientRegistration = async (registrationId) => {
     try {
-      const response = await api.get(`/registrations/${registrationId}`);
+      const response = await api.get(`/doctor/patient/${registrationId}`);
       const data = response.data?.data || response.data;
       if (data) {
         setActivePatients(prev => {
@@ -150,7 +152,7 @@ export default function TreatmentPage() {
     return null;
   };
 
-  // ============ بارگذاری تمام اطلاعات یک مریض (نسخه نهایی اصلاح شده) ============
+  // ============ بارگذاری تمام اطلاعات یک مریض (اصلاح شده) ============
   const loadAllPatientData = async (registrationId) => {
     console.log(`📥 Loading all data for patient ${registrationId}...`);
     
@@ -177,9 +179,8 @@ export default function TreatmentPage() {
         });
       }
       
-      // ============ بارگذاری لابراتوار با نتایج (نسخه نهایی) ============
+      // ============ بارگذاری لابراتوار ============
       try {
-        // دریافت درخواست‌های لابراتوار
         const labResponse = await api.get(`/laboratory-requests/registration/${registrationId}/full`);
         console.log('📥 Lab Response:', labResponse.data);
         
@@ -189,13 +190,11 @@ export default function TreatmentPage() {
           
           console.log(`✅ Found ${tests.length} laboratory tests`);
           
-          // ✅ برای هر تست، نتیجه را دریافت کن
           let testsWithResults = [];
           let hasAnyResult = false;
           
           for (const test of tests) {
             try {
-              // دریافت نتیجه برای این تست
               const resultResponse = await api.get(`/laboratory-results/request/${test.id}`);
               console.log(`📥 Result for test ${test.id}:`, resultResponse.data);
               
@@ -216,10 +215,6 @@ export default function TreatmentPage() {
             testsWithResults.push(test);
           }
           
-          console.log(`📊 Has any result: ${hasAnyResult}`);
-          console.log(`📊 Tests with results:`, testsWithResults.filter(t => t.has_result).length);
-          
-          // ✅ به‌روزرسانی state با اطلاعات کامل
           const labData = {
             data: testsWithResults.length > 0 ? testsWithResults[0] : null,
             allTests: testsWithResults,
@@ -227,7 +222,6 @@ export default function TreatmentPage() {
             hasResult: hasAnyResult
           };
           
-          // ✅ ذخیره در state
           updatePatientData(registrationId, 'laboratory', labData);
           
           console.log(`✅ Laboratory data updated:`, {
@@ -255,23 +249,39 @@ export default function TreatmentPage() {
         });
       }
       
-      // بارگذاری رادیولوژی
+      // ✅ اصلاح شده: تغییر مسیر رادیولوژی
       try {
-        const radResponse = await api.get(`/doctor/radiology/${registrationId}`);
+        const radResponse = await api.get(`/radiology-requests/registration/${registrationId}`);
+        console.log('📥 Radiology Response:', radResponse.data);
+        
         if (radResponse.data?.success) {
           const data = radResponse.data.data;
+          const radiologyData = Array.isArray(data) ? data : (data.radiology || data.all_radiology || []);
+          
           updatePatientData(registrationId, 'radiology', {
-            data: data.radiology || null,
-            allRadiologies: data.all_radiologies || [],
-            isRequested: !!data.radiology
+            data: radiologyData.length > 0 ? radiologyData[0] : null,
+            allRadiology: radiologyData,
+            isRequested: radiologyData.length > 0,
+            hasResult: radiologyData.some(r => r.has_result === true)
+          });
+          
+          console.log(`✅ Found ${radiologyData.length} radiology requests`);
+        } else {
+          console.log('⚠️ No radiology data');
+          updatePatientData(registrationId, 'radiology', {
+            data: null,
+            allRadiology: [],
+            isRequested: false,
+            hasResult: false
           });
         }
       } catch (err) {
-        console.log(`ℹ️ No radiology for ${registrationId}`);
+        console.log(`ℹ️ No radiology for ${registrationId}`, err);
         updatePatientData(registrationId, 'radiology', {
           data: null,
-          allRadiologies: [],
-          isRequested: false
+          allRadiology: [],
+          isRequested: false,
+          hasResult: false
         });
       }
       
@@ -414,12 +424,15 @@ export default function TreatmentPage() {
         
         if (currentIdx === stageIndex) {
           const labData = patient.data?.laboratory || {};
+          const radData = patient.data?.radiology || {};
           patients.push({
             reg_id: parseInt(id),
             ...patient.registration,
             progress: progress,
             has_lab_result: labData.hasResult || false,
-            lab_results: labData.allTests?.filter(t => t.has_result) || []
+            lab_results: labData.allTests?.filter(t => t.has_result) || [],
+            has_rad_result: radData.hasResult || false,
+            radiology_count: radData.allRadiology?.length || 0
           });
         }
       }
@@ -550,7 +563,18 @@ export default function TreatmentPage() {
           };
           break;
         case "radiology":
-          url = `/doctor/radiology/${regId}`;
+          // ✅ اصلاح شده: مسیر صحیح رادیولوژی
+          url = `/radiology-requests/registration/${regId}`;
+          payload = {
+            radiology_type: data.radiology_type,
+            body_part: data.body_part,
+            reason: data.reason,
+            notes: data.notes || null,
+            priority: data.priority || 'normal',
+            request_date: data.request_date || new Date().toISOString().split("T")[0],
+            clinical_indication: data.clinical_indication || null,
+            special_notes: data.special_notes || null,
+          };
           break;
         case "pres_insert":
           url = `/doctor/prescription/${regId}`;
@@ -813,6 +837,24 @@ export default function TreatmentPage() {
                       📋
                     </span>
                   )}
+                  {activeTab === 'radiology' && p.has_rad_result && (
+                    <span style={{
+                      position: 'absolute',
+                      top: '-5px',
+                      right: '-5px',
+                      backgroundColor: '#22c55e',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: '20px',
+                      height: '20px',
+                      fontSize: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      📷
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -833,7 +875,7 @@ export default function TreatmentPage() {
     );
   };
 
-  // ============ رندر فرم مریض انتخاب شده (نسخه نهایی) ============
+  // ============ رندر فرم مریض انتخاب شده ============
   const renderSelectedPatientForm = () => {
     if (!selectedPatientId || !selectedRegistration) return null;
     
@@ -891,12 +933,6 @@ export default function TreatmentPage() {
           hasResult: false
         };
         
-        console.log(`📊 Laboratory data for patient ${regId}:`, {
-          allTestsCount: labData.allTests?.length || 0,
-          hasResult: labData.hasResult,
-          testsWithResults: labData.allTests?.filter(t => t.has_result)?.length || 0
-        });
-        
         return (
           <LaboratoryRequest 
             registration={selectedRegistration}
@@ -929,9 +965,7 @@ export default function TreatmentPage() {
               });
             }}
             setAllTests={(tests) => {
-              console.log(`📝 Setting allTests for patient ${regId}:`, tests?.length || 0);
               const hasResult = tests?.some(t => t.has_result === true && t.result_details) || false;
-              console.log(`📝 hasResult:`, hasResult);
               updatePatientData(regId, 'laboratory', {
                 ...labData,
                 allTests: tests || [],
@@ -944,6 +978,13 @@ export default function TreatmentPage() {
         );
         
       case "radiology":
+        const radData = patientData.radiology || { 
+          data: null, 
+          allRadiology: [], 
+          isRequested: false,
+          hasResult: false
+        };
+        
         return (
           <RadiologyRequest 
             registration={selectedRegistration}
@@ -965,6 +1006,26 @@ export default function TreatmentPage() {
             prevStep={prevStep}
             isSubmitting={isSubmitting}
             isTreatmentComplete={isComplete}
+            savedRadiology={radData.data}
+            allRadiology={radData.allRadiology || []}
+            isRadiologyRequested={radData.isRequested || false}
+            hasRadiologyResult={radData.hasResult || false}
+            setIsRadiologyRequested={(val) => {
+              updatePatientData(regId, 'radiology', {
+                ...radData,
+                isRequested: val
+              });
+            }}
+            setAllRadiology={(items) => {
+              const hasResult = items?.some(t => t.has_result === true) || false;
+              updatePatientData(regId, 'radiology', {
+                ...radData,
+                allRadiology: items || [],
+                isRequested: (items || []).length > 0,
+                data: (items || []).length > 0 ? items[0] : null,
+                hasResult: hasResult
+              });
+            }}
           />
         );
         
