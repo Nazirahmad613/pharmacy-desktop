@@ -40,6 +40,7 @@ use App\Http\Controllers\PrescriptionFeeController;
 use App\Http\Controllers\LaboratoryController;
 use App\Http\Controllers\LaboratoryResultController;
 use App\Http\Controllers\RadiologyRequestController;
+use App\Http\Controllers\RadiologyFeeController; // ✅ اضافه شد
 
 /*
 |--------------------------------------------------------------------------
@@ -255,29 +256,31 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ============================================================
-    // ✅ ============ رادیولوژی (داخل middleware) ============
+    // ✅ ============ رادیولوژی (اصلاح شده) ============
     // ============================================================
     Route::prefix('radiology-requests')->group(function () {
         
-        // دریافت همه درخواست‌های یک مراجعه
+        // ⚠️ IMPORTANT: مسیرهای با {id} باید بعد از مسیرهای خاص بیایند
+        
+        // دریافت همه درخواست‌های یک مراجعه (GET)
         Route::get('/registration/{regId}', [RadiologyRequestController::class, 'getByRegistration']);
         
-        // دریافت اطلاعات کامل یک مراجعه با تمام درخواست‌ها
+        // دریافت اطلاعات کامل یک مراجعه (GET)
         Route::get('/registration/{regId}/full', [RadiologyRequestController::class, 'getFullByRegistration']);
         
-        // دریافت یک درخواست خاص
-        Route::get('/{id}', [RadiologyRequestController::class, 'show']);
-        
-        // ثبت درخواست جدید
+        // ثبت درخواست جدید (POST) - این مسیر باید قبل از /{id} بیاید
         Route::post('/registration/{regId}', [RadiologyRequestController::class, 'store']);
         
-        // بروزرسانی درخواست
+        // دریافت یک درخواست خاص (GET)
+        Route::get('/{id}', [RadiologyRequestController::class, 'show']);
+        
+        // بروزرسانی درخواست (PUT)
         Route::put('/{id}', [RadiologyRequestController::class, 'update']);
         
-        // حذف درخواست
+        // حذف درخواست (DELETE)
         Route::delete('/{id}', [RadiologyRequestController::class, 'destroy']);
         
-        // تغییر وضعیت درخواست
+        // تغییر وضعیت درخواست (PATCH)
         Route::patch('/{id}/status', [RadiologyRequestController::class, 'updateStatus']);
     });
 
@@ -304,6 +307,33 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/statistics', [PrescriptionFeeController::class, 'statistics']);
         Route::put('/{id}', [PrescriptionFeeController::class, 'update']);
         Route::delete('/{id}', [PrescriptionFeeController::class, 'destroy']);
+    });
+
+    // ============================================================
+    // ✅ ============ فیس رادیولوژی (جدید) ============
+    // ============================================================
+    Route::prefix('radiology-fees')->group(function () {
+        
+        // دریافت همه فیس‌ها
+        Route::get('/', [RadiologyFeeController::class, 'index']);
+        
+        // دریافت همه درخواست‌ها با وضعیت فیس
+        Route::get('/all-requests', [RadiologyFeeController::class, 'getAllRequests']);
+        
+        // دریافت اطلاعات یک مراجعه با فیس‌ها
+        Route::get('/registration/{regId}', [RadiologyFeeController::class, 'getByRegistration']);
+        
+        // ثبت فیس جدید برای یک مراجعه
+        Route::post('/registration/{regId}', [RadiologyFeeController::class, 'store']);
+        
+        // دریافت یک فیس خاص
+        Route::get('/{id}', [RadiologyFeeController::class, 'show']);
+        
+        // بروزرسانی فیس
+        Route::put('/{id}', [RadiologyFeeController::class, 'update']);
+        
+        // حذف فیس
+        Route::delete('/{id}', [RadiologyFeeController::class, 'destroy']);
     });
 
     // ===== Prescriptions =====

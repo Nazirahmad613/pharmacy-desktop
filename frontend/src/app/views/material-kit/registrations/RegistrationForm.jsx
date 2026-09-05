@@ -1,12 +1,17 @@
+// src/app/pages/registration/RegistrationForm.jsx
+
 import { useState, useEffect, useMemo, useRef } from "react";
 import MainLayoutjur from "../../../../components/MainLayoutjur";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useAuth } from "app/contexts/AuthContext";
 import { useReactToPrint } from "react-to-print";
-// ============ ایمپورت تب‌های جدید ============
+// ============ ایمپورت تب‌های فیس ============
 import LaboratoryFeeTab from "./LabFeesRequest/LaboratoryFeeTab";
 import PrescriptionFeeTab from "./pharmacyFeesRequest/PrescriptionFeeTab";
+import RadiologyFeeTab from "./radiologyFeesRequest/RadiologyFeeTab";
+import OperationFeeTab from "./operationFeesRequest/OperationFeeTab";
+import AdmissionFeeTab from "./admissionFeesRequest/AdmissionFeeTab";
 
 export default function RegistrationForm() {
   const { api } = useAuth();
@@ -245,11 +250,9 @@ export default function RegistrationForm() {
       setCurrentPage(1);
       calculateStatisticsFromData(regs);
       
-      // اگر regId جاری وجود نداشت و لیست خالی نبود، اولین مراجعه را به عنوان regId جاری تنظیم کن
       if (!currentRegId && regs.length > 0) {
         setCurrentRegId(regs[0].reg_id);
       } else if (currentRegId && !regs.some(r => r.reg_id === currentRegId)) {
-        // اگر regId جاری در لیست جدید نیست، اولین مورد را انتخاب کن
         setCurrentRegId(regs.length > 0 ? regs[0].reg_id : null);
       }
     } catch (err) {
@@ -587,7 +590,6 @@ export default function RegistrationForm() {
             new_address: newRegistration.patient.address || '',
           }));
         }
-        // به‌روزرسانی currentRegId
         setCurrentRegId(editingId);
       } else {
         console.log("FINAL DATA SEND:", submitData);
@@ -616,7 +618,6 @@ export default function RegistrationForm() {
           toast.info(`💰 فیس مراجعه به مبلغ ${parseFloat(newRegistration.registration_fee).toFixed(2)} افغانی در ژورنال ثبت شد`);
         }
 
-        // تنظیم currentRegId به reg_id مراجعه جدید
         if (newRegistration?.reg_id) {
           setCurrentRegId(newRegistration.reg_id);
         }
@@ -669,7 +670,6 @@ export default function RegistrationForm() {
       setShowSendModal(false);
       setSelectedRegistration(null);
       
-      // ============ تغییر: بارگذاری مجدد لیست ============
       await fetchRegistrations();
       await fetchStatistics();
       
@@ -704,7 +704,6 @@ export default function RegistrationForm() {
 
       toast.success(`✅ معلومات به داکتر ارسال شد`);
       
-      // ============ تغییر: بارگذاری مجدد لیست ============
       await fetchRegistrations();
       await fetchStatistics();
       
@@ -765,7 +764,6 @@ export default function RegistrationForm() {
         }
       }
       
-      // اگر regId جاری حذف شده بود، آن را به روزرسانی کن
       if (currentRegId === reg_id) {
         const remainingRegs = registrations.filter(r => r.reg_id !== reg_id);
         setCurrentRegId(remainingRegs.length > 0 ? remainingRegs[0].reg_id : null);
@@ -816,7 +814,6 @@ export default function RegistrationForm() {
     setShowSearchResults(false);
     setShowNewPatientForm(true);
     
-    // تنظیم currentRegId برای تب لابراتوار
     setCurrentRegId(reg.reg_id);
     
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -860,7 +857,6 @@ export default function RegistrationForm() {
     }
   };
 
-  // لیست کامل وضعیت‌ها با ترجمه فارسی
   const getStatusText = (status) => {
     const statusMap = {
       'Waiting': 'در انتظار',
@@ -879,7 +875,6 @@ export default function RegistrationForm() {
     return statusMap[status] || status || '-';
   };
 
-  // رنگ‌بندی کامل وضعیت‌ها
   const getStatusColor = (status) => {
     const colorMap = {
       'Waiting': '#f59e0b',
@@ -944,7 +939,6 @@ export default function RegistrationForm() {
         maxHeight: '90vh',
         overflowY: 'auto'
       }}>
-        {/* هدر با رنگ آبی */}
         <div style={{
           textAlign: 'center',
           borderBottom: '3px solid #2563eb',
@@ -990,7 +984,6 @@ export default function RegistrationForm() {
           )}
         </div>
         
-        {/* اطلاعات مریض */}
         <div style={{
           marginBottom: '10px',
           padding: '10px 12px',
@@ -1032,7 +1025,6 @@ export default function RegistrationForm() {
           </p>
         </div>
         
-        {/* اطلاعات مراجعه */}
         <div style={{
           borderTop: '2px dashed #2563eb',
           paddingTop: '10px',
@@ -1146,7 +1138,6 @@ export default function RegistrationForm() {
           )}
         </div>
         
-        {/* فوتر */}
         <div style={{
           textAlign: 'center',
           borderTop: '2px solid #2563eb',
@@ -1171,6 +1162,9 @@ export default function RegistrationForm() {
     const tabs = [
       { key: 'registration', label: '📋 ثبت مراجعه', icon: '📋' },
       { key: 'laboratory', label: '🔬 فیس لابراتوار', icon: '🔬' },
+      { key: 'radiology', label: '📷 فیس رادیولوژی', icon: '📷' },
+      { key: 'operation', label: '🔪 فیس عملیات', icon: '🔪' },
+      { key: 'admission', label: '🏥 فیس بستری', icon: '🏥' },
       { key: 'prescription', label: '💊 فیس نسخه', icon: '💊' }
     ];
 
@@ -1214,8 +1208,14 @@ export default function RegistrationForm() {
         return renderRegistrationTab();
       case 'laboratory':
         return <LaboratoryFeeTab api={api} regId={currentRegId} />;
+      case 'radiology':
+        return <RadiologyFeeTab api={api} regId={currentRegId} />;
+      case 'operation':
+        return <OperationFeeTab api={api} regId={currentRegId} />;
+      case 'admission':
+        return <AdmissionFeeTab api={api} regId={currentRegId} />;
       case 'prescription':
-        return <PrescriptionFeeTab api={api} />;
+        return <PrescriptionFeeTab api={api} regId={currentRegId} />;
       default:
         return null;
     }
@@ -1947,7 +1947,6 @@ export default function RegistrationForm() {
                     const department = departments.find((d) => d.id === r.department_id);
                     const doctorName = r.doctor_id ? getDoctorName(r.doctor_id) : "-";
                     
-                    // ============ بررسی وضعیت‌هایی که دکمه ارسال نباید نمایش داده شود ============
                     const isFinalStatus = ['Doctor', 'Completed', 'Cancelled', 'Admission', 'Ward', 'Operation'].includes(r.visit_status);
                     
                     return (
@@ -2022,7 +2021,6 @@ export default function RegistrationForm() {
                               🖨️ پرینت
                             </button>
 
-                            {/* ============ تغییر: شرط نمایش دکمه ارسال به داکتر ============ */}
                             {!isFinalStatus && (
                               <button
                                 onClick={() => handleSendToDoctorFromList(r)}
@@ -2040,7 +2038,6 @@ export default function RegistrationForm() {
                               </button>
                             )}
 
-                            {/* ============ تغییر: نمایش وضعیت ارسال ============ */}
                             {r.visit_status === 'Doctor' && (
                               <span style={{
                                 backgroundColor: '#8b5cf6',
@@ -2188,10 +2185,8 @@ export default function RegistrationForm() {
           🏥 مدیریت مراجعات و فیس
         </h2>
 
-        {/* تب‌های اصلی */}
         {renderMainTabs()}
 
-        {/* محتوای تب‌ها */}
         {renderMainContent()}
       </div>
     </MainLayoutjur>

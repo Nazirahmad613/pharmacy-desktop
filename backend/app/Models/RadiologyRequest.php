@@ -44,7 +44,7 @@ class RadiologyRequest extends Model
     
     public function registration()
     {
-        return $this->belongsTo(Registration::class, 'reg_id');
+        return $this->belongsTo(Registrations::class, 'reg_id');
     }
 
     public function patient()

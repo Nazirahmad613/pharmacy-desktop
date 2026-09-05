@@ -47,6 +47,9 @@ return new class extends Migration
                 'sent_to_radiology'
             ])->default('pending');
             
+            // ✅ ستون has_fee (اضافه شد)
+            $table->boolean('has_fee')->default(false);
+            
             // نتیجه
             $table->boolean('has_result')->default(false);
             $table->text('report_summary')->nullable();
@@ -68,14 +71,30 @@ return new class extends Migration
             $table->index('request_number');
             
             // کلیدهای خارجی
-           $table->foreign('reg_id')
-    ->references('reg_id')
-    ->on('registrations')
-    ->onDelete('cascade');
-            $table->foreign('patient_id')->references('id')->on('patients')->onDelete('set null');
-            $table->foreign('doctor_id')->references('id')->on('users')->onDelete('set null');
-            $table->foreign('technician_id')->references('id')->on('users')->onDelete('set null');
-            $table->foreign('radiologist_id')->references('id')->on('users')->onDelete('set null');
+            $table->foreign('reg_id')
+                  ->references('reg_id')
+                  ->on('registrations')
+                  ->onDelete('cascade');
+                  
+            $table->foreign('patient_id')
+                  ->references('id')
+                  ->on('patients')
+                  ->onDelete('set null');
+                  
+            $table->foreign('doctor_id')
+                  ->references('id')
+                  ->on('users')
+                  ->onDelete('set null');
+                  
+            $table->foreign('technician_id')
+                  ->references('id')
+                  ->on('users')
+                  ->onDelete('set null');
+                  
+            $table->foreign('radiologist_id')
+                  ->references('id')
+                  ->on('users')
+                  ->onDelete('set null');
         });
     }
 
