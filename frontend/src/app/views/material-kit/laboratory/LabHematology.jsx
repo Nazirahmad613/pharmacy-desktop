@@ -75,6 +75,9 @@ export default function LabHematology() {
   const [successMessage, setSuccessMessage] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [filteredRequests, setFilteredRequests] = useState([]);
+  // اگر یک بخش درخواست بدون نتیجه نداشته باشد، با کلیک روی کارت
+  // درخواست‌های تکمیل‌شده همان بخش نمایش داده می‌شوند.
+  const [showCompletedOnly, setShowCompletedOnly] = useState(false);
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [openResultDialog, setOpenResultDialog] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -98,6 +101,8 @@ export default function LabHematology() {
     pdf_file_name: "",
     pdf_url: "",
   });
+  const [editingResult, setEditingResult] = useState(false);
+  const [deletingResultId, setDeletingResultId] = useState(null);
 
   // ============ دسته‌بندی تست‌ها ============
   const categories = [
@@ -271,6 +276,7 @@ export default function LabHematology() {
       const paidRequests = processedRequests.filter((r) => r.has_fee === true);
       setAllRequests(paidRequests);
       setError(null);
+      return paidRequests;
     } catch (err) {
       console.error("❌ خطا در دریافت اطلاعات:", err);
       setError("خطا در دریافت اطلاعات. لطفاً مجدداً تلاش کنید.");
@@ -285,6 +291,34 @@ export default function LabHematology() {
     return () => clearInterval(interval);
   }, []);
 
+  // ============ تشخیص درخواست‌های هر دسته ============
+  const getCategoryRequests = (category) => {
+    return allRequests.filter((r) => {
+      if (category.isSpecial) return false;
+
+      if (category.testType && r.test_type === category.testType) {
+        return true;
+      }
+
+      if (category.keywords.length > 0) {
+        const testName = (r.test_name || "").toLowerCase();
+        const testTypeName = (r.test_type || "").toLowerCase();
+
+        return category.keywords.some(
+          (keyword) =>
+            testName.includes(keyword.toLowerCase()) ||
+            testTypeName.includes(keyword.toLowerCase())
+        );
+      }
+
+      return false;
+    });
+  };
+
+  // وضعیت تکمیل فقط بر اساس status تعیین می‌شود.
+  const isRequestCompleted = (request) =>
+    String(request?.status || "").toLowerCase().trim() === "completed";
+
   // ============ انتخاب دسته ============
   const handleCategoryClick = (category) => {
     if (category.isSpecial) {
@@ -292,30 +326,29 @@ export default function LabHematology() {
       return;
     }
 
+    const categoryRequests = getCategoryRequests(category);
+    const pendingRequests = categoryRequests.filter(
+      (r) => !isRequestCompleted(r)
+    );
+    const completedRequests = categoryRequests.filter(isRequestCompleted);
+
+    // اول درخواست‌های بدون نتیجه نمایش داده می‌شوند.
+    // اگر هیچ درخواست بدون نتیجه نبود، نتایج تکمیل‌شده نمایش داده می‌شوند.
+    const shouldShowCompleted =
+      pendingRequests.length === 0 && completedRequests.length > 0;
+
     setSelectedCategory(category);
-
-    const filtered = allRequests.filter((r) => {
-      if (category.testType && r.test_type === category.testType) {
-        return true;
-      }
-      if (category.keywords.length > 0) {
-        const testName = (r.test_name || "").toLowerCase();
-        const testTypeName = (r.test_type || "").toLowerCase();
-        return category.keywords.some((keyword) =>
-          testName.includes(keyword.toLowerCase()) ||
-          testTypeName.includes(keyword.toLowerCase())
-        );
-      }
-      return false;
-    });
-
-    setFilteredRequests(filtered);
+    setShowCompletedOnly(shouldShowCompleted);
+    setFilteredRequests(
+      shouldShowCompleted ? completedRequests : pendingRequests
+    );
   };
 
   // ============ بازگشت به لیست دسته‌ها ============
   const handleBackToCategories = () => {
     setSelectedCategory(null);
     setFilteredRequests([]);
+    setShowCompletedOnly(false);
   };
 
   // ============ مشاهده جزئیات با دریافت نتیجه از سرور ============
@@ -350,19 +383,118 @@ export default function LabHematology() {
     }
   };
 
-  // ============ باز کردن دیالوگ ثبت نتیجه ============
-  const handleOpenResultDialog = (request) => {
+  // ============ باز کردن دیالوگ ثبت/تصحیح نتیجه ============
+  const handleOpenResultDialog = async (request, edit = false) => {
     setSelectedRequest(request);
-    setResultData({
-      result: "",
-      status: "Completed",
-      notes: "",
-      normal_range: "",
-      pdf_file: null,
-      pdf_file_name: "",
-      pdf_url: "",
-    });
+    setEditingResult(edit);
+
+    if (edit) {
+      setResultData({
+        result: request.result_value || request.result || request.laboratory_result?.result || "",
+        status: request.result_details?.status || request.laboratory_result?.result_status || "Completed",
+        notes: request.result_remarks || request.laboratory_result?.remarks || "",
+        normal_range: request.normal_range || request.laboratory_result?.normal_range || "",
+        pdf_file: null,
+        pdf_file_name: request.pdf_file_name || request.laboratory_result?.pdf_file_name || "",
+        pdf_url: request.pdf_url || request.laboratory_result?.pdf_url || "",
+      });
+
+      // نتیجه کامل را از سرور می‌گیریم تا هنگام تصحیح، آخرین اطلاعات استفاده شود.
+      try {
+        const resultDetails = await fetchResultDetails(request.id);
+        if (resultDetails) {
+          setResultData({
+            result: resultDetails.result || "",
+            status: resultDetails.status || resultDetails.result_status || "Completed",
+            notes: resultDetails.remarks || resultDetails.notes || "",
+            normal_range: resultDetails.normal_range || "",
+            pdf_file: null,
+            pdf_file_name: resultDetails.pdf_file_name || "",
+            pdf_url: resultDetails.pdf_url || "",
+          });
+        }
+      } catch (error) {
+        console.warn("⚠️ دریافت جزئیات نتیجه برای تصحیح انجام نشد:", error);
+      }
+    } else {
+      setResultData({
+        result: "",
+        status: "Completed",
+        notes: "",
+        normal_range: "",
+        pdf_file: null,
+        pdf_file_name: "",
+        pdf_url: "",
+      });
+    }
+
     setOpenResultDialog(true);
+  };
+
+  // ============ تصحیح نتیجه ثبت‌شده ============
+  const handleEditResult = async (request) => {
+    setOpenDetailDialog(false);
+    await handleOpenResultDialog(request, true);
+  };
+
+  // ============ حذف نتیجه ثبت‌شده ============
+  const handleDeleteResult = async (request) => {
+    const resultId =
+      request.result_details?.id ||
+      request.laboratory_result?.id ||
+      request.result_id;
+
+    if (!resultId) {
+      showToast("شناسه نتیجه برای حذف پیدا نشد", "error");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "آیا مطمئن هستید که می‌خواهید نتیجه ثبت‌شده این آزمایش را حذف کنید؟"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingResultId(resultId);
+      const token = localStorage.getItem("token");
+
+      const response = await fetch(
+        `http://localhost:8000/api/laboratory-results/${resultId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const responseText = await response.text();
+      let result = {};
+      try {
+        result = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        // پاسخ غیر JSON را نادیده می‌گیریم و از status استفاده می‌کنیم.
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || result.error || `خطا در حذف نتیجه (${response.status})`
+        );
+      }
+
+      showToast("✅ نتیجه با موفقیت حذف شد", "success");
+      setOpenDetailDialog(false);
+      setSelectedRequest(null);
+      await fetchRequests();
+    } catch (error) {
+      console.error("❌ خطا در حذف نتیجه:", error);
+      showToast("❌ خطا در حذف نتیجه: " + error.message, "error");
+    } finally {
+      setDeletingResultId(null);
+    }
   };
 
   // ============ انتخاب فایل PDF ============
@@ -794,7 +926,7 @@ export default function LabHematology() {
     }
   };
 
-  // ============ ثبت نتیجه با آپلود PDF ============
+  // ============ ثبت یا تصحیح نتیجه با آپلود PDF ============
   const handleSaveResult = async () => {
     if (!resultData.result || resultData.result.trim() === "") {
       showToast("لطفاً نتیجه آزمایش را وارد کنید", "error");
@@ -804,33 +936,48 @@ export default function LabHematology() {
     try {
       setUploading(true);
       setError(null);
-      
+
       const token = localStorage.getItem("token");
       const formData = new FormData();
-      
+
+      const resultId =
+        selectedRequest?.result_details?.id ||
+        selectedRequest?.laboratory_result?.id ||
+        selectedRequest?.result_id;
+
       formData.append("laboratory_request_id", selectedRequest.id);
-      formData.append("registration_id", selectedRequest.reg_id || selectedRequest.registration_id);
-      formData.append("patient_id", selectedRequest.patient_id);
+      formData.append(
+        "registration_id",
+        selectedRequest.reg_id || selectedRequest.registration_id || ""
+      );
+      formData.append("patient_id", selectedRequest.patient_id || "");
       formData.append("result_status", resultData.status);
       formData.append("result", resultData.result.trim());
       formData.append("normal_range", resultData.normal_range || "");
       formData.append("remarks", resultData.notes || "");
-      
+
       if (resultData.pdf_file) {
         formData.append("pdf_file", resultData.pdf_file);
       }
 
-      const response = await fetch(
-        "http://localhost:8000/api/laboratory-results",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-          },
-          body: formData,
-        }
-      );
+      const isEdit = editingResult && !!resultId;
+      const url = isEdit
+        ? `http://localhost:8000/api/laboratory-results/${resultId}`
+        : "http://localhost:8000/api/laboratory-results";
+
+      // Laravel برای PUT همراه با multipart معمولاً نیاز به POST + _method=PUT دارد.
+      if (isEdit) {
+        formData.append("_method", "PUT");
+      }
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+        body: formData,
+      });
 
       const responseText = await response.text();
       let result;
@@ -842,15 +989,21 @@ export default function LabHematology() {
       }
 
       if (!response.ok) {
-        const errorMessage = result.message || result.error || "خطا در ثبت نتیجه";
+        const errorMessage =
+          result.message || result.error || (isEdit ? "خطا در تصحیح نتیجه" : "خطا در ثبت نتیجه");
         showToast(errorMessage, "error");
         return;
       }
 
       if (result.success) {
-        showToast("✅ نتیجه با موفقیت ثبت شد", "success");
+        showToast(
+          isEdit ? "✅ نتیجه با موفقیت تصحیح شد" : "✅ نتیجه با موفقیت ثبت شد",
+          "success"
+        );
+
         setOpenResultDialog(false);
-        
+        setEditingResult(false);
+
         setResultData({
           result: "",
           status: "Completed",
@@ -860,44 +1013,44 @@ export default function LabHematology() {
           pdf_file_name: "",
           pdf_url: "",
         });
+
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
-        
-        await fetchRequests();
-        
+
+        // داده‌های صفحه را از سرور دوباره دریافت می‌کنیم تا تعدادها و وضعیت‌ها دقیق باشند.
+        const refreshedRequests = await fetchRequests();
+
         if (selectedCategory) {
-          const filtered = allRequests.filter((r) => {
+          const sourceRequests = Array.isArray(refreshedRequests)
+            ? refreshedRequests
+            : allRequests;
+
+          const filtered = sourceRequests.filter((r) => {
             if (selectedCategory.testType && r.test_type === selectedCategory.testType) {
               return true;
             }
             if (selectedCategory.keywords.length > 0) {
               const testName = (r.test_name || "").toLowerCase();
               const testTypeName = (r.test_type || "").toLowerCase();
-              return selectedCategory.keywords.some((keyword) =>
-                testName.includes(keyword.toLowerCase()) ||
-                testTypeName.includes(keyword.toLowerCase())
+              return selectedCategory.keywords.some(
+                (keyword) =>
+                  testName.includes(keyword.toLowerCase()) ||
+                  testTypeName.includes(keyword.toLowerCase())
               );
             }
             return false;
           });
+
           setFilteredRequests(filtered);
         }
-        
-        setAllRequests(prevRequests => 
-          prevRequests.map(req => 
-            req.id === selectedRequest.id 
-              ? { ...req, status: "completed" } 
-              : req
-          )
-        );
       } else {
-        const errorMessage = result.message || "خطا در ثبت نتیجه";
+        const errorMessage = result.message || (isEdit ? "خطا در تصحیح نتیجه" : "خطا در ثبت نتیجه");
         showToast(errorMessage, "error");
       }
     } catch (err) {
-      console.error("❌ خطا در ثبت نتیجه:", err);
-      showToast(err.message || "خطا در ثبت نتیجه یا آپلود فایل", "error");
+      console.error("❌ خطا در ثبت/تصحیح نتیجه:", err);
+      showToast(err.message || "خطا در ثبت یا تصحیح نتیجه", "error");
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -999,21 +1152,48 @@ export default function LabHematology() {
             {selectedCategory ? selectedCategory.title : "🧪 لابراتوار"}
           </Typography>
         </Box>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Chip
-            label={`${selectedCategory ? filteredRequests.length : allRequests.length} درخواست`}
-            color="info"
-            size="medium"
-            sx={{ fontWeight: "bold" }}
-          />
-          {selectedCategory && (
-            <Chip
-              label={`${filteredRequests.filter(r => r.status !== "completed").length} در انتظار`}
-              color="warning"
-              size="medium"
-              sx={{ fontWeight: "bold" }}
-            />
-          )}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+          {(() => {
+            const visibleRequests = selectedCategory ? filteredRequests : allRequests;
+            const totalRequests = visibleRequests.length;
+            const requestsWithResult = visibleRequests.filter(isRequestCompleted).length;
+            const requestsWithoutResult = visibleRequests.filter(
+              (r) => !isRequestCompleted(r)
+            ).length;
+
+            return (
+              <>
+                <Chip
+                  label={
+                    selectedCategory
+                      ? showCompletedOnly
+                        ? `درخواست‌های تکمیل‌شده: ${requestsWithResult}`
+                        : `درخواست‌های بدون نتیجه: ${requestsWithoutResult}`
+                      : `کل درخواست‌ها: ${totalRequests}`
+                  }
+                  color={selectedCategory && showCompletedOnly ? "success" : "info"}
+                  size="medium"
+                  sx={{ fontWeight: "bold" }}
+                />
+                {!selectedCategory && (
+                  <>
+                    <Chip
+                      label={`بدون نتیجه: ${requestsWithoutResult}`}
+                      color="warning"
+                      size="medium"
+                      sx={{ fontWeight: "bold" }}
+                    />
+                    <Chip
+                      label={`دارای نتیجه: ${requestsWithResult}`}
+                      color="success"
+                      size="medium"
+                      sx={{ fontWeight: "bold" }}
+                    />
+                  </>
+                )}
+              </>
+            );
+          })()}
         </Box>
       </Paper>
 
@@ -1031,23 +1211,18 @@ export default function LabHematology() {
       {!selectedCategory ? (
         <Grid container spacing={3}>
           {categories.map((category) => {
-            const count = allRequests.filter((r) => {
-              if (category.isSpecial) return 0;
-              if (category.testType && r.test_type === category.testType) {
-                return true;
-              }
-              if (category.keywords.length > 0) {
-                const testName = (r.test_name || "").toLowerCase();
-                const testTypeName = (r.test_type || "").toLowerCase();
-                return category.keywords.some((keyword) =>
-                  testName.includes(keyword.toLowerCase()) ||
-                  testTypeName.includes(keyword.toLowerCase())
-                );
-              }
-              return false;
-            }).length;
+            const categoryRequests = getCategoryRequests(category);
+            const pendingCount = categoryRequests.filter(
+              (r) => !isRequestCompleted(r)
+            ).length;
+            const completedCount = categoryRequests.filter(
+              isRequestCompleted
+            ).length;
 
-            const hasRequests = count > 0;
+            // عدد روی کارت فقط درخواست‌هایی است که هنوز نتیجه ندارند.
+            const count = pendingCount;
+            const hasRequests = categoryRequests.length > 0;
+            const hasPendingRequests = pendingCount > 0;
 
             return (
               <Grid item xs={12} sm={6} md={4} lg={3} key={category.id}>
@@ -1101,24 +1276,54 @@ export default function LabHematology() {
                         کلیک کنید →
                       </Typography>
                     ) : hasRequests ? (
-                      <Badge
-                        badgeContent={count}
-                        color="error"
-                        sx={{
-                          mt: 1,
-                          "& .MuiBadge-badge": {
-                            fontSize: "14px",
+                      <>
+                        {hasPendingRequests ? (
+                          <Badge
+                            badgeContent={count}
+                            color="error"
+                            sx={{
+                              mt: 1,
+                              "& .MuiBadge-badge": {
+                                fontSize: "14px",
+                                fontWeight: "bold",
+                                backgroundColor: "#ef4444",
+                                color: "white",
+                                padding: "0 8px",
+                              },
+                            }}
+                          >
+                            <Typography variant="body2" sx={{ color: "#9ca3af", visibility: "hidden" }}>
+                              -
+                            </Typography>
+                          </Badge>
+                        ) : (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: "#22c55e",
+                              mt: 1,
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            ✅ بدون درخواست بدون نتیجه
+                          </Typography>
+                        )}
+
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: hasPendingRequests ? "#f59e0b" : "#22c55e",
+                            mt: 1,
+                            fontSize: "12px",
                             fontWeight: "bold",
-                            backgroundColor: "#ef4444",
-                            color: "white",
-                            padding: "0 8px",
-                          },
-                        }}
-                      >
-                        <Typography variant="body2" sx={{ color: "#9ca3af", visibility: "hidden" }}>
-                          -
+                          }}
+                        >
+                          {hasPendingRequests
+                            ? `${pendingCount} درخواست بدون نتیجه • ${completedCount} تکمیل‌شده`
+                            : `همه ${completedCount} درخواست تکمیل شده‌اند • کلیک برای مشاهده`}
                         </Typography>
-                      </Badge>
+                      </>
                     ) : (
                       <Typography variant="body2" sx={{ color: "#4b5563", mt: 1, fontSize: "12px" }}>
                         ◻️ بدون درخواست
@@ -1293,6 +1498,52 @@ export default function LabHematology() {
                           )}
                           {isCompleted && (
                             <>
+                              <Tooltip title="تصحیح نتیجه">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<EditIcon />}
+                                  onClick={() => handleEditResult(req)}
+                                  disabled={!hasResult}
+                                  sx={{
+                                    color: "#f59e0b",
+                                    borderColor: "#f59e0b",
+                                    "&:hover": {
+                                      borderColor: "#fbbf24",
+                                      backgroundColor: "rgba(245, 158, 11, 0.1)",
+                                    },
+                                  }}
+                                >
+                                  تصحیح
+                                </Button>
+                              </Tooltip>
+
+                              <Tooltip title="حذف نتیجه">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={
+                                    deletingResultId ? (
+                                      <CircularProgress size={14} color="inherit" />
+                                    ) : (
+                                      <DeleteIcon />
+                                    )
+                                  }
+                                  onClick={() => handleDeleteResult(req)}
+                                  disabled={!hasResult || deletingResultId === (req.result_details?.id || req.laboratory_result?.id || req.result_id)}
+                                  sx={{
+                                    color: "#ef4444",
+                                    borderColor: "#ef4444",
+                                    "&:hover": {
+                                      borderColor: "#f87171",
+                                      backgroundColor: "rgba(239, 68, 68, 0.1)",
+                                    },
+                                  }}
+                                >
+                                  حذف
+                                </Button>
+                              </Tooltip>
+
                               <Tooltip title="پرینت نتیجه">
                                 <Button
                                   size="small"
@@ -1311,6 +1562,7 @@ export default function LabHematology() {
                                   پرینت
                                 </Button>
                               </Tooltip>
+
                               <Chip
                                 label={hasResult ? "نتیجه ثبت شده" : "تکمیل شده"}
                                 size="small"
@@ -1520,21 +1772,56 @@ export default function LabHematology() {
             </Button>
           )}
           {selectedRequest?.status === "completed" && (
-            <Button
-              variant="outlined"
-              startIcon={<PrintIcon />}
-              onClick={() => handlePrintResult(selectedRequest)}
-              sx={{
-                color: "#8b5cf6",
-                borderColor: "#8b5cf6",
-                "&:hover": {
-                  borderColor: "#a78bfa",
-                  backgroundColor: "rgba(139, 92, 246, 0.1)",
-                },
-              }}
-            >
-              پرینت نتیجه
-            </Button>
+            <>
+              <Button
+                variant="outlined"
+                startIcon={<EditIcon />}
+                onClick={() => handleEditResult(selectedRequest)}
+                sx={{
+                  color: "#f59e0b",
+                  borderColor: "#f59e0b",
+                  "&:hover": {
+                    borderColor: "#fbbf24",
+                    backgroundColor: "rgba(245, 158, 11, 0.1)",
+                  },
+                }}
+              >
+                تصحیح نتیجه
+              </Button>
+
+              <Button
+                variant="outlined"
+                startIcon={<DeleteIcon />}
+                onClick={() => handleDeleteResult(selectedRequest)}
+                disabled={!!deletingResultId}
+                sx={{
+                  color: "#ef4444",
+                  borderColor: "#ef4444",
+                  "&:hover": {
+                    borderColor: "#f87171",
+                    backgroundColor: "rgba(239, 68, 68, 0.1)",
+                  },
+                }}
+              >
+                حذف نتیجه
+              </Button>
+
+              <Button
+                variant="outlined"
+                startIcon={<PrintIcon />}
+                onClick={() => handlePrintResult(selectedRequest)}
+                sx={{
+                  color: "#8b5cf6",
+                  borderColor: "#8b5cf6",
+                  "&:hover": {
+                    borderColor: "#a78bfa",
+                    backgroundColor: "rgba(139, 92, 246, 0.1)",
+                  },
+                }}
+              >
+                پرینت نتیجه
+              </Button>
+            </>
           )}
         </DialogActions>
       </Dialog>
@@ -1558,7 +1845,7 @@ export default function LabHematology() {
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <Typography variant="h6" sx={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
               <EditIcon sx={{ color: "#22c55e" }} />
-              ثبت نتیجه آزمایش
+              {editingResult ? "تصحیح نتیجه آزمایش" : "ثبت نتیجه آزمایش"}
             </Typography>
             <IconButton 
               onClick={() => !uploading && setOpenResultDialog(false)} 
@@ -1845,10 +2132,10 @@ export default function LabHematology() {
               },
             }}
           >
-            {uploading ? "در حال ذخیره..." : "ذخیره نتیجه"}
+            {uploading ? "در حال ذخیره..." : editingResult ? "ذخیره تغییرات" : "ذخیره نتیجه"}
           </Button>
         </DialogActions>
       </Dialog>
     </Box>
   );
-}
+}  

@@ -200,6 +200,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{id}', [LaboratoryRequestController::class, 'update']);
         Route::delete('/{id}', [LaboratoryRequestController::class, 'destroy']);
         Route::post('/{id}/send-to-lab', [LaboratoryRequestController::class, 'sendToLab']);
+        
+        // ✅ ========== مسیرهای جدید برای دریافت نتایج در تب درخواست‌ها ==========
+        // ✅ دریافت درخواست‌های یک دکتر با نتایج
+        Route::get('/doctor/{doctorId}/with-results', [LaboratoryResultController::class, 'getDoctorRequestsWithResults'])
+            ->name('laboratory-requests.doctor-with-results')
+            ->where('doctorId', '[0-9]+');
+        
+        // ✅ دریافت درخواست‌های یک بیمار با نتایج
+        Route::get('/patient/{patientId}/with-results', [LaboratoryResultController::class, 'getPatientRequestsWithResults'])
+            ->name('laboratory-requests.patient-with-results')
+            ->where('patientId', '[0-9]+');
     });
 
     // ============================================================

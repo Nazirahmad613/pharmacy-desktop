@@ -25,8 +25,16 @@ const STEPS = [
   { key: 'admission', label: 'بستری', icon: '🏥', color: '#ef4444' },
   { key: 'history', label: 'تاریخچه', icon: '📜', color: '#8b5cf6' }
 ];
+const statusLabelsMap = {
+  'pending': 'در انتظار',
+  'sample_taken': 'نمونه گرفته شده',
+  'in_progress': 'در حال انجام',
+  'completed': 'تکمیل شده',
+  'cancelled': 'لغو شده',
+  'rejected': 'رد شده',
+  'sent_to_lab': 'ارسال به لابراتوار'
+};
 
-// کلید localStorage
 const ACTIVE_PATIENTS_KEY = 'treatment_active_patients';
 const SELECTED_PATIENT_KEY = 'treatment_selected_patient';
 const ACTIVE_TAB_KEY = 'treatment_active_tab';
@@ -34,29 +42,17 @@ const ACTIVE_TAB_KEY = 'treatment_active_tab';
 export default function TreatmentPage() {
   const { api } = useAuth();
   
-  // ============ State ============
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  
-  // تب فعال
   const [activeTab, setActiveTab] = useState('queue');
-  
-  // مریض‌های فعال با تمام اطلاعات
   const [activePatients, setActivePatients] = useState({});
-  
-  // مریض انتخاب شده برای تب فعلی
   const [selectedPatientId, setSelectedPatientId] = useState(null);
-  
-  // تاریخچه انتخاب شده
   const [selectedHistory, setSelectedHistory] = useState(null);
-  
-  // اطلاعات کامل مریض انتخاب شده
   const [selectedRegistration, setSelectedRegistration] = useState(null);
 
-  // ============ توابع ذخیره و بازیابی ============
   const saveState = (patients, tab, patientId) => {
     try {
       const data = {
@@ -65,7 +61,6 @@ export default function TreatmentPage() {
         selectedPatientId: patientId || selectedPatientId
       };
       localStorage.setItem(ACTIVE_PATIENTS_KEY, JSON.stringify(data));
-      
       if (tab) localStorage.setItem(ACTIVE_TAB_KEY, tab);
       if (patientId) localStorage.setItem(SELECTED_PATIENT_KEY, String(patientId));
     } catch (err) {
@@ -90,7 +85,6 @@ export default function TreatmentPage() {
     return { patients: {}, activeTab: 'queue', selectedPatientId: null };
   };
 
-  // ============ به‌روزرسانی اطلاعات مریض ============
   const updatePatientData = (registrationId, section, data) => {
     setActivePatients(prev => {
       const updated = { ...prev };
@@ -109,30 +103,22 @@ export default function TreatmentPage() {
           data: {}
         };
       }
-      
       if (!updated[registrationId].data) {
         updated[registrationId].data = {};
       }
-      
       updated[registrationId].data[section] = data;
-      
       if (selectedRegistration && selectedRegistration.reg_id === registrationId) {
         updated[registrationId].registration = selectedRegistration;
       }
-      
       saveState(updated, activeTab, selectedPatientId);
-      
       return updated;
     });
   };
 
-  // ============ دریافت اطلاعات کامل یک مریض ============
   const fetchPatientRegistration = async (registrationId) => {
     try {
-      console.log(`📥 Fetching registration for ${registrationId}...`);
       const response = await api.get(`/registrations/${registrationId}`);
       const data = response.data?.data || response.data;
-      
       if (data) {
         setActivePatients(prev => {
           const updated = { ...prev };
@@ -164,7 +150,7 @@ export default function TreatmentPage() {
     return null;
   };
 
-  // ============ بارگذاری تمام اطلاعات یک مریض ============
+  // ============ بارگذاری تمام اطلاعات یک مریض (نسخه نهایی اصلاح شده) ============
   const loadAllPatientData = async (registrationId) => {
     console.log(`📥 Loading all data for patient ${registrationId}...`);
     
@@ -191,9 +177,9 @@ export default function TreatmentPage() {
         });
       }
       
-      // ============ بارگذاری لابراتوار با نتایج ============
+      // ============ بارگذاری لابراتوار با نتایج (نسخه نهایی) ============
       try {
-        // دریافت درخواست‌های لابراتوار با جزئیات کامل
+        // دریافت درخواست‌های لابراتوار
         const labResponse = await api.get(`/laboratory-requests/registration/${registrationId}/full`);
         console.log('📥 Lab Response:', labResponse.data);
         
@@ -203,38 +189,53 @@ export default function TreatmentPage() {
           
           console.log(`✅ Found ${tests.length} laboratory tests`);
           
-          // برای هر تست، نتیجه را هم دریافت کن
+          // ✅ برای هر تست، نتیجه را دریافت کن
           let testsWithResults = [];
+          let hasAnyResult = false;
+          
           for (const test of tests) {
             try {
               // دریافت نتیجه برای این تست
               const resultResponse = await api.get(`/laboratory-results/request/${test.id}`);
+              console.log(`📥 Result for test ${test.id}:`, resultResponse.data);
+              
               if (resultResponse.data?.success) {
                 test.result_details = resultResponse.data.data;
                 test.has_result = true;
+                hasAnyResult = true;
                 console.log(`✅ Result found for test ${test.id}`);
               } else {
                 test.result_details = null;
                 test.has_result = false;
               }
             } catch (resultErr) {
-              // اگر نتیجه‌ای وجود نداشت
+              console.log(`ℹ️ No result for test ${test.id}`);
               test.result_details = null;
               test.has_result = false;
             }
             testsWithResults.push(test);
           }
           
-          // بررسی اینکه آیا نتیجه‌ای وجود دارد
-          const hasAnyResult = testsWithResults.some(t => t.has_result);
-          console.log(`📊 Has result: ${hasAnyResult}`);
+          console.log(`📊 Has any result: ${hasAnyResult}`);
+          console.log(`📊 Tests with results:`, testsWithResults.filter(t => t.has_result).length);
           
-          updatePatientData(registrationId, 'laboratory', {
+          // ✅ به‌روزرسانی state با اطلاعات کامل
+          const labData = {
             data: testsWithResults.length > 0 ? testsWithResults[0] : null,
             allTests: testsWithResults,
             isRequested: testsWithResults.length > 0,
             hasResult: hasAnyResult
+          };
+          
+          // ✅ ذخیره در state
+          updatePatientData(registrationId, 'laboratory', labData);
+          
+          console.log(`✅ Laboratory data updated:`, {
+            allTestsCount: labData.allTests.length,
+            hasResult: labData.hasResult,
+            testsWithResultsCount: labData.allTests.filter(t => t.has_result).length
           });
+          
         } else {
           console.log('⚠️ No laboratory data');
           updatePatientData(registrationId, 'laboratory', {
@@ -245,7 +246,7 @@ export default function TreatmentPage() {
           });
         }
       } catch (err) {
-        console.log(`ℹ️ No laboratory for ${registrationId}`);
+        console.log(`ℹ️ No laboratory for ${registrationId}`, err);
         updatePatientData(registrationId, 'laboratory', {
           data: null,
           allTests: [],
@@ -300,7 +301,6 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ دریافت صف انتظار ============
   const fetchQueue = async () => {
     setLoading(true);
     try {
@@ -320,7 +320,6 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ شروع/ادامه درمان ============
   const handleSelectPatient = async (registration) => {
     if (!registration?.reg_id) {
       toast.error("❌ اطلاعات مریض معتبر نیست");
@@ -387,9 +386,7 @@ export default function TreatmentPage() {
     toast.info(`👨‍⚕️ شروع معالجه برای ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''}`);
   };
 
-  // ============ دریافت مریضان یک مرحله (اصلاح شده) ============
   const getPatientsInStage = (stage) => {
-    // صف انتظار: مریض‌هایی که هنوز شروع نشده‌اند
     if (stage === "queue") {
       return queue.filter(p => 
         !activePatients[p.reg_id] && 
@@ -415,9 +412,7 @@ export default function TreatmentPage() {
       if (progress) {
         const currentIdx = progress.currentStepIndex || 0;
         
-        // ✅ فقط مریض‌هایی که مرحله فعلی‌شان همین تب باشد
         if (currentIdx === stageIndex) {
-          // ✅ برای مرحله لابراتوار، اطلاعات نتیجه را هم اضافه کن
           const labData = patient.data?.laboratory || {};
           patients.push({
             reg_id: parseInt(id),
@@ -433,7 +428,6 @@ export default function TreatmentPage() {
     return patients;
   };
 
-  // ============ رفتن به مرحله بعد ============
   const goToNextStep = async () => {
     if (!selectedPatientId) {
       toast.warning("⚠️ لطفاً یک مریض را انتخاب کنید");
@@ -480,7 +474,6 @@ export default function TreatmentPage() {
     toast.info(`➡️ رفتن به مرحله ${STEPS[nextIndex].label}`);
   };
 
-  // ============ برگشت به مرحله قبل ============
   const goToPreviousStep = async () => {
     if (!selectedPatientId) {
       toast.warning("⚠️ لطفاً یک مریض را انتخاب کنید");
@@ -524,7 +517,6 @@ export default function TreatmentPage() {
     toast.info(`↩️ بازگشت به مرحله ${STEPS[prevIndex].label}`);
   };
 
-  // ============ ثبت اطلاعات مرحله ============
   const saveCurrentStep = async (data) => {
     if (!selectedPatientId) {
       toast.error("❌ مریضی انتخاب نشده است");
@@ -597,7 +589,6 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ ختم معالجه ============
   const finishTreatment = async () => {
     if (!selectedPatientId) {
       toast.error("❌ مریضی انتخاب نشده است");
@@ -655,23 +646,18 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ تابع رفرش ============
   const refreshData = async () => {
     console.log("🔄 Refreshing data...");
     await fetchQueue();
-    
     if (selectedPatientId) {
       await loadAllPatientData(selectedPatientId);
     }
-    
     setRefreshKey(prev => prev + 1);
   };
 
-  // ============ بازیابی وضعیت ============
   const restoreState = async () => {
     try {
       console.log("🔄 Restoring state...");
-      
       const saved = loadState();
       const patients = saved.patients || {};
       const savedTab = saved.activeTab || 'queue';
@@ -682,24 +668,19 @@ export default function TreatmentPage() {
       if (savedPatientId && patients[savedPatientId]) {
         setSelectedPatientId(savedPatientId);
         setActiveTab(savedTab);
-        
         const regData = await fetchPatientRegistration(savedPatientId);
         if (regData) {
           setSelectedRegistration(regData);
         }
-        
         await loadAllPatientData(savedPatientId);
-        
         console.log(`✅ Restored patient ${savedPatientId} in tab ${savedTab}`);
       } else {
         setActiveTab('queue');
         localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
         localStorage.removeItem(SELECTED_PATIENT_KEY);
       }
-      
       await fetchQueue();
       console.log("✅ State restored successfully");
-      
     } catch (err) {
       console.error("❌ Error restoring state:", err);
     } finally {
@@ -707,12 +688,10 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ useEffect ============
   useEffect(() => {
     restoreState();
   }, []);
 
-  // ============ وضعیت‌ها ============
   const getCurrentProgress = () => {
     if (!selectedPatientId || !activePatients[selectedPatientId]) {
       return {
@@ -745,7 +724,6 @@ export default function TreatmentPage() {
     ? STEPS[currentProgress.currentStepIndex - 1] 
     : null;
 
-  // ============ رندر محتوای تب ============
   const renderTabContent = () => {
     if (activeTab === 'queue') {
       return (
@@ -817,7 +795,6 @@ export default function TreatmentPage() {
                   {p.progress?.completedSteps?.includes(activeTab) && (
                     <span style={{ color: '#10b981', fontSize: '14px' }}>✅</span>
                   )}
-                  {/* ✅ نمایش نشانگر نتیجه لابراتوار */}
                   {activeTab === 'laboratory' && p.has_lab_result && (
                     <span style={{
                       position: 'absolute',
@@ -856,7 +833,7 @@ export default function TreatmentPage() {
     );
   };
 
-  // ============ رندر فرم مریض انتخاب شده ============
+  // ============ رندر فرم مریض انتخاب شده (نسخه نهایی) ============
   const renderSelectedPatientForm = () => {
     if (!selectedPatientId || !selectedRegistration) return null;
     
@@ -914,6 +891,12 @@ export default function TreatmentPage() {
           hasResult: false
         };
         
+        console.log(`📊 Laboratory data for patient ${regId}:`, {
+          allTestsCount: labData.allTests?.length || 0,
+          hasResult: labData.hasResult,
+          testsWithResults: labData.allTests?.filter(t => t.has_result)?.length || 0
+        });
+        
         return (
           <LaboratoryRequest 
             registration={selectedRegistration}
@@ -946,11 +929,15 @@ export default function TreatmentPage() {
               });
             }}
             setAllTests={(tests) => {
+              console.log(`📝 Setting allTests for patient ${regId}:`, tests?.length || 0);
+              const hasResult = tests?.some(t => t.has_result === true && t.result_details) || false;
+              console.log(`📝 hasResult:`, hasResult);
               updatePatientData(regId, 'laboratory', {
                 ...labData,
-                allTests: tests,
-                isRequested: tests.length > 0,
-                data: tests.length > 0 ? tests[0] : null
+                allTests: tests || [],
+                isRequested: (tests || []).length > 0,
+                data: (tests || []).length > 0 ? tests[0] : null,
+                hasResult: hasResult
               });
             }}
           />
@@ -1070,7 +1057,6 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ رندر نوار پیشرفت ============
   const renderProgressBar = () => {
     if (activeTab === 'queue' || activeTab === 'history') return null;
     if (!selectedPatientId) return null;
@@ -1206,7 +1192,6 @@ export default function TreatmentPage() {
 
         {renderProgressBar()}
 
-        {/* تب‌ها */}
         <div
           style={{
             display: "flex",
@@ -1288,7 +1273,6 @@ export default function TreatmentPage() {
           })}
         </div>
 
-        {/* محتوای تب */}
         <div
           style={{
             background: "#1f2937",
@@ -1301,7 +1285,6 @@ export default function TreatmentPage() {
           {renderTabContent()}
         </div>
 
-        {/* دکمه‌های ناوبری */}
         {selectedPatientId && activeTab !== 'queue' && activeTab !== 'history' && !currentProgress.isComplete && (
           <div style={{
             display: 'flex',

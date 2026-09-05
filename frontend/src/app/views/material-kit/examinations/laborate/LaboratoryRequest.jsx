@@ -20,7 +20,8 @@ export default function LaboratoryRequest({
   allTests,
   isLabRequested,
   setIsLabRequested,
-  setAllTests
+  setAllTests,
+  hasLabResult = false
 }) {
   const [formData, setFormData] = useState({
     test_type: '',
@@ -42,6 +43,9 @@ export default function LaboratoryRequest({
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
   const [loadingTests, setLoadingTests] = useState(false);
+  const [hasResults, setHasResults] = useState(false);
+  const [resultsData, setResultsData] = useState([]);
+  const [loadingResults, setLoadingResults] = useState(false);
   const printRef = useRef();
 
   // ============ انواع تست با برچسب ============
@@ -142,6 +146,15 @@ export default function LaboratoryRequest({
     general: 'عمومی',
   };
 
+  // ============ نقشه وضعیت به فارسی ============
+  const resultStatusLabels = {
+    'Draft': 'پیش‌نویس',
+    'Completed': 'تکمیل شده',
+    'Verified': 'تأیید شده',
+    'Delivered': 'تحویل شده',
+    'Cancelled': 'لغو شده'
+  };
+
   // ============ دریافت اطلاعات مریض ============
   useEffect(() => {
     if (!registration || !registration.reg_id) return;
@@ -175,6 +188,8 @@ export default function LaboratoryRequest({
   // ============ همگام‌سازی تست‌ها از props ============
   useEffect(() => {
     console.log('📝 LaboratoryRequest - allTests changed:', allTests);
+    console.log('📝 hasLabResult:', hasLabResult);
+    
     if (allTests && Array.isArray(allTests) && allTests.length > 0) {
       setTests(allTests);
       if (setIsLabRequested) {
@@ -183,13 +198,26 @@ export default function LaboratoryRequest({
       if (allTests[0]?.barcode) {
         setBarcode(allTests[0].barcode);
       }
+      
+      // ✅ بررسی وجود نتیجه
+      const hasResultsData = allTests.some(t => t.has_result === true && t.result_details);
+      setHasResults(hasResultsData);
+      
+      // ✅ استخراج نتایج
+      const results = allTests.filter(t => t.has_result === true && t.result_details);
+      setResultsData(results);
+      
+      console.log(`📊 Tests with results: ${results.length} out of ${allTests.length}`);
+      
     } else if (allTests && Array.isArray(allTests) && allTests.length === 0) {
       setTests([]);
+      setResultsData([]);
+      setHasResults(false);
       if (setIsLabRequested) {
         setIsLabRequested(false);
       }
     }
-  }, [allTests, setIsLabRequested]);
+  }, [allTests, setIsLabRequested, hasLabResult]);
 
   // ============ بارگذاری اولیه از سرور ============
   useEffect(() => {
@@ -243,6 +271,13 @@ export default function LaboratoryRequest({
           setAllTests(testsData);
         }
         
+        // ✅ بررسی نتایج
+        const hasResultsData = testsData.some(t => t.has_result === true && t.result_details);
+        setHasResults(hasResultsData);
+        const results = testsData.filter(t => t.has_result === true && t.result_details);
+        setResultsData(results);
+        console.log(`📊 Found ${results.length} results in loaded data`);
+        
         if (testsData.length > 0 && testsData[0].barcode) {
           setBarcode(testsData[0].barcode);
         } else if (data.barcode) {
@@ -253,6 +288,8 @@ export default function LaboratoryRequest({
       } else {
         console.log('⚠️ No tests found or success false');
         setTests([]);
+        setResultsData([]);
+        setHasResults(false);
         if (setIsLabRequested) {
           setIsLabRequested(false);
         }
@@ -263,6 +300,8 @@ export default function LaboratoryRequest({
     } catch (err) {
       console.error("❌ Error loading tests:", err);
       setTests([]);
+      setResultsData([]);
+      setHasResults(false);
       if (setIsLabRequested) {
         setIsLabRequested(false);
       }
@@ -275,6 +314,44 @@ export default function LaboratoryRequest({
       }
     } finally {
       setLoadingTests(false);
+    }
+  };
+
+  // ============ بارگذاری نتایج از سرور ============
+  const loadResultsFromServer = async () => {
+    if (!registration || !registration.reg_id) {
+      console.log('⚠️ No registration ID available for loading results');
+      return;
+    }
+
+    setLoadingResults(true);
+    try {
+      // دریافت نتایج از API
+      const response = await api.get(`/laboratory-results/all?registration_id=${registration.reg_id}`);
+      console.log('📥 Results Response:', response.data);
+      
+      if (response.data?.success) {
+        const data = response.data.data;
+        if (Array.isArray(data) && data.length > 0) {
+          setResultsData(data);
+          setHasResults(true);
+          console.log(`✅ Loaded ${data.length} results from server`);
+        } else {
+          setResultsData([]);
+          setHasResults(false);
+        }
+      } else {
+        console.log('⚠️ No results found');
+        setResultsData([]);
+        setHasResults(false);
+      }
+    } catch (err) {
+      console.error("❌ Error loading results:", err);
+      if (err.response?.status !== 404) {
+        // فقط در صورت خطای غیر از 404 نمایش بده
+      }
+    } finally {
+      setLoadingResults(false);
     }
   };
 
@@ -377,6 +454,7 @@ export default function LaboratoryRequest({
         
         setTimeout(() => {
           loadTestsFromServer();
+          loadResultsFromServer();
         }, 500);
         
       } else {
@@ -464,7 +542,10 @@ export default function LaboratoryRequest({
           onRefresh();
         }
         
-        setTimeout(() => loadTestsFromServer(), 300);
+        setTimeout(() => {
+          loadTestsFromServer();
+          loadResultsFromServer();
+        }, 300);
       } else {
         toast.error(`❌ خطا: ${response.data?.message || 'ویرایش ناموفق بود'}`);
       }
@@ -649,92 +730,95 @@ export default function LaboratoryRequest({
     printWindow.print();
   };
 
-  // ============ دریافت و دانلود PDF با استفاده از API جدید ============
- const handleDownloadPdf = async (resultId, fileName) => {
-  if (!resultId) {
-    toast.error("❌ شناسه نتیجه موجود نیست");
-    return;
-  }
-
-  try {
-    const token = localStorage.getItem("token");
-    toast.info("⏳ در حال دانلود فایل...");
-    
-    const response = await fetch(`http://localhost:8000/api/laboratory-results/download/${resultId}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/pdf',
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        toast.error("❌ نشست شما منقضی شده است");
-        return;
-      }
-      if (response.status === 404) {
-        toast.error("❌ فایل یافت نشد");
-        return;
-      }
-      throw new Error(`HTTP error! status: ${response.status}`);
+  // ============ دریافت و دانلود PDF (اصلاح شده) ============
+  const handleDownloadPdf = async (laboratoryResultId, fileName) => {
+    if (!laboratoryResultId) {
+      toast.error("❌ شناسه نتیجه موجود نیست");
+      return;
     }
 
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName || 'result.pdf';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 5000);
-    
-    toast.success("✅ دانلود با موفقیت انجام شد");
-    
-  } catch (error) {
-    console.error("❌ خطا:", error);
-    toast.error("❌ خطا در دانلود فایل: " + error.message);
-  }
-};
-  // ============ نمایش نتایج ثبت شده ============
-  const renderResults = () => {
-    if (!tests || tests.length === 0) return null;
-    
-    const testsWithResults = tests.filter(test => test.has_result && test.result_details);
-    
-    if (testsWithResults.length === 0) {
-      return (
-        <div style={{
-          textAlign: 'center',
-          padding: '20px',
-          color: '#9ca3af',
-          backgroundColor: '#0f1a2a',
-          borderRadius: '8px',
-          border: '1px dashed #374151',
-          marginTop: '25px'
-        }}>
-          <div style={{ fontSize: '30px' }}>📋</div>
-          <div>هنوز نتیجه‌ای برای تست‌ها ثبت نشده است</div>
-          <div style={{ fontSize: '12px', marginTop: '5px' }}>
-            نتایج پس از ثبت در بخش لابراتوار در اینجا نمایش داده می‌شود
-          </div>
-        </div>
-      );
+    try {
+      const token = localStorage.getItem("token");
+      toast.info("⏳ در حال دانلود فایل...");
+      
+      const response = await fetch(`http://localhost:8000/api/laboratory-results/download/${laboratoryResultId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/pdf',
+        },
+      });
+
+      console.log("📥 وضعیت پاسخ دانلود:", response.status);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error("❌ نشست شما منقضی شده است. لطفاً مجدداً وارد شوید.");
+          return;
+        }
+        if (response.status === 404) {
+          toast.error("❌ فایل یافت نشد");
+          return;
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName || 'result.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 5000);
+      
+      toast.success("✅ دانلود با موفقیت انجام شد");
+      
+    } catch (error) {
+      console.error("❌ خطا:", error);
+      toast.error("❌ خطا در دانلود فایل: " + error.message);
     }
-    
+  };
+
+  // ============ نمایش نتایج ثبت شده (اصلاح شده نهایی) ============
+  // ============ نمایش نتایج ثبت شده (اصلاح شده - فقط مشاهده) ============
+const renderResults = () => {
+  console.log("📊 renderResults called, resultsData:", resultsData?.length || 0);
+  console.log("📊 hasResults:", hasResults);
+  console.log("📊 tests:", tests?.length || 0);
+  
+  // ✅ اگر نتایج در state وجود دارد
+  if (resultsData && resultsData.length > 0) {
     return (
       <div style={{ marginTop: '25px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
         <h4 style={{ color: '#22c55e', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span>✅</span>
           نتایج ثبت شده لابراتوار
           <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'normal' }}>
-            ({testsWithResults.length} نتیجه)
+            ({resultsData.length} نتیجه)
           </span>
+          <button
+            onClick={() => {
+              loadResultsFromServer();
+              loadTestsFromServer();
+            }}
+            style={{
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              padding: '2px 10px',
+              borderRadius: '4px',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '11px',
+              marginRight: '10px'
+            }}
+          >
+            🔄 بارگذاری مجدد
+          </button>
         </h4>
         
         <div style={{
@@ -742,13 +826,16 @@ export default function LaboratoryRequest({
           gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
           gap: '15px'
         }}>
-          {testsWithResults.map((test) => {
-            const result = test.result_details || {};
+          {resultsData.map((result) => {
+            const resultData = result.result_details || result;
+            const testData = result.test || {};
             const patient = patientInfo?.patient || registration?.patient || {};
+            
+            const statusLabel = resultStatusLabels[resultData.result_status] || resultData.result_status || 'نامشخص';
             
             return (
               <div
-                key={test.id}
+                key={result.id || Math.random()}
                 style={{
                   backgroundColor: '#0f1a2a',
                   border: '1px solid #2a3a4a',
@@ -767,74 +854,96 @@ export default function LaboratoryRequest({
                 }}>
                   <div>
                     <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '14px' }}>
-                      {test.test_type_label || test.test_type}
+                      {resultData.test_type_label || resultData.test_type || testData.test_type || 'آزمایش'}
                     </span>
-                    {test.test_name && (
+                    {resultData.test_name && (
                       <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>
-                        {test.test_name}
+                        {resultData.test_name}
                       </span>
                     )}
                   </div>
                   <span style={{
-                    backgroundColor: '#10b981',
+                    backgroundColor: resultData.result_status === 'Completed' ? '#10b981' : 
+                                  resultData.result_status === 'Verified' ? '#3b82f6' :
+                                  resultData.result_status === 'Delivered' ? '#8b5cf6' :
+                                  resultData.result_status === 'Cancelled' ? '#ef4444' : '#f59e0b',
                     color: 'white',
                     padding: '2px 10px',
                     borderRadius: '12px',
                     fontSize: '11px'
                   }}>
-                    ثبت شده
+                    {statusLabel}
                   </span>
                 </div>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <div>
+                    <span style={{ color: '#6b7280', fontSize: '11px' }}>شماره گزارش:</span>
+                    <div style={{ color: '#fcd34d', fontSize: '13px', fontWeight: 'bold' }}>
+                      {resultData.report_no || '-'}
+                    </div>
+                  </div>
+                  <div>
                     <span style={{ color: '#6b7280', fontSize: '11px' }}>نتیجه:</span>
                     <div style={{ color: 'white', fontWeight: 'bold', fontSize: '15px' }}>
-                      {result.result || '-'}
+                      {resultData.result || '-'}
                     </div>
                   </div>
                   <div>
                     <span style={{ color: '#6b7280', fontSize: '11px' }}>محدوده نرمال:</span>
                     <div style={{ color: '#9ca3af', fontSize: '14px' }}>
-                      {result.normal_range || '-'}
+                      {resultData.normal_range || '-'}
                     </div>
                   </div>
-                  {result.remarks && (
+                  <div>
+                    <span style={{ color: '#6b7280', fontSize: '11px' }}>تفسیر:</span>
+                    <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                      {resultData.interpretation || '-'}
+                    </div>
+                  </div>
+                  {resultData.remarks && (
                     <div style={{ gridColumn: 'span 2' }}>
                       <span style={{ color: '#6b7280', fontSize: '11px' }}>یادداشت:</span>
                       <div style={{ color: '#9ca3af', fontSize: '13px' }}>
-                        {result.remarks}
+                        {resultData.remarks}
+                      </div>
+                    </div>
+                  )}
+                  {resultData.recommendation && (
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <span style={{ color: '#6b7280', fontSize: '11px' }}>توصیه:</span>
+                      <div style={{ color: '#fcd34d', fontSize: '13px' }}>
+                        {resultData.recommendation}
                       </div>
                     </div>
                   )}
                   <div style={{ gridColumn: 'span 2' }}>
                     <span style={{ color: '#6b7280', fontSize: '11px' }}>تاریخ نتیجه:</span>
                     <div style={{ color: '#9ca3af', fontSize: '13px' }}>
-                      {result.analysis_completed_at ? new Date(result.analysis_completed_at).toLocaleDateString('fa-IR') : '-'}
+                      {resultData.analysis_completed_at ? new Date(resultData.analysis_completed_at).toLocaleDateString('fa-IR') + ' ' + new Date(resultData.analysis_completed_at).toLocaleTimeString('fa-IR') : '-'}
                     </div>
                   </div>
-                  {result.pdf_url && (
+                  {(resultData.pdf_url || resultData.pdf_file) && (
                     <div style={{ gridColumn: 'span 2', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button
-                        onClick={() => handleDownloadPdf(test.id, result.pdf_file_name || 'result.pdf')}
+                      {/* ✅ فقط دکمه مشاهده PDF - بدون دکمه دانلود */}
+                      <a
+                        href={resultData.pdf_url || `/storage/${resultData.pdf_file}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         style={{
-                          backgroundColor: '#22c55e',
+                          backgroundColor: '#3b82f6',
                           color: 'white',
                           padding: '6px 14px',
                           borderRadius: '6px',
-                          border: 'none',
-                          cursor: 'pointer',
+                          textDecoration: 'none',
                           fontSize: '12px',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '5px',
-                          transition: 'all 0.3s'
+                          gap: '5px'
                         }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = '#16a34a'}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = '#22c55e'}
                       >
-                        ⬇️ دانلود
-                      </button>
+                        👁️ مشاهده PDF
+                      </a>
                     </div>
                   )}
                 </div>
@@ -844,8 +953,45 @@ export default function LaboratoryRequest({
         </div>
       </div>
     );
-  };
-
+  }
+  
+  // ✅ اگر هیچ نتیجه‌ای وجود ندارد
+  return (
+    <div style={{
+      textAlign: 'center',
+      padding: '20px',
+      color: '#9ca3af',
+      backgroundColor: '#0f1a2a',
+      borderRadius: '8px',
+      border: '1px dashed #374151',
+      marginTop: '25px'
+    }}>
+      <div style={{ fontSize: '30px' }}>📋</div>
+      <div>هنوز نتیجه‌ای برای تست‌ها ثبت نشده است</div>
+      <div style={{ fontSize: '12px', marginTop: '5px' }}>
+        نتایج پس از ثبت در بخش لابراتوار در اینجا نمایش داده می‌شود
+      </div>
+      <button
+        onClick={() => {
+          loadResultsFromServer();
+          loadTestsFromServer();
+        }}
+        style={{
+          marginTop: '10px',
+          backgroundColor: '#3b82f6',
+          color: 'white',
+          padding: '4px 16px',
+          borderRadius: '4px',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: '12px'
+        }}
+      >
+        🔄 بررسی مجدد
+      </button>
+    </div>
+  );
+};
   // ============ وضعیت‌ها ============
   const patient = patientInfo?.patient || registration?.patient || {};
   const isDisabled = isCompleted || isTreatmentComplete || isSubmitting || isSubmittingForm;
@@ -992,6 +1138,16 @@ export default function LaboratoryRequest({
             marginRight: '8px'
           }}>
             {tests.length}
+          </span>
+        </div>
+        <div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>نتایج ثبت شده:</span>
+          <span style={{
+            color: hasResults ? '#22c55e' : '#9ca3af',
+            fontWeight: 'bold',
+            marginRight: '8px'
+          }}>
+            {hasResults ? `✅ ${resultsData.length} نتیجه` : '❌ بدون نتیجه'}
           </span>
         </div>
         <div>
@@ -1523,6 +1679,11 @@ export default function LaboratoryRequest({
                         <span style={{ backgroundColor: statusColors[test.status] || '#6b7280', color: 'white', padding: '2px 10px', borderRadius: '12px', fontSize: '11px', display: 'inline-block' }}>
                           {statusLabels[test.status] || test.status || 'نامشخص'}
                         </span>
+                        {test.has_result && (
+                          <span style={{ backgroundColor: '#10b981', color: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '9px', marginLeft: '4px' }}>
+                            ✅ نتیجه
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
                         {test.has_fee ? (
@@ -1582,6 +1743,27 @@ export default function LaboratoryRequest({
                           >
                             🖨️
                           </button>
+                          {test.has_result && test.result_details?.pdf_url && (
+                            <button 
+                              onClick={() => {
+                                // ✅ استفاده از laboratory_result_id برای دانلود
+                                const resultId = test.result_details?.id || test.id;
+                                handleDownloadPdf(resultId, test.result_details?.pdf_file_name || 'result.pdf');
+                              }}
+                              style={{ 
+                                backgroundColor: '#22c55e', 
+                                color: 'white', 
+                                padding: '4px 8px', 
+                                borderRadius: '4px', 
+                                border: 'none', 
+                                fontSize: '11px', 
+                                cursor: 'pointer' 
+                              }}
+                              title="دانلود PDF"
+                            >
+                              ⬇️
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
