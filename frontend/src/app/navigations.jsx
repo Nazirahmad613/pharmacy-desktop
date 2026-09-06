@@ -27,6 +27,8 @@ import FactCheckIcon from "@mui/icons-material/FactCheck";
 import BugReportIcon from "@mui/icons-material/BugReport";
 import PsychologyIcon from "@mui/icons-material/Psychology";
 import ImageIcon from "@mui/icons-material/Image";
+import RadioIcon from "@mui/icons-material/Radio";
+import ScannerIcon from "@mui/icons-material/Scanner";
 
 const navigations = [
   {
@@ -107,50 +109,23 @@ const navigations = [
   },
 
   // ============================================================
-  // ادامه سایر بخش‌ها
+  // ✅ بخش رادیولوژی (فقط یک آیتم - همه چیز در یک صفحه)
   // ============================================================
-
   {
     label: "رادیولوژی",
     type: "label",
   },
 
   {
-    name: "رادیولوژی",
-    icon: <LocalHospitalIcon />,
-    children: [
-      {
-        name: "درخواست‌های رادیولوژی",
-        path: "/material/radiology-request",
-        icon: <AssignmentIcon />,
-      },
-      {
-        name: "X-Ray",
-        path: "/material/radiology-xray",
-        icon: <LocalHospitalIcon />,
-      },
-      {
-        name: "Ultrasound",
-        path: "/material/radiology-ultrasound",
-        icon: <LocalHospitalIcon />,
-      },
-      {
-        name: "CT Scan",
-        path: "/material/radiology-ct",
-        icon: <LocalHospitalIcon />,
-      },
-      {
-        name: "MRI",
-        path: "/material/radiology-mri",
-        icon: <LocalHospitalIcon />,
-      },
-      {
-        name: "ثبت نتایج رادیولوژی",
-        path: "/material/radiology-results",
-        icon: <DescriptionIcon />,
-      },
-    ],
+    name: "📷 رادیولوژی",
+    icon: <RadioIcon />,
+    path: "/material/radiology",
+    // ❌ بدون children - همه بخش‌ها در صفحه اصلی نمایش داده می‌شوند
   },
+
+  // ============================================================
+  // ادامه سایر بخش‌ها
+  // ============================================================
 
   {
     label: "مدیریت مالی",

@@ -1,4 +1,4 @@
- import { lazy } from "react";
+import { lazy } from "react";
 import Loadable from "app/components/Loadable";
 import AdminRoute from "./AdminRoute";
 
@@ -49,6 +49,12 @@ const AppLabHematology = Loadable(lazy(() => import("./laboratory/LabHematology"
 const AppLabResults = Loadable(lazy(() => import("./laboratory/LabResults")));
 
 // ============================================================
+// ===== ✅ صفحات رادیولوژی =====
+// ============================================================
+// فقط یک صفحه اصلی رادیولوژی (مشابه لابراتوار)
+const AppRadiology = Loadable(lazy(() => import("./radiology/Radiology")));
+
+// ============================================================
 // ===== Routes =====
 // ============================================================
 const materialRoutes = [
@@ -94,6 +100,11 @@ const materialRoutes = [
   // ============================================================
   { path: "/material/lab-hematology", element: <AppLabHematology /> },
   { path: "/material/lab-results", element: <AppLabResults /> },
+
+  // ============================================================
+  // ===== ✅ صفحه رادیولوژی (فقط یک مسیر اصلی) =====
+  // ============================================================
+  { path: "/material/radiology", element: <AppRadiology /> },
 
   // ===== Users Management (Admin Only) =====
   {

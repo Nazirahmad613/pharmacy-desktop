@@ -114,13 +114,29 @@ export default function RadiologyRequest({
     sent_to_radiology: '#8b5cf6'
   };
 
+  // ✅ برچسب‌های وضعیت نتیجه
+  const resultStatusLabels = {
+    'Draft': 'پیش‌نویس',
+    'Completed': 'تکمیل شده',
+    'Verified': 'تأیید شده',
+    'Delivered': 'تحویل شده',
+    'Cancelled': 'لغو شده'
+  };
+
+  const resultStatusColors = {
+    'Draft': '#f59e0b',
+    'Completed': '#10b981',
+    'Verified': '#3b82f6',
+    'Delivered': '#8b5cf6',
+    'Cancelled': '#ef4444'
+  };
+
   const bodyParts = [
     'سر', 'مغز', 'صورت', 'گردن', 'سینه', 'قفسه سینه', 'شکم', 'لگن',
     'کمر', 'ستون فقرات', 'دست چپ', 'دست راست', 'پای چپ', 'پای راست',
     'زانو', 'شانه', 'مچ پا', 'مچ دست', 'آرنج', 'لگن خاصره', 'مهره‌ها'
   ];
 
-  // این Effect فقط اطلاعات مریض را می‌گیرد و هیچ State والد را تغییر نمی‌دهد.
   useEffect(() => {
     const regId = registration?.reg_id;
     if (!regId || !api) return;
@@ -160,12 +176,10 @@ export default function RadiologyRequest({
     };
   }, [registration?.reg_id, api]);
 
-  // فقط از Props به State محلی همگام می‌کنیم.
-  // مهم: این Effect دیگر setIsRadiologyRequested را صدا نمی‌زند.
+  // همگام‌سازی با Props
   useEffect(() => {
     if (!isMounted.current || !Array.isArray(allRadiology)) return;
-    if (allRadiology.length === 0) return;
-
+    
     setRadiologyList(allRadiology);
 
     const firstWithBarcode = allRadiology.find(item => item?.barcode);
@@ -173,6 +187,7 @@ export default function RadiologyRequest({
       setBarcode(firstWithBarcode.barcode);
     }
 
+    // ✅ استخراج نتایج از داده‌ها
     const resultItems = allRadiology.filter(
       item => item?.has_result === true && item?.result_details
     );
@@ -181,8 +196,6 @@ export default function RadiologyRequest({
     setResultsData(resultItems);
   }, [allRadiology]);
 
-  // بارگذاری اولیه فقط یک‌بار برای هر registration انجام می‌شود.
-  // اگر Parent قبلاً اطلاعات را داده باشد، درخواست اضافی به سرور ارسال نمی‌شود.
   const loadRadiologyFromServer = useCallback(async (force = false) => {
     const regId = registration?.reg_id;
 
@@ -215,9 +228,11 @@ export default function RadiologyRequest({
       console.log('📥 Full Response:', response.data);
 
       let radiologyData = [];
+      let resultsFromResponse = [];
       const data = response.data?.data;
 
       if (response.data?.success) {
+        // دریافت لیست رادیولوژی
         if (Array.isArray(data?.all_radiology)) {
           radiologyData = data.all_radiology;
         } else if (Array.isArray(data?.radiology)) {
@@ -225,28 +240,64 @@ export default function RadiologyRequest({
         } else if (Array.isArray(data)) {
           radiologyData = data;
         }
+
+        // ✅ دریافت نتایج از پاسخ
+        if (Array.isArray(data?.results)) {
+          resultsFromResponse = data.results;
+        }
       }
 
-      console.log(`✅ Loaded ${radiologyData.length} radiology from server`);
+      // ✅ پردازش داده‌ها برای استخراج نتیجه
+      const processedData = radiologyData.map(item => {
+        // اگر نتیجه در خود آیتم وجود دارد
+        if (item.result) {
+          return {
+            ...item,
+            has_result: true,
+            result_details: item.result
+          };
+        }
+        // اگر نتیجه در result_details وجود دارد
+        if (item.result_details) {
+          return {
+            ...item,
+            has_result: true,
+            result_details: item.result_details
+          };
+        }
+        // اگر نتیجه در radiology_result وجود دارد
+        if (item.radiology_result) {
+          return {
+            ...item,
+            has_result: true,
+            result_details: item.radiology_result
+          };
+        }
+        return item;
+      });
 
-      setRadiologyList(radiologyData);
+      console.log(`✅ Loaded ${processedData.length} radiology from server`);
 
-      const firstWithBarcode = radiologyData.find(item => item?.barcode);
+      setRadiologyList(processedData);
+
+      const firstWithBarcode = processedData.find(item => item?.barcode);
       if (firstWithBarcode?.barcode) {
         setBarcode(firstWithBarcode.barcode);
       } else if (data?.barcode) {
         setBarcode(data.barcode);
       }
 
-      const resultItems = radiologyData.filter(
+      // ✅ استخراج نتایج از داده‌های پردازش شده
+      const resultItems = processedData.filter(
         item => item?.has_result === true && item?.result_details
       );
 
-      setHasResults(resultItems.length > 0);
-      setResultsData(resultItems);
+      // ✅ اگر نتایج از پاسخ جداگانه آمده، از آنها استفاده کن
+      const finalResults = resultsFromResponse.length > 0 ? resultsFromResponse : resultItems;
 
-      // عمداً در Effect/Callback والد را Update نمی‌کنیم.
-      // این قسمت عامل اصلی Maximum update depth در نسخه قبلی بود.
+      setHasResults(finalResults.length > 0);
+      setResultsData(finalResults);
+
       loadedRegistrationRef.current = regId;
       setConnectionError(false);
 
@@ -258,7 +309,6 @@ export default function RadiologyRequest({
 
       console.error("❌ Error loading radiology:", err);
 
-      // در خطای شبکه، لیست قبلی را پاک نمی‌کنیم.
       if (err.code === 'ERR_NETWORK') {
         setConnectionError(true);
         return;
@@ -285,7 +335,6 @@ export default function RadiologyRequest({
     }
   }, [registration?.reg_id, api]);
 
-  // وقتی مریض/registration عوض شد، وضعیت بارگذاری قبلی را ریست می‌کنیم.
   useEffect(() => {
     const regId = registration?.reg_id;
 
@@ -298,8 +347,6 @@ export default function RadiologyRequest({
     }
 
     if (loadedRegistrationRef.current !== regId) {
-      // اگر Parent اطلاعات واقعی دارد، همان را استفاده می‌کنیم.
-      // در غیر این صورت یک بار از سرور می‌گیریم.
       if (Array.isArray(allRadiology) && allRadiology.length > 0) {
         loadedRegistrationRef.current = regId;
       } else {
@@ -308,7 +355,6 @@ export default function RadiologyRequest({
     }
   }, [registration?.reg_id, loadRadiologyFromServer]);
 
-  // Cleanup
   useEffect(() => {
     isMounted.current = true;
 
@@ -345,22 +391,58 @@ export default function RadiologyRequest({
 
   const applyRadiologyData = (data) => {
     const radiologyData = extractRadiologyData(data);
+    let resultsFromResponse = [];
 
-    setRadiologyList(radiologyData);
+    // ✅ استخراج نتایج از پاسخ
+    if (data?.results && Array.isArray(data.results)) {
+      resultsFromResponse = data.results;
+    }
 
-    const firstWithBarcode = radiologyData.find(item => item?.barcode);
+    // ✅ پردازش داده‌ها برای استخراج نتیجه
+    const processedData = radiologyData.map(item => {
+      if (item.result) {
+        return {
+          ...item,
+          has_result: true,
+          result_details: item.result
+        };
+      }
+      if (item.result_details) {
+        return {
+          ...item,
+          has_result: true,
+          result_details: item.result_details
+        };
+      }
+      if (item.radiology_result) {
+        return {
+          ...item,
+          has_result: true,
+          result_details: item.radiology_result
+        };
+      }
+      return item;
+    });
+
+    setRadiologyList(processedData);
+
+    const firstWithBarcode = processedData.find(item => item?.barcode);
     if (firstWithBarcode?.barcode) {
       setBarcode(firstWithBarcode.barcode);
     }
 
-    const resultItems = radiologyData.filter(
+    // ✅ استخراج نتایج
+    const resultItems = processedData.filter(
       item => item?.has_result === true && item?.result_details
     );
 
-    setHasResults(resultItems.length > 0);
-    setResultsData(resultItems);
+    // ✅ اگر نتایج از پاسخ جداگانه آمده، از آنها استفاده کن
+    const finalResults = resultsFromResponse.length > 0 ? resultsFromResponse : resultItems;
 
-    return radiologyData;
+    setHasResults(finalResults.length > 0);
+    setResultsData(finalResults);
+
+    return processedData;
   };
 
   const handleSubmit = async (e) => {
@@ -432,7 +514,6 @@ export default function RadiologyRequest({
         setBarcode(requestBarcode);
       }
 
-      // برای هماهنگی با Parent فقط هنگام Action کاربر Update می‌کنیم.
       if (setIsRadiologyRequested) {
         setIsRadiologyRequested(radiologyData.length > 0);
       }
@@ -587,11 +668,9 @@ export default function RadiologyRequest({
 
         loadedRegistrationRef.current = registration?.reg_id ?? null;
       } else {
-        // برای حذف، reload را اجباری می‌کنیم؛ ولی فقط با force و خارج از Effect.
         loadedRegistrationRef.current = null;
         await loadRadiologyFromServer(true);
 
-        // اگر سرور بعد از حذف لیست خالی برگرداند، Parent را هم هماهنگ می‌کنیم.
         if (setIsRadiologyRequested) {
           setIsRadiologyRequested(false);
         }
@@ -715,6 +794,17 @@ export default function RadiologyRequest({
             <tr><td>اولویت</td><td>${priorityLabels[item.priority] || item.priority}</td></tr>
             <tr><td>وضعیت</td><td>${statusLabels[item.status] || item.status || 'نامشخص'}</td></tr>
           </table>
+          ${item.has_result && item.result_details ? `
+          <h3>📄 نتیجه</h3>
+          <table>
+            <tr><th>فیلد</th><th>مقدار</th></tr>
+            <tr><td>نتیجه</td><td>${item.result_details.result || '-'}</td></tr>
+            <tr><td>یافته‌ها</td><td>${item.result_details.findings || '-'}</td></tr>
+            <tr><td>تفسیر</td><td>${item.result_details.interpretation || '-'}</td></tr>
+            <tr><td>شماره گزارش</td><td>${item.result_details.report_no || '-'}</td></tr>
+            <tr><td>وضعیت نتیجه</td><td>${resultStatusLabels[item.result_details.result_status] || item.result_details.result_status || 'نامشخص'}</td></tr>
+          </table>
+          ` : ''}
           <div class="signature">
             <p>دکتر: ${item.doctor?.name || '-'}</p>
             <p>امضاء: _________________</p>
@@ -739,7 +829,6 @@ export default function RadiologyRequest({
       const token = localStorage.getItem("token");
       toast.info("⏳ در حال دانلود فایل...");
 
-      // به جای localhost ثابت، از همان Axios baseURL استفاده می‌کنیم.
       const baseURL = api?.defaults?.baseURL || '';
       const normalizedBaseURL = baseURL.replace(/\/+$/, '');
       const downloadUrl =
@@ -783,105 +872,10 @@ export default function RadiologyRequest({
     }
   };
 
-  const renderResults = () => {
-    if (!resultsData?.length) return null;
-
-    return (
-      <div style={{ marginTop: '25px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
-        <h4 style={{ color: '#22c55e', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span>✅</span>
-          نتایج ثبت شده رادیولوژی ({resultsData.length} نتیجه)
-        </h4>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-          gap: '15px'
-        }}>
-          {resultsData.map((result, index) => {
-            const resultData = result.result_details || result;
-            const stableKey =
-              result.id ||
-              result.radiology_result_id ||
-              result.result_id ||
-              result.radiology_request_id ||
-              result.request_id ||
-              `result-${index}`;
-
-            return (
-              <div key={stableKey} style={{
-                backgroundColor: '#0f1a2a',
-                border: '1px solid #2a3a4a',
-                borderRadius: '8px',
-                padding: '15px'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  borderBottom: '1px solid #2a3a4a',
-                  paddingBottom: '10px',
-                  marginBottom: '10px'
-                }}>
-                  <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>
-                    {resultData.radiology_type_label || resultData.radiology_type || 'رادیولوژی'}
-                  </span>
-                  <span style={{
-                    backgroundColor: resultData.result_status === 'Completed' ? '#10b981' : '#f59e0b',
-                    color: 'white',
-                    padding: '2px 10px',
-                    borderRadius: '12px',
-                    fontSize: '11px'
-                  }}>
-                    {resultData.result_status_label || resultData.result_status || 'نامشخص'}
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <div>
-                    <span style={{ color: '#6b7280', fontSize: '11px' }}>نتیجه:</span>
-                    <div style={{ color: 'white', fontWeight: 'bold' }}>{resultData.result || '-'}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#6b7280', fontSize: '11px' }}>تفسیر:</span>
-                    <div style={{ color: '#9ca3af' }}>{resultData.interpretation || '-'}</div>
-                  </div>
-
-                  {(resultData.pdf_url || resultData.pdf_file) && (
-                    <div style={{ gridColumn: 'span 2' }}>
-                      <a
-                        href={resultData.pdf_url || `/storage/${resultData.pdf_file}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          backgroundColor: '#3b82f6',
-                          color: 'white',
-                          padding: '6px 14px',
-                          borderRadius: '6px',
-                          textDecoration: 'none',
-                          fontSize: '12px',
-                          display: 'inline-block'
-                        }}
-                      >
-                        👁️ مشاهده PDF
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
   const patient = patientInfo?.patient || registration?.patient || {};
   const isDisabled =
     isCompleted || isTreatmentComplete || isSubmitting || isSubmittingForm;
 
-  // اگر Parent مقدار false قدیمی داشته باشد ولی لیست محلی اطلاعات داشته باشد،
-  // فرم نباید دوباره فعال شود.
   const radiologyRequested =
     Boolean(isRadiologyRequested) || radiologyList.length > 0;
 
@@ -978,6 +972,15 @@ export default function RadiologyRequest({
               تاریخ درخواست: {item.request_date ? new Date(item.request_date).toLocaleDateString('fa-IR') : '-'}
               {item.barcode && ` | بارکد: ${item.barcode}`}
             </div>
+            {item.has_result && item.result_details && (
+              <div style={{ marginTop: '5px', padding: '5px', backgroundColor: '#e8f5e9', borderRadius: '4px' }}>
+                <div style={{ fontSize: '12px', color: '#2e7d32', fontWeight: 'bold' }}>📄 نتیجه:</div>
+                <div style={{ fontSize: '12px' }}>{item.result_details.result || 'ثبت شده'}</div>
+                {item.result_details.pdf_url && (
+                  <div style={{ fontSize: '11px', color: '#1565c0' }}>📎 PDF: {item.result_details.pdf_file_name || 'فایل'}</div>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -1010,6 +1013,17 @@ export default function RadiologyRequest({
           <span style={{ color: '#9ca3af', fontSize: '12px' }}>تعداد درخواست‌ها:</span>
           <span style={{ color: '#60a5fa', fontWeight: 'bold', marginRight: '8px' }}>
             {radiologyList.length}
+          </span>
+        </div>
+
+        <div>
+          <span style={{ color: '#9ca3af', fontSize: '12px' }}>نتایج ثبت شده:</span>
+          <span style={{
+            color: hasResults ? '#22c55e' : '#9ca3af',
+            fontWeight: 'bold',
+            marginRight: '8px'
+          }}>
+            {hasResults ? `✅ ${resultsData.length} نتیجه` : '❌ بدون نتیجه'}
           </span>
         </div>
 
@@ -1389,15 +1403,17 @@ export default function RadiologyRequest({
               overflowX: 'auto', borderRadius: '8px', border: '1px solid #374151'
             }}>
               <table style={{
-                width: '100%', borderCollapse: 'collapse', minWidth: '800px', fontSize: '13px'
+                width: '100%', borderCollapse: 'collapse', minWidth: '1100px', fontSize: '13px'
               }}>
                 <thead>
                   <tr style={{ backgroundColor: '#0f1a2a', borderBottom: '2px solid #374151' }}>
                     <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>#</th>
+                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>🏷️ بارکد</th>
                     <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>📷 نوع</th>
                     <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>🦴 بخش</th>
                     <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>⚡ اولویت</th>
                     <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>📊 وضعیت</th>
+                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>📄 نتیجه</th>
                     <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px' }}>عملیات</th>
                   </tr>
                 </thead>
@@ -1405,10 +1421,15 @@ export default function RadiologyRequest({
                   {radiologyList.map((item, index) => {
                     const editDisabled = ['completed', 'cancelled', 'sent_to_radiology', 'in_progress', 'scheduled'].includes(item.status);
                     const deleteDisabled = ['completed', 'in_progress', 'scheduled', 'sent_to_radiology'].includes(item.status) || item.has_result;
+                    const hasResult = !!(item.has_result && item.result_details);
+                    const resultData = item.result_details || {};
 
                     return (
-                      <tr key={item.id || `row-${index}`} style={{ borderBottom: '1px solid #2a3a4a' }}>
+                      <tr key={item.id || `row-${index}`} style={{ borderBottom: '1px solid #2a3a4a' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1a2a3a'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
                         <td style={{ padding: '10px 12px', textAlign: 'center', color: '#9ca3af', fontWeight: 'bold', borderLeft: '1px solid #2a3a4a' }}>{index + 1}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', color: '#fcd34d', fontSize: '12px', fontFamily: 'monospace', borderLeft: '1px solid #2a3a4a' }}>{item.barcode || '-'}</td>
                         <td style={{ padding: '10px 12px', textAlign: 'center', color: '#60a5fa', fontWeight: 'bold', borderLeft: '1px solid #2a3a4a' }}>{item.radiology_type_label || item.radiology_type || '-'}</td>
                         <td style={{ padding: '10px 12px', textAlign: 'center', color: 'white', borderLeft: '1px solid #2a3a4a' }}>{item.body_part || '-'}</td>
                         <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
@@ -1424,6 +1445,32 @@ export default function RadiologyRequest({
                             <span style={{ backgroundColor: '#10b981', color: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '9px', marginLeft: '4px' }}>
                               ✅ نتیجه
                             </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
+                          {hasResult ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                              <div style={{ color: '#22c55e', fontSize: '12px', fontWeight: 'bold' }}>
+                                {resultData.result || 'ثبت شده'}
+                              </div>
+                              {resultData.report_no && (
+                                <div style={{ color: '#9ca3af', fontSize: '10px' }}>
+                                  شماره: {resultData.report_no}
+                                </div>
+                              )}
+                              {resultData.pdf_url && (
+                                <a 
+                                  href={resultData.pdf_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  style={{ color: '#3b82f6', fontSize: '10px', textDecoration: 'none' }}
+                                >
+                                  📎 PDF
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ color: '#6b7280', fontSize: '12px' }}>—</span>
                           )}
                         </td>
                         <td style={{ padding: '8px 12px', textAlign: 'center' }}>
@@ -1472,15 +1519,14 @@ export default function RadiologyRequest({
                               🖨️
                             </button>
 
-                            {item.has_result && item.result_details?.pdf_url && (
+                            {hasResult && resultData.pdf_url && (
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const resultId =
-                                    item.result_details?.id || item.id;
+                                  const resultId = resultData.id || item.id;
                                   handleDownloadPdf(
                                     resultId,
-                                    item.result_details?.pdf_file_name || 'result.pdf'
+                                    resultData.pdf_file_name || 'result.pdf'
                                   );
                                 }}
                                 style={{
@@ -1504,7 +1550,212 @@ export default function RadiologyRequest({
         </div>
       </div>
 
-      {renderResults()}
+      {/* ============ کارت‌های نتایج ثبت شده ============ */}
+      {(() => {
+        // ✅ استخراج نتایج از لیست رادیولوژی
+        const resultsFromList = radiologyList.filter(item => item.has_result && item.result_details);
+        
+        if (resultsFromList.length === 0) {
+          return (
+            <div style={{
+              textAlign: 'center',
+              padding: '20px',
+              color: '#9ca3af',
+              backgroundColor: '#0f1a2a',
+              borderRadius: '8px',
+              border: '1px dashed #374151',
+              marginTop: '25px'
+            }}>
+              <div style={{ fontSize: '30px' }}>📋</div>
+              <div>هنوز نتیجه‌ای برای درخواست‌های رادیولوژی ثبت نشده است</div>
+              <div style={{ fontSize: '12px', marginTop: '5px' }}>
+                نتایج پس از ثبت در بخش رادیولوژی در اینجا نمایش داده می‌شود
+              </div>
+              <button
+                onClick={() => loadRadiologyFromServer(true)}
+                style={{
+                  marginTop: '10px',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  padding: '4px 16px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                🔄 بررسی مجدد
+              </button>
+            </div>
+          );
+        }
+
+        return (
+          <div style={{ marginTop: '25px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
+            <h4 style={{ color: '#22c55e', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span>✅</span>
+              نتایج ثبت شده رادیولوژی
+              <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'normal' }}>
+                ({resultsFromList.length} نتیجه)
+              </span>
+              <button
+                onClick={() => loadRadiologyFromServer(true)}
+                style={{
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  padding: '2px 10px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  marginRight: '10px'
+                }}
+              >
+                🔄 بارگذاری مجدد
+              </button>
+            </h4>
+            
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: '15px'
+            }}>
+              {resultsFromList.map((item, index) => {
+                const resultData = item.result_details || {};
+                const patient = patientInfo?.patient || registration?.patient || {};
+                
+                const statusLabel = resultData.result_status_label || resultData.result_status || 'نامشخص';
+                const statusColor = resultStatusColors[resultData.result_status] || '#f59e0b';
+
+                return (
+                  <div
+                    key={item.id || `result-${index}`}
+                    style={{
+                      backgroundColor: '#0f1a2a',
+                      border: '1px solid #2a3a4a',
+                      borderRadius: '8px',
+                      padding: '15px',
+                      transition: 'all 0.3s'
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderBottom: '1px solid #2a3a4a',
+                      paddingBottom: '10px',
+                      marginBottom: '10px'
+                    }}>
+                      <div>
+                        <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '14px' }}>
+                          {item.radiology_type_label || item.radiology_type || 'رادیولوژی'}
+                        </span>
+                        {item.body_part && (
+                          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>
+                            بخش: {item.body_part}
+                          </span>
+                        )}
+                      </div>
+                      <span style={{
+                        backgroundColor: statusColor,
+                        color: 'white',
+                        padding: '2px 10px',
+                        borderRadius: '12px',
+                        fontSize: '11px'
+                      }}>
+                        {statusLabel}
+                      </span>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div>
+                        <span style={{ color: '#6b7280', fontSize: '11px' }}>شماره گزارش:</span>
+                        <div style={{ color: '#fcd34d', fontSize: '13px', fontWeight: 'bold' }}>
+                          {resultData.report_no || '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ color: '#6b7280', fontSize: '11px' }}>نتیجه:</span>
+                        <div style={{ color: 'white', fontWeight: 'bold', fontSize: '15px' }}>
+                          {resultData.result || '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ color: '#6b7280', fontSize: '11px' }}>یافته‌ها:</span>
+                        <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                          {resultData.findings || '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ color: '#6b7280', fontSize: '11px' }}>تفسیر:</span>
+                        <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                          {resultData.interpretation || '-'}
+                        </div>
+                      </div>
+                      {resultData.remarks && (
+                        <div style={{ gridColumn: 'span 2' }}>
+                          <span style={{ color: '#6b7280', fontSize: '11px' }}>یادداشت:</span>
+                          <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                            {resultData.remarks}
+                          </div>
+                        </div>
+                      )}
+                      <div style={{ gridColumn: 'span 2' }}>
+                        <span style={{ color: '#6b7280', fontSize: '11px' }}>تاریخ نتیجه:</span>
+                        <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                          {resultData.analysis_completed_at ? new Date(resultData.analysis_completed_at).toLocaleDateString('fa-IR') + ' ' + new Date(resultData.analysis_completed_at).toLocaleTimeString('fa-IR') : '-'}
+                        </div>
+                      </div>
+                      {(resultData.pdf_url || resultData.pdf_file) && (
+                        <div style={{ gridColumn: 'span 2', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <a
+                            href={resultData.pdf_url || `/storage/${resultData.pdf_file}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              backgroundColor: '#3b82f6',
+                              color: 'white',
+                              padding: '6px 14px',
+                              borderRadius: '6px',
+                              textDecoration: 'none',
+                              fontSize: '12px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px'
+                            }}
+                          >
+                            👁️ مشاهده PDF
+                          </a>
+                          <button
+                            onClick={() => {
+                              const resultId = resultData.id || item.id;
+                              handleDownloadPdf(resultId, resultData.pdf_file_name || 'result.pdf');
+                            }}
+                            style={{
+                              backgroundColor: '#22c55e',
+                              color: 'white',
+                              padding: '6px 14px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px'
+                            }}
+                          >
+                            ⬇️ دانلود PDF
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {showEditModal && (
         <div style={{
