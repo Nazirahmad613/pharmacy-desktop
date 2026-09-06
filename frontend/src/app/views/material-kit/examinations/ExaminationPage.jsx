@@ -1028,15 +1028,27 @@ export default function TreatmentPage() {
             }}
           />
         );
-        
-      case "operation":
-        return (
-          <OperationRoom 
-            api={api}
-            onSelectPatient={handleSelectPatient}
-            onRefresh={refreshData}
-          />
-        );
+       case "operation":
+      return (
+        <OperationRoom 
+          api={api}
+          registration={selectedRegistration}
+          registrationId={selectedPatientId}
+          patientId={selectedRegistration?.patient_id || selectedRegistration?.patient?.id}
+          onSelectPatient={handleSelectPatient}
+          onRefresh={refreshData}
+          onSave={saveCurrentStep}
+          onFinish={finishTreatment}
+          onNextStep={goToNextStep}
+          onPrevStep={goToPreviousStep}
+          currentStep={currentStep}
+          nextStep={nextStep}
+          prevStep={prevStep}
+          isSubmitting={isSubmitting}
+          isTreatmentComplete={isComplete}
+        />
+      );
+      
         
       case "pres_insert":
         return (

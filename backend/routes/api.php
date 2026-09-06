@@ -42,6 +42,7 @@ use App\Http\Controllers\LaboratoryResultController;
 use App\Http\Controllers\RadiologyRequestController;
 use App\Http\Controllers\RadiologyFeeController;
 use App\Http\Controllers\RadiologyResultController;
+use App\Http\Controllers\OperationController; // ✅ استفاده از OperationController
 
 /*
 |--------------------------------------------------------------------------
@@ -187,6 +188,38 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::prefix('laboratory')->group(function () {
             Route::get('/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
             Route::post('/{registrationId}', [LaboratoryRequestController::class, 'store']);
+        });
+    });
+
+    // ============================================================
+    // ✅ مسیرهای عملیات (Operation) - اصلاح شده با OperationController
+    // ============================================================
+    Route::prefix('operation')->group(function () {
+        // درخواست‌های عملیات
+        Route::get('/requests', [OperationController::class, 'index']);
+        Route::post('/requests', [OperationController::class, 'store']);
+        Route::get('/requests/{id}', [OperationController::class, 'show']);
+        Route::put('/requests/{id}', [OperationController::class, 'update']);
+        Route::delete('/requests/{id}', [OperationController::class, 'destroy']);
+        Route::patch('/requests/{id}/status', [OperationController::class, 'updateStatus']);
+        
+        // عملیات‌های بدون فیس
+        Route::get('/without-fee', [OperationController::class, 'getOperationsWithoutFee']);
+        
+        // عملیات‌های با فیس
+        Route::get('/with-fee', [OperationController::class, 'getOperationsWithFee']);
+        
+        // جزئیات کامل عملیات با فیس
+        Route::get('/{id}/with-fee', [OperationController::class, 'getOperationWithFee']);
+        
+        // فیس‌های عملیات
+        Route::prefix('fees')->group(function () {
+            Route::get('/', [OperationController::class, 'feesIndex']);
+            Route::post('/', [OperationController::class, 'storeFee']);
+            Route::get('/statistics', [OperationController::class, 'feesStatistics']);
+            Route::get('/{id}', [OperationController::class, 'showFee']);
+            Route::put('/{id}', [OperationController::class, 'updateFee']);
+            Route::delete('/{id}', [OperationController::class, 'destroyFee']);
         });
     });
 

@@ -6,161 +6,82 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up(): void
+    public function up()
     {
-        Schema::create('registrations', function (Blueprint $table) {
-            $table->id('reg_id');
-
-            /*
-            |--------------------------------------------------------------------------
-            | نوع ثبت
-            |--------------------------------------------------------------------------
-            */
-            $table->enum('reg_type', [
-                'patient',
-            ])->comment('نوع مراجعه');
-
-            /*
-            |--------------------------------------------------------------------------
-            | ارتباطات سیستم شفاخانه
-            |--------------------------------------------------------------------------
-            */
-            // مریض اصلی از جدول patients
-            $table->foreignId('patient_id')
-                ->constrained('patients')
-                ->cascadeOnDelete();
-
-            // بخش مربوطه
-            $table->foreignId('department_id')
-                ->nullable()
-                ->constrained('departments')
-                ->nullOnDelete();
-
-            // داکتر معالج
-            $table->foreignId('doctor_id')
-                ->nullable()
-                ->constrained('users')
-                ->nullOnDelete();
-
-            /*
-            |--------------------------------------------------------------------------
-            | معلومات مراجعه
-            |--------------------------------------------------------------------------
-            */
-            $table->string('visit_number', 50)->nullable();
-
-            $table->enum('visit_type', [
-                'OPD',
-                'IPD',
-                'Emergency',
-                'Laboratory',
-                'Radiology',
-                'Pharmacy'
-            ])->nullable();
-
-            $table->timestamp('sent_to_doctor_at')
-                ->nullable()
-                ->comment('زمان ارسال مریض به داکتر');
-
-            $table->timestamp('doctor_started_at')
-                ->nullable()
-                ->comment('زمان شروع معاینه توسط داکتر');
-
-            $table->integer('queue_number')->nullable();
-
-            /*
-            |--------------------------------------------------------------------------
-            | تاریخ صف (جدید)
-            |--------------------------------------------------------------------------
-            */
-            $table->date('queue_date')
-                ->nullable()
-                ->after('queue_number')
-                ->comment('تاریخ قرارگیری در صف');
-$table->unique([
-    'doctor_id',
-    'queue_date',
-    'queue_number'
-]);
-            /*
-            |--------------------------------------------------------------------------
-            | فیس مراجعه
-            |--------------------------------------------------------------------------
-            */
-
-
-$table->enum('queue_status', [
-    'Waiting',
-    'Called',
-    'Expired',
-    'Removed'
-])->default('Waiting');
-
-$table->timestamp('queue_expired_at')
-    ->nullable()
-    ->comment('زمان ختم اعتبار صف');
-            $table->decimal('registration_fee', 10, 2)
-                ->default(0)
-                ->comment('فیس ابتدایی مراجعه');
-
-            /*
-            |--------------------------------------------------------------------------
-            | گردش مریض (وضعیت‌های کامل)
-            |--------------------------------------------------------------------------
-            */
-            $table->enum('visit_status', [
-                'Waiting',      // ثبت شده و در انتظار
-                'Doctor',       // ارسال به داکتر
-                'Examining',    // در حال معاینه
-                'Laboratory',   // در لابراتوار
-                'Radiology',    // در رادیولوژی
-                'Admission',    // بستری شده
-                'Ward',         // در بخش بستری
-                'Operation',    // در اتاق عمل
-                'Pharmacy',     // داروخانه
-                'Billing',      // حسابداری
-                'Completed',    // مراجعه پایان یافته
-                'Cancelled',
-                'Discharged'        
-            ])->default('Waiting');
-
-            /*
-            |--------------------------------------------------------------------------
-            | تاریخ و یادداشت
-            |--------------------------------------------------------------------------
-            */
-            $table->date('visit_date')->nullable();
-
-            $table->text('note')->nullable();
-
-            /*
-            |--------------------------------------------------------------------------
-            | معلومات طبی اولیه
-            |--------------------------------------------------------------------------
-            */
-            $table->text('diagnosis')->nullable();
-
-            $table->decimal('weight', 5, 2)->nullable();
-
-            $table->string('blood_pressure', 20)->nullable();
-
-            $table->decimal('temperature', 4, 1)->nullable();
-
-            $table->tinyInteger('oxygen')->nullable();
-
-            /*
-            |--------------------------------------------------------------------------
-            | وضعیت
-            |--------------------------------------------------------------------------
-            */
-            $table->tinyInteger('status')->default(1);
-
+        Schema::create('radiology_results', function (Blueprint $table) {
+            $table->id();
+            
+            // ===== ارتباطات =====
+            $table->unsignedBigInteger('radiology_request_id'); // ✅ کلید خارجی به درخواست
+            $table->unsignedBigInteger('reg_id'); // ✅ استفاده از reg_id
+            $table->unsignedBigInteger('patient_id');
+            $table->unsignedBigInteger('doctor_id')->nullable();
+            
+            // ===== فیلدهای نتیجه =====
+            $table->text('result')->nullable();
+            $table->text('findings')->nullable();
+            $table->text('interpretation')->nullable();
+            $table->text('remarks')->nullable();
+            $table->string('normal_range')->nullable();
+            
+            $table->enum('result_status', ['Draft', 'Completed', 'Verified', 'Cancelled'])->nullable();
+            
+            $table->string('pdf_file')->nullable();
+            $table->string('pdf_file_name')->nullable();
+            $table->string('pdf_url')->nullable();
+            $table->string('report_no')->unique()->nullable();
+            
+            $table->timestamp('analysis_completed_at')->nullable();
+            
+            // ===== فیلدهای مدیریتی =====
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+            
             $table->timestamps();
+            $table->softDeletes();
+            
+            // ===== ایندکس‌ها =====
+            $table->index('radiology_request_id');
+            $table->index('reg_id');
+            $table->index('patient_id');
+            $table->index('report_no');
+            $table->index('result_status');
+            
+            // ===== کلیدهای خارجی =====
+            $table->foreign('radiology_request_id')
+                  ->references('id')
+                  ->on('radiology_requests')
+                  ->onDelete('cascade');
+                  
+            $table->foreign('reg_id')
+                  ->references('reg_id')
+                  ->on('registrations')
+                  ->onDelete('cascade');
+                  
+            $table->foreign('patient_id')
+                  ->references('id')
+                  ->on('patients')
+                  ->onDelete('cascade');
+                  
+            $table->foreign('doctor_id')
+                  ->references('id')
+                  ->on('users')
+                  ->onDelete('set null');
+                  
+            $table->foreign('created_by')
+                  ->references('id')
+                  ->on('users')
+                  ->onDelete('set null');
+                  
+            $table->foreign('updated_by')
+                  ->references('id')
+                  ->on('users')
+                  ->onDelete('set null');
         });
     }
 
-    public function down(): void
+    public function down()
     {
-        Schema::dropIfExists('registrations');
+        Schema::dropIfExists('radiology_results');
     }
 };
