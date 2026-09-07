@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OperationFee extends Model
 {
@@ -14,7 +13,7 @@ class OperationFee extends Model
 
     protected $fillable = [
         'operation_request_id',
-        'registration_id',
+        'reg_id',        // ✅ اینجا reg_id است
         'patient_id',
         'doctor_id',
         'total_amount',
@@ -40,41 +39,36 @@ class OperationFee extends Model
         'payment_date' => 'datetime'
     ];
 
-    // Relationships
-    public function operationRequest(): BelongsTo
+    // ارتباط با مراجعه - کلید اصلی reg_id
+    public function registration()
     {
-        return $this->belongsTo(OperationRequest::class);
+        return $this->belongsTo(Registrations::class, 'reg_id', 'reg_id');
     }
 
-    public function registration(): BelongsTo
-    {
-        return $this->belongsTo(Registrations::class);
-    }
-
-    public function patient(): BelongsTo
+    public function patient()
     {
         return $this->belongsTo(Patient::class);
     }
 
-    public function doctor(): BelongsTo
+    public function doctor()
     {
         return $this->belongsTo(User::class, 'doctor_id');
     }
 
-    public function collector(): BelongsTo
+    public function collector()
     {
         return $this->belongsTo(User::class, 'collected_by');
     }
 
-    // Scopes
+    public function operationRequest()
+    {
+        return $this->belongsTo(OperationRequest::class, 'operation_request_id');
+    }
+
+    // Scope ها
     public function scopePending($query)
     {
         return $query->where('payment_status', 'pending');
-    }
-
-    public function scopePaid($query)
-    {
-        return $query->where('payment_status', 'paid');
     }
 
     public function scopePartial($query)
@@ -82,52 +76,13 @@ class OperationFee extends Model
         return $query->where('payment_status', 'partial');
     }
 
+    public function scopePaid($query)
+    {
+        return $query->where('payment_status', 'paid');
+    }
+
     public function scopeToday($query)
     {
         return $query->whereDate('created_at', today());
-    }
-
-    // Accessors
-    public function getPaymentStatusLabelAttribute(): string
-    {
-        return [
-            'pending' => 'در انتظار پرداخت',
-            'partial' => 'پرداخت ناقص',
-            'paid' => 'پرداخت کامل',
-            'refunded' => 'برگشت داده شده',
-            'cancelled' => 'لغو شده'
-        ][$this->payment_status] ?? $this->payment_status;
-    }
-
-    public function getPaymentMethodLabelAttribute(): string
-    {
-        return [
-            'cash' => 'نقدی',
-            'card' => 'کارت بانکی',
-            'online' => 'آنلاین',
-            'insurance' => 'بیمه'
-        ][$this->payment_method] ?? $this->payment_method;
-    }
-
-    // Methods
-    public function calculateRemaining(): float
-    {
-        $discounted = $this->total_amount - $this->discount;
-        $this->remaining_amount = max(0, $discounted - $this->paid_amount);
-        return $this->remaining_amount;
-    }
-
-    public function updatePaymentStatus(): void
-    {
-        $this->calculateRemaining();
-        
-        if ($this->remaining_amount <= 0) {
-            $this->payment_status = 'paid';
-        } elseif ($this->paid_amount > 0) {
-            $this->payment_status = 'partial';
-        } else {
-            $this->payment_status = 'pending';
-        }
-        $this->save();
     }
 }

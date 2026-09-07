@@ -194,34 +194,70 @@ Route::middleware('auth:sanctum')->group(function () {
     // ============================================================
     // ✅ مسیرهای عملیات (Operation) - اصلاح شده با OperationController
     // ============================================================
-    Route::prefix('operation')->group(function () {
-        // درخواست‌های عملیات
-        Route::get('/requests', [OperationController::class, 'index']);
-        Route::post('/requests', [OperationController::class, 'store']);
-        Route::get('/requests/{id}', [OperationController::class, 'show']);
-        Route::put('/requests/{id}', [OperationController::class, 'update']);
-        Route::delete('/requests/{id}', [OperationController::class, 'destroy']);
-        Route::patch('/requests/{id}/status', [OperationController::class, 'updateStatus']);
-        
-        // عملیات‌های بدون فیس
-        Route::get('/without-fee', [OperationController::class, 'getOperationsWithoutFee']);
-        
-        // عملیات‌های با فیس
-        Route::get('/with-fee', [OperationController::class, 'getOperationsWithFee']);
-        
-        // جزئیات کامل عملیات با فیس
-        Route::get('/{id}/with-fee', [OperationController::class, 'getOperationWithFee']);
-        
-        // فیس‌های عملیات
-        Route::prefix('fees')->group(function () {
-            Route::get('/', [OperationController::class, 'feesIndex']);
-            Route::post('/', [OperationController::class, 'storeFee']);
-            Route::get('/statistics', [OperationController::class, 'feesStatistics']);
-            Route::get('/{id}', [OperationController::class, 'showFee']);
-            Route::put('/{id}', [OperationController::class, 'updateFee']);
-            Route::delete('/{id}', [OperationController::class, 'destroyFee']);
-        });
+   // ==================== Operation Routes ====================
+Route::prefix('operation')->group(function () {
+
+    // ==================== Operation Requests ====================
+
+    // لیست تمام درخواست‌های عملیات
+    Route::get('/requests', [OperationController::class, 'index']);
+
+
+    // دریافت درخواست‌های یک مراجعه
+    Route::get('/requests/registration/{regId}', [OperationController::class, 'getByRegistration']);
+Route::get(
+    '/operation/requests-for-fee',
+    [OperationController::class, 'getRequestsForFee']
+);
+
+    // ثبت درخواست عملیات برای یک مراجعه
+    Route::post('/requests/registration/{regId}', [OperationController::class, 'store']);
+
+    // مشاهده یک درخواست عملیات
+    Route::get('/requests/{id}', [OperationController::class, 'show']);
+
+    // ویرایش درخواست عملیات
+    Route::put('/requests/{id}', [OperationController::class, 'update']);
+
+    // حذف درخواست عملیات
+    Route::delete('/requests/{id}', [OperationController::class, 'destroy']);
+
+    // تغییر وضعیت درخواست عملیات
+    Route::patch('/requests/{id}/status', [OperationController::class, 'updateStatus']);
+
+
+    // ==================== Operations With / Without Fee ====================
+
+    Route::get('/without-fee', [OperationController::class, 'getOperationsWithoutFee']);
+
+    Route::get('/with-fee', [OperationController::class, 'getOperationsWithFee']);
+
+    Route::get('/{id}/with-fee', [OperationController::class, 'getOperationWithFee']);
+
+
+    // ==================== Operation Fees ====================
+
+    Route::prefix('fees')->group(function () {
+
+        // لیست فیس‌ها
+        Route::get('/', [OperationController::class, 'feesIndex']);
+
+        // ثبت فیس
+        Route::post('/', [OperationController::class, 'storeFee']);
+
+        // آمار فیس‌ها
+        Route::get('/statistics', [OperationController::class, 'feesStatistics']);
+
+        // مشاهده فیس
+        Route::get('/{id}', [OperationController::class, 'showFee']);
+
+        // ویرایش فیس
+        Route::put('/{id}', [OperationController::class, 'updateFee']);
+
+        // حذف فیس
+        Route::delete('/{id}', [OperationController::class, 'destroyFee']);
     });
+});
 
     // ============================================================
     // ✅ ROUTES مدیریت درخواست‌های لابراتوار

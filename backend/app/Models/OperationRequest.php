@@ -13,7 +13,7 @@ class OperationRequest extends Model
     protected $table = 'operation_requests';
 
     protected $fillable = [
-        'registration_id',
+        'reg_id',
         'patient_id',
         'doctor_id',
         'surgery_type',
@@ -44,12 +44,12 @@ class OperationRequest extends Model
     // Relationships
     public function registration(): BelongsTo
     {
-        return $this->belongsTo(Registrations::class);
+        return $this->belongsTo(Registrations::class, 'reg_id');
     }
 
     public function patient(): BelongsTo
     {
-        return $this->belongsTo(Patient::class);
+        return $this->belongsTo(Patient::class, 'patient_id');
     }
 
     public function doctor(): BelongsTo

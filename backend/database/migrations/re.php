@@ -6,228 +6,48 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-
-    public function up(): void
+    public function up()
     {
-        Schema::create('registrations', function (Blueprint $table) {
-
-
-            $table->id('reg_id');
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | نوع ثبت
-            |--------------------------------------------------------------------------
-            */
-
-            $table->enum('reg_type', [
-
-                'patient',
-
-            ])->comment('نوع مراجعه');
-
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | ارتباطات سیستم شفاخانه
-            |--------------------------------------------------------------------------
-            */
-
-
-            // مریض اصلی از جدول patients
-
-            $table->foreignId('patient_id')
-                ->constrained('patients')
-                ->cascadeOnDelete();
-
-
-
-            // بخش مربوطه
-
-            $table->foreignId('department_id')
-                ->nullable()
-                ->constrained('departments')
-                ->nullOnDelete();
-
-
-
-            // داکتر معالج
-
-            $table->foreignId('doctor_id')
-                ->nullable()
-                ->constrained('users')
-                ->nullOnDelete();
-
-
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | معلومات مراجعه
-            |--------------------------------------------------------------------------
-            */
-
-
-            $table->string('visit_number',50)
-                ->nullable()
-                ->unique();
-
-
-
-            $table->enum('visit_type',[
-
-                'OPD',
-                'IPD',
-                'Emergency',
-                'Laboratory',
-                'Radiology',
-                'Pharmacy'
-
-            ])
-            ->nullable();
-
-
-
-            $table->integer('queue_number')
-                ->nullable();
-
-
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | فیس مراجعه
-            |--------------------------------------------------------------------------
-            */
-
-
-            $table->decimal(
-                'registration_fee',
-                10,
-                2
-            )
-            ->default(0)
-            ->comment('فیس ابتدایی مراجعه');
-
-
-
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | گردش مریض
-            |--------------------------------------------------------------------------
-            */
-
-
-            $table->enum('visit_status',[
-
-                'Waiting',
-                'Doctor',
-                'Laboratory',
-                'Radiology',
-                'Pharmacy',
-                'Billing',
-                'Completed',
-                'Cancelled'
-
-            ])
-            ->default('Waiting');
-
-
-
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | تاریخ و یادداشت
-            |--------------------------------------------------------------------------
-            */
-
-
-            $table->date('visit_date')
-                ->nullable();
-
-
-
-            $table->text('note')
-                ->nullable();
-
-
-
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | معلومات طبی اولیه
-            |--------------------------------------------------------------------------
-            */
-
-
-            $table->text('diagnosis')
-                ->nullable();
-
-
-
-            $table->decimal(
-                'weight',
-                5,
-                2
-            )
-            ->nullable();
-
-
-
-            $table->string(
-                'blood_pressure',
-                20
-            )
-            ->nullable();
-
-
-
-            $table->decimal(
-                'temperature',
-                4,
-                1
-            )
-            ->nullable();
-
-
-
-            $table->tinyInteger('oxygen')
-                ->nullable();
-
-
-
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | وضعیت
-            |--------------------------------------------------------------------------
-            */
-
-
-            $table->tinyInteger('status')
-                ->default(1);
-
-
-
+        Schema::create('operation_requests', function (Blueprint $table) {
+            $table->id();
+           $table->foreignId('reg_id')
+    ->constrained('registrations', 'reg_id')
+    ->onDelete('cascade');
+            $table->foreignId('patient_id')->constrained('patients')->onDelete('cascade');
+            $table->foreignId('doctor_id')->constrained('users')->onDelete('cascade');
+            
+            $table->string('surgery_type');
+            $table->string('surgeon');
+            $table->string('anesthesiologist')->nullable();
+            $table->string('room_number')->nullable();
+            $table->datetime('scheduled_date')->nullable();
+            $table->string('estimated_duration')->nullable();
+            $table->text('notes')->nullable();
+            
+            $table->enum('status', ['pending', 'in_progress', 'completed', 'cancelled'])->default('pending');
+            $table->enum('priority', ['high', 'medium', 'normal', 'low'])->default('normal');
+            
+            $table->foreignId('fee_id')->nullable()->constrained('operation_fees')->nullOnDelete();
+            $table->decimal('fee_amount', 12, 2)->nullable();
+            $table->decimal('fee_paid', 12, 2)->nullable();
+            $table->enum('fee_status', ['pending', 'partial', 'paid', 'refunded', 'cancelled'])->nullable();
+            
+            $table->datetime('completed_at')->nullable();
+            $table->datetime('cancelled_at')->nullable();
+            
             $table->timestamps();
-
-
+            
+            // ایندکس‌ها
+            $table->index(['status', 'doctor_id']);
+            $table->index(['priority', 'status']);
+            $table->index('scheduled_date');
+            $table->index('fee_status');
+            $table->index('reg_id');
         });
-
     }
 
-
-
-    public function down(): void
+    public function down()
     {
-        Schema::dropIfExists('registrations');
+        Schema::dropIfExists('operation_requests');
     }
-
 };

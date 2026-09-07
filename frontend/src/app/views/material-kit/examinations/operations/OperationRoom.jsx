@@ -15,9 +15,9 @@ export default function OperationRoom({
   prevStep,
   isSubmitting,
   isTreatmentComplete,
-  registration, // تغییر: دریافت کل آبجکت registration
-  registrationId, // برای سازگاری با نسخه قبلی
-  patientId // برای سازگاری با نسخه قبلی
+  registration,
+  registrationId,
+  patientId
 }) {
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -36,6 +36,7 @@ export default function OperationRoom({
     cancelled: 0
   });
   const [showSurgeryForm, setShowSurgeryForm] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [surgeryData, setSurgeryData] = useState({
     surgery_type: '',
     surgeon: '',
@@ -72,8 +73,13 @@ export default function OperationRoom({
     
     setLoading(true);
     try {
-      // دریافت لیست درخواست‌های عملیات
-      const response = await api.get("/operation/requests?per_page=100");
+      const currentRegId = getRegistrationId();
+      let url = "/operation/requests?per_page=100";
+      if (currentRegId) {
+        url += `&reg_id=${currentRegId}`;
+      }
+      
+      const response = await api.get(url);
       console.log("📡 پاسخ درخواست‌های عملیات:", response.data);
       
       let data = [];
@@ -91,34 +97,27 @@ export default function OperationRoom({
         }
       }
 
-      // فیلتر بر اساس registrationId فعلی (اگر وجود داشته باشد)
-      const currentRegId = getRegistrationId();
       let filteredData = data;
-      if (currentRegId) {
-        filteredData = data.filter(p => p.registration_id == currentRegId);
-        // اگر داده‌ای برای این مراجعه وجود نداشت، یک رکورد خالی ایجاد کنیم
-        if (filteredData.length === 0) {
-          // یک رکورد پیش‌فرض برای نمایش ایجاد می‌کنیم
-          filteredData = [{
-            id: null,
-            registration_id: currentRegId,
-            patient_id: getPatientId(),
-            patient_name: registration?.patient?.first_name + ' ' + registration?.patient?.last_name || 'مریض',
-            surgery_type: '',
-            status: 'pending',
-            priority: 'normal',
-            surgeon: '',
-            anesthesiologist: '',
-            room_number: '',
-            estimated_duration: '',
-            notes: '',
-            fee_id: null,
-            fee_status: null,
-            fee_amount: null,
-            fee_paid: null,
-            created_at: new Date().toISOString()
-          }];
-        }
+      if (currentRegId && filteredData.length === 0) {
+        filteredData = [{
+          id: null,
+          reg_id: currentRegId,
+          patient_id: getPatientId(),
+          patient_name: registration?.patient?.first_name + ' ' + registration?.patient?.last_name || 'مریض',
+          surgery_type: '',
+          status: 'pending',
+          priority: 'normal',
+          surgeon: '',
+          anesthesiologist: '',
+          room_number: '',
+          estimated_duration: '',
+          notes: '',
+          fee_id: null,
+          fee_status: null,
+          fee_amount: null,
+          fee_paid: null,
+          created_at: new Date().toISOString()
+        }];
       }
 
       const processedData = filteredData.map(p => ({
@@ -159,12 +158,11 @@ export default function OperationRoom({
       console.error("خطا در دریافت لیست عملیات:", err);
       if (isMounted.current) {
         toast.error("❌ خطا در دریافت لیست درخواست‌های عملیات");
-        // اگر خطا بود، یک رکورد خالی برای مراجعه فعلی ایجاد می‌کنیم
         const currentRegId = getRegistrationId();
         if (currentRegId) {
           const emptyRecord = [{
             id: `temp_${Date.now()}`,
-            registration_id: currentRegId,
+            reg_id: currentRegId,
             patient_id: getPatientId(),
             patient_name: registration?.patient?.first_name + ' ' + registration?.patient?.last_name || 'مریض',
             surgery_type: '',
@@ -194,10 +192,8 @@ export default function OperationRoom({
     }
   }, [api, registration, registrationId]);
 
-  // تابع برای دریافت جزئیات کامل یک عملیات با فیس
   const fetchOperationWithFee = useCallback(async (operationId) => {
     if (!operationId || operationId.toString().startsWith('temp_')) {
-      // اگر ID موقت است، فیس وجود ندارد
       setFeeInfo(null);
       return null;
     }
@@ -353,11 +349,12 @@ export default function OperationRoom({
     return result;
   };
 
-  const handleSelectPatient = async (patient) => {
+  // تابع باز کردن فرم ویرایش
+  const handleEditPatient = async (patient) => {
     setSelectedPatient(patient);
     setShowSurgeryForm(true);
+    setIsEditMode(true);
     
-    // دریافت جزئیات کامل با فیس
     if (patient.id && !patient.id.toString().startsWith('temp_')) {
       await fetchOperationWithFee(patient.id);
     } else {
@@ -376,105 +373,195 @@ export default function OperationRoom({
     });
   };
 
-  const handleSurgerySubmit = async (e) => {
-  e.preventDefault();
-  
-  // اعتبارسنجی سمت کلاینت
-  const errors = [];
-  if (!surgeryData.surgery_type || surgeryData.surgery_type.trim() === '') {
-    errors.push('نوع جراحی الزامی است');
-  }
-  if (!surgeryData.surgeon || surgeryData.surgeon.trim() === '') {
-    errors.push('نام جراح الزامی است');
-  }
-  
-  if (errors.length > 0) {
-    errors.forEach(err => toast.warning(`⚠️ ${err}`));
-    return;
-  }
-
-  const regId = getRegistrationId();
-  const patId = getPatientId();
-
-  if (!regId) {
-    toast.error("❌ شناسه مراجعه یافت نشد");
-    return;
-  }
-
-  setLoading(true);
-  try {
-    const payload = {
-      registration_id: parseInt(regId),
-      patient_id: patId ? parseInt(patId) : null,
-      surgery_type: surgeryData.surgery_type.trim(),
-      surgeon: surgeryData.surgeon.trim(),
-      anesthesiologist: surgeryData.anesthesiologist?.trim() || '',
-      room_number: surgeryData.room_number?.trim() || '',
-      scheduled_date: surgeryData.scheduled_date || null,
-      estimated_duration: surgeryData.estimated_duration?.trim() || '',
-      notes: surgeryData.notes?.trim() || '',
-      priority: surgeryData.priority || 'normal'
-    };
-
-    console.log("📤 ارسال درخواست عملیات:", payload);
-
-    const response = await api.post("/operation/requests", payload);
+  const handleSelectPatient = async (patient) => {
+    setSelectedPatient(patient);
+    setShowSurgeryForm(true);
+    setIsEditMode(false);
     
-    if (response.data?.success) {
-      toast.success("✅ درخواست عملیات با موفقیت ثبت شد");
-      setIsRequested(true);
-      
-      if (onSave) {
-        await onSave(response.data.data);
-      }
-      
-      setShowSurgeryForm(false);
-      setSelectedPatient(null);
+    if (patient.id && !patient.id.toString().startsWith('temp_')) {
+      await fetchOperationWithFee(patient.id);
+    } else {
       setFeeInfo(null);
-      await fetchPatients();
-      if (onRefresh) onRefresh();
-    } else {
-      toast.error(`❌ ${response.data?.message || "خطا در ثبت اطلاعات عملیات"}`);
     }
-  } catch (err) {
-    console.error("❌ خطا در ثبت اطلاعات عملیات:", err);
     
-    // نمایش خطاهای اعتبارسنجی
-    if (err.response?.status === 422) {
-      const errorData = err.response.data;
-      console.log("📋 خطاهای اعتبارسنجی:", errorData);
-      
-      if (errorData.errors) {
-        Object.entries(errorData.errors).forEach(([field, messages]) => {
-          const fieldLabels = {
-            'registration_id': 'شناسه مراجعه',
-            'patient_id': 'شناسه مریض',
-            'surgery_type': 'نوع جراحی',
-            'surgeon': 'جراح',
-            'anesthesiologist': 'متخصص بیهوشی',
-            'room_number': 'شماره اتاق عمل',
-            'scheduled_date': 'زمان جراحی',
-            'estimated_duration': 'مدت زمان تخمینی',
-            'notes': 'یادداشت',
-            'priority': 'اولویت'
-          };
-          const label = fieldLabels[field] || field;
-          toast.error(`❌ ${label}: ${Array.isArray(messages) ? messages[0] : messages}`);
-        });
-      } else if (errorData.message) {
-        toast.error(`❌ ${errorData.message}`);
-      } else {
-        toast.error("❌ داده‌های ارسالی معتبر نیستند. لطفاً همه فیلدها را بررسی کنید.");
-      }
-    } else if (err.response?.data?.message) {
-      toast.error(`❌ ${err.response.data.message}`);
-    } else {
-      toast.error("❌ خطا در ثبت اطلاعات عملیات");
+    setSurgeryData({
+      surgery_type: patient.surgery_type || '',
+      surgeon: patient.surgeon || '',
+      anesthesiologist: patient.anesthesiologist || '',
+      room_number: patient.room_number || '',
+      scheduled_date: patient.scheduled_date ? new Date(patient.scheduled_date).toISOString().slice(0, 16) : '',
+      estimated_duration: patient.estimated_duration || '',
+      notes: patient.notes || '',
+      priority: patient.priority || 'normal'
+    });
+  };
+
+  // تابع ثبت درخواست جدید
+  const handleSurgerySubmit = async (e) => {
+    e.preventDefault();
+    
+    const errors = [];
+    if (!surgeryData.surgery_type || surgeryData.surgery_type.trim() === '') {
+      errors.push('نوع جراحی الزامی است');
     }
-  } finally {
-    setLoading(false);
-  }
-};
+    if (!surgeryData.surgeon || surgeryData.surgeon.trim() === '') {
+      errors.push('نام جراح الزامی است');
+    }
+    
+    if (errors.length > 0) {
+      errors.forEach(err => toast.warning(`⚠️ ${err}`));
+      return;
+    }
+
+    const regId = getRegistrationId();
+
+    if (!regId) {
+      toast.error("❌ شناسه مراجعه یافت نشد");
+      return;
+    }
+
+    // اگر در حالت ویرایش هستیم و ID معتبر داریم
+    if (isEditMode && selectedPatient?.id && !selectedPatient.id.toString().startsWith('temp_')) {
+      await handleUpdateOperation(selectedPatient.id);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = {
+        surgery_type: surgeryData.surgery_type.trim(),
+        surgeon: surgeryData.surgeon.trim(),
+        anesthesiologist: surgeryData.anesthesiologist?.trim() || null,
+        room_number: surgeryData.room_number?.trim() || null,
+        scheduled_date: surgeryData.scheduled_date || null,
+        estimated_duration: surgeryData.estimated_duration || null,
+        notes: surgeryData.notes?.trim() || null,
+        priority: surgeryData.priority || "normal",
+      };
+
+      const response = await api.post(
+        `/operation/requests/registration/${regId}`,
+        payload
+      );
+     
+      if (response.data?.success) {
+        toast.success("✅ درخواست عملیات با موفقیت ثبت شد");
+        setIsRequested(true);
+        
+        if (onSave) {
+          await onSave(response.data.data);
+        }
+        
+        setShowSurgeryForm(false);
+        setSelectedPatient(null);
+        setFeeInfo(null);
+        setIsEditMode(false);
+        await fetchPatients();
+        if (onRefresh) onRefresh();
+      } else {
+        toast.error(`❌ ${response.data?.message || "خطا در ثبت اطلاعات عملیات"}`);
+      }
+    } catch (err) {
+      console.error("❌ خطا در ثبت اطلاعات عملیات:", err);
+      
+      if (err.response?.status === 422) {
+        const errorData = err.response.data;
+        if (errorData.errors) {
+          Object.entries(errorData.errors).forEach(([field, messages]) => {
+            const fieldLabels = {
+              'reg_id': 'شناسه مراجعه',
+              'patient_id': 'شناسه مریض',
+              'surgery_type': 'نوع جراحی',
+              'surgeon': 'جراح',
+              'anesthesiologist': 'متخصص بیهوشی',
+              'room_number': 'شماره اتاق عمل',
+              'scheduled_date': 'زمان جراحی',
+              'estimated_duration': 'مدت زمان تخمینی',
+              'notes': 'یادداشت',
+              'priority': 'اولویت'
+            };
+            const label = fieldLabels[field] || field;
+            toast.error(`❌ ${label}: ${Array.isArray(messages) ? messages[0] : messages}`);
+          });
+        } else if (errorData.message) {
+          toast.error(`❌ ${errorData.message}`);
+        } else {
+          toast.error("❌ داده‌های ارسالی معتبر نیستند. لطفاً همه فیلدها را بررسی کنید.");
+        }
+      } else if (err.response?.data?.message) {
+        toast.error(`❌ ${err.response.data.message}`);
+      } else {
+        toast.error("❌ خطا در ثبت اطلاعات عملیات");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // تابع بروزرسانی عملیات (ویرایش)
+  const handleUpdateOperation = async (operationId) => {
+    setLoading(true);
+    try {
+      const payload = {
+        surgery_type: surgeryData.surgery_type.trim(),
+        surgeon: surgeryData.surgeon.trim(),
+        anesthesiologist: surgeryData.anesthesiologist?.trim() || null,
+        room_number: surgeryData.room_number?.trim() || null,
+        scheduled_date: surgeryData.scheduled_date || null,
+        estimated_duration: surgeryData.estimated_duration || null,
+        notes: surgeryData.notes?.trim() || null,
+        priority: surgeryData.priority || "normal",
+      };
+
+      const response = await api.put(`/operation/requests/${operationId}`, payload);
+      
+      if (response.data?.success) {
+        toast.success("✅ اطلاعات عملیات با موفقیت بروزرسانی شد");
+        setShowSurgeryForm(false);
+        setSelectedPatient(null);
+        setFeeInfo(null);
+        setIsEditMode(false);
+        await fetchPatients();
+        if (onRefresh) onRefresh();
+      } else {
+        toast.error(`❌ ${response.data?.message || "خطا در بروزرسانی اطلاعات"}`);
+      }
+    } catch (err) {
+      console.error("❌ خطا در بروزرسانی اطلاعات عملیات:", err);
+      
+      if (err.response?.status === 422) {
+        const errorData = err.response.data;
+        if (errorData.errors) {
+          Object.entries(errorData.errors).forEach(([field, messages]) => {
+            const fieldLabels = {
+              'reg_id': 'شناسه مراجعه',
+              'patient_id': 'شناسه مریض',
+              'surgery_type': 'نوع جراحی',
+              'surgeon': 'جراح',
+              'anesthesiologist': 'متخصص بیهوشی',
+              'room_number': 'شماره اتاق عمل',
+              'scheduled_date': 'زمان جراحی',
+              'estimated_duration': 'مدت زمان تخمینی',
+              'notes': 'یادداشت',
+              'priority': 'اولویت'
+            };
+            const label = fieldLabels[field] || field;
+            toast.error(`❌ ${label}: ${Array.isArray(messages) ? messages[0] : messages}`);
+          });
+        } else if (errorData.message) {
+          toast.error(`❌ ${errorData.message}`);
+        } else {
+          toast.error("❌ داده‌های ارسالی معتبر نیستند. لطفاً همه فیلدها را بررسی کنید.");
+        }
+      } else if (err.response?.data?.message) {
+        toast.error(`❌ ${err.response.data.message}`);
+      } else {
+        toast.error("❌ خطا در بروزرسانی اطلاعات عملیات");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleUpdateStatus = async (patientId, newStatus) => {
     if (!patientId || patientId.toString().startsWith('temp_')) {
@@ -498,6 +585,121 @@ export default function OperationRoom({
     }
   };
 
+  const handleDeleteRequest = async (patientId) => {
+    if (!patientId || patientId.toString().startsWith('temp_')) {
+      toast.warning("⚠️ این درخواست هنوز ثبت نشده است");
+      return;
+    }
+    
+    try {
+      const response = await api.delete(`/operation/requests/${patientId}`);
+      
+      if (response.data?.success) {
+        toast.success("✅ درخواست عملیات با موفقیت حذف شد");
+        await fetchPatients();
+        if (onRefresh) onRefresh();
+      } else {
+        toast.error(`❌ ${response.data?.message || "خطا در حذف درخواست"}`);
+      }
+    } catch (err) {
+      console.error("خطا در حذف درخواست:", err);
+      toast.error("❌ خطا در حذف درخواست عملیات");
+    }
+  };
+
+  // تابع پرینت
+  const handlePrint = (patient) => {
+    const printContent = `
+      <div style="font-family: 'IRANSans', Arial, sans-serif; direction: rtl; padding: 20px; max-width: 800px; margin: 0 auto;">
+        <h2 style="text-align: center; color: #1a1a2e; border-bottom: 3px solid #dc2626; padding-bottom: 10px;">🖨️ گزارش عملیات</h2>
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr style="border-bottom: 1px solid #ddd;">
+              <th style="text-align: right; padding: 8px; background: #e9ecef;">نام بیمار</th>
+              <td style="padding: 8px;">${patient.patient_name || 'نامشخص'}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ddd;">
+              <th style="text-align: right; padding: 8px; background: #e9ecef;">نوع جراحی</th>
+              <td style="padding: 8px;">${patient.surgery_type || 'نامشخص'}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ddd;">
+              <th style="text-align: right; padding: 8px; background: #e9ecef;">جراح</th>
+              <td style="padding: 8px;">${patient.surgeon || 'نامشخص'}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ddd;">
+              <th style="text-align: right; padding: 8px; background: #e9ecef;">متخصص بیهوشی</th>
+              <td style="padding: 8px;">${patient.anesthesiologist || 'نامشخص'}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ddd;">
+              <th style="text-align: right; padding: 8px; background: #e9ecef;">شماره اتاق</th>
+              <td style="padding: 8px;">${patient.room_number || 'نامشخص'}</td>
+            </tr>
+            ${patient.scheduled_date ? `<tr style="border-bottom: 1px solid #ddd;">
+              <th style="text-align: right; padding: 8px; background: #e9ecef;">تاریخ و زمان</th>
+              <td style="padding: 8px;">${new Date(patient.scheduled_date).toLocaleString('fa-IR')}</td>
+            </tr>` : ''}
+            ${patient.estimated_duration ? `<tr style="border-bottom: 1px solid #ddd;">
+              <th style="text-align: right; padding: 8px; background: #e9ecef;">مدت زمان</th>
+              <td style="padding: 8px;">${patient.estimated_duration}</td>
+            </tr>` : ''}
+            <tr style="border-bottom: 1px solid #ddd;">
+              <th style="text-align: right; padding: 8px; background: #e9ecef;">وضعیت</th>
+              <td style="padding: 8px;">${patient.status === 'pending' ? 'در انتظار' : patient.status === 'in_progress' ? 'در حال انجام' : patient.status === 'completed' ? 'تکمیل شده' : 'لغو شده'}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ddd;">
+              <th style="text-align: right; padding: 8px; background: #e9ecef;">اولویت</th>
+              <td style="padding: 8px;">${patient.priority === 'high' ? 'بالا' : patient.priority === 'medium' ? 'متوسط' : patient.priority === 'normal' ? 'عادی' : 'پایین'}</td>
+            </tr>
+            ${patient.fee_id ? `
+              <tr style="border-bottom: 1px solid #ddd;">
+                <th style="text-align: right; padding: 8px; background: #e9ecef;">مبلغ فیس</th>
+                <td style="padding: 8px;">${(parseFloat(patient.fee_amount) || 0).toLocaleString()} ؋</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #ddd;">
+                <th style="text-align: right; padding: 8px; background: #e9ecef;">پرداخت شده</th>
+                <td style="padding: 8px;">${(parseFloat(patient.fee_paid) || 0).toLocaleString()} ؋</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #ddd;">
+                <th style="text-align: right; padding: 8px; background: #e9ecef;">وضعیت پرداخت</th>
+                <td style="padding: 8px;">${patient.fee_status || 'نامشخص'}</td>
+              </tr>
+            ` : '<tr><td colspan="2" style="text-align: center; padding: 8px; color: #f59e0b;">⚠️ فیس ثبت نشده است</td></tr>'}
+            ${patient.notes ? `<tr>
+              <th style="text-align: right; padding: 8px; background: #e9ecef;">یادداشت</th>
+              <td style="padding: 8px;">${patient.notes}</td>
+            </tr>` : ''}
+          </table>
+        </div>
+        <div style="text-align: center; color: #6c757d; font-size: 12px; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px;">
+          تاریخ چاپ: ${new Date().toLocaleString('fa-IR')}
+        </div>
+      </div>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>پرینت گزارش عملیات</title>
+            <style>
+              body { font-family: 'IRANSans', Arial, sans-serif; }
+              @media print {
+                body { margin: 0; padding: 20px; }
+              }
+            </style>
+          </head>
+          <body>${printContent}</body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    } else {
+      toast.error("❌ خطا در باز کردن پنجره پرینت");
+    }
+  };
+
   const handleSurgeryChange = (e) => {
     const { name, value } = e.target;
     setSurgeryData(prev => ({ ...prev, [name]: value }));
@@ -506,38 +708,76 @@ export default function OperationRoom({
   const filteredPatients = getFilteredPatients();
   const isDisabled = isTreatmentComplete || isSubmitting;
 
-  // نمایش اطلاعات فیس
   const renderFeeInfo = (patient) => {
     if (patient.fee_id) {
+      const amount = parseFloat(patient.fee_amount) || 0;
+      const paid = parseFloat(patient.fee_paid) || 0;
+      const remaining = amount - paid;
+      
+      let statusColor = '#f59e0b';
+      let statusText = 'در انتظار پرداخت';
+      if (remaining <= 0 && amount > 0) {
+        statusColor = '#22c55e';
+        statusText = 'پرداخت کامل';
+      } else if (paid > 0 && remaining > 0) {
+        statusColor = '#f97316';
+        statusText = 'پرداخت ناقص';
+      }
+      
       return (
         <div style={{
-          marginTop: '5px',
-          padding: '5px 10px',
+          marginTop: '8px',
+          padding: '8px 14px',
           backgroundColor: '#0f1a2a',
-          borderRadius: '4px',
+          borderRadius: '6px',
           fontSize: '12px',
           display: 'flex',
-          gap: '15px',
-          flexWrap: 'wrap'
+          gap: '18px',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          border: `1px solid ${statusColor}40`
         }}>
-          <span style={{ color: '#22c55e' }}>
-            💰 مبلغ: {patient.fee_amount?.toFixed(2) || '0'}
+          <span style={{ color: '#22c55e', fontWeight: 'bold' }}>
+            💰 مبلغ: {amount.toLocaleString()} ؋
           </span>
           <span style={{ color: '#fcd34d' }}>
-            پرداخت: {patient.fee_paid?.toFixed(2) || '0'}
+            پرداخت: {paid.toLocaleString()} ؋
+          </span>
+          <span style={{ color: remaining > 0 ? '#ef4444' : '#22c55e', fontWeight: 'bold' }}>
+            باقیمانده: {remaining.toLocaleString()} ؋
+          </span>
+          <span style={{ 
+            color: statusColor, 
+            fontWeight: 'bold',
+            backgroundColor: `${statusColor}20`,
+            padding: '2px 10px',
+            borderRadius: '12px',
+            fontSize: '11px'
+          }}>
+            {statusText}
           </span>
           {patient.fee_status && getFeeStatusBadge(patient.fee_status)}
         </div>
       );
     }
-    return null;
+    return (
+      <div style={{
+        marginTop: '8px',
+        padding: '6px 14px',
+        backgroundColor: '#1a1a2e',
+        borderRadius: '6px',
+        fontSize: '12px',
+        color: '#f59e0b',
+        border: '1px dashed #f59e0b40'
+      }}>
+        ⚠️ فیس ثبت نشده است
+      </div>
+    );
   };
 
-  // دکمه رفتن به صفحه اخذ فیس
   const goToFeePage = () => {
     const regId = getRegistrationId();
     if (regId) {
-      // Navigate to fee page with regId
       window.location.href = `/operation-fees?regId=${regId}`;
     } else {
       toast.warning("⚠️ شناسه مراجعه یافت نشد");
@@ -550,7 +790,6 @@ export default function OperationRoom({
         🔪 عملیات خانه
       </h3>
 
-      {/* وضعیت */}
       <div style={{
         display: 'flex',
         gap: '15px',
@@ -609,7 +848,6 @@ export default function OperationRoom({
         </div>
       </div>
 
-      {/* هدر */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -645,7 +883,6 @@ export default function OperationRoom({
         </button>
       </div>
 
-      {/* فرم ثبت عملیات */}
       {showSurgeryForm && selectedPatient && (
         <div style={{
           backgroundColor: '#1a2a3a',
@@ -655,10 +892,9 @@ export default function OperationRoom({
           border: '2px solid #dc2626'
         }}>
           <h4 style={{ color: '#dc2626', marginBottom: '15px' }}>
-            🔪 ثبت درخواست عملیات برای {selectedPatient.patient_name}
+            {isEditMode ? '✏️ ویرایش درخواست عملیات برای' : '🔪 ثبت درخواست عملیات برای'} {selectedPatient.patient_name}
           </h4>
 
-          {/* نمایش اطلاعات فیس در صورت وجود */}
           {feeInfo?.hasFee && (
             <div style={{
               backgroundColor: '#0f1a2a',
@@ -671,10 +907,14 @@ export default function OperationRoom({
                 ✅ اطلاعات فیس
               </div>
               <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '13px' }}>
-                <span style={{ color: '#fcd34d' }}>مبلغ کل: {feeInfo.feeAmount?.toFixed(2) || '0'}</span>
-                <span style={{ color: '#22c55e' }}>پرداخت شده: {feeInfo.feePaid?.toFixed(2) || '0'}</span>
+                <span style={{ color: '#fcd34d' }}>
+                  مبلغ کل: {(parseFloat(feeInfo.feeAmount) || 0).toLocaleString()} ؋
+                </span>
+                <span style={{ color: '#22c55e' }}>
+                  پرداخت شده: {(parseFloat(feeInfo.feePaid) || 0).toLocaleString()} ؋
+                </span>
                 <span style={{ color: '#ef4444' }}>
-                  باقیمانده: {(feeInfo.feeAmount - feeInfo.feePaid)?.toFixed(2) || '0'}
+                  باقیمانده: {((parseFloat(feeInfo.feeAmount) || 0) - (parseFloat(feeInfo.feePaid) || 0)).toLocaleString()} ؋
                 </span>
                 {feeInfo.feeStatusLabel && (
                   <span style={{ color: '#60a5fa' }}>وضعیت: {feeInfo.feeStatusLabel}</span>
@@ -683,7 +923,6 @@ export default function OperationRoom({
             </div>
           )}
 
-          {/* دکمه اخذ فیس */}
           {!feeInfo?.hasFee && (
             <div style={{
               backgroundColor: '#0f1a2a',
@@ -858,7 +1097,7 @@ export default function OperationRoom({
                   fontWeight: 'bold'
                 }}
               >
-                {loading ? '⏳ در حال ثبت...' : '📤 ثبت درخواست'}
+                {loading ? '⏳ در حال ثبت...' : isEditMode ? '💾 ذخیره تغییرات' : '📤 ثبت درخواست'}
               </button>
               <button
                 type="button"
@@ -866,6 +1105,7 @@ export default function OperationRoom({
                   setShowSurgeryForm(false);
                   setSelectedPatient(null);
                   setFeeInfo(null);
+                  setIsEditMode(false);
                 }}
                 style={{
                   backgroundColor: '#6b7280',
@@ -884,7 +1124,6 @@ export default function OperationRoom({
         </div>
       )}
 
-      {/* جستجو و فیلتر */}
       <div style={{
         display: 'flex',
         gap: '10px',
@@ -962,7 +1201,6 @@ export default function OperationRoom({
         </button>
       </div>
 
-      {/* لیست درخواست‌ها */}
       {loading && patients.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>
           ⏳ در حال بارگذاری...
@@ -982,12 +1220,11 @@ export default function OperationRoom({
           </div>
           <button
             onClick={() => {
-              // ایجاد یک درخواست جدید برای مراجعه فعلی
               const regId = getRegistrationId();
               if (regId) {
                 const newPatient = {
                   id: `temp_${Date.now()}`,
-                  registration_id: regId,
+                  reg_id: regId,
                   patient_id: getPatientId(),
                   patient_name: registration?.patient?.first_name + ' ' + registration?.patient?.last_name || 'مریض',
                   surgery_type: '',
@@ -1008,6 +1245,7 @@ export default function OperationRoom({
                 setOperationRequests([newPatient]);
                 setSelectedPatient(newPatient);
                 setShowSurgeryForm(true);
+                setIsEditMode(false);
               } else {
                 toast.warning("⚠️ لطفاً ابتدا یک مریض را از صف انتخاب کنید");
               }
@@ -1032,24 +1270,26 @@ export default function OperationRoom({
               key={patient.id}
               style={{
                 backgroundColor: patient.status === 'in_progress' ? '#1e3a5f' : '#2d3748',
-                borderRadius: '8px',
-                padding: '16px 20px',
+                borderRadius: '10px',
+                padding: '18px 22px',
                 border: `2px solid ${
                   patient.status === 'in_progress' ? '#3b82f6' :
                   patient.status === 'completed' ? '#10b981' :
                   patient.status === 'cancelled' ? '#ef4444' : '#f59e0b'
                 }`,
-                transition: 'all 0.3s'
+                transition: 'all 0.3s',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                position: 'relative'
               }}
             >
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 flexWrap: 'wrap',
                 gap: '15px'
               }}>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: '200px' }}>
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1057,8 +1297,8 @@ export default function OperationRoom({
                     flexWrap: 'wrap',
                     marginBottom: '8px'
                   }}>
-                    <span style={{ fontSize: '24px' }}>🔪</span>
-                    <span style={{ fontWeight: 'bold', color: 'white', fontSize: '16px' }}>
+                    <span style={{ fontSize: '28px' }}>🔪</span>
+                    <span style={{ fontWeight: 'bold', color: 'white', fontSize: '17px' }}>
                       {patient.patient_name}
                     </span>
                     {getPriorityBadge(patient.priority)}
@@ -1066,9 +1306,10 @@ export default function OperationRoom({
                       <span style={{
                         backgroundColor: '#dc2626',
                         color: 'white',
-                        padding: '2px 10px',
-                        borderRadius: '10px',
-                        fontSize: '12px'
+                        padding: '3px 12px',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        fontWeight: 'bold'
                       }}>
                         {patient.surgery_type}
                       </span>
@@ -1078,8 +1319,8 @@ export default function OperationRoom({
                         color: '#9ca3af',
                         fontSize: '12px',
                         backgroundColor: '#374151',
-                        padding: '2px 10px',
-                        borderRadius: '10px'
+                        padding: '2px 12px',
+                        borderRadius: '12px'
                       }}>
                         🏠 {patient.room_number}
                       </span>
@@ -1089,8 +1330,8 @@ export default function OperationRoom({
                         color: '#f59e0b',
                         fontSize: '12px',
                         backgroundColor: '#374151',
-                        padding: '2px 10px',
-                        borderRadius: '10px'
+                        padding: '2px 12px',
+                        borderRadius: '12px'
                       }}>
                         ⏳ در انتظار تکمیل اطلاعات
                       </span>
@@ -1099,22 +1340,21 @@ export default function OperationRoom({
                   
                   <div style={{
                     display: 'flex',
-                    gap: '15px',
+                    gap: '18px',
                     flexWrap: 'wrap',
                     fontSize: '13px',
                     color: '#d1d5db'
                   }}>
-                    <span>👨‍⚕️ جراح: {patient.surgeon || 'نامشخص'}</span>
-                    <span>💉 بیهوشی: {patient.anesthesiologist || 'نامشخص'}</span>
+                    <span>👨‍⚕️ جراح: <span style={{ color: 'white' }}>{patient.surgeon || 'نامشخص'}</span></span>
+                    <span>💉 بیهوشی: <span style={{ color: 'white' }}>{patient.anesthesiologist || 'نامشخص'}</span></span>
                     {patient.scheduled_date && (
-                      <span>📅 {new Date(patient.scheduled_date).toLocaleString('fa-IR')}</span>
+                      <span>📅 <span style={{ color: 'white' }}>{new Date(patient.scheduled_date).toLocaleString('fa-IR')}</span></span>
                     )}
                     {patient.estimated_duration && (
-                      <span>⏱️ {patient.estimated_duration}</span>
+                      <span>⏱️ <span style={{ color: 'white' }}>{patient.estimated_duration}</span></span>
                     )}
                   </div>
 
-                  {/* نمایش اطلاعات فیس */}
                   {renderFeeInfo(patient)}
                   
                   {patient.notes && (
@@ -1122,9 +1362,10 @@ export default function OperationRoom({
                       marginTop: '8px',
                       color: '#9ca3af',
                       fontSize: '13px',
-                      padding: '8px 12px',
+                      padding: '8px 14px',
                       backgroundColor: '#1f2937',
-                      borderRadius: '5px'
+                      borderRadius: '6px',
+                      border: '1px solid #374151'
                     }}>
                       📝 {patient.notes}
                     </div>
@@ -1134,89 +1375,156 @@ export default function OperationRoom({
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '12px',
-                  flexWrap: 'wrap'
+                  gap: '10px',
+                  flexWrap: 'wrap',
+                  minWidth: '200px',
+                  justifyContent: 'flex-end'
                 }}>
-                  {getStatusBadge(patient.status)}
+                  <div style={{ marginBottom: '5px' }}>
+                    {getStatusBadge(patient.status)}
+                  </div>
                   
-                  {patient.status !== 'completed' && patient.status !== 'cancelled' && (
+                  {/* دکمه ویرایش - فقط برای درخواست‌های بدون فیس */}
+                  {patient.id && !patient.id.toString().startsWith('temp_') && !patient.fee_id && (
+                    <button
+                      onClick={() => handleEditPatient(patient)}
+                      style={{
+                        backgroundColor: '#2563eb',
+                        color: 'white',
+                        border: 'none',
+                        padding: '7px 16px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.backgroundColor = '#1d4ed8'}
+                      onMouseLeave={(e) => e.target.style.backgroundColor = '#2563eb'}
+                    >
+                      ✏️ ویرایش
+                    </button>
+                  )}
+                  
+                  {/* دکمه شروع و تکمیل - فقط برای موارد غیرتکمیل شده */}
+                  {patient.status !== 'completed' && patient.status !== 'cancelled' && patient.id && !patient.id.toString().startsWith('temp_') && (
                     <>
-                      <button
-                        onClick={() => handleSelectPatient(patient)}
-                        style={{
-                          backgroundColor: '#dc2626',
-                          color: 'white',
-                          border: 'none',
-                          padding: '8px 18px',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '13px',
-                          fontWeight: 'bold',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        <span>▶</span>
-                        ادامه
-                      </button>
-                      
-                      {patient.status === 'pending' && patient.id && !patient.id.toString().startsWith('temp_') && (
+                      {patient.status === 'pending' && (
                         <button
                           onClick={() => handleUpdateStatus(patient.id, 'in_progress')}
                           style={{
                             backgroundColor: '#3b82f6',
                             color: 'white',
                             border: 'none',
-                            padding: '8px 18px',
+                            padding: '7px 16px',
                             borderRadius: '6px',
                             cursor: 'pointer',
                             fontSize: '12px',
-                            fontWeight: 'bold'
+                            fontWeight: 'bold',
+                            transition: 'all 0.2s'
                           }}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
                         >
-                          شروع
+                          ▶ شروع
                         </button>
                       )}
                       
-                      {patient.status === 'in_progress' && patient.id && !patient.id.toString().startsWith('temp_') && (
+                      {patient.status === 'in_progress' && (
                         <button
                           onClick={() => handleUpdateStatus(patient.id, 'completed')}
                           style={{
                             backgroundColor: '#10b981',
                             color: 'white',
                             border: 'none',
-                            padding: '8px 18px',
+                            padding: '7px 16px',
                             borderRadius: '6px',
                             cursor: 'pointer',
                             fontSize: '12px',
-                            fontWeight: 'bold'
+                            fontWeight: 'bold',
+                            transition: 'all 0.2s'
                           }}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
                         >
-                          تکمیل
+                          ✅ تکمیل
                         </button>
                       )}
                     </>
                   )}
 
-                  {/* دکمه اخذ فیس */}
-                  {!patient.fee_id && patient.id && !patient.id.toString().startsWith('temp_') && (
+                  {/* دکمه ثبت فیس - فقط برای موارد بدون فیس */}
+                  {patient.id && !patient.id.toString().startsWith('temp_') && !patient.fee_id && (
                     <button
                       onClick={goToFeePage}
                       style={{
                         backgroundColor: '#f59e0b',
                         color: 'white',
                         border: 'none',
-                        padding: '6px 15px',
+                        padding: '7px 14px',
                         borderRadius: '6px',
                         cursor: 'pointer',
                         fontSize: '12px',
-                        fontWeight: 'bold'
+                        fontWeight: 'bold',
+                        transition: 'all 0.2s'
                       }}
+                      onMouseEnter={(e) => e.target.style.backgroundColor = '#d97706'}
+                      onMouseLeave={(e) => e.target.style.backgroundColor = '#f59e0b'}
                     >
-                      💰 فیس
+                      💰 ثبت فیس
                     </button>
                   )}
+
+                  {/* دکمه پرینت - برای همه درخواست‌های ثبت شده */}
+                  {patient.id && !patient.id.toString().startsWith('temp_') && (
+                    <button
+                      onClick={() => handlePrint(patient)}
+                      style={{
+                        backgroundColor: '#8b5cf6',
+                        color: 'white',
+                        border: 'none',
+                        padding: '7px 14px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.backgroundColor = '#7c3aed'}
+                      onMouseLeave={(e) => e.target.style.backgroundColor = '#8b5cf6'}
+                    >
+                      🖨️ پرینت
+                    </button>
+                  )}
+                  
+                   {/* دکمه حذف - فقط برای درخواست‌های بدون فیس */}
+{patient.id && !patient.id.toString().startsWith('temp_') && !patient.fee_id && (
+  <button
+    onClick={() => {
+      if (window.confirm(`آیا از حذف درخواست عملیات برای ${patient.patient_name} اطمینان دارید؟`)) {
+        handleDeleteRequest(patient.id);
+      }
+    }}
+    style={{
+      backgroundColor: '#ef4444',
+      color: 'white',
+      border: 'none',
+      padding: '7px 14px',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontSize: '12px',
+      fontWeight: 'bold',
+      transition: 'all 0.2s'
+    }}
+    onMouseEnter={(e) => e.target.style.backgroundColor = '#dc2626'}
+    onMouseLeave={(e) => e.target.style.backgroundColor = '#ef4444'}
+  >
+    🗑️ حذف
+  </button>
+)}
                 </div>
               </div>
             </div>
@@ -1224,7 +1532,6 @@ export default function OperationRoom({
         </div>
       )}
 
-      {/* ============ دکمه‌های ناوبری ============ */}
       <div style={{ 
         display: 'flex', 
         gap: '10px', 
@@ -1234,7 +1541,6 @@ export default function OperationRoom({
         borderTop: '2px solid #374151',
         paddingTop: '20px'
       }}>
-        {/* دکمه 1: برگشت به مرحله قبلی */}
         <button
           type="button"
           onClick={onPrevStep}
@@ -1258,7 +1564,6 @@ export default function OperationRoom({
           برگشت به {prevStep?.label || 'رادیولوژی'}
         </button>
 
-        {/* دکمه 2: ثبت عملیات */}
         <button
           type="button"
           onClick={() => {
@@ -1291,7 +1596,6 @@ export default function OperationRoom({
           {loading ? 'در حال ثبت...' : isTreatmentComplete ? 'معالجه ختم شده' : isRequested ? '✅ ثبت شده' : 'ثبت درخواست'}
         </button>
 
-        {/* دکمه 3: ختم معالجه */}
         <button
           type="button"
           onClick={onFinish}
@@ -1315,7 +1619,6 @@ export default function OperationRoom({
           {isTreatmentComplete ? '✅ ختم شده' : 'ختم معالجه'}
         </button>
 
-        {/* دکمه 4: رفتن به مرحله بعدی */}
         {nextStep && (
           <button
             type="button"

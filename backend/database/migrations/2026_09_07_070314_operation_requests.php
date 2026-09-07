@@ -10,8 +10,10 @@ return new class extends Migration
     {
         Schema::create('operation_requests', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('registration_id')->constrained()->onDelete('cascade');
-            $table->foreignId('patient_id')->constrained()->onDelete('cascade');
+           $table->foreignId('reg_id')
+    ->constrained('registrations', 'reg_id')
+    ->onDelete('cascade');
+            $table->foreignId('patient_id')->constrained('patients')->onDelete('cascade');
             $table->foreignId('doctor_id')->constrained('users')->onDelete('cascade');
             
             $table->string('surgery_type');
@@ -40,6 +42,7 @@ return new class extends Migration
             $table->index(['priority', 'status']);
             $table->index('scheduled_date');
             $table->index('fee_status');
+            $table->index('reg_id');
         });
     }
 
