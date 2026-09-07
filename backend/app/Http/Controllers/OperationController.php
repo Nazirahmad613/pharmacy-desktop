@@ -611,89 +611,93 @@ class OperationController extends Controller
     /**
      * بروزرسانی فیس عملیات
      */
-    public function updateFee(Request $request, $id)
-    {
-        try {
-            $fee = OperationFee::findOrFail($id);
+   /**
+ * بروزرسانی فیس عملیات
+ */
+public function updateFee(Request $request, $id)
+{
+    try {
+        $fee = OperationFee::findOrFail($id);
 
-            if ($fee->payment_status === 'paid') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'امکان ویرایش فیس پرداخت کامل شده وجود ندارد'
-                ], 400);
-            }
+        // ❌ این شرط را کامنت کنید یا حذف کنید
+        // if ($fee->payment_status === 'paid') {
+        //     return response()->json([
+        //         'success' => false,
+        //         'message' => 'امکان ویرایش فیس پرداخت کامل شده وجود ندارد'
+        //     ], 400);
+        // }
 
-            $validator = Validator::make($request->all(), [
-                'total_amount' => 'sometimes|numeric|min:0',
-                'paid_amount' => 'sometimes|numeric|min:0',
-                'discount_percent' => 'sometimes|numeric|min:0|max:100',
-                'payment_method' => 'sometimes|in:cash,card,online,insurance',
-                'description' => 'nullable|string',
-                'note' => 'nullable|string'
-            ]);
+        $validator = Validator::make($request->all(), [
+            'total_amount' => 'sometimes|numeric|min:0',
+            'paid_amount' => 'sometimes|numeric|min:0',
+            'discount_percent' => 'sometimes|numeric|min:0|max:100',
+            'payment_method' => 'sometimes|in:cash,card,online,insurance',
+            'description' => 'nullable|string',
+            'note' => 'nullable|string'
+        ]);
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'خطا در اعتبارسنجی',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            DB::beginTransaction();
-
-            $totalAmount = $request->total_amount ?? $fee->total_amount;
-            $discountPercent = $request->discount_percent ?? $fee->discount_percent;
-            $paidAmount = $request->paid_amount ?? $fee->paid_amount;
-
-            $discount = ($totalAmount * $discountPercent) / 100;
-            $discountedAmount = $totalAmount - $discount;
-            $remainingAmount = max(0, $discountedAmount - $paidAmount);
-
-            $paymentStatus = 'pending';
-            if ($remainingAmount <= 0) {
-                $paymentStatus = 'paid';
-            } elseif ($paidAmount > 0) {
-                $paymentStatus = 'partial';
-            }
-
-            $fee->update([
-                'total_amount' => $totalAmount,
-                'paid_amount' => $paidAmount,
-                'discount' => $discount,
-                'discount_percent' => $discountPercent,
-                'remaining_amount' => $remainingAmount,
-                'payment_method' => $request->payment_method ?? $fee->payment_method,
-                'payment_status' => $paymentStatus,
-                'description' => $request->description ?? $fee->description,
-                'note' => $request->note ?? $fee->note
-            ]);
-
-            if ($fee->operationRequest) {
-                $fee->operationRequest->update([
-                    'fee_amount' => $totalAmount,
-                    'fee_paid' => $paidAmount,
-                    'fee_status' => $paymentStatus
-                ]);
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'فیس عملیات با موفقیت بروزرسانی شد',
-                'data' => $fee->load(['patient', 'doctor', 'collector'])
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
+        if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در بروزرسانی فیس عملیات',
-                'error' => $e->getMessage()
-            ], 500);
+                'message' => 'خطا در اعتبارسنجی',
+                'errors' => $validator->errors()
+            ], 422);
         }
+
+        DB::beginTransaction();
+
+        $totalAmount = $request->total_amount ?? $fee->total_amount;
+        $discountPercent = $request->discount_percent ?? $fee->discount_percent;
+        $paidAmount = $request->paid_amount ?? $fee->paid_amount;
+
+        $discount = ($totalAmount * $discountPercent) / 100;
+        $discountedAmount = $totalAmount - $discount;
+        $remainingAmount = max(0, $discountedAmount - $paidAmount);
+
+        $paymentStatus = 'pending';
+        if ($remainingAmount <= 0) {
+            $paymentStatus = 'paid';
+        } elseif ($paidAmount > 0) {
+            $paymentStatus = 'partial';
+        }
+
+        $fee->update([
+            'total_amount' => $totalAmount,
+            'paid_amount' => $paidAmount,
+            'discount' => $discount,
+            'discount_percent' => $discountPercent,
+            'remaining_amount' => $remainingAmount,
+            'payment_method' => $request->payment_method ?? $fee->payment_method,
+            'payment_status' => $paymentStatus,
+            'description' => $request->description ?? $fee->description,
+            'note' => $request->note ?? $fee->note
+        ]);
+
+        if ($fee->operationRequest) {
+            $fee->operationRequest->update([
+                'fee_amount' => $totalAmount,
+                'fee_paid' => $paidAmount,
+                'fee_status' => $paymentStatus
+            ]);
+        }
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'فیس عملیات با موفقیت بروزرسانی شد',
+            'data' => $fee->load(['patient', 'doctor', 'collector'])
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'success' => false,
+            'message' => 'خطا در بروزرسانی فیس عملیات',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
 
     /**
      * حذف فیس عملیات

@@ -147,140 +147,140 @@ export default function OperationFeeTab({ api, regId }) {
     setShowFeeForm(true);
   };
 
-  const handleOpenEditFeeForm = (fee) => {
-    console.log("✏️ باز کردن فرم ویرایش فیس:", fee);
-    if (!fee || !fee.id) {
-      toast.error("❌ اطلاعات فیس معتبر نیست");
-      return;
-    }
+ const handleOpenEditFeeForm = (fee) => {
+  console.log("✏️ باز کردن فرم ویرایش فیس:", fee);
+  if (!fee || !fee.id) {
+    toast.error("❌ اطلاعات فیس معتبر نیست");
+    return;
+  }
+  
+  // ❌ این شرط را کامنت کنید یا حذف کنید
+  // const status = fee.payment_status || fee.status || '';
+  // if (status.toLowerCase() === 'paid') {
+  //   toast.warning("⚠️ این فیس قبلاً پرداخت کامل شده است و قابل ویرایش نمی‌باشد");
+  //   return;
+  // }
+  
+  setEditingFee(fee);
+  setSelectedRequest(null);
+  setDebugErrors(null);
+  
+  setFeeFormData({
+    total_amount: fee.total_amount?.toString() || "",
+    paid_amount: fee.paid_amount?.toString() || "",
+    discount: fee.discount_percent?.toString() || "0",
+    payment_method: fee.payment_method || "cash",
+    description: fee.description || "",
+    note: fee.note || ""
+  });
+  setShowFeeForm(true);
+};  
+
+ const handleSubmitFee = async (e) => {
+  e.preventDefault();
+
+  if (!feeFormData.total_amount || parseFloat(feeFormData.total_amount) <= 0) {
+    toast.warning("⚠️ لطفاً مبلغ کل را وارد کنید");
+    return;
+  }
+
+  if (!selectedRequest && !editingFee) {
+    toast.error("❌ هیچ درخواستی انتخاب نشده است");
+    return;
+  }
+
+  setLoading(true);
+  setDebugErrors(null);
+
+  try {
+    let payload;
+    let response;
     
-    // بررسی وضعیت پرداخت - اگر پرداخت کامل شده باشد، اجازه ویرایش نده
-    const status = fee.payment_status || fee.status || '';
-    if (status.toLowerCase() === 'paid') {
-      toast.warning("⚠️ این فیس قبلاً پرداخت کامل شده است و قابل ویرایش نمی‌باشد");
-      return;
-    }
-    
-    setEditingFee(fee);
-    setSelectedRequest(null);
-    setDebugErrors(null);
-    
-    setFeeFormData({
-      total_amount: fee.total_amount?.toString() || "",
-      paid_amount: fee.paid_amount?.toString() || "",
-      discount: fee.discount_percent?.toString() || "0",
-      payment_method: fee.payment_method || "cash",
-      description: fee.description || "",
-      note: fee.note || ""
-    });
-    setShowFeeForm(true);
-  };
-
-  const handleSubmitFee = async (e) => {
-    e.preventDefault();
-
-    if (!feeFormData.total_amount || parseFloat(feeFormData.total_amount) <= 0) {
-      toast.warning("⚠️ لطفاً مبلغ کل را وارد کنید");
-      return;
-    }
-
-    if (!selectedRequest && !editingFee) {
-      toast.error("❌ هیچ درخواستی انتخاب نشده است");
-      return;
-    }
-
-    setLoading(true);
-    setDebugErrors(null);
-
-    try {
-      let payload;
-      let response;
+    if (editingFee) {
+      // ❌ این شرط را کامنت کنید یا حذف کنید
+      // const status = editingFee.payment_status || editingFee.status || '';
+      // if (status.toLowerCase() === 'paid') {
+      //   toast.warning("⚠️ این فیس قبلاً پرداخت کامل شده است و قابل ویرایش نمی‌باشد");
+      //   setLoading(false);
+      //   return;
+      // }
       
-      if (editingFee) {
-        // بررسی مجدد وضعیت فیس قبل از ارسال درخواست ویرایش
-        const status = editingFee.payment_status || editingFee.status || '';
-        if (status.toLowerCase() === 'paid') {
-          toast.warning("⚠️ این فیس قبلاً پرداخت کامل شده است و قابل ویرایش نمی‌باشد");
-          setLoading(false);
-          return;
-        }
-        
-        payload = {
-          total_amount: parseFloat(feeFormData.total_amount),
-          paid_amount: parseFloat(feeFormData.paid_amount) || 0,
-          discount_percent: parseFloat(feeFormData.discount) || 0,
-          payment_method: feeFormData.payment_method,
-          description: feeFormData.description,
-          note: feeFormData.note
-        };
-        
-        console.log("📤 ارسال payload ویرایش:", payload);
-        response = await api.put(`/operation/fees/${editingFee.id}`, payload);
-        toast.success("✅ فیس عملیات با موفقیت ویرایش شد");
-        
-      } else {
-        payload = {
-          operation_request_id: selectedRequest.id,
-          reg_id: selectedRequest.reg_id || selectedRequest.registration_id,
-          patient_id: selectedRequest.patient_id,
-          total_amount: parseFloat(feeFormData.total_amount),
-          paid_amount: parseFloat(feeFormData.paid_amount) || 0,
-          discount: parseFloat(feeFormData.discount) || 0,
-          payment_method: feeFormData.payment_method,
-          description: feeFormData.description,
-          note: feeFormData.note
-        };
-        
-        console.log("📤 ارسال payload ثبت:", payload);
-        response = await api.post('/operation/fees', payload);
-        toast.success("✅ فیس عملیات با موفقیت ثبت شد");
-      }
-
-      console.log("✅ پاسخ ثبت فیس:", response.data);
-
-      await fetchAllData();
-      handleCloseForm();
-
-    } catch (err) {
-      console.error("❌ خطا در ثبت فیس:", err);
+      payload = {
+        total_amount: parseFloat(feeFormData.total_amount),
+        paid_amount: parseFloat(feeFormData.paid_amount) || 0,
+        discount_percent: parseFloat(feeFormData.discount) || 0,
+        payment_method: feeFormData.payment_method,
+        description: feeFormData.description,
+        note: feeFormData.note
+      };
       
-      if (err.response?.status === 422) {
-        const errorData = err.response.data;
-        setDebugErrors(errorData);
-        console.log("📋 خطاهای اعتبارسنجی:", errorData);
-        
-        if (errorData.errors) {
-          Object.entries(errorData.errors).forEach(([field, messages]) => {
-            const fieldLabels = {
-              'operation_request_id': 'شناسه درخواست عملیات',
-              'reg_id': 'شناسه مراجعه',
-              'patient_id': 'شناسه مریض',
-              'total_amount': 'مبلغ کل',
-              'paid_amount': 'مبلغ پرداخت شده',
-              'discount': 'تخفیف',
-              'discount_percent': 'درصد تخفیف',
-              'payment_method': 'روش پرداخت',
-              'description': 'توضیحات',
-              'note': 'یادداشت'
-            };
-            const label = fieldLabels[field] || field;
-            const message = Array.isArray(messages) ? messages.join(', ') : messages;
-            toast.error(`❌ ${label}: ${message}`);
-          });
-        } else if (errorData.message) {
-          toast.error(`❌ ${errorData.message}`);
-        } else {
-          toast.error("❌ داده‌های ارسالی معتبر نیستند. لطفاً همه فیلدها را بررسی کنید.");
-        }
-      } else if (err.response?.data?.message) {
-        toast.error(`❌ ${err.response.data.message}`);
-      } else {
-        toast.error(`❌ خطا: ${err.message || "خطا در ثبت فیس"}`);
-      }
-    } finally {
-      setLoading(false);
+      console.log("📤 ارسال payload ویرایش:", payload);
+      response = await api.put(`/operation/fees/${editingFee.id}`, payload);
+      toast.success("✅ فیس عملیات با موفقیت ویرایش شد");
+      
+    } else {
+      payload = {
+        operation_request_id: selectedRequest.id,
+        reg_id: selectedRequest.reg_id || selectedRequest.registration_id,
+        patient_id: selectedRequest.patient_id,
+        total_amount: parseFloat(feeFormData.total_amount),
+        paid_amount: parseFloat(feeFormData.paid_amount) || 0,
+        discount: parseFloat(feeFormData.discount) || 0,
+        payment_method: feeFormData.payment_method,
+        description: feeFormData.description,
+        note: feeFormData.note
+      };
+      
+      console.log("📤 ارسال payload ثبت:", payload);
+      response = await api.post('/operation/fees', payload);
+      toast.success("✅ فیس عملیات با موفقیت ثبت شد");
     }
-  };
+
+    console.log("✅ پاسخ ثبت فیس:", response.data);
+
+    await fetchAllData();
+    handleCloseForm();
+
+  } catch (err) {
+    console.error("❌ خطا در ثبت فیس:", err);
+    
+    if (err.response?.status === 422) {
+      const errorData = err.response.data;
+      setDebugErrors(errorData);
+      console.log("📋 خطاهای اعتبارسنجی:", errorData);
+      
+      if (errorData.errors) {
+        Object.entries(errorData.errors).forEach(([field, messages]) => {
+          const fieldLabels = {
+            'operation_request_id': 'شناسه درخواست عملیات',
+            'reg_id': 'شناسه مراجعه',
+            'patient_id': 'شناسه مریض',
+            'total_amount': 'مبلغ کل',
+            'paid_amount': 'مبلغ پرداخت شده',
+            'discount': 'تخفیف',
+            'discount_percent': 'درصد تخفیف',
+            'payment_method': 'روش پرداخت',
+            'description': 'توضیحات',
+            'note': 'یادداشت'
+          };
+          const label = fieldLabels[field] || field;
+          const message = Array.isArray(messages) ? messages.join(', ') : messages;
+          toast.error(`❌ ${label}: ${message}`);
+        });
+      } else if (errorData.message) {
+        toast.error(`❌ ${errorData.message}`);
+      } else {
+        toast.error("❌ داده‌های ارسالی معتبر نیستند. لطفاً همه فیلدها را بررسی کنید.");
+      }
+    } else if (err.response?.data?.message) {
+      toast.error(`❌ ${err.response.data.message}`);
+    } else {
+      toast.error(`❌ خطا: ${err.message || "خطا در ثبت فیس"}`);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleDeleteFee = async (feeId) => {
     console.log("🗑️ درخواست حذف فیس با ID:", feeId);
@@ -318,7 +318,6 @@ export default function OperationFeeTab({ api, regId }) {
     });
   };
 
-  // تابع پرینت برای درخواست‌های بدون فیس
   const handlePrintRequest = (request) => {
     console.log("🖨️ پرینت درخواست:", request);
     if (!request) {
@@ -410,7 +409,6 @@ export default function OperationFeeTab({ api, regId }) {
     }
   };
 
-  // تابع پرینت برای فیس
   const handlePrintFee = (fee, request) => {
     console.log("🖨️ پرینت فیس:", fee, "درخواست:", request);
     if (!fee) {
@@ -476,6 +474,30 @@ export default function OperationFeeTab({ api, regId }) {
             </tr>` : ''}
           </table>
         </div>
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #ddd;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px;">
+            <div style="text-align: center; flex: 1; min-width: 200px;">
+              <div style="border-top: 1px solid #333; padding-top: 5px; width: 200px; margin: 0 auto;">
+                امضای دریافت‌کننده پول
+              </div>
+              <div style="font-size: 12px; color: #666; margin-top: 5px;">____________________</div>
+            </div>
+            <div style="text-align: center; flex: 1; min-width: 200px;">
+              <div style="border-top: 1px solid #333; padding-top: 5px; width: 200px; margin: 0 auto;">
+                مهر و امضای پزشک معالج
+              </div>
+              <div style="font-size: 12px; color: #666; margin-top: 5px;">____________________</div>
+            </div>
+            <div style="text-align: center; flex: 1; min-width: 200px;">
+              <div style="border-top: 1px solid #333; padding-top: 5px; width: 200px; margin: 0 auto;">
+                تاریخ
+              </div>
+              <div style="font-size: 12px; color: #666; margin-top: 5px;">${new Date().toLocaleDateString('fa-IR')}</div>
+            </div>
+          </div>
+        </div>
+        
         <div style="text-align: center; color: #6c757d; font-size: 12px; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px;">
           تاریخ چاپ: ${new Date().toLocaleString('fa-IR')}
         </div>
@@ -559,7 +581,6 @@ export default function OperationFeeTab({ api, regId }) {
     return isNaN(num) ? 0 : num;
   };
 
-  // تقسیم درخواست‌ها به دو دسته بر اساس fee_id
   const unpaidRequests = operationRequests.filter(r => !r.fee_id);
   const paidRequests = operationRequests.filter(r => r.fee_id);
 
@@ -896,7 +917,7 @@ export default function OperationFeeTab({ api, regId }) {
               🟢 درخواست‌های دارای فیس ({filteredPaid.length})
             </h4>
             <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-              برای ویرایش/پرینت/حذف فیس روی دکمه‌ها کلیک کنید
+              برای تصحیح/پرینت/حذف فیس روی دکمه‌ها کلیک کنید
             </span>
           </div>
 
@@ -929,7 +950,7 @@ export default function OperationFeeTab({ api, regId }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '30px' }}>
               {filteredPaid.map((request, index) => {
                 const fee = feeRecords.find(f => f.operation_request_id === request.id);
-                // اگر fee وجود نداشت، از داده‌های خود request استفاده کن
+                
                 const feeData = fee || {
                   id: request.fee_id,
                   total_amount: request.fee_amount || 0,
@@ -943,7 +964,6 @@ export default function OperationFeeTab({ api, regId }) {
                   patient_name: request.patient_name
                 };
                 
-                // بررسی اینکه آیا فیس پرداخت کامل شده است
                 const status = feeData.payment_status || feeData.status || '';
                 const isPaid = status.toLowerCase() === 'paid';
                 
@@ -1063,16 +1083,42 @@ export default function OperationFeeTab({ api, regId }) {
                       )}
                     </div>
                     
+                    {/* ===== دکمه‌های تصحیح، پرینت و حذف ===== */}
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {/* دکمه ویرایش فیس - فقط در صورتی که فیس پرداخت کامل نشده باشد */}
-                      {!isPaid && (
+                      {/* دکمه تصحیح - برای همه فیس‌ها */}
+                      {/* دکمه تصحیح - برای همه فیس‌ها (بدون شرط isPaid) */}
+{feeData && feeData.id && (
+  <button
+    onClick={() => {
+      console.log("🟡 کلیک تصحیح بر روی feeData:", feeData);
+      handleOpenEditFeeForm(feeData);
+    }}
+    style={{
+      backgroundColor: '#f59e0b',
+      color: 'white',
+      padding: '6px 14px',
+      borderRadius: '6px',
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: '12px',
+      fontWeight: 'bold',
+      transition: 'all 0.2s'
+    }}
+    onMouseEnter={(e) => e.target.style.backgroundColor = '#d97706'}
+    onMouseLeave={(e) => e.target.style.backgroundColor = '#f59e0b'}
+  >
+    ✏️ تصحیح
+  </button>
+)}
+                      {/* دکمه پرینت - برای همه */}
+                      {feeData && feeData.id && (
                         <button
                           onClick={() => {
-                            console.log("🟡 کلیک ویرایش بر روی feeData:", feeData);
-                            handleOpenEditFeeForm(feeData);
+                            console.log("🟣 کلیک پرینت بر روی feeData:", feeData);
+                            handlePrintFee(feeData, request);
                           }}
                           style={{
-                            backgroundColor: '#f59e0b',
+                            backgroundColor: '#8b5cf6',
                             color: 'white',
                             padding: '6px 14px',
                             borderRadius: '6px',
@@ -1082,58 +1128,37 @@ export default function OperationFeeTab({ api, regId }) {
                             fontWeight: 'bold',
                             transition: 'all 0.2s'
                           }}
-                          onMouseEnter={(e) => e.target.style.backgroundColor = '#d97706'}
-                          onMouseLeave={(e) => e.target.style.backgroundColor = '#f59e0b'}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = '#7c3aed'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = '#8b5cf6'}
                         >
-                          ✏️ ویرایش
+                          🖨️ پرینت
                         </button>
                       )}
                       
-                      {/* دکمه پرینت فیس - برای همه */}
-                      <button
-                        onClick={() => {
-                          console.log("🟣 کلیک پرینت بر روی feeData:", feeData);
-                          handlePrintFee(feeData, request);
-                        }}
-                        style={{
-                          backgroundColor: '#8b5cf6',
-                          color: 'white',
-                          padding: '6px 14px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: '12px',
-                          fontWeight: 'bold',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = '#7c3aed'}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = '#8b5cf6'}
-                      >
-                        🖨️ پرینت
-                      </button>
-                      
-                      {/* دکمه حذف فیس - برای همه */}
-                      <button
-                        onClick={() => {
-                          console.log("🔴 کلیک حذف بر روی feeData:", feeData);
-                          handleDeleteFee(feeData.id);
-                        }}
-                        style={{
-                          backgroundColor: '#ef4444',
-                          color: 'white',
-                          padding: '6px 14px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: '12px',
-                          fontWeight: 'bold',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = '#dc2626'}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = '#ef4444'}
-                      >
-                        🗑️ حذف
-                      </button>
+                      {/* دکمه حذف - فقط برای فیس‌های پرداخت نشده */}
+                      {feeData && feeData.id && !isPaid && (
+                        <button
+                          onClick={() => {
+                            console.log("🔴 کلیک حذف بر روی feeData:", feeData);
+                            handleDeleteFee(feeData.id);
+                          }}
+                          style={{
+                            backgroundColor: '#ef4444',
+                            color: 'white',
+                            padding: '6px 14px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = '#dc2626'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = '#ef4444'}
+                        >
+                          🗑️ حذف
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -1261,7 +1286,7 @@ export default function OperationFeeTab({ api, regId }) {
                 border: '1px solid #374151'
               }}>
                 <div style={{ color: '#9ca3af', fontSize: '12px' }}>
-                  ✏️ در حال ویرایش فیس شماره: {editingFee.id}
+                  ✏️ در حال تصحیح فیس شماره: {editingFee.id}
                 </div>
                 <div style={{ color: '#9ca3af', fontSize: '11px', marginTop: '5px' }}>
                   مراجعه #{editingFee.reg_id || editingFee.registration_id} | وضعیت: {getStatusLabel(editingFee.payment_status)}
