@@ -1,5 +1,5 @@
 // src/app/pages/admission/AdmissionFeePage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
@@ -7,7 +7,7 @@ import {
   Card, Table, Button, Form, Input, Select, DatePicker, TimePicker,
   Modal, Space, Tag, Descriptions, Statistic, Row, Col, Divider,
   Tabs, Badge, Popconfirm, Tooltip, Avatar,
-  List, Empty, Spin, InputNumber, message
+  List, Empty, Spin, InputNumber, message, Alert, Progress
 } from 'antd';
 import {
   PlusOutlined, CheckCircleOutlined, ClockCircleOutlined,
@@ -16,9 +16,11 @@ import {
   EyeOutlined, UserOutlined,
   WarningOutlined, BellOutlined,
   SaveOutlined, ExclamationCircleOutlined,
-  CloseCircleOutlined
+  CloseCircleOutlined, EnvironmentOutlined,
+  HomeOutlined, EditOutlined
 } from '@ant-design/icons';
 import moment from 'moment';
+import 'moment-jalaali';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -46,6 +48,13 @@ const styles = {
     borderRight: '4px solid #ef4444',
     transition: 'all 0.3s ease',
     cursor: 'pointer'
+  },
+  alertCard: {
+    background: '#2a1a1a',
+    padding: '15px',
+    borderRadius: '8px',
+    border: '1px solid #ef4444',
+    marginBottom: '10px'
   }
 };
 
@@ -54,6 +63,7 @@ const AdmissionFeePage = () => {
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [feeForm] = Form.useForm();
+  const [editForm] = Form.useForm();
 
   // State for data
   const [admission, setAdmission] = useState(null);
@@ -61,17 +71,21 @@ const AdmissionFeePage = () => {
   const [allRequests, setAllRequests] = useState([]);
   const [unpaidRequests, setUnpaidRequests] = useState([]);
   const [paidRequests, setPaidRequests] = useState([]);
+  const [alertRequests, setAlertRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [filterMode, setFilterMode] = useState('all');
   const [activeTab, setActiveTab] = useState('requests');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // State for modals
   const [modalVisible, setModalVisible] = useState(false);
   const [receiptModal, setReceiptModal] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [editingFee, setEditingFee] = useState(null);
   const [receiptData, setReceiptData] = useState(null);
+  const [selectedFee, setSelectedFee] = useState(null);
 
   // State for statistics
   const [statistics, setStatistics] = useState({
@@ -83,32 +97,47 @@ const AdmissionFeePage = () => {
     paid_fees: 0,
     total_requests: 0,
     unpaid_requests: 0,
-    paid_requests: 0
+    paid_requests: 0,
+    alert_count: 0
   });
 
   // ============ بارگذاری اولیه ============
   useEffect(() => {
-    if (admissionId) {
-      fetchAdmissionData();
-      fetchFeesData();
+    fetchAllData();
+    // تنظیم تایمر برای بررسی هشدارها هر 5 دقیقه
+    const interval = setInterval(checkAlerts, 300000);
+    return () => clearInterval(interval);
+  }, [admissionId, refreshKey]);
+
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchAdmissionData(),
+        fetchFeesData(),
+        fetchAllRequests(),
+        checkAlerts()
+      ]);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
     }
-    fetchAllRequests();
-  }, [admissionId]);
+  };
 
   // ============ دریافت اطلاعات بستری ============
   const fetchAdmissionData = async () => {
+    if (!admissionId) return;
     try {
       const response = await axios.get(`/api/admissions/${admissionId}`);
       setAdmission(response.data.data);
     } catch (error) {
-      toast.error('خطا در دریافت اطلاعات بستری');
-      navigate('/admissions');
+      console.error('Error fetching admission:', error);
     }
   };
 
   // ============ دریافت فیس‌های ثبت شده ============
   const fetchFeesData = async () => {
-    setLoading(true);
     try {
       const url = admissionId 
         ? `/api/admission-fees/admission/${admissionId}`
@@ -128,7 +157,7 @@ const AdmissionFeePage = () => {
 
       setFees(feesList);
 
-      // Update statistics
+      // به‌روزرسانی آمار
       const totalAmount = feesList.reduce((sum, f) => sum + (f.amount || 0), 0);
       const paidAmount = feesList.filter(f => f.status === 'paid').reduce((sum, f) => sum + (f.amount || 0), 0);
       const pendingAmount = feesList.filter(f => f.status === 'pending').reduce((sum, f) => sum + (f.amount || 0), 0);
@@ -144,16 +173,13 @@ const AdmissionFeePage = () => {
       }));
 
     } catch (error) {
-      toast.error('خطا در دریافت فیس‌ها');
       console.error('Error fetching fees:', error);
-    } finally {
-      setLoading(false);
+      toast.error('خطا در دریافت فیس‌ها');
     }
   };
 
   // ============ دریافت تمام درخواست‌های بستری ============
   const fetchAllRequests = async () => {
-    setLoading(true);
     try {
       const response = await axios.get('/api/admission-requests/all');
       
@@ -173,8 +199,22 @@ const AdmissionFeePage = () => {
     } catch (error) {
       console.error('Error fetching requests:', error);
       toast.error('خطا در دریافت درخواست‌های بستری');
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  // ============ بررسی هشدارها ============
+  const checkAlerts = async () => {
+    try {
+      const response = await axios.get('/api/admission-fees/pending/alerts');
+      if (response.data?.data) {
+        setAlertRequests(response.data.data);
+        setStatistics(prev => ({
+          ...prev,
+          alert_count: response.data.data.length || 0
+        }));
+      }
+    } catch (error) {
+      console.error('Error checking alerts:', error);
     }
   };
 
@@ -186,8 +226,11 @@ const AdmissionFeePage = () => {
         ...values,
         admission_request_id: selectedRequest?.id || admissionId,
         patient_id: selectedRequest?.patient_id || admission?.patient_id,
+        reg_id: selectedRequest?.reg_id || admission?.reg_id,
+        doctor_id: selectedRequest?.doctor_id || admission?.doctor_id,
         fee_date: values.fee_date?.format('YYYY-MM-DD') || moment().format('YYYY-MM-DD'),
-        fee_time: values.fee_time?.format('HH:mm') || moment().format('HH:mm')
+        fee_time: values.fee_time?.format('HH:mm') || moment().format('HH:mm'),
+        day_number: calculateDayNumber(selectedRequest?.admission_date)
       };
 
       await axios.post('/api/admission-fees', data);
@@ -195,14 +238,37 @@ const AdmissionFeePage = () => {
       
       setModalVisible(false);
       feeForm.resetFields();
-      fetchFeesData();
-      fetchAllRequests();
+      await fetchAllData();
       
-      if (admissionId) {
-        fetchAdmissionData();
-      }
     } catch (error) {
       toast.error(error.response?.data?.message || 'خطا در ایجاد فیس بستری');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ============ ویرایش فیس ============
+  const handleEditFee = async (values) => {
+    if (!editingFee) return;
+    
+    setSubmitting(true);
+    try {
+      const data = {
+        ...values,
+        fee_date: values.fee_date?.format('YYYY-MM-DD') || moment().format('YYYY-MM-DD'),
+        fee_time: values.fee_time?.format('HH:mm') || moment().format('HH:mm')
+      };
+
+      await axios.put(`/api/admission-fees/${editingFee.id}`, data);
+      toast.success('فیس بستری با موفقیت ویرایش شد');
+      
+      setEditModalVisible(false);
+      editForm.resetFields();
+      setEditingFee(null);
+      await fetchAllData();
+      
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'خطا در ویرایش فیس');
     } finally {
       setSubmitting(false);
     }
@@ -218,11 +284,7 @@ const AdmissionFeePage = () => {
         try {
           await axios.post(`/api/admission-fees/${id}/collect`);
           toast.success('فیس با موفقیت دریافت شد');
-          fetchFeesData();
-          fetchAllRequests();
-          if (admissionId) {
-            fetchAdmissionData();
-          }
+          await fetchAllData();
         } catch (error) {
           toast.error(error.response?.data?.message || 'خطا در دریافت فیس');
         }
@@ -243,8 +305,7 @@ const AdmissionFeePage = () => {
         try {
           await axios.delete(`/api/admission-fees/${id}`);
           toast.success('فیس با موفقیت حذف شد');
-          fetchFeesData();
-          fetchAllRequests();
+          await fetchAllData();
         } catch (error) {
           toast.error(error.response?.data?.message || 'خطا در حذف فیس');
         }
@@ -258,6 +319,8 @@ const AdmissionFeePage = () => {
       const response = await axios.get(`/api/admission-fees/${id}/print`);
       setReceiptData(response.data.data);
       setReceiptModal(true);
+      // افزایش شمارش پرینت
+      await axios.post(`/api/admission-fees/${id}/increment-print`);
     } catch (error) {
       toast.error('خطا در دریافت اطلاعات برای پرینت');
     }
@@ -269,15 +332,19 @@ const AdmissionFeePage = () => {
     setEditingFee(null);
     feeForm.resetFields();
     
-    const defaultAmount = request?.amount || admission?.total_amount || 0;
+    const defaultAmount = request?.fee_amount || admission?.fee_amount || 0;
+    const dayNumber = calculateDayNumber(request?.admission_date);
     
     feeForm.setFieldsValue({
-      amount: defaultAmount,
+      amount: defaultAmount || 0,
       paid_amount: 0,
       discount: 0,
       payment_method: 'cash',
       fee_date: moment(),
       fee_time: moment(),
+      fee_type: 'daily',
+      period: 'full_day',
+      day_number: dayNumber,
       description: request 
         ? `بستری: ${request.admission_type || ''} - ${request.ward_name || ''}`
         : `بستری: ${admission?.ward?.name || ''}`,
@@ -289,7 +356,34 @@ const AdmissionFeePage = () => {
     setModalVisible(true);
   };
 
+  // ============ باز کردن فرم ویرایش فیس ============
+  const handleOpenEditForm = (fee) => {
+    setEditingFee(fee);
+    editForm.resetFields();
+    editForm.setFieldsValue({
+      amount: fee.amount || 0,
+      paid_amount: fee.paid_amount || 0,
+      discount: fee.discount || 0,
+      payment_method: fee.payment_method || 'cash',
+      fee_date: moment(fee.fee_date),
+      fee_time: moment(fee.fee_time, 'HH:mm:ss'),
+      fee_type: fee.fee_type || 'daily',
+      period: fee.period || 'full_day',
+      day_number: fee.day_number || 1,
+      description: fee.description || '',
+      note: fee.notes || ''
+    });
+    setEditModalVisible(true);
+  };
+
   // ============ Helper Functions ============
+  const calculateDayNumber = (admissionDate) => {
+    if (!admissionDate) return 1;
+    const start = moment(admissionDate);
+    const now = moment();
+    return now.diff(start, 'days') + 1;
+  };
+
   const getMethodLabel = (method) => {
     const methods = {
       cash: 'نقدی',
@@ -305,7 +399,8 @@ const AdmissionFeePage = () => {
     const statusMap = {
       pending: { label: 'در انتظار', color: '#f59e0b', icon: <ClockCircleOutlined /> },
       paid: { label: 'دریافت شده', color: '#22c55e', icon: <CheckCircleOutlined /> },
-      cancelled: { label: 'لغو شده', color: '#ef4444', icon: <CloseCircleOutlined /> }
+      cancelled: { label: 'لغو شده', color: '#ef4444', icon: <CloseCircleOutlined /> },
+      refunded: { label: 'بازگشت داده شده', color: '#6b7280', icon: <CloseCircleOutlined /> }
     };
     return statusMap[status] || { label: status, color: '#6b7280', icon: null };
   };
@@ -365,6 +460,15 @@ const AdmissionFeePage = () => {
     return '-';
   };
 
+  const getLocationDisplay = (request) => {
+    if (!request) return '-';
+    const parts = [];
+    if (request.location) parts.push(request.location);
+    if (request.room_number) parts.push(`اتاق: ${request.room_number}`);
+    if (request.bed_number) parts.push(`تخت: ${request.bed_number}`);
+    return parts.length > 0 ? parts.join(' | ') : '-';
+  };
+
   // ============ ستون‌های جدول فیس‌ها ============
   const feeColumns = [
     {
@@ -372,6 +476,12 @@ const AdmissionFeePage = () => {
       dataIndex: 'receipt_number',
       key: 'receipt_number',
       render: (text) => <Tag color="blue">{text}</Tag>
+    },
+    {
+      title: 'روز بستری',
+      dataIndex: 'day_number',
+      key: 'day_number',
+      render: (day) => day ? `روز ${day}` : '-'
     },
     {
       title: 'تاریخ',
@@ -445,20 +555,24 @@ const AdmissionFeePage = () => {
                 size="small"
                 icon={<CheckCircleOutlined />}
                 onClick={() => handleCollectFee(record.id)}
-              >
-                دریافت
-              </Button>
+              />
             </Tooltip>
           )}
+          <Tooltip title="ویرایش">
+            <Button
+              type="default"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleOpenEditForm(record)}
+            />
+          </Tooltip>
           <Tooltip title="پرینت رسید">
             <Button
               type="default"
               size="small"
               icon={<PrinterOutlined />}
               onClick={() => handlePrintReceipt(record.id)}
-            >
-              پرینت
-            </Button>
+            />
           </Tooltip>
           <Tooltip title="حذف">
             <Popconfirm
@@ -483,6 +597,7 @@ const AdmissionFeePage = () => {
   const getFilteredRequests = () => {
     if (filterMode === 'unpaid') return unpaidRequests;
     if (filterMode === 'paid') return paidRequests;
+    if (filterMode === 'alert') return alertRequests;
     return allRequests;
   };
 
@@ -506,6 +621,7 @@ const AdmissionFeePage = () => {
             <span style={{ color: '#9ca3af' }}>
               {filterMode === 'unpaid' && 'هیچ درخواست بدون فیس وجود ندارد'}
               {filterMode === 'paid' && 'هیچ درخواست دارای فیس وجود ندارد'}
+              {filterMode === 'alert' && 'هیچ هشدار فعالی وجود ندارد'}
               {filterMode === 'all' && 'هیچ درخواست بستری ثبت نشده است'}
             </span>
           }
@@ -518,20 +634,21 @@ const AdmissionFeePage = () => {
         {displayRequests.map((request, index) => {
           const hasFeeRecord = request.has_fee === true || (request.fee_id !== null && request.fee_id !== undefined && request.fee_id !== 0);
           const feeInfo = fees.find(f => f.admission_request_id === request.id);
+          const isAlert = filterMode === 'alert' || (request.last_fee_alert_at && moment().diff(moment(request.last_fee_alert_at), 'hours') >= 24);
           
           return (
             <div
               key={request.id || index}
               style={{
                 ...styles.requestItem,
-                borderRightColor: hasFeeRecord ? '#22c55e' : '#f59e0b'
+                borderRightColor: isAlert ? '#ef4444' : (hasFeeRecord ? '#22c55e' : '#f59e0b')
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderRightColor = '#ef4444';
                 e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderRightColor = hasFeeRecord ? '#22c55e' : '#f59e0b';
+                e.currentTarget.style.borderRightColor = isAlert ? '#ef4444' : (hasFeeRecord ? '#22c55e' : '#f59e0b');
                 e.currentTarget.style.boxShadow = 'none';
               }}
             >
@@ -549,9 +666,14 @@ const AdmissionFeePage = () => {
                     <Tag color={hasFeeRecord ? 'green' : 'orange'}>
                       {hasFeeRecord ? '✅ دارای فیس' : '❌ بدون فیس'}
                     </Tag>
+                    {isAlert && (
+                      <Tag color="red" icon={<BellOutlined />}>
+                        ⏰ نیاز به هشدار
+                      </Tag>
+                    )}
                   </div>
 
-                  {/* اطلاعات مریض */}
+                  {/* اطلاعات مریض و موقعیت */}
                   <div style={{
                     display: 'flex',
                     gap: '15px',
@@ -579,6 +701,9 @@ const AdmissionFeePage = () => {
                     <span style={{ color: '#9ca3af', fontSize: '12px' }}>
                       🏥 {request.ward_name || 'نامشخص'}
                     </span>
+                    <span style={{ color: '#fcd34d', fontSize: '12px' }}>
+                      <EnvironmentOutlined /> {getLocationDisplay(request)}
+                    </span>
                   </div>
 
                   {/* تاریخ و اطلاعات دیگر */}
@@ -587,6 +712,16 @@ const AdmissionFeePage = () => {
                     {request.status && (
                       <span style={{ marginRight: '15px' }}>
                         | وضعیت: {request.status_label || request.status}
+                      </span>
+                    )}
+                    {request.admission_date && (
+                      <span style={{ marginRight: '15px' }}>
+                        | روز بستری: {calculateDayNumber(request.admission_date)}
+                      </span>
+                    )}
+                    {request.last_fee_alert_at && (
+                      <span style={{ marginRight: '15px', color: '#f59e0b' }}>
+                        | آخرین هشدار: {moment(request.last_fee_alert_at).fromNow()}
                       </span>
                     )}
                   </div>
@@ -610,13 +745,14 @@ const AdmissionFeePage = () => {
                           باقیمانده: {calculateRemaining(feeInfo.amount, feeInfo.paid_amount, feeInfo.discount).toFixed(2)} AFN
                         </span>
                         <span style={{ color: '#9ca3af' }}>روش: {getMethodLabel(feeInfo.payment_method)}</span>
+                        <span style={{ color: '#9ca3af' }}>روز: {feeInfo.day_number || 1}</span>
                       </div>
                     </div>
                   )}
                 </div>
 
                 {/* دکمه‌های عملیات */}
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {!hasFeeRecord ? (
                     <Button
                       type="primary"
@@ -627,16 +763,27 @@ const AdmissionFeePage = () => {
                       اخذ فیس
                     </Button>
                   ) : (
-                    <Button
-                      type="default"
-                      icon={<EyeOutlined />}
-                      onClick={() => {
-                        setSelectedRequest(request);
-                        setModalVisible(true);
-                      }}
-                    >
-                      مشاهده
-                    </Button>
+                    <>
+                      <Button
+                        type="default"
+                        icon={<EyeOutlined />}
+                        onClick={() => {
+                          setSelectedRequest(request);
+                          setModalVisible(true);
+                        }}
+                      >
+                        مشاهده
+                      </Button>
+                      {feeInfo && (
+                        <Button
+                          type="default"
+                          icon={<EditOutlined />}
+                          onClick={() => handleOpenEditForm(feeInfo)}
+                        >
+                          ویرایش
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -676,8 +823,8 @@ const AdmissionFeePage = () => {
             <Button
               icon={<ReloadOutlined />}
               onClick={() => {
-                fetchFeesData();
-                fetchAllRequests();
+                setRefreshKey(prev => prev + 1);
+                fetchAllData();
               }}
             >
               بروزرسانی
@@ -688,7 +835,7 @@ const AdmissionFeePage = () => {
         {/* آمار */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
           gap: '15px',
           marginTop: '20px',
           paddingTop: '20px',
@@ -702,26 +849,34 @@ const AdmissionFeePage = () => {
           </div>
           <div>
             <span style={{ color: '#fcd34d', fontSize: '12px' }}>💰 مبلغ کل</span>
-            <div style={{ color: '#fcd34d', fontWeight: 'bold', fontSize: '20px' }}>
+            <div style={{ color: '#fcd34d', fontWeight: 'bold', fontSize: '18px' }}>
               {statistics.total_amount.toLocaleString()}
             </div>
           </div>
           <div>
             <span style={{ color: '#22c55e', fontSize: '12px' }}>✅ پرداخت شده</span>
-            <div style={{ color: '#22c55e', fontWeight: 'bold', fontSize: '20px' }}>
+            <div style={{ color: '#22c55e', fontWeight: 'bold', fontSize: '18px' }}>
               {statistics.paid_amount.toLocaleString()}
             </div>
           </div>
           <div>
             <span style={{ color: '#ef4444', fontSize: '12px' }}>⏳ پرداخت نشده</span>
-            <div style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '20px' }}>
+            <div style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '18px' }}>
               {statistics.pending_amount.toLocaleString()}
             </div>
           </div>
           <div>
             <span style={{ color: '#f59e0b', fontSize: '12px' }}>🟡 بدون فیس</span>
-            <div style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '20px' }}>
+            <div style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '18px' }}>
               {statistics.unpaid_requests}
+            </div>
+          </div>
+          <div>
+            <span style={{ color: '#ef4444', fontSize: '12px' }}>
+              <BellOutlined /> هشدارها
+            </span>
+            <div style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '20px' }}>
+              {statistics.alert_count}
             </div>
           </div>
         </div>
@@ -761,6 +916,13 @@ const AdmissionFeePage = () => {
             >
               🟢 دارای فیس ({paidRequests.length})
             </Button>
+            <Button
+              type={filterMode === 'alert' ? 'primary' : 'default'}
+              onClick={() => setFilterMode('alert')}
+              style={filterMode === 'alert' ? { backgroundColor: '#ef4444', borderColor: '#ef4444' } : {}}
+            >
+              🔔 هشدارها ({alertRequests.length})
+            </Button>
           </div>
 
           {/* لیست درخواست‌ها */}
@@ -785,44 +947,56 @@ const AdmissionFeePage = () => {
           tab={<span><BellOutlined /> هشدارها</span>}
           key="alerts"
         >
-          {fees.filter(f => f.status === 'pending').length > 0 ? (
-            <List
-              dataSource={fees.filter(f => f.status === 'pending')}
-              renderItem={(item) => (
-                <List.Item
-                  actions={[
-                    <Button
-                      type="primary"
-                      size="small"
-                      icon={<CheckCircleOutlined />}
-                      onClick={() => handleCollectFee(item.id)}
-                    >
-                      دریافت
-                    </Button>
-                  ]}
-                >
-                  <List.Item.Meta
-                    avatar={<Avatar icon={<WarningOutlined />} style={{ backgroundColor: '#ff4d4f' }} />}
-                    title={
-                      <span>
-                        {item.receipt_number} - {item.amount?.toLocaleString()} AFN
-                      </span>
-                    }
-                    description={
-                      <div>
-                        <p>بیمار: {item.patient?.full_name || 'نامشخص'}</p>
-                        <p>تاریخ: {formatDateTime(item.created_at)}</p>
-                        {moment().diff(moment(item.created_at), 'hours') > 24 && (
-                          <Tag color="red">⏰ بیش از 24 ساعت گذشته</Tag>
-                        )}
-                      </div>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
+          {alertRequests.length > 0 ? (
+            <>
+              <Alert
+                message={`${alertRequests.length} هشدار فعال`}
+                description="بیمارانی که بیش از 24 ساعت از آخرین هشدار آنها گذشته است"
+                type="warning"
+                showIcon
+                style={{ marginBottom: '20px' }}
+              />
+              <List
+                dataSource={alertRequests}
+                renderItem={(item) => (
+                  <List.Item
+                    style={styles.alertCard}
+                    actions={[
+                      <Button
+                        type="primary"
+                        size="small"
+                        icon={<CheckCircleOutlined />}
+                        onClick={() => handleCollectFee(item.id)}
+                      >
+                        دریافت فیس
+                      </Button>
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={<Avatar icon={<WarningOutlined />} style={{ backgroundColor: '#ff4d4f' }} />}
+                      title={
+                        <span>
+                          <strong>{getPatientFullName(item)}</strong>
+                          <Tag color="red" style={{ marginLeft: '10px' }}>
+                            ⏰ {moment(item.last_fee_alert_at).fromNow()}
+                          </Tag>
+                        </span>
+                      }
+                      description={
+                        <div>
+                          <p>🏥 {item.ward_name || 'نامشخص'} | {getLocationDisplay(item)}</p>
+                          <p>💰 مبلغ فیس: {item.fee_amount?.toLocaleString() || 0} AFN</p>
+                          <p>📅 روز بستری: {calculateDayNumber(item.admission_date)}</p>
+                          <p>📞 تماس: {item.patient?.mobile || '-'}</p>
+                        </div>
+                      }
+                    />
+                  </List.Item>
+                )}
+              />
+            </>
           ) : (
-            <Empty description="هیچ هشداری وجود ندارد" />
+            <Empty description="هیچ هشدار فعالی وجود ندارد" />
           )}
         </TabPane>
       </Tabs>
@@ -865,6 +1039,14 @@ const AdmissionFeePage = () => {
               <div>
                 <span style={{ color: '#9ca3af', fontSize: '11px' }}>⚤ جنسیت</span>
                 <div style={{ color: 'white' }}>{getPatientGender(selectedRequest)}</div>
+              </div>
+              <div>
+                <span style={{ color: '#9ca3af', fontSize: '11px' }}>📍 موقعیت</span>
+                <div style={{ color: 'white' }}>{getLocationDisplay(selectedRequest)}</div>
+              </div>
+              <div>
+                <span style={{ color: '#9ca3af', fontSize: '11px' }}>📅 روز بستری</span>
+                <div style={{ color: 'white' }}>{calculateDayNumber(selectedRequest.admission_date)}</div>
               </div>
             </div>
             <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #2a3a4a' }}>
@@ -947,6 +1129,36 @@ const AdmissionFeePage = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
+                name="fee_type"
+                label="نوع فیس"
+                rules={[{ required: true, message: 'لطفاً نوع فیس را انتخاب کنید' }]}
+              >
+                <Select>
+                  <Option value="daily">روزانه</Option>
+                  <Option value="weekly">هفتگی</Option>
+                  <Option value="monthly">ماهانه</Option>
+                  <Option value="custom">سفارشی</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="period"
+                label="دوره"
+              >
+                <Select>
+                  <Option value="morning">صبح</Option>
+                  <Option value="evening">عصر</Option>
+                  <Option value="night">شب</Option>
+                  <Option value="full_day">کامل</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
                 name="fee_date"
                 label="تاریخ"
                 rules={[{ required: true, message: 'لطفاً تاریخ را انتخاب کنید' }]}
@@ -964,6 +1176,17 @@ const AdmissionFeePage = () => {
               </Form.Item>
             </Col>
           </Row>
+
+          <Form.Item
+            name="day_number"
+            label="شماره روز بستری"
+          >
+            <InputNumber
+              style={{ width: '100%' }}
+              min={1}
+              placeholder="شماره روز بستری"
+            />
+          </Form.Item>
 
           <Form.Item
             name="description"
@@ -994,6 +1217,216 @@ const AdmissionFeePage = () => {
                 icon={<SaveOutlined />}
               >
                 {editingFee ? 'ذخیره تغییرات' : 'ثبت فیس'}
+              </Button>
+            </div>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* مودال ویرایش فیس */}
+      <Modal
+        title="✏️ ویرایش فیس بستری"
+        open={editModalVisible}
+        onCancel={() => {
+          setEditModalVisible(false);
+          editForm.resetFields();
+          setEditingFee(null);
+        }}
+        footer={null}
+        width={700}
+        destroyOnClose
+      >
+        {editingFee && (
+          <div style={{
+            backgroundColor: 'rgba(15, 26, 42, 0.8)',
+            padding: '15px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            border: '1px solid #2a3a4a'
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div>
+                <span style={{ color: '#9ca3af', fontSize: '11px' }}>📄 شماره رسید</span>
+                <div style={{ color: 'white', fontWeight: 'bold' }}>{editingFee.receipt_number}</div>
+              </div>
+              <div>
+                <span style={{ color: '#9ca3af', fontSize: '11px' }}>👤 بیمار</span>
+                <div style={{ color: 'white' }}>{getPatientFullName(editingFee)}</div>
+              </div>
+              <div>
+                <span style={{ color: '#9ca3af', fontSize: '11px' }}>💰 مبلغ فعلی</span>
+                <div style={{ color: '#fcd34d' }}>{editingFee.amount?.toLocaleString()} AFN</div>
+              </div>
+              <div>
+                <span style={{ color: '#9ca3af', fontSize: '11px' }}>📊 وضعیت</span>
+                <div>
+                  <Tag color={editingFee.status === 'paid' ? 'green' : 'orange'}>
+                    {editingFee.status === 'paid' ? 'پرداخت شده' : 'در انتظار'}
+                  </Tag>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={handleEditFee}
+        >
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="amount"
+                label="مبلغ کل (AFN)"
+                rules={[{ required: true, message: 'لطفاً مبلغ را وارد کنید' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0}
+                  step={100}
+                  placeholder="مبلغ را وارد کنید"
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="paid_amount"
+                label="مبلغ پرداخت شده (AFN)"
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0}
+                  step={100}
+                  placeholder="مبلغ پرداخت شده"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="discount"
+                label="تخفیف (%)"
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0}
+                  max={100}
+                  step={1}
+                  placeholder="درصد تخفیف"
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="payment_method"
+                label="روش پرداخت"
+                rules={[{ required: true, message: 'لطفاً روش پرداخت را انتخاب کنید' }]}
+              >
+                <Select>
+                  <Option value="cash">نقدی</Option>
+                  <Option value="card">کارت بانکی</Option>
+                  <Option value="online">آنلاین</Option>
+                  <Option value="bank_transfer">انتقال بانکی</Option>
+                  <Option value="insurance">بیمه</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="fee_type"
+                label="نوع فیس"
+              >
+                <Select>
+                  <Option value="daily">روزانه</Option>
+                  <Option value="weekly">هفتگی</Option>
+                  <Option value="monthly">ماهانه</Option>
+                  <Option value="custom">سفارشی</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="period"
+                label="دوره"
+              >
+                <Select>
+                  <Option value="morning">صبح</Option>
+                  <Option value="evening">عصر</Option>
+                  <Option value="night">شب</Option>
+                  <Option value="full_day">کامل</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="fee_date"
+                label="تاریخ"
+                rules={[{ required: true, message: 'لطفاً تاریخ را انتخاب کنید' }]}
+              >
+                <DatePicker format="YYYY/MM/DD" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="fee_time"
+                label="ساعت"
+                rules={[{ required: true, message: 'لطفاً ساعت را انتخاب کنید' }]}
+              >
+                <TimePicker format="HH:mm" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            name="day_number"
+            label="شماره روز بستری"
+          >
+            <InputNumber
+              style={{ width: '100%' }}
+              min={1}
+              placeholder="شماره روز بستری"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="description"
+            label="توضیحات"
+          >
+            <TextArea rows={2} placeholder="توضیحات اضافی..." />
+          </Form.Item>
+
+          <Form.Item
+            name="note"
+            label="یادداشت"
+          >
+            <TextArea rows={2} placeholder="یادداشت..." />
+          </Form.Item>
+
+          <Form.Item>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <Button onClick={() => {
+                setEditModalVisible(false);
+                editForm.resetFields();
+                setEditingFee(null);
+              }}>
+                انصراف
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={submitting}
+                icon={<SaveOutlined />}
+              >
+                ذخیره تغییرات
               </Button>
             </div>
           </Form.Item>
@@ -1042,6 +1475,12 @@ const AdmissionFeePage = () => {
               <Descriptions.Item label="تخت">
                 {receiptData.admission?.bed?.bed_number || '-'}
               </Descriptions.Item>
+              <Descriptions.Item label="موقعیت">
+                {getLocationDisplay(receiptData.admission)}
+              </Descriptions.Item>
+              <Descriptions.Item label="روز بستری">
+                {receiptData.fee?.day_number || 1}
+              </Descriptions.Item>
               <Descriptions.Item label="تاریخ">
                 {formatDate(receiptData.fee?.fee_date)}
               </Descriptions.Item>
@@ -1051,6 +1490,17 @@ const AdmissionFeePage = () => {
               <Descriptions.Item label="مبلغ" span={2}>
                 <span style={{ color: '#fcd34d', fontWeight: 'bold' }}>
                   {receiptData.fee?.amount?.toLocaleString()} AFN
+                </span>
+              </Descriptions.Item>
+              <Descriptions.Item label="پرداخت شده">
+                {receiptData.fee?.paid_amount?.toLocaleString()} AFN
+              </Descriptions.Item>
+              <Descriptions.Item label="تخفیف">
+                {receiptData.fee?.discount || 0}%
+              </Descriptions.Item>
+              <Descriptions.Item label="باقیمانده">
+                <span style={{ color: '#ef4444' }}>
+                  {calculateRemaining(receiptData.fee?.amount, receiptData.fee?.paid_amount, receiptData.fee?.discount).toFixed(2)} AFN
                 </span>
               </Descriptions.Item>
               <Descriptions.Item label="روش پرداخت">

@@ -43,6 +43,11 @@ use App\Http\Controllers\RadiologyRequestController;
 use App\Http\Controllers\RadiologyFeeController;
 use App\Http\Controllers\RadiologyResultController;
 use App\Http\Controllers\OperationController; // ✅ استفاده از OperationController
+use App\Http\Controllers\AdmissionRequestController;
+use App\Http\Controllers\AdmissionFeeController;
+use App\Http\Controllers\WardController;
+use App\Http\Controllers\BedController;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -258,6 +263,168 @@ Route::get(
         Route::delete('/{id}', [OperationController::class, 'destroyFee']);
     });
 });
+
+ Route::prefix('admissions')->name('admissions.')->group(function () {
+        
+        // ===== دریافت تمام درخواست‌ها (برای تب مدیریت فیس) =====
+        Route::get('/all', [AdmissionRequestController::class, 'getAllRequests'])
+            ->name('all');
+        
+        // ===== CRUD اصلی =====
+        Route::get('/', [AdmissionRequestController::class, 'index'])
+            ->name('index');
+        Route::post('/', [AdmissionRequestController::class, 'store'])
+            ->name('store');
+        Route::get('/{id}', [AdmissionRequestController::class, 'show'])
+            ->name('show');
+        Route::put('/{id}', [AdmissionRequestController::class, 'update'])
+            ->name('update');
+        Route::delete('/{id}', [AdmissionRequestController::class, 'destroy'])
+            ->name('destroy');
+        
+        // ===== مسیرهای ویژه =====
+        Route::get('/active', [AdmissionRequestController::class, 'getActiveAdmissions'])
+            ->name('active');
+        Route::get('/statistics', [AdmissionRequestController::class, 'getStatistics'])
+            ->name('statistics');
+        Route::get('/status/{regId}', [AdmissionRequestController::class, 'getAdmissionStatus'])
+            ->name('status');
+        Route::get('/patient/{patientId}', [AdmissionRequestController::class, 'getPatientAdmissions'])
+            ->name('patient');
+        Route::get('/{id}/print', [AdmissionRequestController::class, 'printReceipt'])
+            ->name('print');
+        
+        // ===== عملیات =====
+        Route::post('/{id}/discharge', [AdmissionRequestController::class, 'discharge'])
+            ->name('discharge');
+        Route::post('/{id}/cancel', [AdmissionRequestController::class, 'cancel'])
+            ->name('cancel');
+        Route::post('/{id}/update-fee', [AdmissionRequestController::class, 'updateFeeInfo'])
+            ->name('update-fee');
+        Route::post('/complete-treatment/{regId}', [AdmissionRequestController::class, 'completeTreatment'])
+            ->name('complete-treatment');
+    });
+
+    // ============================================================
+    // ============ گروه مسیرهای فیس بستری (Admission Fees) ============
+    // ============================================================
+    Route::prefix('admission-fees')->name('admission-fees.')->group(function () {
+        
+        // ===== CRUD اصلی =====
+        Route::get('/', [AdmissionFeeController::class, 'index'])
+            ->name('index');
+        Route::post('/', [AdmissionFeeController::class, 'store'])
+            ->name('store');
+        Route::get('/{id}', [AdmissionFeeController::class, 'show'])
+            ->name('show');
+        Route::put('/{id}', [AdmissionFeeController::class, 'update'])
+            ->name('update');
+        Route::delete('/{id}', [AdmissionFeeController::class, 'destroy'])
+            ->name('destroy');
+        
+        // ===== مسیرهای ویژه =====
+        Route::get('/patient/{patientId}', [AdmissionFeeController::class, 'getPatientFees'])
+            ->name('patient');
+        Route::get('/admission/{admissionId}', [AdmissionFeeController::class, 'getAdmissionFees'])
+            ->name('admission');
+        Route::get('/pending/alerts', [AdmissionFeeController::class, 'getPendingFeesForAlert'])
+            ->name('pending-alerts');
+        Route::get('/statistics', [AdmissionFeeController::class, 'getFeeStatistics'])
+            ->name('statistics');
+        Route::get('/{id}/print', [AdmissionFeeController::class, 'printReceipt'])
+            ->name('print');
+        
+        // ===== عملیات =====
+        Route::post('/{id}/collect', [AdmissionFeeController::class, 'collectFee'])
+            ->name('collect');
+        Route::post('/registration/{regId}', [AdmissionFeeController::class, 'storeForRegistration'])
+            ->name('store-for-registration');
+    });
+
+
+
+
+     // ============ مسیرهای بخش‌ها (Wards) ============
+    Route::prefix('wards')->name('wards.')->group(function () {
+        Route::get('/', [WardController::class, 'index'])->name('index');
+        Route::post('/', [WardController::class, 'store'])->name('store');
+        Route::get('/statistics', [WardController::class, 'getStatistics'])->name('statistics');
+        Route::get('/{id}', [WardController::class, 'show'])->name('show');
+        Route::put('/{id}', [WardController::class, 'update'])->name('update');
+        Route::delete('/{id}', [WardController::class, 'destroy'])->name('destroy');
+        Route::get('/{wardId}/beds', [WardController::class, 'getBeds'])->name('beds');
+    });
+
+    // ============ مسیرهای تخت‌ها (Beds) ============
+    Route::prefix('beds')->name('beds.')->group(function () {
+        Route::get('/', [BedController::class, 'index'])->name('index');
+        Route::post('/', [BedController::class, 'store'])->name('store');
+        Route::get('/available', [BedController::class, 'getAvailableBeds'])->name('available');
+        Route::get('/ward/{wardId}', [BedController::class, 'getBedsByWard'])->name('by-ward');
+        Route::get('/{id}', [BedController::class, 'show'])->name('show');
+        Route::put('/{id}', [BedController::class, 'update'])->name('update');
+        Route::delete('/{id}', [BedController::class, 'destroy'])->name('destroy');
+        Route::post('/{id}/change-status', [BedController::class, 'changeStatus'])->name('change-status');
+    });
+
+    // ============ مسیرهای هشدارهای فیس (Admission Fee Alerts) ============
+    Route::prefix('admission-fee-alerts')->name('admission-fee-alerts.')->group(function () {
+        Route::get('/', [AdmissionFeeAlertController::class, 'index'])->name('index');
+        Route::post('/', [AdmissionFeeAlertController::class, 'store'])->name('store');
+        Route::get('/unresolved', [AdmissionFeeAlertController::class, 'getUnresolvedAlerts'])->name('unresolved');
+        Route::get('/today', [AdmissionFeeAlertController::class, 'getTodayAlerts'])->name('today');
+        Route::get('/statistics', [AdmissionFeeAlertController::class, 'getStatistics'])->name('statistics');
+        Route::post('/check-and-create', [AdmissionFeeAlertController::class, 'checkAndCreateAlerts'])->name('check-and-create');
+        Route::get('/{id}', [AdmissionFeeAlertController::class, 'show'])->name('show');
+        Route::put('/{id}', [AdmissionFeeAlertController::class, 'update'])->name('update');
+        Route::post('/{id}/mark-sent', [AdmissionFeeAlertController::class, 'markAsSent'])->name('mark-sent');
+        Route::post('/{id}/mark-resolved', [AdmissionFeeAlertController::class, 'markAsResolved'])->name('mark-resolved');
+        Route::delete('/{id}', [AdmissionFeeAlertController::class, 'destroy'])->name('destroy');
+    });
+
+    // ============================================================
+    // ============ گروه مسیرهای بخش‌ها (Wards) ============
+    // ============================================================
+    Route::prefix('wards')->name('wards.')->group(function () {
+        
+        Route::get('/', [WardController::class, 'index'])
+            ->name('index');
+        Route::post('/', [WardController::class, 'store'])
+            ->name('store');
+        Route::get('/{id}', [WardController::class, 'show'])
+            ->name('show');
+        Route::put('/{id}', [WardController::class, 'update'])
+            ->name('update');
+        Route::delete('/{id}', [WardController::class, 'destroy'])
+            ->name('destroy');
+        
+        // دریافت تخت‌های یک بخش
+        Route::get('/{wardId}/beds', [WardController::class, 'getBeds'])
+            ->name('beds');
+    });
+
+    // ============================================================
+    // ============ گروه مسیرهای تخت‌ها (Beds) ============
+    // ============================================================
+    Route::prefix('beds')->name('beds.')->group(function () {
+        
+        Route::get('/', [BedController::class, 'index'])
+            ->name('index');
+        Route::post('/', [BedController::class, 'store'])
+            ->name('store');
+        Route::get('/{id}', [BedController::class, 'show'])
+            ->name('show');
+        Route::put('/{id}', [BedController::class, 'update'])
+            ->name('update');
+        Route::delete('/{id}', [BedController::class, 'destroy'])
+            ->name('destroy');
+        
+        // دریافت تخت‌های موجود
+        Route::get('/available', [BedController::class, 'getAvailableBeds'])
+            ->name('available');
+        Route::get('/ward/{wardId}', [BedController::class, 'getBedsByWard'])
+            ->name('by-ward');
+    });
 
     // ============================================================
     // ✅ ROUTES مدیریت درخواست‌های لابراتوار

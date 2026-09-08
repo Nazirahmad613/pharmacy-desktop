@@ -1,5 +1,5 @@
-// database/migrations/2026_01_01_000002_create_wards_table.php
 <?php
+// database/migrations/2026_01_01_000002_create_wards_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -17,6 +17,10 @@ return new class extends Migration
             $table->enum('type', ['general', 'icu', 'ccu', 'pediatric', 'maternity', 'surgical', 'medical']);
             $table->integer('total_beds');
             $table->integer('available_beds');
+            $table->string('location')->nullable()->comment('موقعیت بخش');
+            $table->string('floor')->nullable()->comment('طبقه');
+            $table->string('building')->nullable()->comment('ساختمان');
+            $table->string('phone')->nullable()->comment('شماره تماس بخش');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->softDeletes();

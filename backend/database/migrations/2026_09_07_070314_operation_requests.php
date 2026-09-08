@@ -1,4 +1,5 @@
 <?php
+// database/migrations/2026_01_01_000000_create_admission_requests_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -6,48 +7,67 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
-        Schema::create('operation_requests', function (Blueprint $table) {
+        Schema::create('admission_requests', function (Blueprint $table) {
             $table->id();
-           $table->foreignId('reg_id')
-    ->constrained('registrations', 'reg_id')
-    ->onDelete('cascade');
+            
+            // ارتباط با رجیستریشن (مشابه عملیات)
+            $table->foreignId('reg_id')
+                ->constrained('registrations', 'reg_id')
+                ->onDelete('cascade');
+            
+            // ارتباط با بیمار و دکتر (مشابه عملیات)
             $table->foreignId('patient_id')->constrained('patients')->onDelete('cascade');
             $table->foreignId('doctor_id')->constrained('users')->onDelete('cascade');
             
-            $table->string('surgery_type');
-            $table->string('surgeon');
-            $table->string('anesthesiologist')->nullable();
-            $table->string('room_number')->nullable();
-            $table->datetime('scheduled_date')->nullable();
-            $table->string('estimated_duration')->nullable();
-            $table->text('notes')->nullable();
+            // بخش و تخت (ویژه بستری)
+            $table->foreignId('ward_id')->constrained('wards')->onDelete('cascade');
+            $table->foreignId('bed_id')->constrained('beds')->onDelete('cascade');
             
-            $table->enum('status', ['pending', 'in_progress', 'completed', 'cancelled'])->default('pending');
+            // تاریخ‌های بستری
+            $table->date('admission_date');
+            $table->date('expected_discharge_date')->nullable();
+            $table->datetime('discharged_at')->nullable();
+            $table->datetime('cancelled_at')->nullable();
+            
+            // تشخیص (از رجیستریشن گرفته می‌شود، اینجا فقط برای نمایش است)
+            $table->string('diagnosis')->nullable()->comment('تشخیص اولیه از رجیستریشن');
+            
+            // دستورالعمل‌های بستری (ویژه بستری)
+            $table->text('admission_instructions')->nullable()->comment('دستورالعمل‌های داکتر برای بستری');
+            $table->text('special_notes')->nullable()->comment('یادداشت‌های ویژه');
+            
+            // وضعیت‌ها (مشابه عملیات)
+            $table->enum('status', ['pending', 'admitted', 'discharged', 'cancelled'])->default('pending');
             $table->enum('priority', ['high', 'medium', 'normal', 'low'])->default('normal');
             
-            $table->foreignId('fee_id')->nullable()->constrained('operation_fees')->nullOnDelete();
+            // فیلدهای فیس (مشابه عملیات)
+            $table->foreignId('fee_id')->nullable()->constrained('admission_fees')->nullOnDelete();
             $table->decimal('fee_amount', 12, 2)->nullable();
             $table->decimal('fee_paid', 12, 2)->nullable();
             $table->enum('fee_status', ['pending', 'partial', 'paid', 'refunded', 'cancelled'])->nullable();
             
+            // زمان‌های تکمیل و لغو (مشابه عملیات)
             $table->datetime('completed_at')->nullable();
             $table->datetime('cancelled_at')->nullable();
             
             $table->timestamps();
+            $table->softDeletes();
             
-            // ایندکس‌ها
+            // ایندکس‌ها (مشابه عملیات)
             $table->index(['status', 'doctor_id']);
             $table->index(['priority', 'status']);
-            $table->index('scheduled_date');
+            $table->index('admission_date');
             $table->index('fee_status');
             $table->index('reg_id');
+            $table->index('ward_id');
+            $table->index('bed_id');
         });
     }
 
-    public function down()
+    public function down(): void
     {
-        Schema::dropIfExists('operation_requests');
+        Schema::dropIfExists('admission_requests');
     }
 };

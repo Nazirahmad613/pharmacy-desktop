@@ -1,5 +1,5 @@
-// database/migrations/2026_01_01_000003_create_beds_table.php
 <?php
+// database/migrations/2026_01_01_000003_create_beds_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -11,8 +11,11 @@ return new class extends Migration
     {
         Schema::create('beds', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('ward_id')->constrained()->onDelete('cascade');
+            $table->foreignId('ward_id')->constrained('wards')->onDelete('cascade');
             $table->string('bed_number');
+            $table->string('room_number')->nullable()->comment('شماره اتاق');
+            $table->string('floor')->nullable()->comment('طبقه');
+            $table->string('location')->nullable()->comment('موقعیت دقیق تخت');
             $table->enum('status', ['available', 'occupied', 'reserved', 'maintenance'])->default('available');
             $table->text('notes')->nullable();
             $table->boolean('is_active')->default(true);
@@ -20,6 +23,8 @@ return new class extends Migration
             $table->softDeletes();
             
             $table->unique(['ward_id', 'bed_number']);
+            $table->index(['ward_id', 'status']);
+            $table->index('room_number');
         });
     }
 

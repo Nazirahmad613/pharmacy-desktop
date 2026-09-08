@@ -1100,30 +1100,31 @@ export default function TreatmentPage() {
           />
         );
         
-      case "admission":
-        return (
-          <Admission 
-            registration={selectedRegistration}
-            onComplete={() => {
-              setActiveTab('queue');
-              setSelectedPatientId(null);
-              setSelectedRegistration(null);
-              localStorage.removeItem(SELECTED_PATIENT_KEY);
-              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
-            }}
-            onRefresh={refreshData}
-            api={api}
-            onSave={saveCurrentStep}
-            onFinish={finishTreatment}
-            onNextStep={goToNextStep}
-            onPrevStep={goToPreviousStep}
-            currentStep={currentStep}
-            nextStep={nextStep}
-            prevStep={prevStep}
-            isSubmitting={isSubmitting}
-            isTreatmentComplete={isComplete}
-          />
-        );
+  case "admission":
+  return (
+    <Admission 
+      registration={selectedRegistration}
+      onComplete={() => {
+        // پس از تکمیل بستری، به صفحه اصلی برگرد
+        setActiveTab('queue');
+        setSelectedPatientId(null);
+        setSelectedRegistration(null);
+        localStorage.removeItem(SELECTED_PATIENT_KEY);
+        localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+      }}
+      onRefresh={refreshData}
+      api={api}
+      onSave={saveCurrentStep}
+      onFinish={finishTreatment}
+      onNextStep={goToNextStep}
+      onPrevStep={goToPreviousStep}
+      currentStep={currentStep}
+      nextStep={nextStep}
+      prevStep={prevStep}
+      isSubmitting={isSubmitting}
+      isTreatmentComplete={isComplete}
+    />
+  );
         
       default:
         return null;
