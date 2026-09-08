@@ -53,6 +53,9 @@ export default function TreatmentPage() {
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState(null);
   const [selectedRegistration, setSelectedRegistration] = useState(null);
+  
+  // ============ State برای تمام درخواست‌های بستری ============
+  const [allAdmissionRequests, setAllAdmissionRequests] = useState([]);
 
   const saveState = (patients, tab, patientId) => {
     try {
@@ -150,6 +153,25 @@ export default function TreatmentPage() {
       console.error(`خطا در دریافت مریض ${registrationId}:`, err);
     }
     return null;
+  };
+
+  // ============ دریافت تمام درخواست‌های بستری ============
+  const fetchAllAdmissions = async () => {
+    try {
+      const response = await api.get("/admissions");
+      console.log("📥 تمام درخواست‌های بستری:", response.data);
+      
+      if (response.data?.data) {
+        const requests = response.data.data.data || response.data.data;
+        const data = Array.isArray(requests) ? requests : [];
+        setAllAdmissionRequests(data);
+        return data;
+      }
+      return [];
+    } catch (err) {
+      console.error("خطا در دریافت درخواست‌های بستری:", err);
+      return [];
+    }
   };
 
   // ============ بارگذاری تمام اطلاعات یک مریض (اصلاح شده) ============
@@ -409,6 +431,20 @@ export default function TreatmentPage() {
       return [];
     }
     
+    // ============ برای تب admission، تمام درخواست‌های بستری را برگردان ============
+    if (stage === "admission") {
+      return allAdmissionRequests.map(request => ({
+        reg_id: request.reg_id,
+        patient: request.patient,
+        visit_number: request.visit_number,
+        ...request,
+        progress: {
+          completedSteps: request.status === 'admitted' ? ['admission'] : [],
+          currentStepIndex: 8
+        }
+      }));
+    }
+    
     const stageIndex = STEPS.findIndex(s => s.key === stage);
     if (stageIndex === -1) return [];
     
@@ -563,7 +599,6 @@ export default function TreatmentPage() {
           };
           break;
         case "radiology":
-          // ✅ اصلاح شده: مسیر صحیح رادیولوژی
           url = `/radiology-requests/registration/${regId}`;
           payload = {
             radiology_type: data.radiology_type,
@@ -583,7 +618,17 @@ export default function TreatmentPage() {
           url = `/doctor/followup/${regId}`;
           break;
         case "admission":
-          url = `/doctor/admission/${regId}`;
+          // ============ اصلاح: استفاده از مسیر جدید ============
+          url = `/admissions`;
+          payload = {
+            reg_id: regId,
+            ward_id: data.ward_id,
+            admission_date: data.admission_date || new Date().toISOString().split('T')[0],
+            diagnosis: data.diagnosis || "",
+            admission_instructions: data.admission_instructions || "",
+            special_notes: data.special_notes || "",
+            priority: data.priority || "normal"
+          };
           break;
         case "operation":
           url = `/doctor/operation/${regId}`;
@@ -601,6 +646,11 @@ export default function TreatmentPage() {
       toast.success(`✅ ${currentStep.label} با موفقیت ثبت شد`);
       
       await loadAllPatientData(regId);
+      
+      // ============ بروزرسانی لیست درخواست‌های بستری ============
+      if (currentStep.key === 'admission') {
+        await fetchAllAdmissions();
+      }
       
       return response.data;
       
@@ -661,6 +711,7 @@ export default function TreatmentPage() {
       localStorage.removeItem(SELECTED_PATIENT_KEY);
       localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
       await fetchQueue();
+      await fetchAllAdmissions();
       
     } catch (err) {
       console.error("خطا در ختم معالجه:", err);
@@ -673,6 +724,7 @@ export default function TreatmentPage() {
   const refreshData = async () => {
     console.log("🔄 Refreshing data...");
     await fetchQueue();
+    await fetchAllAdmissions();
     if (selectedPatientId) {
       await loadAllPatientData(selectedPatientId);
     }
@@ -688,6 +740,7 @@ export default function TreatmentPage() {
       const savedPatientId = saved.selectedPatientId;
       
       setActivePatients(patients);
+      await fetchAllAdmissions();
       
       if (savedPatientId && patients[savedPatientId]) {
         setSelectedPatientId(savedPatientId);
@@ -789,11 +842,20 @@ export default function TreatmentPage() {
                 <div
                   key={p.reg_id}
                   onClick={() => {
-                    setSelectedPatientId(p.reg_id);
-                    setSelectedRegistration(p);
-                    setActiveTab(activeTab);
-                    localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
-                    localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+                    if (activeTab === 'admission') {
+                      // برای تب بستری، فقط انتخاب کنید بدون تغییر
+                      setSelectedPatientId(p.reg_id);
+                      setSelectedRegistration(p);
+                      setActiveTab(activeTab);
+                      localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
+                      localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+                    } else {
+                      setSelectedPatientId(p.reg_id);
+                      setSelectedRegistration(p);
+                      setActiveTab(activeTab);
+                      localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
+                      localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+                    }
                   }}
                   style={{
                     backgroundColor: selectedPatientId === p.reg_id ? '#3b82f6' : '#1a2a3a',
@@ -813,7 +875,12 @@ export default function TreatmentPage() {
                       {p.patient?.first_name || ''} {p.patient?.last_name || ''}
                     </div>
                     <div style={{ fontSize: '11px', color: '#9ca3af' }}>
-                      #{p.visit_number} | {p.patient?.national_id || '-'}
+                      #{p.visit_number || p.id} | {p.patient?.national_id || '-'}
+                      {activeTab === 'admission' && p.status && (
+                        <span style={{ marginLeft: '10px', color: p.status === 'admitted' ? '#22c55e' : '#f59e0b' }}>
+                          [{p.status === 'admitted' ? 'بستری' : 'در انتظار'}]
+                        </span>
+                      )}
                     </div>
                   </div>
                   {p.progress?.completedSteps?.includes(activeTab) && (
@@ -1028,27 +1095,27 @@ export default function TreatmentPage() {
             }}
           />
         );
-       case "operation":
-      return (
-        <OperationRoom 
-          api={api}
-          registration={selectedRegistration}
-          registrationId={selectedPatientId}
-          patientId={selectedRegistration?.patient_id || selectedRegistration?.patient?.id}
-          onSelectPatient={handleSelectPatient}
-          onRefresh={refreshData}
-          onSave={saveCurrentStep}
-          onFinish={finishTreatment}
-          onNextStep={goToNextStep}
-          onPrevStep={goToPreviousStep}
-          currentStep={currentStep}
-          nextStep={nextStep}
-          prevStep={prevStep}
-          isSubmitting={isSubmitting}
-          isTreatmentComplete={isComplete}
-        />
-      );
-      
+        
+      case "operation":
+        return (
+          <OperationRoom 
+            api={api}
+            registration={selectedRegistration}
+            registrationId={selectedPatientId}
+            patientId={selectedRegistration?.patient_id || selectedRegistration?.patient?.id}
+            onSelectPatient={handleSelectPatient}
+            onRefresh={refreshData}
+            onSave={saveCurrentStep}
+            onFinish={finishTreatment}
+            onNextStep={goToNextStep}
+            onPrevStep={goToPreviousStep}
+            currentStep={currentStep}
+            nextStep={nextStep}
+            prevStep={prevStep}
+            isSubmitting={isSubmitting}
+            isTreatmentComplete={isComplete}
+          />
+        );
         
       case "pres_insert":
         return (
@@ -1100,31 +1167,32 @@ export default function TreatmentPage() {
           />
         );
         
-  case "admission":
-  return (
-    <Admission 
-      registration={selectedRegistration}
-      onComplete={() => {
-        // پس از تکمیل بستری، به صفحه اصلی برگرد
-        setActiveTab('queue');
-        setSelectedPatientId(null);
-        setSelectedRegistration(null);
-        localStorage.removeItem(SELECTED_PATIENT_KEY);
-        localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
-      }}
-      onRefresh={refreshData}
-      api={api}
-      onSave={saveCurrentStep}
-      onFinish={finishTreatment}
-      onNextStep={goToNextStep}
-      onPrevStep={goToPreviousStep}
-      currentStep={currentStep}
-      nextStep={nextStep}
-      prevStep={prevStep}
-      isSubmitting={isSubmitting}
-      isTreatmentComplete={isComplete}
-    />
-  );
+      case "admission":
+        return (
+          <Admission 
+            registration={selectedRegistration}
+            onComplete={() => {
+              setActiveTab('queue');
+              setSelectedPatientId(null);
+              setSelectedRegistration(null);
+              localStorage.removeItem(SELECTED_PATIENT_KEY);
+              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+            }}
+            onRefresh={refreshData}
+            api={api}
+            onSave={saveCurrentStep}
+            onFinish={finishTreatment}
+            onNextStep={goToNextStep}
+            onPrevStep={goToPreviousStep}
+            currentStep={currentStep}
+            nextStep={nextStep}
+            prevStep={prevStep}
+            isSubmitting={isSubmitting}
+            isTreatmentComplete={isComplete}
+            allAdmissionRequests={allAdmissionRequests}
+            fetchAllAdmissions={fetchAllAdmissions}
+          />
+        );
         
       default:
         return null;
@@ -1285,6 +1353,8 @@ export default function TreatmentPage() {
                 p.visit_status !== "Completed" &&
                 p.visit_status !== "InProgress"
               ).length;
+            } else if (step.key === 'admission') {
+              patientCount = allAdmissionRequests.length;
             } else if (step.key !== 'history') {
               const patients = getPatientsInStage(step.key);
               patientCount = patients.length;
@@ -1359,7 +1429,7 @@ export default function TreatmentPage() {
           {renderTabContent()}
         </div>
 
-        {selectedPatientId && activeTab !== 'queue' && activeTab !== 'history' && !currentProgress.isComplete && (
+        {selectedPatientId && activeTab !== 'queue' && activeTab !== 'history' && !currentProgress.isComplete && activeTab !== 'admission' && (
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',

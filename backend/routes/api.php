@@ -647,13 +647,20 @@ Route::get(
     // ============================================================
     // مسیرهای فیس نسخه
     // ============================================================
-    Route::prefix('prescription-fees')->group(function () {
-        Route::get('/', [PrescriptionFeeController::class, 'index']);
-        Route::post('/', [PrescriptionFeeController::class, 'store']);
-        Route::get('/statistics', [PrescriptionFeeController::class, 'statistics']);
-        Route::put('/{id}', [PrescriptionFeeController::class, 'update']);
-        Route::delete('/{id}', [PrescriptionFeeController::class, 'destroy']);
-    });
+
+// ============================================================
+// مسیرهای فیس بستری (Admission Fees) - اصلاح شده
+// ============================================================
+Route::prefix('admission-fees')->group(function () {
+    Route::get('/', [AdmissionFeeController::class, 'index']);
+    Route::post('/', [AdmissionFeeController::class, 'store']);
+    Route::get('/statistics', [AdmissionFeeController::class, 'getFeeStatistics']);
+    Route::get('/{id}', [AdmissionFeeController::class, 'show']);
+    Route::put('/{id}', [AdmissionFeeController::class, 'update']);
+    Route::delete('/{id}', [AdmissionFeeController::class, 'destroy']);
+    Route::post('/{id}/collect', [AdmissionFeeController::class, 'collectFee']);
+    Route::get('/{id}/print', [AdmissionFeeController::class, 'printReceipt']);
+});
 
     // ===== Prescriptions =====
     Route::get('/prescriptions/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);

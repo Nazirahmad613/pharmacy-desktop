@@ -13,9 +13,170 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class AdmissionRequestController extends Controller
 {
+
+    /**
+     * دریافت تمام درخواست‌های بستری با اطلاعات کامل
+     * این متد برای تب مدیریت فیس‌های بستری استفاده می‌شود
+     */
+    public function getAllRequests(Request $request)
+    {
+        try {
+            // دریافت تمام درخواست‌های بستری با اطلاعات مرتبط
+            $query = AdmissionRequest::with([
+                'patient',
+                'doctor',
+                'ward',
+                'fees' => function($q) {
+                    $q->select('id', 'admission_request_id', 'amount', 'status', 'paid_amount', 'payment_method', 'created_at')
+                      ->orderBy('created_at', 'desc');
+                }
+            ])
+            ->whereIn('status', ['admitted', 'pending'])
+            ->orderBy('created_at', 'desc');
+
+            // فیلتر بر اساس بخش
+            if ($request->has('ward_id') && $request->ward_id) {
+                $query->where('ward_id', $request->ward_id);
+            }
+
+            // فیلتر بر اساس پزشک
+            if ($request->has('doctor_id') && $request->doctor_id) {
+                $query->where('doctor_id', $request->doctor_id);
+            }
+
+            // فیلتر بر اساس جستجو
+            if ($request->has('search') && $request->search) {
+                $search = $request->search;
+                $query->where(function($q) use ($search) {
+                    $q->whereHas('patient', function($p) use ($search) {
+                        $p->where('first_name', 'like', "%{$search}%")
+                          ->orWhere('last_name', 'like', "%{$search}%")
+                          ->orWhere('mobile', 'like', "%{$search}%");
+                    })
+                    ->orWhere('reg_id', 'like', "%{$search}%")
+                    ->orWhere('id', 'like', "%{$search}%");
+                });
+            }
+
+            $requests = $query->get();
+
+            // پردازش هر درخواست برای اضافه کردن اطلاعات فیس
+            $allRequests = [];
+            $unpaidRequests = [];
+            $paidRequests = [];
+
+            foreach ($requests as $requestItem) {
+                // بررسی وجود فیس
+                $hasFee = $requestItem->fees->count() > 0;
+                $lastFee = $requestItem->fees->first();
+
+                // ساخت داده‌های درخواست
+                $requestData = [
+                    'id' => $requestItem->id,
+                    'reg_id' => $requestItem->reg_id,
+                    'patient_id' => $requestItem->patient_id,
+                    'doctor_id' => $requestItem->doctor_id,
+                    'ward_id' => $requestItem->ward_id,
+                    'ward_name' => $requestItem->ward?->name,
+                    'admission_date' => $requestItem->admission_date,
+                    'discharged_at' => $requestItem->discharged_at,
+                    'cancelled_at' => $requestItem->cancelled_at,
+                    'diagnosis' => $requestItem->diagnosis,
+                    'admission_instructions' => $requestItem->admission_instructions,
+                    'special_notes' => $requestItem->special_notes,
+                    'status' => $requestItem->status,
+                    'status_label' => $requestItem->status_label,
+                    'priority' => $requestItem->priority,
+                    'priority_label' => $requestItem->priority_label,
+                    'last_fee_alert_at' => $requestItem->last_fee_alert_at,
+                    'fee_alert_count' => $requestItem->fee_alert_count,
+                    'completed_at' => $requestItem->completed_at,
+                    'created_at' => $requestItem->created_at,
+                    'updated_at' => $requestItem->updated_at,
+                    
+                    // اطلاعات بیمار
+                    'patient' => [
+                        'id' => $requestItem->patient?->id,
+                        'first_name' => $requestItem->patient?->first_name,
+                        'last_name' => $requestItem->patient?->last_name,
+                        'full_name' => $requestItem->patient?->full_name,
+                        'mobile' => $requestItem->patient?->mobile,
+                        'phone' => $requestItem->patient?->phone,
+                        'national_id' => $requestItem->patient?->national_id,
+                        'gender' => $requestItem->patient?->gender,
+                        'age' => $requestItem->patient?->age,
+                        'address' => $requestItem->patient?->address,
+                    ],
+                    
+                    // اطلاعات پزشک
+                    'doctor' => $requestItem->doctor ? [
+                        'id' => $requestItem->doctor->id,
+                        'name' => $requestItem->doctor->name,
+                        'email' => $requestItem->doctor->email,
+                    ] : null,
+                    
+                    // اطلاعات بخش
+                    'ward' => $requestItem->ward ? [
+                        'id' => $requestItem->ward->id,
+                        'name' => $requestItem->ward->name,
+                        'type' => $requestItem->ward->type,
+                    ] : null,
+                    
+                    // اطلاعات فیس
+                    'has_fee' => $hasFee,
+                    'fee_id' => $lastFee?->id,
+                    'fee_amount' => $lastFee?->amount,
+                    'fee_status' => $lastFee?->status,
+                    'fee_paid_amount' => $lastFee?->paid_amount,
+                    'fee_payment_method' => $lastFee?->payment_method,
+                    'fee_created_at' => $lastFee?->created_at,
+                    
+                    // تعداد فیس‌ها
+                    'total_fees_count' => $requestItem->fees->count(),
+                    'paid_fees_count' => $requestItem->fees->where('status', 'paid')->count(),
+                    'pending_fees_count' => $requestItem->fees->where('status', 'pending')->count(),
+                    
+                    // مجموع مبالغ
+                    'total_fees_amount' => $requestItem->fees->sum('amount'),
+                    'paid_fees_amount' => $requestItem->fees->where('status', 'paid')->sum('amount'),
+                    'pending_fees_amount' => $requestItem->fees->where('status', 'pending')->sum('amount'),
+                ];
+
+                $allRequests[] = $requestData;
+
+                if ($hasFee) {
+                    $paidRequests[] = $requestData;
+                } else {
+                    $unpaidRequests[] = $requestData;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'all_requests' => $allRequests,
+                    'unpaid_requests' => $unpaidRequests,
+                    'paid_requests' => $paidRequests,
+                    'total_count' => count($allRequests),
+                    'unpaid_count' => count($unpaidRequests),
+                    'paid_count' => count($paidRequests),
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in getAllRequests: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت درخواست‌های بستری',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     /**
      * نمایش لیست تمام درخواست‌های بستری
      */
@@ -67,68 +228,12 @@ class AdmissionRequestController extends Controller
     }
 
     /**
-     * دریافت تمام درخواست‌های بستری (برای تب مدیریت فیس)
-     */
-    public function getAllRequests()
-    {
-        try {
-            $allRequests = AdmissionRequest::with(['patient', 'ward', 'doctor', 'fees', 'registration'])
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            // گروه‌بندی بر اساس reg_id
-            $grouped = $allRequests->groupBy('reg_id')->map(function($group) {
-                $first = $group->first();
-                return [
-                    'reg_id' => $first->reg_id,
-                    'patient' => $first->patient,
-                    'requests' => $group,
-                    'total_requests' => $group->count(),
-                    'has_fee' => $group->whereHas('fees')->count() > 0,
-                    'latest_status' => $group->last()->status
-                ];
-            })->values();
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'all_requests' => $allRequests,
-                    'unpaid_requests' => $allRequests->filter(function($item) {
-                        return $item->status === 'admitted' && $item->fees->where('status', 'pending')->count() > 0;
-                    })->values(),
-                    'paid_requests' => $allRequests->filter(function($item) {
-                        return $item->status === 'admitted' && $item->fees->where('status', 'paid')->count() > 0;
-                    })->values(),
-                    'grouped_by_reg_id' => $grouped,
-                    'total_requests' => $allRequests->count(),
-                    'total_unpaid' => $allRequests->filter(function($item) {
-                        return $item->status === 'admitted' && $item->fees->where('status', 'pending')->count() > 0;
-                    })->count(),
-                    'total_paid' => $allRequests->filter(function($item) {
-                        return $item->status === 'admitted' && $item->fees->where('status', 'paid')->count() > 0;
-                    })->count(),
-                    'total_registrations' => $grouped->count()
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در دریافت درخواست‌ها',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
      * ذخیره درخواست بستری جدید (از تب معالجه)
      */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'reg_id' => 'required|exists:registrations,reg_id',
-            'patient_id' => 'required|exists:patients,id',
-            'doctor_id' => 'required|exists:users,id',
             'ward_id' => 'required|exists:wards,id',
             'admission_date' => 'required|date',
             'diagnosis' => 'nullable|string|max:500',
@@ -147,13 +252,56 @@ class AdmissionRequestController extends Controller
         try {
             DB::beginTransaction();
 
-            // دریافت تشخیص از رجیستریشن
-            $registration = Registrations::where('reg_id', $request->reg_id)->first();
-            $diagnosis = $request->diagnosis ?? ($registration->initial_diagnosis ?? null);
+            // ============ دریافت اطلاعات از رجیستریشن ============
+            $registration = Registrations::with(['patient', 'doctor'])
+                ->where('reg_id', $request->reg_id)
+                ->first();
 
-            // کاهش تعداد تخت‌های موجود در بخش
+            if (!$registration) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'مراجعه یافت نشد'
+                ], 404);
+            }
+
+            // ============ دریافت patient_id از رجیستریشن ============
+            $patientId = $registration->patient_id ?? $registration->patient?->id;
+            
+            if (!$patientId) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'بیمار یافت نشد'
+                ], 404);
+            }
+
+            // ============ دریافت doctor_id از رجیستریشن یا کاربر فعلی ============
+            $doctorId = $request->user()?->id ?? $registration->doctor_id ?? $registration->doctor?->id;
+
+            if (!$doctorId) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'پزشک یافت نشد'
+                ], 404);
+            }
+
+            // ============ دریافت تشخیص ============
+            $diagnosis = $request->diagnosis ?? ($registration->diagnosis ?? null);
+
+            // ============ کاهش تعداد تخت‌های موجود در بخش ============
             $ward = Ward::find($request->ward_id);
+            if (!$ward) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'بخش یافت نشد'
+                ], 404);
+            }
+
             if ($ward->available_beds <= 0) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
                     'message' => 'در این بخش تخت خالی وجود ندارد'
@@ -161,11 +309,11 @@ class AdmissionRequestController extends Controller
             }
             $ward->decrement('available_beds');
 
-            // ایجاد درخواست بستری
+            // ============ ایجاد درخواست بستری ============
             $admission = AdmissionRequest::create([
                 'reg_id' => $request->reg_id,
-                'patient_id' => $request->patient_id,
-                'doctor_id' => $request->doctor_id,
+                'patient_id' => $patientId,
+                'doctor_id' => $doctorId,
                 'ward_id' => $request->ward_id,
                 'admission_date' => $request->admission_date,
                 'diagnosis' => $diagnosis,
@@ -175,14 +323,14 @@ class AdmissionRequestController extends Controller
                 'priority' => $request->priority ?? 'normal'
             ]);
 
-            // به‌روزرسانی وضعیت مراجعه
+            // ============ به‌روزرسانی وضعیت مراجعه ============
             if ($registration) {
-                $registration->update(['visit_status' => 'Admitted']);
+                $registration->update(['visit_status' => 'Admission']);
             }
 
             DB::commit();
 
-            // بارگذاری روابط
+            // ============ بارگذاری روابط ============
             $admission->load(['patient', 'ward', 'doctor', 'registration']);
 
             return response()->json([
@@ -193,10 +341,13 @@ class AdmissionRequestController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('خطا در ثبت درخواست بستری:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در ثبت درخواست بستری',
-                'error' => $e->getMessage()
+                'message' => 'خطا در ثبت درخواست بستری: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -243,7 +394,6 @@ class AdmissionRequestController extends Controller
 
         $validator = Validator::make($request->all(), [
             'ward_id' => 'sometimes|exists:wards,id',
-            'doctor_id' => 'sometimes|exists:users,id',
             'admission_instructions' => 'nullable|string',
             'special_notes' => 'nullable|string',
             'priority' => 'sometimes|in:high,medium,normal,low'
@@ -259,15 +409,26 @@ class AdmissionRequestController extends Controller
         try {
             DB::beginTransaction();
 
-            // اگر بخش تغییر کرد
+            // ============ اگر بخش تغییر کرد ============
             if ($request->has('ward_id') && $request->ward_id != $admission->ward_id) {
+                // افزایش تخت‌های بخش قبلی
                 Ward::find($admission->ward_id)->increment('available_beds');
-                Ward::find($request->ward_id)->decrement('available_beds');
+                
+                // کاهش تخت‌های بخش جدید
+                $newWard = Ward::find($request->ward_id);
+                if ($newWard->available_beds <= 0) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'در بخش جدید تخت خالی وجود ندارد'
+                    ], 400);
+                }
+                $newWard->decrement('available_beds');
             }
 
+            // ============ به‌روزرسانی ============
             $admission->update($request->only([
                 'ward_id', 
-                'doctor_id', 
                 'admission_instructions', 
                 'special_notes',
                 'priority'
@@ -285,10 +446,13 @@ class AdmissionRequestController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('خطا در به‌روزرسانی درخواست بستری:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در به‌روزرسانی اطلاعات بستری',
-                'error' => $e->getMessage()
+                'message' => 'خطا در به‌روزرسانی اطلاعات بستری: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -345,6 +509,10 @@ class AdmissionRequestController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('خطا در ترخیص بیمار:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در ترخیص بیمار',
@@ -396,6 +564,10 @@ class AdmissionRequestController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('خطا در لغو درخواست بستری:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در لغو درخواست بستری',
@@ -437,6 +609,10 @@ class AdmissionRequestController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('خطا در حذف درخواست بستری:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در حذف درخواست بستری',
@@ -624,5 +800,51 @@ class AdmissionRequestController extends Controller
             'message' => 'معالجه با موفقیت تکمیل شد',
             'data' => $admission
         ]);
+    }
+
+    /**
+     * به‌روزرسانی اطلاعات فیس در درخواست
+     */
+    public function updateFeeInfo(Request $request, $id)
+    {
+        try {
+            $admission = AdmissionRequest::find($id);
+            
+            if (!$admission) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'درخواست بستری یافت نشد'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'total_amount' => 'nullable|numeric|min:0',
+                'paid_amount' => 'nullable|numeric|min:0',
+                'payment_status' => 'nullable|in:pending,partial,paid',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $admission->update($request->only(['total_amount', 'paid_amount', 'payment_status']));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'اطلاعات فیس با موفقیت به‌روزرسانی شد',
+                'data' => $admission
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in updateFeeInfo: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در به‌روزرسانی اطلاعات فیس',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

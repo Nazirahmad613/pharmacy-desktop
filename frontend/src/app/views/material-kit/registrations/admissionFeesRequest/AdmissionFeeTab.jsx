@@ -1,13 +1,13 @@
 // src/app/pages/admission/AdmissionFeePage.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../../../../../api';
 import { toast } from 'react-toastify';
 import {
   Card, Table, Button, Form, Input, Select, DatePicker, TimePicker,
-  Modal, Space, Tag, Descriptions, Statistic, Row, Col, Divider,
+  Modal, Space, Tag, Descriptions, Row, Col,
   Tabs, Badge, Popconfirm, Tooltip, Avatar,
-  List, Empty, Spin, InputNumber, message, Alert, Progress
+  List, Empty, Spin, InputNumber, Alert
 } from 'antd';
 import {
   PlusOutlined, CheckCircleOutlined, ClockCircleOutlined,
@@ -17,14 +17,13 @@ import {
   WarningOutlined, BellOutlined,
   SaveOutlined, ExclamationCircleOutlined,
   CloseCircleOutlined, EnvironmentOutlined,
-  HomeOutlined, EditOutlined
+  EditOutlined
 } from '@ant-design/icons';
 import moment from 'moment';
 import 'moment-jalaali';
 
 const { Option } = Select;
 const { TextArea } = Input;
-const { TabPane } = Tabs;
 
 // استایل‌های سفارشی
 const styles = {
@@ -77,6 +76,7 @@ const AdmissionFeePage = () => {
   const [filterMode, setFilterMode] = useState('all');
   const [activeTab, setActiveTab] = useState('requests');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [debugData, setDebugData] = useState(null);
 
   // State for modals
   const [modalVisible, setModalVisible] = useState(false);
@@ -85,7 +85,6 @@ const AdmissionFeePage = () => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [editingFee, setEditingFee] = useState(null);
   const [receiptData, setReceiptData] = useState(null);
-  const [selectedFee, setSelectedFee] = useState(null);
 
   // State for statistics
   const [statistics, setStatistics] = useState({
@@ -104,13 +103,13 @@ const AdmissionFeePage = () => {
   // ============ بارگذاری اولیه ============
   useEffect(() => {
     fetchAllData();
-    // تنظیم تایمر برای بررسی هشدارها هر 5 دقیقه
     const interval = setInterval(checkAlerts, 300000);
     return () => clearInterval(interval);
   }, [admissionId, refreshKey]);
 
   const fetchAllData = async () => {
     setLoading(true);
+    console.log('🔄 شروع بارگذاری داده‌ها...');
     try {
       await Promise.all([
         fetchAdmissionData(),
@@ -118,8 +117,9 @@ const AdmissionFeePage = () => {
         fetchAllRequests(),
         checkAlerts()
       ]);
+      console.log('✅ بارگذاری داده‌ها کامل شد');
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('❌ خطا در بارگذاری داده‌ها:', error);
     } finally {
       setLoading(false);
     }
@@ -129,10 +129,12 @@ const AdmissionFeePage = () => {
   const fetchAdmissionData = async () => {
     if (!admissionId) return;
     try {
-      const response = await axios.get(`/api/admissions/${admissionId}`);
+      console.log(`📥 دریافت اطلاعات بستری #${admissionId}...`);
+      const response = await api.get(`/admissions/${admissionId}`);
+      console.log('✅ اطلاعات بستری دریافت شد:', response.data);
       setAdmission(response.data.data);
     } catch (error) {
-      console.error('Error fetching admission:', error);
+      console.error('❌ خطا در دریافت اطلاعات بستری:', error);
     }
   };
 
@@ -140,21 +142,26 @@ const AdmissionFeePage = () => {
   const fetchFeesData = async () => {
     try {
       const url = admissionId 
-        ? `/api/admission-fees/admission/${admissionId}`
-        : '/api/admission-fees';
+        ? `/admission-fees/admission/${admissionId}`
+        : '/admission-fees';
+      console.log(`📥 دریافت فیس‌ها از: ${url}`);
       
-      const response = await axios.get(url);
-      const data = response.data.data;
+      const response = await api.get(url);
+      console.log('✅ پاسخ فیس‌ها:', response.data);
 
       let feesList = [];
-      if (Array.isArray(data)) {
-        feesList = data;
-      } else if (data?.fees) {
-        feesList = data.fees;
-      } else {
-        feesList = [];
+      if (response.data?.data) {
+        const data = response.data.data;
+        if (Array.isArray(data)) {
+          feesList = data;
+        } else if (data?.fees) {
+          feesList = data.fees;
+        } else if (data?.data && Array.isArray(data.data)) {
+          feesList = data.data;
+        }
       }
 
+      console.log(`✅ ${feesList.length} فیس دریافت شد`);
       setFees(feesList);
 
       // به‌روزرسانی آمار
@@ -173,7 +180,7 @@ const AdmissionFeePage = () => {
       }));
 
     } catch (error) {
-      console.error('Error fetching fees:', error);
+      console.error('❌ خطا در دریافت فیس‌ها:', error);
       toast.error('خطا در دریافت فیس‌ها');
     }
   };
@@ -181,10 +188,19 @@ const AdmissionFeePage = () => {
   // ============ دریافت تمام درخواست‌های بستری ============
   const fetchAllRequests = async () => {
     try {
-      const response = await axios.get('/api/admission-requests/all');
+      console.log('📥 دریافت درخواست‌های بستری از: /admission-requests/all');
+      const response = await api.get('/admission-requests/all');
+      console.log('✅ پاسخ درخواست‌ها:', response.data);
       
+      // ذخیره داده برای دیباگ
+      setDebugData(response.data);
+
       if (response.data?.success && response.data?.data) {
         const data = response.data.data;
+        console.log(`📊 تعداد کل درخواست‌ها: ${data.all_requests?.length || 0}`);
+        console.log(`📊 تعداد بدون فیس: ${data.unpaid_requests?.length || 0}`);
+        console.log(`📊 تعداد دارای فیس: ${data.paid_requests?.length || 0}`);
+        
         setAllRequests(data.all_requests || []);
         setUnpaidRequests(data.unpaid_requests || []);
         setPaidRequests(data.paid_requests || []);
@@ -195,18 +211,26 @@ const AdmissionFeePage = () => {
           unpaid_requests: data.unpaid_requests?.length || 0,
           paid_requests: data.paid_requests?.length || 0
         }));
+      } else {
+        console.warn('⚠️ پاسخ نامعتبر از سرور:', response.data);
       }
     } catch (error) {
-      console.error('Error fetching requests:', error);
+      console.error('❌ خطا در دریافت درخواست‌های بستری:', error);
       toast.error('خطا در دریافت درخواست‌های بستری');
+      if (error.response) {
+        console.error('Status:', error.response.status);
+        console.error('Data:', error.response.data);
+      }
     }
   };
 
   // ============ بررسی هشدارها ============
   const checkAlerts = async () => {
     try {
-      const response = await axios.get('/api/admission-fees/pending/alerts');
+      console.log('📥 بررسی هشدارها...');
+      const response = await api.get('/admission-fees/pending/alerts');
       if (response.data?.data) {
+        console.log(`✅ ${response.data.data.length} هشدار فعال`);
         setAlertRequests(response.data.data);
         setStatistics(prev => ({
           ...prev,
@@ -214,7 +238,7 @@ const AdmissionFeePage = () => {
         }));
       }
     } catch (error) {
-      console.error('Error checking alerts:', error);
+      console.error('❌ خطا در بررسی هشدارها:', error);
     }
   };
 
@@ -233,7 +257,8 @@ const AdmissionFeePage = () => {
         day_number: calculateDayNumber(selectedRequest?.admission_date)
       };
 
-      await axios.post('/api/admission-fees', data);
+      console.log('📤 ثبت فیس جدید:', data);
+      await api.post('/admission-fees', data);
       toast.success('فیس بستری با موفقیت ایجاد شد');
       
       setModalVisible(false);
@@ -241,6 +266,7 @@ const AdmissionFeePage = () => {
       await fetchAllData();
       
     } catch (error) {
+      console.error('❌ خطا در ثبت فیس:', error);
       toast.error(error.response?.data?.message || 'خطا در ایجاد فیس بستری');
     } finally {
       setSubmitting(false);
@@ -259,7 +285,8 @@ const AdmissionFeePage = () => {
         fee_time: values.fee_time?.format('HH:mm') || moment().format('HH:mm')
       };
 
-      await axios.put(`/api/admission-fees/${editingFee.id}`, data);
+      console.log(`📤 ویرایش فیس #${editingFee.id}:`, data);
+      await api.put(`/admission-fees/${editingFee.id}`, data);
       toast.success('فیس بستری با موفقیت ویرایش شد');
       
       setEditModalVisible(false);
@@ -268,6 +295,7 @@ const AdmissionFeePage = () => {
       await fetchAllData();
       
     } catch (error) {
+      console.error('❌ خطا در ویرایش فیس:', error);
       toast.error(error.response?.data?.message || 'خطا در ویرایش فیس');
     } finally {
       setSubmitting(false);
@@ -282,10 +310,12 @@ const AdmissionFeePage = () => {
       icon: <ExclamationCircleOutlined />,
       onOk: async () => {
         try {
-          await axios.post(`/api/admission-fees/${id}/collect`);
+          console.log(`📤 دریافت فیس #${id}`);
+          await api.post(`/admission-fees/${id}/collect`);
           toast.success('فیس با موفقیت دریافت شد');
           await fetchAllData();
         } catch (error) {
+          console.error('❌ خطا در دریافت فیس:', error);
           toast.error(error.response?.data?.message || 'خطا در دریافت فیس');
         }
       }
@@ -303,10 +333,12 @@ const AdmissionFeePage = () => {
       cancelText: 'انصراف',
       onOk: async () => {
         try {
-          await axios.delete(`/api/admission-fees/${id}`);
+          console.log(`🗑️ حذف فیس #${id}`);
+          await api.delete(`/admission-fees/${id}`);
           toast.success('فیس با موفقیت حذف شد');
           await fetchAllData();
         } catch (error) {
+          console.error('❌ خطا در حذف فیس:', error);
           toast.error(error.response?.data?.message || 'خطا در حذف فیس');
         }
       }
@@ -316,12 +348,13 @@ const AdmissionFeePage = () => {
   // ============ پرینت رسید ============
   const handlePrintReceipt = async (id) => {
     try {
-      const response = await axios.get(`/api/admission-fees/${id}/print`);
+      console.log(`🖨️ پرینت رسید فیس #${id}`);
+      const response = await api.get(`/admission-fees/${id}/print`);
       setReceiptData(response.data.data);
       setReceiptModal(true);
-      // افزایش شمارش پرینت
-      await axios.post(`/api/admission-fees/${id}/increment-print`);
+      await api.post(`/admission-fees/${id}/increment-print`);
     } catch (error) {
+      console.error('❌ خطا در پرینت:', error);
       toast.error('خطا در دریافت اطلاعات برای پرینت');
     }
   };
@@ -468,130 +501,6 @@ const AdmissionFeePage = () => {
     if (request.bed_number) parts.push(`تخت: ${request.bed_number}`);
     return parts.length > 0 ? parts.join(' | ') : '-';
   };
-
-  // ============ ستون‌های جدول فیس‌ها ============
-  const feeColumns = [
-    {
-      title: 'شماره رسید',
-      dataIndex: 'receipt_number',
-      key: 'receipt_number',
-      render: (text) => <Tag color="blue">{text}</Tag>
-    },
-    {
-      title: 'روز بستری',
-      dataIndex: 'day_number',
-      key: 'day_number',
-      render: (day) => day ? `روز ${day}` : '-'
-    },
-    {
-      title: 'تاریخ',
-      dataIndex: 'fee_date',
-      key: 'fee_date',
-      render: (date) => formatDate(date)
-    },
-    {
-      title: 'ساعت',
-      dataIndex: 'fee_time',
-      key: 'fee_time',
-      render: (time) => time ? moment(time, 'HH:mm:ss').format('HH:mm') : '-'
-    },
-    {
-      title: 'مبلغ',
-      dataIndex: 'amount',
-      key: 'amount',
-      render: (amount) => <span style={{ color: '#fcd34d' }}>💰 {amount?.toLocaleString()} AFN</span>
-    },
-    {
-      title: 'پرداخت شده',
-      dataIndex: 'paid_amount',
-      key: 'paid_amount',
-      render: (amount) => <span style={{ color: '#22c55e' }}>{amount?.toLocaleString()} AFN</span>
-    },
-    {
-      title: 'باقیمانده',
-      key: 'remaining',
-      render: (_, record) => {
-        const remaining = calculateRemaining(record.amount, record.paid_amount, record.discount);
-        return <span style={{ color: remaining > 0 ? '#ef4444' : '#22c55e' }}>
-          {remaining.toFixed(2)} AFN
-        </span>;
-      }
-    },
-    {
-      title: 'نوع فیس',
-      dataIndex: 'fee_type',
-      key: 'fee_type',
-      render: (type) => ({
-        daily: 'روزانه',
-        weekly: 'هفتگی',
-        monthly: 'ماهانه',
-        custom: 'سفارشی'
-      }[type] || type)
-    },
-    {
-      title: 'روش پرداخت',
-      dataIndex: 'payment_method',
-      key: 'payment_method',
-      render: (method) => getMethodLabel(method)
-    },
-    {
-      title: 'وضعیت',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status) => {
-        const info = getStatusLabel(status);
-        return <Tag color={info.color} icon={info.icon}>{info.label}</Tag>;
-      }
-    },
-    {
-      title: 'عملیات',
-      key: 'actions',
-      render: (_, record) => (
-        <Space>
-          {record.status === 'pending' && (
-            <Tooltip title="دریافت فیس">
-              <Button
-                type="primary"
-                size="small"
-                icon={<CheckCircleOutlined />}
-                onClick={() => handleCollectFee(record.id)}
-              />
-            </Tooltip>
-          )}
-          <Tooltip title="ویرایش">
-            <Button
-              type="default"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleOpenEditForm(record)}
-            />
-          </Tooltip>
-          <Tooltip title="پرینت رسید">
-            <Button
-              type="default"
-              size="small"
-              icon={<PrinterOutlined />}
-              onClick={() => handlePrintReceipt(record.id)}
-            />
-          </Tooltip>
-          <Tooltip title="حذف">
-            <Popconfirm
-              title="آیا از حذف این فیس اطمینان دارید؟"
-              onConfirm={() => handleDeleteFee(record.id)}
-              okText="حذف"
-              cancelText="انصراف"
-            >
-              <Button
-                type="danger"
-                size="small"
-                icon={<DeleteOutlined />}
-              />
-            </Popconfirm>
-          </Tooltip>
-        </Space>
-      )
-    }
-  ];
 
   // ============ دریافت درخواست‌های فیلتر شده ============
   const getFilteredRequests = () => {
@@ -794,6 +703,261 @@ const AdmissionFeePage = () => {
     );
   };
 
+  // ============ ستون‌های جدول درخواست‌های بستری ============
+  const requestColumns = [
+    {
+      title: 'شماره',
+      key: 'index',
+      render: (_, __, index) => index + 1,
+      width: 50,
+    },
+    {
+      title: 'نام بیمار',
+      dataIndex: 'patient',
+      key: 'patient_name',
+      render: (patient) => patient?.full_name || 'نامشخص',
+    },
+    {
+      title: 'شماره مراجعه',
+      dataIndex: 'reg_id',
+      key: 'reg_id',
+    },
+    {
+      title: 'بخش',
+      dataIndex: 'ward_name',
+      key: 'ward_name',
+      render: (ward_name) => ward_name || '-',
+    },
+    {
+      title: 'تاریخ بستری',
+      dataIndex: 'admission_date',
+      key: 'admission_date',
+      render: (date) => formatDate(date),
+    },
+    {
+      title: 'وضعیت بستری',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => {
+        const statusMap = {
+          'admitted': { color: '#22c55e', label: 'بستری' },
+          'pending': { color: '#f59e0b', label: 'در انتظار' },
+          'discharged': { color: '#6b7280', label: 'ترخیص شده' },
+          'cancelled': { color: '#ef4444', label: 'لغو شده' },
+        };
+        const info = statusMap[status] || { color: '#6b7280', label: status };
+        return <Tag color={info.color}>{info.label}</Tag>;
+      }
+    },
+    {
+      title: 'وضعیت فیس',
+      dataIndex: 'has_fee',
+      key: 'has_fee',
+      render: (hasFee) => {
+        if (hasFee) {
+          return <Tag color="green" icon={<CheckCircleOutlined />}>دارای فیس</Tag>;
+        }
+        return <Tag color="orange" icon={<ClockCircleOutlined />}>بدون فیس</Tag>;
+      }
+    },
+    {
+      title: 'مبلغ فیس',
+      dataIndex: 'fee_amount',
+      key: 'fee_amount',
+      render: (amount) => amount ? <span style={{ color: '#fcd34d' }}>{amount?.toLocaleString()} AFN</span> : '-',
+    },
+    {
+      title: 'عملیات',
+      key: 'actions',
+      render: (_, record) => (
+        <Space>
+          <Tooltip title="مشاهده">
+            <Button
+              type="default"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => {
+                setSelectedRequest(record);
+                setModalVisible(true);
+              }}
+            />
+          </Tooltip>
+          {!record.has_fee && (
+            <Tooltip title="اخذ فیس">
+              <Button
+                type="primary"
+                size="small"
+                icon={<DollarOutlined />}
+                onClick={() => handleOpenFeeForm(record)}
+                style={{ backgroundColor: '#ef4444', borderColor: '#ef4444' }}
+              />
+            </Tooltip>
+          )}
+          {record.has_fee && record.fee_id && (
+            <Tooltip title="پرینت">
+              <Button
+                type="default"
+                size="small"
+                icon={<PrinterOutlined />}
+                onClick={() => handlePrintReceipt(record.fee_id)}
+              />
+            </Tooltip>
+          )}
+        </Space>
+      ),
+    }
+  ];
+
+  // ============ آیتم‌های تب برای Tabs ============
+  const tabItems = [
+    {
+      key: 'requests',
+      label: <span><FileTextOutlined /> درخواست‌های بستری</span>,
+      children: (
+        <>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            <Button
+              type={filterMode === 'all' ? 'primary' : 'default'}
+              onClick={() => setFilterMode('all')}
+            >
+              📋 همه ({allRequests.length})
+            </Button>
+            <Button
+              type={filterMode === 'unpaid' ? 'primary' : 'default'}
+              onClick={() => setFilterMode('unpaid')}
+              style={filterMode === 'unpaid' ? { backgroundColor: '#f59e0b', borderColor: '#f59e0b' } : {}}
+            >
+              🟡 بدون فیس ({unpaidRequests.length})
+            </Button>
+            <Button
+              type={filterMode === 'paid' ? 'primary' : 'default'}
+              onClick={() => setFilterMode('paid')}
+              style={filterMode === 'paid' ? { backgroundColor: '#22c55e', borderColor: '#22c55e' } : {}}
+            >
+              🟢 دارای فیس ({paidRequests.length})
+            </Button>
+            <Button
+              type={filterMode === 'alert' ? 'primary' : 'default'}
+              onClick={() => setFilterMode('alert')}
+              style={filterMode === 'alert' ? { backgroundColor: '#ef4444', borderColor: '#ef4444' } : {}}
+            >
+              🔔 هشدارها ({alertRequests.length})
+            </Button>
+          </div>
+          {renderRequestsList()}
+        </>
+      ),
+    },
+    {
+      key: 'fees',
+      label: <span><DollarOutlined /> لیست فیس‌ها</span>,
+      children: (
+        <>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            <Button
+              type={filterMode === 'all' ? 'primary' : 'default'}
+              onClick={() => setFilterMode('all')}
+            >
+              📋 همه ({allRequests.length})
+            </Button>
+            <Button
+              type={filterMode === 'unpaid' ? 'primary' : 'default'}
+              onClick={() => setFilterMode('unpaid')}
+              style={filterMode === 'unpaid' ? { backgroundColor: '#f59e0b', borderColor: '#f59e0b' } : {}}
+            >
+              🟡 بدون فیس ({unpaidRequests.length})
+            </Button>
+            <Button
+              type={filterMode === 'paid' ? 'primary' : 'default'}
+              onClick={() => setFilterMode('paid')}
+              style={filterMode === 'paid' ? { backgroundColor: '#22c55e', borderColor: '#22c55e' } : {}}
+            >
+              🟢 دارای فیس ({paidRequests.length})
+            </Button>
+          </div>
+          <Table
+            columns={requestColumns}
+            dataSource={displayRequests}
+            rowKey="id"
+            loading={loading}
+            pagination={{ pageSize: 10, showSizeChanger: true }}
+            scroll={{ x: 900 }}
+            locale={{
+              emptyText: (
+                <Empty
+                  description={
+                    <span style={{ color: '#9ca3af' }}>
+                      {filterMode === 'unpaid' && 'هیچ درخواست بدون فیس وجود ندارد'}
+                      {filterMode === 'paid' && 'هیچ درخواست دارای فیس وجود ندارد'}
+                      {filterMode === 'all' && 'هیچ درخواست بستری ثبت نشده است'}
+                    </span>
+                  }
+                />
+              )
+            }}
+          />
+        </>
+      ),
+    },
+    {
+      key: 'alerts',
+      label: <span><BellOutlined /> هشدارها</span>,
+      children: (
+        alertRequests.length > 0 ? (
+          <>
+            <Alert
+              message={`${alertRequests.length} هشدار فعال`}
+              description="بیمارانی که بیش از 24 ساعت از آخرین هشدار آنها گذشته است"
+              type="warning"
+              showIcon
+              style={{ marginBottom: '20px' }}
+            />
+            <List
+              dataSource={alertRequests}
+              renderItem={(item) => (
+                <List.Item
+                  style={styles.alertCard}
+                  actions={[
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<CheckCircleOutlined />}
+                      onClick={() => handleCollectFee(item.id)}
+                    >
+                      دریافت فیس
+                    </Button>
+                  ]}
+                >
+                  <List.Item.Meta
+                    avatar={<Avatar icon={<WarningOutlined />} style={{ backgroundColor: '#ff4d4f' }} />}
+                    title={
+                      <span>
+                        <strong>{getPatientFullName(item)}</strong>
+                        <Tag color="red" style={{ marginLeft: '10px' }}>
+                          ⏰ {moment(item.last_fee_alert_at).fromNow()}
+                        </Tag>
+                      </span>
+                    }
+                    description={
+                      <div>
+                        <p>🏥 {item.ward_name || 'نامشخص'} | {getLocationDisplay(item)}</p>
+                        <p>💰 مبلغ فیس: {item.fee_amount?.toLocaleString() || 0} AFN</p>
+                        <p>📅 روز بستری: {calculateDayNumber(item.admission_date)}</p>
+                        <p>📞 تماس: {item.patient?.mobile || '-'}</p>
+                      </div>
+                    }
+                  />
+                </List.Item>
+              )}
+            />
+          </>
+        ) : (
+          <Empty description="هیچ هشدار فعالی وجود ندارد" />
+        )
+      ),
+    }
+  ];
+
   // ============ رندر اصلی ============
   return (
     <div style={styles.container}>
@@ -880,6 +1044,20 @@ const AdmissionFeePage = () => {
             </div>
           </div>
         </div>
+
+        {/* نمایش دیباگ (فقط در حالت توسعه) */}
+        {debugData && process.env.NODE_ENV === 'development' && (
+          <div style={{ marginTop: '15px', padding: '10px', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '8px' }}>
+            <details>
+              <summary style={{ color: '#9ca3af', cursor: 'pointer' }}>
+                🔍 اطلاعات دیباگ (کلیک کنید)
+              </summary>
+              <pre style={{ color: '#9ca3af', fontSize: '11px', maxHeight: '200px', overflow: 'auto' }}>
+                {JSON.stringify(debugData, null, 2)}
+              </pre>
+            </details>
+          </div>
+        )}
       </div>
 
       {/* تب‌ها */}
@@ -889,117 +1067,8 @@ const AdmissionFeePage = () => {
         type="card"
         size="large"
         style={{ background: 'white', borderRadius: '12px', padding: '20px' }}
-      >
-        <TabPane
-          tab={<span><FileTextOutlined /> درخواست‌های بستری</span>}
-          key="requests"
-        >
-          {/* فیلترها */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-            <Button
-              type={filterMode === 'all' ? 'primary' : 'default'}
-              onClick={() => setFilterMode('all')}
-            >
-              📋 همه ({allRequests.length})
-            </Button>
-            <Button
-              type={filterMode === 'unpaid' ? 'primary' : 'default'}
-              onClick={() => setFilterMode('unpaid')}
-              style={filterMode === 'unpaid' ? { backgroundColor: '#f59e0b', borderColor: '#f59e0b' } : {}}
-            >
-              🟡 بدون فیس ({unpaidRequests.length})
-            </Button>
-            <Button
-              type={filterMode === 'paid' ? 'primary' : 'default'}
-              onClick={() => setFilterMode('paid')}
-              style={filterMode === 'paid' ? { backgroundColor: '#22c55e', borderColor: '#22c55e' } : {}}
-            >
-              🟢 دارای فیس ({paidRequests.length})
-            </Button>
-            <Button
-              type={filterMode === 'alert' ? 'primary' : 'default'}
-              onClick={() => setFilterMode('alert')}
-              style={filterMode === 'alert' ? { backgroundColor: '#ef4444', borderColor: '#ef4444' } : {}}
-            >
-              🔔 هشدارها ({alertRequests.length})
-            </Button>
-          </div>
-
-          {/* لیست درخواست‌ها */}
-          {renderRequestsList()}
-        </TabPane>
-
-        <TabPane
-          tab={<span><DollarOutlined /> لیست فیس‌ها</span>}
-          key="fees"
-        >
-          <Table
-            columns={feeColumns}
-            dataSource={fees}
-            rowKey="id"
-            loading={loading}
-            pagination={{ pageSize: 10, showSizeChanger: true }}
-            scroll={{ x: 1200 }}
-          />
-        </TabPane>
-
-        <TabPane
-          tab={<span><BellOutlined /> هشدارها</span>}
-          key="alerts"
-        >
-          {alertRequests.length > 0 ? (
-            <>
-              <Alert
-                message={`${alertRequests.length} هشدار فعال`}
-                description="بیمارانی که بیش از 24 ساعت از آخرین هشدار آنها گذشته است"
-                type="warning"
-                showIcon
-                style={{ marginBottom: '20px' }}
-              />
-              <List
-                dataSource={alertRequests}
-                renderItem={(item) => (
-                  <List.Item
-                    style={styles.alertCard}
-                    actions={[
-                      <Button
-                        type="primary"
-                        size="small"
-                        icon={<CheckCircleOutlined />}
-                        onClick={() => handleCollectFee(item.id)}
-                      >
-                        دریافت فیس
-                      </Button>
-                    ]}
-                  >
-                    <List.Item.Meta
-                      avatar={<Avatar icon={<WarningOutlined />} style={{ backgroundColor: '#ff4d4f' }} />}
-                      title={
-                        <span>
-                          <strong>{getPatientFullName(item)}</strong>
-                          <Tag color="red" style={{ marginLeft: '10px' }}>
-                            ⏰ {moment(item.last_fee_alert_at).fromNow()}
-                          </Tag>
-                        </span>
-                      }
-                      description={
-                        <div>
-                          <p>🏥 {item.ward_name || 'نامشخص'} | {getLocationDisplay(item)}</p>
-                          <p>💰 مبلغ فیس: {item.fee_amount?.toLocaleString() || 0} AFN</p>
-                          <p>📅 روز بستری: {calculateDayNumber(item.admission_date)}</p>
-                          <p>📞 تماس: {item.patient?.mobile || '-'}</p>
-                        </div>
-                      }
-                    />
-                  </List.Item>
-                )}
-              />
-            </>
-          ) : (
-            <Empty description="هیچ هشدار فعالی وجود ندارد" />
-          )}
-        </TabPane>
-      </Tabs>
+        items={tabItems}
+      />
 
       {/* مودال ثبت فیس */}
       <Modal
@@ -1011,7 +1080,7 @@ const AdmissionFeePage = () => {
         }}
         footer={null}
         width={700}
-        destroyOnClose
+        destroyOnHidden
       >
         {selectedRequest && (
           <div style={{
@@ -1059,62 +1128,28 @@ const AdmissionFeePage = () => {
           </div>
         )}
 
-        <Form
-          form={feeForm}
-          layout="vertical"
-          onFinish={handleSubmitFee}
-        >
+        <Form form={feeForm} layout="vertical" onFinish={handleSubmitFee}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item
-                name="amount"
-                label="مبلغ کل (AFN)"
-                rules={[{ required: true, message: 'لطفاً مبلغ را وارد کنید' }]}
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0}
-                  step={100}
-                  placeholder="مبلغ را وارد کنید"
-                />
+              <Form.Item name="amount" label="مبلغ کل (AFN)" rules={[{ required: true, message: 'لطفاً مبلغ را وارد کنید' }]}>
+                <InputNumber style={{ width: '100%' }} min={0} step={100} placeholder="مبلغ را وارد کنید" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="paid_amount"
-                label="مبلغ پرداخت شده (AFN)"
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0}
-                  step={100}
-                  placeholder="مبلغ پرداخت شده"
-                />
+              <Form.Item name="paid_amount" label="مبلغ پرداخت شده (AFN)">
+                <InputNumber style={{ width: '100%' }} min={0} step={100} placeholder="مبلغ پرداخت شده" />
               </Form.Item>
             </Col>
           </Row>
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item
-                name="discount"
-                label="تخفیف (%)"
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0}
-                  max={100}
-                  step={1}
-                  placeholder="درصد تخفیف"
-                />
+              <Form.Item name="discount" label="تخفیف (%)">
+                <InputNumber style={{ width: '100%' }} min={0} max={100} step={1} placeholder="درصد تخفیف" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="payment_method"
-                label="روش پرداخت"
-                rules={[{ required: true, message: 'لطفاً روش پرداخت را انتخاب کنید' }]}
-              >
+              <Form.Item name="payment_method" label="روش پرداخت" rules={[{ required: true, message: 'لطفاً روش پرداخت را انتخاب کنید' }]}>
                 <Select>
                   <Option value="cash">نقدی</Option>
                   <Option value="card">کارت بانکی</Option>
@@ -1128,11 +1163,7 @@ const AdmissionFeePage = () => {
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item
-                name="fee_type"
-                label="نوع فیس"
-                rules={[{ required: true, message: 'لطفاً نوع فیس را انتخاب کنید' }]}
-              >
+              <Form.Item name="fee_type" label="نوع فیس" rules={[{ required: true, message: 'لطفاً نوع فیس را انتخاب کنید' }]}>
                 <Select>
                   <Option value="daily">روزانه</Option>
                   <Option value="weekly">هفتگی</Option>
@@ -1142,10 +1173,7 @@ const AdmissionFeePage = () => {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="period"
-                label="دوره"
-              >
+              <Form.Item name="period" label="دوره">
                 <Select>
                   <Option value="morning">صبح</Option>
                   <Option value="evening">عصر</Option>
@@ -1158,64 +1186,33 @@ const AdmissionFeePage = () => {
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item
-                name="fee_date"
-                label="تاریخ"
-                rules={[{ required: true, message: 'لطفاً تاریخ را انتخاب کنید' }]}
-              >
+              <Form.Item name="fee_date" label="تاریخ" rules={[{ required: true, message: 'لطفاً تاریخ را انتخاب کنید' }]}>
                 <DatePicker format="YYYY/MM/DD" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="fee_time"
-                label="ساعت"
-                rules={[{ required: true, message: 'لطفاً ساعت را انتخاب کنید' }]}
-              >
+              <Form.Item name="fee_time" label="ساعت" rules={[{ required: true, message: 'لطفاً ساعت را انتخاب کنید' }]}>
                 <TimePicker format="HH:mm" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item
-            name="day_number"
-            label="شماره روز بستری"
-          >
-            <InputNumber
-              style={{ width: '100%' }}
-              min={1}
-              placeholder="شماره روز بستری"
-            />
+          <Form.Item name="day_number" label="شماره روز بستری">
+            <InputNumber style={{ width: '100%' }} min={1} placeholder="شماره روز بستری" />
           </Form.Item>
 
-          <Form.Item
-            name="description"
-            label="توضیحات"
-          >
+          <Form.Item name="description" label="توضیحات">
             <TextArea rows={2} placeholder="توضیحات اضافی..." />
           </Form.Item>
 
-          <Form.Item
-            name="note"
-            label="یادداشت"
-          >
+          <Form.Item name="note" label="یادداشت">
             <TextArea rows={2} placeholder="یادداشت..." />
           </Form.Item>
 
           <Form.Item>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-              <Button onClick={() => {
-                setModalVisible(false);
-                feeForm.resetFields();
-              }}>
-                انصراف
-              </Button>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={submitting}
-                icon={<SaveOutlined />}
-              >
+              <Button onClick={() => { setModalVisible(false); feeForm.resetFields(); }}>انصراف</Button>
+              <Button type="primary" htmlType="submit" loading={submitting} icon={<SaveOutlined />}>
                 {editingFee ? 'ذخیره تغییرات' : 'ثبت فیس'}
               </Button>
             </div>
@@ -1227,23 +1224,13 @@ const AdmissionFeePage = () => {
       <Modal
         title="✏️ ویرایش فیس بستری"
         open={editModalVisible}
-        onCancel={() => {
-          setEditModalVisible(false);
-          editForm.resetFields();
-          setEditingFee(null);
-        }}
+        onCancel={() => { setEditModalVisible(false); editForm.resetFields(); setEditingFee(null); }}
         footer={null}
         width={700}
-        destroyOnClose
+        destroyOnHidden
       >
         {editingFee && (
-          <div style={{
-            backgroundColor: 'rgba(15, 26, 42, 0.8)',
-            padding: '15px',
-            borderRadius: '8px',
-            marginBottom: '20px',
-            border: '1px solid #2a3a4a'
-          }}>
+          <div style={{ backgroundColor: 'rgba(15, 26, 42, 0.8)', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #2a3a4a' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div>
                 <span style={{ color: '#9ca3af', fontSize: '11px' }}>📄 شماره رسید</span>
@@ -1269,62 +1256,28 @@ const AdmissionFeePage = () => {
           </div>
         )}
 
-        <Form
-          form={editForm}
-          layout="vertical"
-          onFinish={handleEditFee}
-        >
+        <Form form={editForm} layout="vertical" onFinish={handleEditFee}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item
-                name="amount"
-                label="مبلغ کل (AFN)"
-                rules={[{ required: true, message: 'لطفاً مبلغ را وارد کنید' }]}
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0}
-                  step={100}
-                  placeholder="مبلغ را وارد کنید"
-                />
+              <Form.Item name="amount" label="مبلغ کل (AFN)" rules={[{ required: true, message: 'لطفاً مبلغ را وارد کنید' }]}>
+                <InputNumber style={{ width: '100%' }} min={0} step={100} placeholder="مبلغ را وارد کنید" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="paid_amount"
-                label="مبلغ پرداخت شده (AFN)"
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0}
-                  step={100}
-                  placeholder="مبلغ پرداخت شده"
-                />
+              <Form.Item name="paid_amount" label="مبلغ پرداخت شده (AFN)">
+                <InputNumber style={{ width: '100%' }} min={0} step={100} placeholder="مبلغ پرداخت شده" />
               </Form.Item>
             </Col>
           </Row>
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item
-                name="discount"
-                label="تخفیف (%)"
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0}
-                  max={100}
-                  step={1}
-                  placeholder="درصد تخفیف"
-                />
+              <Form.Item name="discount" label="تخفیف (%)">
+                <InputNumber style={{ width: '100%' }} min={0} max={100} step={1} placeholder="درصد تخفیف" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="payment_method"
-                label="روش پرداخت"
-                rules={[{ required: true, message: 'لطفاً روش پرداخت را انتخاب کنید' }]}
-              >
+              <Form.Item name="payment_method" label="روش پرداخت" rules={[{ required: true, message: 'لطفاً روش پرداخت را انتخاب کنید' }]}>
                 <Select>
                   <Option value="cash">نقدی</Option>
                   <Option value="card">کارت بانکی</Option>
@@ -1338,10 +1291,7 @@ const AdmissionFeePage = () => {
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item
-                name="fee_type"
-                label="نوع فیس"
-              >
+              <Form.Item name="fee_type" label="نوع فیس">
                 <Select>
                   <Option value="daily">روزانه</Option>
                   <Option value="weekly">هفتگی</Option>
@@ -1351,10 +1301,7 @@ const AdmissionFeePage = () => {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="period"
-                label="دوره"
-              >
+              <Form.Item name="period" label="دوره">
                 <Select>
                   <Option value="morning">صبح</Option>
                   <Option value="evening">عصر</Option>
@@ -1367,65 +1314,33 @@ const AdmissionFeePage = () => {
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item
-                name="fee_date"
-                label="تاریخ"
-                rules={[{ required: true, message: 'لطفاً تاریخ را انتخاب کنید' }]}
-              >
+              <Form.Item name="fee_date" label="تاریخ" rules={[{ required: true, message: 'لطفاً تاریخ را انتخاب کنید' }]}>
                 <DatePicker format="YYYY/MM/DD" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="fee_time"
-                label="ساعت"
-                rules={[{ required: true, message: 'لطفاً ساعت را انتخاب کنید' }]}
-              >
+              <Form.Item name="fee_time" label="ساعت" rules={[{ required: true, message: 'لطفاً ساعت را انتخاب کنید' }]}>
                 <TimePicker format="HH:mm" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item
-            name="day_number"
-            label="شماره روز بستری"
-          >
-            <InputNumber
-              style={{ width: '100%' }}
-              min={1}
-              placeholder="شماره روز بستری"
-            />
+          <Form.Item name="day_number" label="شماره روز بستری">
+            <InputNumber style={{ width: '100%' }} min={1} placeholder="شماره روز بستری" />
           </Form.Item>
 
-          <Form.Item
-            name="description"
-            label="توضیحات"
-          >
+          <Form.Item name="description" label="توضیحات">
             <TextArea rows={2} placeholder="توضیحات اضافی..." />
           </Form.Item>
 
-          <Form.Item
-            name="note"
-            label="یادداشت"
-          >
+          <Form.Item name="note" label="یادداشت">
             <TextArea rows={2} placeholder="یادداشت..." />
           </Form.Item>
 
           <Form.Item>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-              <Button onClick={() => {
-                setEditModalVisible(false);
-                editForm.resetFields();
-                setEditingFee(null);
-              }}>
-                انصراف
-              </Button>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={submitting}
-                icon={<SaveOutlined />}
-              >
+              <Button onClick={() => { setEditModalVisible(false); editForm.resetFields(); setEditingFee(null); }}>انصراف</Button>
+              <Button type="primary" htmlType="submit" loading={submitting} icon={<SaveOutlined />}>
                 ذخیره تغییرات
               </Button>
             </div>
@@ -1439,14 +1354,11 @@ const AdmissionFeePage = () => {
         open={receiptModal}
         onCancel={() => setReceiptModal(false)}
         footer={[
-          <Button key="print" type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>
-            پرینت
-          </Button>,
-          <Button key="close" onClick={() => setReceiptModal(false)}>
-            بستن
-          </Button>
+          <Button key="print" type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>پرینت</Button>,
+          <Button key="close" onClick={() => setReceiptModal(false)}>بستن</Button>
         ]}
         width={600}
+        destroyOnHidden
       >
         {receiptData && (
           <div id="receipt-content">
@@ -1457,64 +1369,24 @@ const AdmissionFeePage = () => {
               <h4>رسید فیس بستری</h4>
             </div>
             <Descriptions bordered column={2}>
-              <Descriptions.Item label="شماره رسید" span={2}>
-                {receiptData.fee?.receipt_number}
-              </Descriptions.Item>
-              <Descriptions.Item label="نام بیمار" span={2}>
-                {receiptData.patient?.full_name || 'نامشخص'}
-              </Descriptions.Item>
-              <Descriptions.Item label="کد ملی">
-                {receiptData.patient?.national_id || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="شماره تماس">
-                {receiptData.patient?.phone || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="بخش">
-                {receiptData.admission?.ward?.name || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="تخت">
-                {receiptData.admission?.bed?.bed_number || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="موقعیت">
-                {getLocationDisplay(receiptData.admission)}
-              </Descriptions.Item>
-              <Descriptions.Item label="روز بستری">
-                {receiptData.fee?.day_number || 1}
-              </Descriptions.Item>
-              <Descriptions.Item label="تاریخ">
-                {formatDate(receiptData.fee?.fee_date)}
-              </Descriptions.Item>
-              <Descriptions.Item label="ساعت">
-                {receiptData.fee?.fee_time ? moment(receiptData.fee.fee_time, 'HH:mm:ss').format('HH:mm') : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="مبلغ" span={2}>
-                <span style={{ color: '#fcd34d', fontWeight: 'bold' }}>
-                  {receiptData.fee?.amount?.toLocaleString()} AFN
-                </span>
-              </Descriptions.Item>
-              <Descriptions.Item label="پرداخت شده">
-                {receiptData.fee?.paid_amount?.toLocaleString()} AFN
-              </Descriptions.Item>
-              <Descriptions.Item label="تخفیف">
-                {receiptData.fee?.discount || 0}%
-              </Descriptions.Item>
-              <Descriptions.Item label="باقیمانده">
-                <span style={{ color: '#ef4444' }}>
-                  {calculateRemaining(receiptData.fee?.amount, receiptData.fee?.paid_amount, receiptData.fee?.discount).toFixed(2)} AFN
-                </span>
-              </Descriptions.Item>
-              <Descriptions.Item label="روش پرداخت">
-                {getMethodLabel(receiptData.fee?.payment_method)}
-              </Descriptions.Item>
-              <Descriptions.Item label="وضعیت">
-                {getStatusLabel(receiptData.fee?.status)?.label}
-              </Descriptions.Item>
-              <Descriptions.Item label="دریافت کننده">
-                {receiptData.collector?.name || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="توضیحات" span={2}>
-                {receiptData.fee?.description || 'ندارد'}
-              </Descriptions.Item>
+              <Descriptions.Item label="شماره رسید" span={2}>{receiptData.fee?.receipt_number}</Descriptions.Item>
+              <Descriptions.Item label="نام بیمار" span={2}>{receiptData.patient?.full_name || 'نامشخص'}</Descriptions.Item>
+              <Descriptions.Item label="کد ملی">{receiptData.patient?.national_id || '-'}</Descriptions.Item>
+              <Descriptions.Item label="شماره تماس">{receiptData.patient?.phone || '-'}</Descriptions.Item>
+              <Descriptions.Item label="بخش">{receiptData.admission?.ward?.name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="تخت">{receiptData.admission?.bed?.bed_number || '-'}</Descriptions.Item>
+              <Descriptions.Item label="موقعیت">{getLocationDisplay(receiptData.admission)}</Descriptions.Item>
+              <Descriptions.Item label="روز بستری">{receiptData.fee?.day_number || 1}</Descriptions.Item>
+              <Descriptions.Item label="تاریخ">{formatDate(receiptData.fee?.fee_date)}</Descriptions.Item>
+              <Descriptions.Item label="ساعت">{receiptData.fee?.fee_time ? moment(receiptData.fee.fee_time, 'HH:mm:ss').format('HH:mm') : '-'}</Descriptions.Item>
+              <Descriptions.Item label="مبلغ" span={2}><span style={{ color: '#fcd34d', fontWeight: 'bold' }}>{receiptData.fee?.amount?.toLocaleString()} AFN</span></Descriptions.Item>
+              <Descriptions.Item label="پرداخت شده">{receiptData.fee?.paid_amount?.toLocaleString()} AFN</Descriptions.Item>
+              <Descriptions.Item label="تخفیف">{receiptData.fee?.discount || 0}%</Descriptions.Item>
+              <Descriptions.Item label="باقیمانده"><span style={{ color: '#ef4444' }}>{calculateRemaining(receiptData.fee?.amount, receiptData.fee?.paid_amount, receiptData.fee?.discount).toFixed(2)} AFN</span></Descriptions.Item>
+              <Descriptions.Item label="روش پرداخت">{getMethodLabel(receiptData.fee?.payment_method)}</Descriptions.Item>
+              <Descriptions.Item label="وضعیت">{getStatusLabel(receiptData.fee?.status)?.label}</Descriptions.Item>
+              <Descriptions.Item label="دریافت کننده">{receiptData.collector?.name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="توضیحات" span={2}>{receiptData.fee?.description || 'ندارد'}</Descriptions.Item>
             </Descriptions>
             <div style={{ textAlign: 'center', marginTop: 20, borderTop: '1px dashed #ccc', paddingTop: 10 }}>
               <p>با تشکر از اعتماد شما</p>
