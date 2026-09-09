@@ -326,22 +326,37 @@ export default function LaboratoryRequest({
 
     setLoadingResults(true);
     try {
-      // دریافت نتایج از API
-      const response = await api.get(`/laboratory-results/all?registration_id=${registration.reg_id}`);
-      console.log('📥 Results Response:', response.data);
+      // ✅ اصلاح: استفاده از مسیر صحیح
+      const url = `/laboratory-results/registration/${registration.reg_id}`;
+      console.log('📥 Loading results from:', url);
+      
+      const response = await api.get(url);
+      console.log('📥 Results Response:', JSON.stringify(response.data, null, 2));
       
       if (response.data?.success) {
         const data = response.data.data;
-        if (Array.isArray(data) && data.length > 0) {
-          setResultsData(data);
+        
+        let resultsArray = [];
+        
+        if (Array.isArray(data)) {
+          resultsArray = data;
+        } else if (data.results && Array.isArray(data.results)) {
+          resultsArray = data.results;
+        } else if (data.data && Array.isArray(data.data)) {
+          resultsArray = data.data;
+        }
+        
+        if (resultsArray.length > 0) {
+          setResultsData(resultsArray);
           setHasResults(true);
-          console.log(`✅ Loaded ${data.length} results from server`);
+          console.log(`✅ Loaded ${resultsArray.length} results from server`);
         } else {
           setResultsData([]);
           setHasResults(false);
+          console.log('ℹ️ No results found');
         }
       } else {
-        console.log('⚠️ No results found');
+        console.log('⚠️ No results found or success false');
         setResultsData([]);
         setHasResults(false);
       }
@@ -350,6 +365,8 @@ export default function LaboratoryRequest({
       if (err.response?.status !== 404) {
         // فقط در صورت خطای غیر از 404 نمایش بده
       }
+      setResultsData([]);
+      setHasResults(false);
     } finally {
       setLoadingResults(false);
     }
@@ -730,7 +747,7 @@ export default function LaboratoryRequest({
     printWindow.print();
   };
 
-  // ============ دریافت و دانلود PDF (اصلاح شده) ============
+  // ============ دریافت و دانلود PDF ============
   const handleDownloadPdf = async (laboratoryResultId, fileName) => {
     if (!laboratoryResultId) {
       toast.error("❌ شناسه نتیجه موجود نیست");
@@ -784,22 +801,95 @@ export default function LaboratoryRequest({
     }
   };
 
-  // ============ نمایش نتایج ثبت شده (اصلاح شده نهایی) ============
-  // ============ نمایش نتایج ثبت شده (اصلاح شده - فقط مشاهده) ============
-const renderResults = () => {
-  console.log("📊 renderResults called, resultsData:", resultsData?.length || 0);
-  console.log("📊 hasResults:", hasResults);
-  console.log("📊 tests:", tests?.length || 0);
-  
-  // ✅ اگر نتایج در state وجود دارد
-  if (resultsData && resultsData.length > 0) {
+  // ============ نمایش نتایج ثبت شده (اصلاح شده) ============
+  const renderResults = () => {
+    console.log("📊 renderResults called");
+    console.log("📊 resultsData:", resultsData);
+    console.log("📊 hasResults:", hasResults);
+    console.log("📊 tests:", tests);
+    
+    // ✅ جمع‌آوری نتایج از منابع مختلف
+    let allResults = [];
+    
+    // از resultsData
+    if (resultsData && resultsData.length > 0) {
+      allResults = [...resultsData];
+      console.log(`📊 Added ${allResults.length} results from resultsData`);
+    }
+    
+    // از tests - اگر نتیجه دارند
+    if (tests && tests.length > 0) {
+      for (const test of tests) {
+        if (test.has_result && test.result_details) {
+          // بررسی اینکه آیا این نتیجه قبلاً اضافه شده
+          const exists = allResults.some(r => 
+            r.id === test.result_details.id || 
+            r.laboratory_request_id === test.id
+          );
+          if (!exists) {
+            allResults.push({
+              ...test.result_details,
+              laboratory_request_id: test.id,
+              test_type: test.test_type,
+              test_type_label: test.test_type_label,
+              test_name: test.test_name,
+              result_details: test.result_details
+            });
+            console.log(`📊 Added result from test ${test.id}`);
+          }
+        }
+      }
+    }
+    
+    console.log(`📊 Total results to display: ${allResults.length}`);
+    
+    // اگر هیچ نتیجه‌ای وجود ندارد
+    if (allResults.length === 0) {
+      return (
+        <div style={{
+          textAlign: 'center',
+          padding: '20px',
+          color: '#9ca3af',
+          backgroundColor: '#0f1a2a',
+          borderRadius: '8px',
+          border: '1px dashed #374151',
+          marginTop: '25px'
+        }}>
+          <div style={{ fontSize: '30px' }}>📋</div>
+          <div>هنوز نتیجه‌ای برای تست‌ها ثبت نشده است</div>
+          <div style={{ fontSize: '12px', marginTop: '5px' }}>
+            نتایج پس از ثبت در بخش لابراتوار در اینجا نمایش داده می‌شود
+          </div>
+          <button
+            onClick={() => {
+              loadResultsFromServer();
+              loadTestsFromServer();
+            }}
+            style={{
+              marginTop: '10px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              padding: '4px 16px',
+              borderRadius: '4px',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            🔄 بررسی مجدد
+          </button>
+        </div>
+      );
+    }
+    
+    // ✅ نمایش نتایج
     return (
       <div style={{ marginTop: '25px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
         <h4 style={{ color: '#22c55e', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span>✅</span>
           نتایج ثبت شده لابراتوار
           <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'normal' }}>
-            ({resultsData.length} نتیجه)
+            ({allResults.length} نتیجه)
           </span>
           <button
             onClick={() => {
@@ -826,16 +916,31 @@ const renderResults = () => {
           gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
           gap: '15px'
         }}>
-          {resultsData.map((result) => {
+          {allResults.map((result, index) => {
             const resultData = result.result_details || result;
-            const testData = result.test || {};
-            const patient = patientInfo?.patient || registration?.patient || {};
+            const testType = result.test_type_label || result.test_type || 'آزمایش';
+            const testName = result.test_name || '';
             
-            const statusLabel = resultStatusLabels[resultData.result_status] || resultData.result_status || 'نامشخص';
+            const statusLabels = {
+              'Draft': 'پیش‌نویس',
+              'Completed': 'تکمیل شده',
+              'Verified': 'تأیید شده',
+              'Delivered': 'تحویل شده',
+              'Cancelled': 'لغو شده'
+            };
+            const statusLabel = statusLabels[resultData.result_status] || resultData.result_status || 'نامشخص';
+            
+            const statusColors = {
+              'Draft': '#f59e0b',
+              'Completed': '#10b981',
+              'Verified': '#3b82f6',
+              'Delivered': '#8b5cf6',
+              'Cancelled': '#ef4444'
+            };
             
             return (
               <div
-                key={result.id || Math.random()}
+                key={result.id || index}
                 style={{
                   backgroundColor: '#0f1a2a',
                   border: '1px solid #2a3a4a',
@@ -854,19 +959,16 @@ const renderResults = () => {
                 }}>
                   <div>
                     <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '14px' }}>
-                      {resultData.test_type_label || resultData.test_type || testData.test_type || 'آزمایش'}
+                      {testType}
                     </span>
-                    {resultData.test_name && (
+                    {testName && (
                       <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>
-                        {resultData.test_name}
+                        {testName}
                       </span>
                     )}
                   </div>
                   <span style={{
-                    backgroundColor: resultData.result_status === 'Completed' ? '#10b981' : 
-                                  resultData.result_status === 'Verified' ? '#3b82f6' :
-                                  resultData.result_status === 'Delivered' ? '#8b5cf6' :
-                                  resultData.result_status === 'Cancelled' ? '#ef4444' : '#f59e0b',
+                    backgroundColor: statusColors[resultData.result_status] || '#f59e0b',
                     color: 'white',
                     padding: '2px 10px',
                     borderRadius: '12px',
@@ -886,21 +988,25 @@ const renderResults = () => {
                   <div>
                     <span style={{ color: '#6b7280', fontSize: '11px' }}>نتیجه:</span>
                     <div style={{ color: 'white', fontWeight: 'bold', fontSize: '15px' }}>
-                      {resultData.result || '-'}
+                      {resultData.result || resultData.result_value || '-'}
                     </div>
                   </div>
-                  <div>
-                    <span style={{ color: '#6b7280', fontSize: '11px' }}>محدوده نرمال:</span>
-                    <div style={{ color: '#9ca3af', fontSize: '14px' }}>
-                      {resultData.normal_range || '-'}
+                  {resultData.normal_range && (
+                    <div>
+                      <span style={{ color: '#6b7280', fontSize: '11px' }}>محدوده نرمال:</span>
+                      <div style={{ color: '#9ca3af', fontSize: '14px' }}>
+                        {resultData.normal_range}
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#6b7280', fontSize: '11px' }}>تفسیر:</span>
-                    <div style={{ color: '#9ca3af', fontSize: '13px' }}>
-                      {resultData.interpretation || '-'}
+                  )}
+                  {resultData.interpretation && (
+                    <div>
+                      <span style={{ color: '#6b7280', fontSize: '11px' }}>تفسیر:</span>
+                      <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                        {resultData.interpretation}
+                      </div>
                     </div>
-                  </div>
+                  )}
                   {resultData.remarks && (
                     <div style={{ gridColumn: 'span 2' }}>
                       <span style={{ color: '#6b7280', fontSize: '11px' }}>یادداشت:</span>
@@ -920,12 +1026,12 @@ const renderResults = () => {
                   <div style={{ gridColumn: 'span 2' }}>
                     <span style={{ color: '#6b7280', fontSize: '11px' }}>تاریخ نتیجه:</span>
                     <div style={{ color: '#9ca3af', fontSize: '13px' }}>
-                      {resultData.analysis_completed_at ? new Date(resultData.analysis_completed_at).toLocaleDateString('fa-IR') + ' ' + new Date(resultData.analysis_completed_at).toLocaleTimeString('fa-IR') : '-'}
+                      {resultData.analysis_completed_at ? new Date(resultData.analysis_completed_at).toLocaleDateString('fa-IR') + ' ' + new Date(resultData.analysis_completed_at).toLocaleTimeString('fa-IR') : 
+                       resultData.created_at ? new Date(resultData.created_at).toLocaleDateString('fa-IR') : '-'}
                     </div>
                   </div>
                   {(resultData.pdf_url || resultData.pdf_file) && (
                     <div style={{ gridColumn: 'span 2', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {/* ✅ فقط دکمه مشاهده PDF - بدون دکمه دانلود */}
                       <a
                         href={resultData.pdf_url || `/storage/${resultData.pdf_file}`}
                         target="_blank"
@@ -953,45 +1059,8 @@ const renderResults = () => {
         </div>
       </div>
     );
-  }
-  
-  // ✅ اگر هیچ نتیجه‌ای وجود ندارد
-  return (
-    <div style={{
-      textAlign: 'center',
-      padding: '20px',
-      color: '#9ca3af',
-      backgroundColor: '#0f1a2a',
-      borderRadius: '8px',
-      border: '1px dashed #374151',
-      marginTop: '25px'
-    }}>
-      <div style={{ fontSize: '30px' }}>📋</div>
-      <div>هنوز نتیجه‌ای برای تست‌ها ثبت نشده است</div>
-      <div style={{ fontSize: '12px', marginTop: '5px' }}>
-        نتایج پس از ثبت در بخش لابراتوار در اینجا نمایش داده می‌شود
-      </div>
-      <button
-        onClick={() => {
-          loadResultsFromServer();
-          loadTestsFromServer();
-        }}
-        style={{
-          marginTop: '10px',
-          backgroundColor: '#3b82f6',
-          color: 'white',
-          padding: '4px 16px',
-          borderRadius: '4px',
-          border: 'none',
-          cursor: 'pointer',
-          fontSize: '12px'
-        }}
-      >
-        🔄 بررسی مجدد
-      </button>
-    </div>
-  );
-};
+  };
+
   // ============ وضعیت‌ها ============
   const patient = patientInfo?.patient || registration?.patient || {};
   const isDisabled = isCompleted || isTreatmentComplete || isSubmitting || isSubmittingForm;
@@ -1746,7 +1815,6 @@ const renderResults = () => {
                           {test.has_result && test.result_details?.pdf_url && (
                             <button 
                               onClick={() => {
-                                // ✅ استفاده از laboratory_result_id برای دانلود
                                 const resultId = test.result_details?.id || test.id;
                                 handleDownloadPdf(resultId, test.result_details?.pdf_file_name || 'result.pdf');
                               }}

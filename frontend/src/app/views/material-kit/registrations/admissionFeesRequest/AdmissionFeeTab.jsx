@@ -25,7 +25,7 @@ import 'moment-jalaali';
 const { Option } = Select;
 const { TextArea } = Input;
 
-// استایل‌های سفارشی
+// ============ استایل‌های سفارشی ============
 const styles = {
   container: {
     padding: '24px',
@@ -55,6 +55,26 @@ const styles = {
     border: '1px solid #ef4444',
     marginBottom: '10px'
   }
+};
+
+// ============ تابع کمکی برای تبدیل به عدد ============
+const toNumber = (value) => {
+  const num = parseFloat(value);
+  return isNaN(num) ? 0 : num;
+};
+
+// ============ محاسبه دقیق مبلغ باقی‌مانده ============
+const calculateRemaining = (amount, paidAmount, discountPercent) => {
+  const amountNum = toNumber(amount || 0);
+  const paidNum = toNumber(paidAmount || 0);
+  const discountNum = toNumber(discountPercent || 0);
+  
+  // محاسبه مبلغ تخفیف
+  const discountAmount = (amountNum * discountNum) / 100;
+  // محاسبه مبلغ باقی‌مانده
+  const remaining = amountNum - paidNum - discountAmount;
+  
+  return Math.max(0, remaining);
 };
 
 const AdmissionFeePage = () => {
@@ -164,10 +184,10 @@ const AdmissionFeePage = () => {
       console.log(`✅ ${feesList.length} فیس دریافت شد`);
       setFees(feesList);
 
-      // به‌روزرسانی آمار
-      const totalAmount = feesList.reduce((sum, f) => sum + (f.amount || 0), 0);
-      const paidAmount = feesList.filter(f => f.status === 'paid').reduce((sum, f) => sum + (f.amount || 0), 0);
-      const pendingAmount = feesList.filter(f => f.status === 'pending').reduce((sum, f) => sum + (f.amount || 0), 0);
+      // به‌روزرسانی آمار با استفاده از toNumber
+      const totalAmount = feesList.reduce((sum, f) => sum + toNumber(f.amount), 0);
+      const paidAmount = feesList.filter(f => f.status === 'paid').reduce((sum, f) => sum + toNumber(f.amount), 0);
+      const pendingAmount = feesList.filter(f => f.status === 'pending').reduce((sum, f) => sum + toNumber(f.amount), 0);
 
       setStatistics(prev => ({
         ...prev,
@@ -188,11 +208,10 @@ const AdmissionFeePage = () => {
   // ============ دریافت تمام درخواست‌های بستری ============
   const fetchAllRequests = async () => {
     try {
-      console.log('📥 دریافت درخواست‌های بستری از: /admission-requests/all');
-      const response = await api.get('/admission-requests/all');
+      console.log('📥 دریافت درخواست‌های بستری از: /admissions/all');
+      const response = await api.get('/admissions/all');
       console.log('✅ پاسخ درخواست‌ها:', response.data);
       
-      // ذخیره داده برای دیباگ
       setDebugData(response.data);
 
       if (response.data?.success && response.data?.data) {
@@ -246,24 +265,39 @@ const AdmissionFeePage = () => {
   const handleSubmitFee = async (values) => {
     setSubmitting(true);
     try {
+      const regId = selectedRequest?.reg_id || admission?.reg_id;
+      
+      if (!regId) {
+        toast.error('شناسه مراجعه (reg_id) یافت نشد');
+        setSubmitting(false);
+        return;
+      }
+
       const data = {
         ...values,
         admission_request_id: selectedRequest?.id || admissionId,
         patient_id: selectedRequest?.patient_id || admission?.patient_id,
-        reg_id: selectedRequest?.reg_id || admission?.reg_id,
+        reg_id: regId,
         doctor_id: selectedRequest?.doctor_id || admission?.doctor_id,
         fee_date: values.fee_date?.format('YYYY-MM-DD') || moment().format('YYYY-MM-DD'),
         fee_time: values.fee_time?.format('HH:mm') || moment().format('HH:mm'),
-        day_number: calculateDayNumber(selectedRequest?.admission_date)
+        day_number: calculateDayNumber(selectedRequest?.admission_date),
+        // محاسبه خودکار باقی‌مانده
+        discount: values.discount || 0,
+        paid_amount: values.paid_amount || 0
       };
 
       console.log('📤 ثبت فیس جدید:', data);
-      await api.post('/admission-fees', data);
-      toast.success('فیس بستری با موفقیت ایجاد شد');
+      const response = await api.post('/admission-fees', data);
       
-      setModalVisible(false);
-      feeForm.resetFields();
-      await fetchAllData();
+      if (response.data?.success) {
+        toast.success('فیس بستری با موفقیت ایجاد شد');
+        setModalVisible(false);
+        feeForm.resetFields();
+        await fetchAllData();
+      } else {
+        toast.error(response.data?.message || 'خطا در ایجاد فیس بستری');
+      }
       
     } catch (error) {
       console.error('❌ خطا در ثبت فیس:', error);
@@ -282,17 +316,24 @@ const AdmissionFeePage = () => {
       const data = {
         ...values,
         fee_date: values.fee_date?.format('YYYY-MM-DD') || moment().format('YYYY-MM-DD'),
-        fee_time: values.fee_time?.format('HH:mm') || moment().format('HH:mm')
+        fee_time: values.fee_time?.format('HH:mm') || moment().format('HH:mm'),
+        // محاسبه خودکار باقی‌مانده
+        discount: values.discount || 0,
+        paid_amount: values.paid_amount || 0
       };
 
       console.log(`📤 ویرایش فیس #${editingFee.id}:`, data);
-      await api.put(`/admission-fees/${editingFee.id}`, data);
-      toast.success('فیس بستری با موفقیت ویرایش شد');
+      const response = await api.put(`/admission-fees/${editingFee.id}`, data);
       
-      setEditModalVisible(false);
-      editForm.resetFields();
-      setEditingFee(null);
-      await fetchAllData();
+      if (response.data?.success) {
+        toast.success('فیس بستری با موفقیت ویرایش شد');
+        setEditModalVisible(false);
+        editForm.resetFields();
+        setEditingFee(null);
+        await fetchAllData();
+      } else {
+        toast.error(response.data?.message || 'خطا در ویرایش فیس');
+      }
       
     } catch (error) {
       console.error('❌ خطا در ویرایش فیس:', error);
@@ -365,7 +406,7 @@ const AdmissionFeePage = () => {
     setEditingFee(null);
     feeForm.resetFields();
     
-    const defaultAmount = request?.fee_amount || admission?.fee_amount || 0;
+    const defaultAmount = toNumber(request?.fee_amount || admission?.fee_amount || 0);
     const dayNumber = calculateDayNumber(request?.admission_date);
     
     feeForm.setFieldsValue({
@@ -394,9 +435,9 @@ const AdmissionFeePage = () => {
     setEditingFee(fee);
     editForm.resetFields();
     editForm.setFieldsValue({
-      amount: fee.amount || 0,
-      paid_amount: fee.paid_amount || 0,
-      discount: fee.discount || 0,
+      amount: toNumber(fee.amount || 0),
+      paid_amount: toNumber(fee.paid_amount || 0),
+      discount: toNumber(fee.discount_percent || fee.discount || 0),
       payment_method: fee.payment_method || 'cash',
       fee_date: moment(fee.fee_date),
       fee_time: moment(fee.fee_time, 'HH:mm:ss'),
@@ -454,11 +495,6 @@ const AdmissionFeePage = () => {
     } catch {
       return moment(date).format('YYYY/MM/DD HH:mm');
     }
-  };
-
-  const calculateRemaining = (amount, paidAmount, discount) => {
-    const discountAmount = (amount || 0) * ((discount || 0) / 100);
-    return (amount || 0) - (paidAmount || 0) - discountAmount;
   };
 
   const getPatientFullName = (request) => {
@@ -544,6 +580,13 @@ const AdmissionFeePage = () => {
           const hasFeeRecord = request.has_fee === true || (request.fee_id !== null && request.fee_id !== undefined && request.fee_id !== 0);
           const feeInfo = fees.find(f => f.admission_request_id === request.id);
           const isAlert = filterMode === 'alert' || (request.last_fee_alert_at && moment().diff(moment(request.last_fee_alert_at), 'hours') >= 24);
+          
+          // محاسبه مبلغ باقی‌مانده
+          const remainingAmount = feeInfo ? calculateRemaining(
+            feeInfo.amount,
+            feeInfo.paid_amount,
+            feeInfo.discount_percent || feeInfo.discount || 0
+          ) : 0;
           
           return (
             <div
@@ -635,7 +678,7 @@ const AdmissionFeePage = () => {
                     )}
                   </div>
 
-                  {/* اطلاعات فیس */}
+                  {/* اطلاعات فیس - با نمایش کامل مبالغ و محاسبه اتوماتیک باقی‌مانده */}
                   {hasFeeRecord && feeInfo && (
                     <div style={{
                       marginTop: '8px',
@@ -645,16 +688,35 @@ const AdmissionFeePage = () => {
                       border: '1px solid #22c55e'
                     }}>
                       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '12px' }}>
-                        <span style={{ color: '#fcd34d' }}>💰 {feeInfo.amount?.toFixed(2)} AFN</span>
-                        <span style={{ color: '#22c55e' }}>✅ پرداخت: {feeInfo.paid_amount?.toFixed(2)} AFN</span>
-                        {feeInfo.discount > 0 && (
-                          <span style={{ color: '#f59e0b' }}>تخفیف: {feeInfo.discount}%</span>
-                        )}
-                        <span style={{ color: '#ef4444' }}>
-                          باقیمانده: {calculateRemaining(feeInfo.amount, feeInfo.paid_amount, feeInfo.discount).toFixed(2)} AFN
+                        <span style={{ color: '#fcd34d' }}>
+                          💰 مبلغ کل: {toNumber(feeInfo.amount).toFixed(2)} AFN
                         </span>
-                        <span style={{ color: '#9ca3af' }}>روش: {getMethodLabel(feeInfo.payment_method)}</span>
-                        <span style={{ color: '#9ca3af' }}>روز: {feeInfo.day_number || 1}</span>
+                        <span style={{ color: '#22c55e' }}>
+                          ✅ پرداخت شده: {toNumber(feeInfo.paid_amount).toFixed(2)} AFN
+                        </span>
+                        {toNumber(feeInfo.discount_percent || feeInfo.discount || 0) > 0 && (
+                          <span style={{ color: '#f59e0b' }}>
+                            تخفیف: {toNumber(feeInfo.discount_percent || feeInfo.discount || 0)}%
+                          </span>
+                        )}
+                        <span style={{ 
+                          color: remainingAmount <= 0 ? '#22c55e' : '#ef4444',
+                          fontWeight: 'bold'
+                        }}>
+                          📊 باقی‌مانده: {remainingAmount.toFixed(2)} AFN
+                          {remainingAmount <= 0 && ' ✅ کامل'}
+                        </span>
+                        <span style={{ color: '#9ca3af' }}>
+                          روش: {getMethodLabel(feeInfo.payment_method)}
+                        </span>
+                        <span style={{ color: '#9ca3af' }}>
+                          روز: {feeInfo.day_number || 1}
+                        </span>
+                        {feeInfo.status === 'paid' && (
+                          <span style={{ color: '#22c55e', fontWeight: 'bold' }}>
+                            ✅ پرداخت کامل
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -683,13 +745,23 @@ const AdmissionFeePage = () => {
                       >
                         مشاهده
                       </Button>
-                      {feeInfo && (
+                      {feeInfo && feeInfo.status !== 'paid' && (
                         <Button
                           type="default"
                           icon={<EditOutlined />}
                           onClick={() => handleOpenEditForm(feeInfo)}
                         >
                           ویرایش
+                        </Button>
+                      )}
+                      {feeInfo && feeInfo.status === 'pending' && remainingAmount > 0 && (
+                        <Button
+                          type="primary"
+                          icon={<CheckCircleOutlined />}
+                          onClick={() => handleCollectFee(feeInfo.id)}
+                          style={{ backgroundColor: '#22c55e', borderColor: '#22c55e' }}
+                        >
+                          دریافت فیس
                         </Button>
                       )}
                     </>
@@ -764,47 +836,91 @@ const AdmissionFeePage = () => {
       title: 'مبلغ فیس',
       dataIndex: 'fee_amount',
       key: 'fee_amount',
-      render: (amount) => amount ? <span style={{ color: '#fcd34d' }}>{amount?.toLocaleString()} AFN</span> : '-',
+      render: (amount) => amount ? <span style={{ color: '#fcd34d' }}>{toNumber(amount).toLocaleString()} AFN</span> : '-',
+    },
+    {
+      title: 'باقی‌مانده',
+      key: 'remaining',
+      render: (_, record) => {
+        const fee = fees.find(f => f.admission_request_id === record.id);
+        if (!fee) return '-';
+        const remaining = calculateRemaining(
+          fee.amount,
+          fee.paid_amount,
+          fee.discount_percent || fee.discount || 0
+        );
+        return (
+          <span style={{ color: remaining <= 0 ? '#22c55e' : '#ef4444', fontWeight: 'bold' }}>
+            {remaining.toFixed(2)} AFN
+          </span>
+        );
+      }
     },
     {
       title: 'عملیات',
       key: 'actions',
-      render: (_, record) => (
-        <Space>
-          <Tooltip title="مشاهده">
-            <Button
-              type="default"
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={() => {
-                setSelectedRequest(record);
-                setModalVisible(true);
-              }}
-            />
-          </Tooltip>
-          {!record.has_fee && (
-            <Tooltip title="اخذ فیس">
-              <Button
-                type="primary"
-                size="small"
-                icon={<DollarOutlined />}
-                onClick={() => handleOpenFeeForm(record)}
-                style={{ backgroundColor: '#ef4444', borderColor: '#ef4444' }}
-              />
-            </Tooltip>
-          )}
-          {record.has_fee && record.fee_id && (
-            <Tooltip title="پرینت">
+      render: (_, record) => {
+        const fee = fees.find(f => f.admission_request_id === record.id);
+        return (
+          <Space>
+            <Tooltip title="مشاهده">
               <Button
                 type="default"
                 size="small"
-                icon={<PrinterOutlined />}
-                onClick={() => handlePrintReceipt(record.fee_id)}
+                icon={<EyeOutlined />}
+                onClick={() => {
+                  setSelectedRequest(record);
+                  setModalVisible(true);
+                }}
               />
             </Tooltip>
-          )}
-        </Space>
-      ),
+            {!record.has_fee && (
+              <Tooltip title="اخذ فیس">
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<DollarOutlined />}
+                  onClick={() => handleOpenFeeForm(record)}
+                  style={{ backgroundColor: '#ef4444', borderColor: '#ef4444' }}
+                />
+              </Tooltip>
+            )}
+            {record.has_fee && record.fee_id && fee && (
+              <>
+                {fee.status !== 'paid' && (
+                  <Tooltip title="ویرایش فیس">
+                    <Button
+                      type="default"
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => handleOpenEditForm(fee)}
+                    />
+                  </Tooltip>
+                )}
+                <Tooltip title="پرینت">
+                  <Button
+                    type="default"
+                    size="small"
+                    icon={<PrinterOutlined />}
+                    onClick={() => handlePrintReceipt(record.fee_id)}
+                  />
+                </Tooltip>
+                {fee.status === 'pending' && calculateRemaining(fee.amount, fee.paid_amount, fee.discount_percent || fee.discount || 0) > 0 && (
+                  <Tooltip title="دریافت فیس">
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<CheckCircleOutlined />}
+                      onClick={() => handleCollectFee(record.fee_id)}
+                      style={{ backgroundColor: '#22c55e', borderColor: '#22c55e' }}
+                    />
+                  </Tooltip>
+                )}
+              </>
+            )}
+          </Space>
+        );
+      },
     }
   ];
 
@@ -881,7 +997,7 @@ const AdmissionFeePage = () => {
             rowKey="id"
             loading={loading}
             pagination={{ pageSize: 10, showSizeChanger: true }}
-            scroll={{ x: 900 }}
+            scroll={{ x: 1000 }}
             locale={{
               emptyText: (
                 <Empty
@@ -914,41 +1030,50 @@ const AdmissionFeePage = () => {
             />
             <List
               dataSource={alertRequests}
-              renderItem={(item) => (
-                <List.Item
-                  style={styles.alertCard}
-                  actions={[
-                    <Button
-                      type="primary"
-                      size="small"
-                      icon={<CheckCircleOutlined />}
-                      onClick={() => handleCollectFee(item.id)}
-                    >
-                      دریافت فیس
-                    </Button>
-                  ]}
-                >
-                  <List.Item.Meta
-                    avatar={<Avatar icon={<WarningOutlined />} style={{ backgroundColor: '#ff4d4f' }} />}
-                    title={
-                      <span>
-                        <strong>{getPatientFullName(item)}</strong>
-                        <Tag color="red" style={{ marginLeft: '10px' }}>
-                          ⏰ {moment(item.last_fee_alert_at).fromNow()}
-                        </Tag>
-                      </span>
-                    }
-                    description={
-                      <div>
-                        <p>🏥 {item.ward_name || 'نامشخص'} | {getLocationDisplay(item)}</p>
-                        <p>💰 مبلغ فیس: {item.fee_amount?.toLocaleString() || 0} AFN</p>
-                        <p>📅 روز بستری: {calculateDayNumber(item.admission_date)}</p>
-                        <p>📞 تماس: {item.patient?.mobile || '-'}</p>
-                      </div>
-                    }
-                  />
-                </List.Item>
-              )}
+              renderItem={(item) => {
+                const fee = fees.find(f => f.admission_request_id === item.id);
+                const remaining = fee ? calculateRemaining(
+                  fee.amount,
+                  fee.paid_amount,
+                  fee.discount_percent || fee.discount || 0
+                ) : 0;
+                return (
+                  <List.Item
+                    style={styles.alertCard}
+                    actions={[
+                      <Button
+                        type="primary"
+                        size="small"
+                        icon={<CheckCircleOutlined />}
+                        onClick={() => handleCollectFee(item.id)}
+                      >
+                        دریافت فیس
+                      </Button>
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={<Avatar icon={<WarningOutlined />} style={{ backgroundColor: '#ff4d4f' }} />}
+                      title={
+                        <span>
+                          <strong>{getPatientFullName(item)}</strong>
+                          <Tag color="red" style={{ marginLeft: '10px' }}>
+                            ⏰ {moment(item.last_fee_alert_at).fromNow()}
+                          </Tag>
+                        </span>
+                      }
+                      description={
+                        <div>
+                          <p>🏥 {item.ward_name || 'نامشخص'} | {getLocationDisplay(item)}</p>
+                          <p>💰 مبلغ کل: {toNumber(item.fee_amount || fee?.amount || 0).toLocaleString()} AFN</p>
+                          <p>📊 باقی‌مانده: <span style={{ color: remaining <= 0 ? '#22c55e' : '#ef4444', fontWeight: 'bold' }}>{remaining.toFixed(2)} AFN</span></p>
+                          <p>📅 روز بستری: {calculateDayNumber(item.admission_date)}</p>
+                          <p>📞 تماس: {item.patient?.mobile || '-'}</p>
+                        </div>
+                      }
+                    />
+                  </List.Item>
+                );
+              }}
             />
           </>
         ) : (
@@ -1014,19 +1139,19 @@ const AdmissionFeePage = () => {
           <div>
             <span style={{ color: '#fcd34d', fontSize: '12px' }}>💰 مبلغ کل</span>
             <div style={{ color: '#fcd34d', fontWeight: 'bold', fontSize: '18px' }}>
-              {statistics.total_amount.toLocaleString()}
+              {toNumber(statistics.total_amount).toLocaleString()}
             </div>
           </div>
           <div>
             <span style={{ color: '#22c55e', fontSize: '12px' }}>✅ پرداخت شده</span>
             <div style={{ color: '#22c55e', fontWeight: 'bold', fontSize: '18px' }}>
-              {statistics.paid_amount.toLocaleString()}
+              {toNumber(statistics.paid_amount).toLocaleString()}
             </div>
           </div>
           <div>
             <span style={{ color: '#ef4444', fontSize: '12px' }}>⏳ پرداخت نشده</span>
             <div style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '18px' }}>
-              {statistics.pending_amount.toLocaleString()}
+              {toNumber(statistics.pending_amount).toLocaleString()}
             </div>
           </div>
           <div>
@@ -1209,6 +1334,41 @@ const AdmissionFeePage = () => {
             <TextArea rows={2} placeholder="یادداشت..." />
           </Form.Item>
 
+          {/* نمایش مبلغ باقی‌مانده به صورت خودکار */}
+          <Form.Item shouldUpdate>
+            {({ getFieldValue }) => {
+              const amount = getFieldValue('amount') || 0;
+              const paidAmount = getFieldValue('paid_amount') || 0;
+              const discount = getFieldValue('discount') || 0;
+              const remaining = calculateRemaining(amount, paidAmount, discount);
+              
+              return (
+                <div style={{
+                  padding: '12px 16px',
+                  backgroundColor: remaining <= 0 ? '#22c55e20' : '#ef444420',
+                  borderRadius: '6px',
+                  border: `1px solid ${remaining <= 0 ? '#22c55e' : '#ef4444'}`,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '16px'
+                }}>
+                  <span style={{ color: '#9ca3af', fontWeight: 'bold' }}>
+                    📊 مبلغ باقی‌مانده:
+                  </span>
+                  <span style={{
+                    color: remaining <= 0 ? '#22c55e' : '#ef4444',
+                    fontWeight: 'bold',
+                    fontSize: '18px'
+                  }}>
+                    {remaining.toFixed(2)} AFN
+                    {remaining <= 0 && ' ✅ کامل'}
+                  </span>
+                </div>
+              );
+            }}
+          </Form.Item>
+
           <Form.Item>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
               <Button onClick={() => { setModalVisible(false); feeForm.resetFields(); }}>انصراف</Button>
@@ -1242,7 +1402,7 @@ const AdmissionFeePage = () => {
               </div>
               <div>
                 <span style={{ color: '#9ca3af', fontSize: '11px' }}>💰 مبلغ فعلی</span>
-                <div style={{ color: '#fcd34d' }}>{editingFee.amount?.toLocaleString()} AFN</div>
+                <div style={{ color: '#fcd34d' }}>{toNumber(editingFee.amount).toLocaleString()} AFN</div>
               </div>
               <div>
                 <span style={{ color: '#9ca3af', fontSize: '11px' }}>📊 وضعیت</span>
@@ -1337,6 +1497,41 @@ const AdmissionFeePage = () => {
             <TextArea rows={2} placeholder="یادداشت..." />
           </Form.Item>
 
+          {/* نمایش مبلغ باقی‌مانده به صورت خودکار در ویرایش */}
+          <Form.Item shouldUpdate>
+            {({ getFieldValue }) => {
+              const amount = getFieldValue('amount') || 0;
+              const paidAmount = getFieldValue('paid_amount') || 0;
+              const discount = getFieldValue('discount') || 0;
+              const remaining = calculateRemaining(amount, paidAmount, discount);
+              
+              return (
+                <div style={{
+                  padding: '12px 16px',
+                  backgroundColor: remaining <= 0 ? '#22c55e20' : '#ef444420',
+                  borderRadius: '6px',
+                  border: `1px solid ${remaining <= 0 ? '#22c55e' : '#ef4444'}`,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '16px'
+                }}>
+                  <span style={{ color: '#9ca3af', fontWeight: 'bold' }}>
+                    📊 مبلغ باقی‌مانده:
+                  </span>
+                  <span style={{
+                    color: remaining <= 0 ? '#22c55e' : '#ef4444',
+                    fontWeight: 'bold',
+                    fontSize: '18px'
+                  }}>
+                    {remaining.toFixed(2)} AFN
+                    {remaining <= 0 && ' ✅ کامل'}
+                  </span>
+                </div>
+              );
+            }}
+          </Form.Item>
+
           <Form.Item>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
               <Button onClick={() => { setEditModalVisible(false); editForm.resetFields(); setEditingFee(null); }}>انصراف</Button>
@@ -1379,10 +1574,25 @@ const AdmissionFeePage = () => {
               <Descriptions.Item label="روز بستری">{receiptData.fee?.day_number || 1}</Descriptions.Item>
               <Descriptions.Item label="تاریخ">{formatDate(receiptData.fee?.fee_date)}</Descriptions.Item>
               <Descriptions.Item label="ساعت">{receiptData.fee?.fee_time ? moment(receiptData.fee.fee_time, 'HH:mm:ss').format('HH:mm') : '-'}</Descriptions.Item>
-              <Descriptions.Item label="مبلغ" span={2}><span style={{ color: '#fcd34d', fontWeight: 'bold' }}>{receiptData.fee?.amount?.toLocaleString()} AFN</span></Descriptions.Item>
-              <Descriptions.Item label="پرداخت شده">{receiptData.fee?.paid_amount?.toLocaleString()} AFN</Descriptions.Item>
-              <Descriptions.Item label="تخفیف">{receiptData.fee?.discount || 0}%</Descriptions.Item>
-              <Descriptions.Item label="باقیمانده"><span style={{ color: '#ef4444' }}>{calculateRemaining(receiptData.fee?.amount, receiptData.fee?.paid_amount, receiptData.fee?.discount).toFixed(2)} AFN</span></Descriptions.Item>
+              <Descriptions.Item label="مبلغ" span={2}><span style={{ color: '#fcd34d', fontWeight: 'bold' }}>{toNumber(receiptData.fee?.amount).toLocaleString()} AFN</span></Descriptions.Item>
+              <Descriptions.Item label="پرداخت شده">{toNumber(receiptData.fee?.paid_amount).toLocaleString()} AFN</Descriptions.Item>
+              <Descriptions.Item label="تخفیف">{toNumber(receiptData.fee?.discount_percent || receiptData.fee?.discount || 0)}%</Descriptions.Item>
+              <Descriptions.Item label="باقیمانده">
+                <span style={{ 
+                  color: calculateRemaining(
+                    receiptData.fee?.amount, 
+                    receiptData.fee?.paid_amount, 
+                    receiptData.fee?.discount_percent || receiptData.fee?.discount || 0
+                  ) <= 0 ? '#22c55e' : '#ef4444',
+                  fontWeight: 'bold'
+                }}>
+                  {calculateRemaining(
+                    receiptData.fee?.amount, 
+                    receiptData.fee?.paid_amount, 
+                    receiptData.fee?.discount_percent || receiptData.fee?.discount || 0
+                  ).toFixed(2)} AFN
+                </span>
+              </Descriptions.Item>
               <Descriptions.Item label="روش پرداخت">{getMethodLabel(receiptData.fee?.payment_method)}</Descriptions.Item>
               <Descriptions.Item label="وضعیت">{getStatusLabel(receiptData.fee?.status)?.label}</Descriptions.Item>
               <Descriptions.Item label="دریافت کننده">{receiptData.collector?.name || '-'}</Descriptions.Item>

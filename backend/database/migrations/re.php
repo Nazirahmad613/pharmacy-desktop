@@ -1,4 +1,5 @@
 <?php
+// database/migrations/2026_01_01_000001_create_admission_fees_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -6,48 +7,90 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
-        Schema::create('operation_requests', function (Blueprint $table) {
+        Schema::create('admission_fees', function (Blueprint $table) {
             $table->id();
-           $table->foreignId('reg_id')
-    ->constrained('registrations', 'reg_id')
-    ->onDelete('cascade');
-            $table->foreignId('patient_id')->constrained('patients')->onDelete('cascade');
-            $table->foreignId('doctor_id')->constrained('users')->onDelete('cascade');
             
-            $table->string('surgery_type');
-            $table->string('surgeon');
-            $table->string('anesthesiologist')->nullable();
-            $table->string('room_number')->nullable();
-            $table->datetime('scheduled_date')->nullable();
-            $table->string('estimated_duration')->nullable();
+            // ============ ارتباطات اصلی ============
+            $table->foreignId('admission_request_id')
+                ->constrained('admission_requests')
+                ->onDelete('cascade');
+            
+            $table->unsignedBigInteger('reg_id');
+            $table->foreign('reg_id')
+                ->references('reg_id')
+                ->on('registrations')
+                ->onDelete('cascade');
+            
+            $table->foreignId('patient_id')
+                ->constrained('patients')
+                ->onDelete('cascade');
+            
+            $table->foreignId('doctor_id')
+                ->nullable()
+                ->constrained('users')
+                ->nullOnDelete();
+            
+            // ============ اطلاعات فیس ============
+            $table->date('fee_date');
+            $table->time('fee_time');
+            $table->decimal('amount', 12, 2);
+            $table->decimal('paid_amount', 12, 2)->default(0);
+            $table->decimal('discount', 12, 2)->default(0);
+            $table->decimal('discount_percent', 5, 2)->default(0)->comment('درصد تخفیف');
+            $table->decimal('remaining_amount', 12, 2)->default(0);
+            
+            // ============ نوع و دوره ============
+            $table->enum('fee_type', ['daily', 'weekly', 'monthly', 'custom'])->default('daily');
+            $table->enum('period', ['morning', 'evening', 'night', 'full_day'])->default('full_day');
+            $table->integer('day_number')->nullable()->comment('شماره روز بستری');
+            
+            // ============ توضیحات ============
+            $table->text('description')->nullable();
             $table->text('notes')->nullable();
             
-            $table->enum('status', ['pending', 'in_progress', 'completed', 'cancelled'])->default('pending');
-            $table->enum('priority', ['high', 'medium', 'normal', 'low'])->default('normal');
+            // ============ شماره رسید ============
+            $table->string('receipt_number')->unique();
             
-            $table->foreignId('fee_id')->nullable()->constrained('operation_fees')->nullOnDelete();
-            $table->decimal('fee_amount', 12, 2)->nullable();
-            $table->decimal('fee_paid', 12, 2)->nullable();
-            $table->enum('fee_status', ['pending', 'partial', 'paid', 'refunded', 'cancelled'])->nullable();
+            // ============ روش پرداخت ============
+            $table->enum('payment_method', ['cash', 'card', 'bank_transfer', 'insurance', 'online'])->default('cash');
             
-            $table->datetime('completed_at')->nullable();
-            $table->datetime('cancelled_at')->nullable();
+            // ============ وضعیت ============
+            $table->enum('status', ['pending', 'paid', 'cancelled', 'refunded'])->default('pending');
             
+            // ============ دریافت کننده ============
+            $table->foreignId('collected_by')
+                ->nullable()
+                ->constrained('users')
+                ->nullOnDelete();
+            $table->timestamp('collected_at')->nullable();
+            
+            // ============ اطلاعات پرینت ============
+            $table->integer('print_count')->default(0);
+            $table->timestamp('last_printed_at')->nullable();
+            
+            // ============ تایم‌استمپ‌ها ============
             $table->timestamps();
+            $table->softDeletes();
             
-            // ایندکس‌ها
-            $table->index(['status', 'doctor_id']);
-            $table->index(['priority', 'status']);
-            $table->index('scheduled_date');
-            $table->index('fee_status');
+            // ============ ایندکس‌ها ============
+            $table->index('admission_request_id');
             $table->index('reg_id');
+            $table->index('patient_id');
+            $table->index('doctor_id');
+            $table->index('fee_date');
+            $table->index('status');
+            $table->index('receipt_number');
+            $table->index('payment_method');
+            $table->index(['status', 'fee_date']);
+            $table->index(['patient_id', 'status']);
+            $table->index(['doctor_id', 'status']);
         });
     }
 
-    public function down()
+    public function down(): void
     {
-        Schema::dropIfExists('operation_requests');
+        Schema::dropIfExists('admission_fees');
     }
 };

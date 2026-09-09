@@ -14,26 +14,40 @@ class AdmissionFee extends Model
     protected $table = 'admission_fees';
 
     protected $fillable = [
+        // ارتباطات
         'admission_request_id',
         'reg_id',
         'patient_id',
         'doctor_id',
+        
+        // اطلاعات فیس
         'fee_date',
         'fee_time',
         'amount',
         'paid_amount',
         'discount',
+        'discount_percent',
         'remaining_amount',
+        
+        // نوع و دوره
         'fee_type',
         'period',
         'day_number',
+        
+        // توضیحات
         'description',
         'notes',
+        
+        // شماره رسید و روش پرداخت
         'receipt_number',
         'payment_method',
+        
+        // وضعیت و دریافت کننده
         'status',
         'collected_by',
         'collected_at',
+        
+        // اطلاعات پرینت
         'print_count',
         'last_printed_at'
     ];
@@ -44,6 +58,7 @@ class AdmissionFee extends Model
         'amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'discount' => 'decimal:2',
+        'discount_percent' => 'decimal:2',
         'remaining_amount' => 'decimal:2',
         'day_number' => 'integer',
         'collected_at' => 'datetime',
@@ -53,26 +68,42 @@ class AdmissionFee extends Model
 
     // ============ روابط ============
     
+    /**
+     * ارتباط با درخواست بستری
+     */
     public function admissionRequest()
     {
-        return $this->belongsTo(AdmissionRequest::class);
+        return $this->belongsTo(AdmissionRequest::class, 'admission_request_id');
     }
 
+    /**
+     * ارتباط با مراجعه (از طریق reg_id)
+     */
     public function registration()
     {
         return $this->belongsTo(Registrations::class, 'reg_id', 'reg_id');
     }
 
+    /**
+     * ارتباط با بیمار
+     */
     public function patient()
     {
-        return $this->belongsTo(Patient::class);
+        return $this->belongsTo(Patient::class, 'patient_id');
     }
 
+    /**
+     * ✅ ارتباط با پزشک (دکتر)
+     * این رابطه برای دریافت اطلاعات پزشک معالج استفاده می‌شود
+     */
     public function doctor()
     {
         return $this->belongsTo(User::class, 'doctor_id');
     }
 
+    /**
+     * ارتباط با دریافت کننده (کاربر)
+     */
     public function collector()
     {
         return $this->belongsTo(User::class, 'collected_by');
@@ -90,6 +121,16 @@ class AdmissionFee extends Model
         return $query->where('status', 'paid');
     }
 
+    public function scopeCancelled($query)
+    {
+        return $query->where('status', 'cancelled');
+    }
+
+    public function scopeRefunded($query)
+    {
+        return $query->where('status', 'refunded');
+    }
+
     public function scopeByPatient($query, $patientId)
     {
         return $query->where('patient_id', $patientId);
@@ -103,6 +144,11 @@ class AdmissionFee extends Model
     public function scopeByRegId($query, $regId)
     {
         return $query->where('reg_id', $regId);
+    }
+
+    public function scopeByDoctor($query, $doctorId)
+    {
+        return $query->where('doctor_id', $doctorId);
     }
 
     public function scopeToday($query)
@@ -121,26 +167,19 @@ class AdmissionFee extends Model
                      ->whereYear('fee_date', now()->year);
     }
 
-    // ============ متدهای کمکی ============
+    public function scopeByPaymentMethod($query, $method)
+    {
+        return $query->where('payment_method', $method);
+    }
+
+    public function scopeNeedsAlert($query)
+    {
+        return $query->where('status', 'pending')
+                     ->where('created_at', '<=', now()->subHours(24));
+    }
+
+    // ============ متدهای کمکی (Accessors) ============
     
-    public function getRemainingAmountAttribute()
-    {
-        $discountAmount = ($this->amount ?? 0) * (($this->discount ?? 0) / 100);
-        return ($this->amount ?? 0) - ($this->paid_amount ?? 0) - $discountAmount;
-    }
-
-    public function getIsPaidAttribute()
-    {
-        return $this->status === 'paid';
-    }
-
-    public function getCanBeCollectedAttribute()
-    {
-        return $this->status === 'pending' && 
-               $this->admissionRequest && 
-               $this->admissionRequest->status === 'admitted';
-    }
-
     public function getStatusLabelAttribute()
     {
         $labels = [
@@ -186,34 +225,94 @@ class AdmissionFee extends Model
         return $labels[$this->fee_type] ?? $this->fee_type;
     }
 
+    /**
+     * محاسبه مبلغ باقی‌مانده
+     */
+    public function getRemainingAmountAttribute()
+    {
+        $discountAmount = ($this->amount ?? 0) * (($this->discount_percent ?? 0) / 100);
+        return max(0, ($this->amount ?? 0) - ($this->paid_amount ?? 0) - $discountAmount);
+    }
+
+    /**
+     * محاسبه مبلغ پس از تخفیف
+     */
+    public function getAmountAfterDiscountAttribute()
+    {
+        $discountAmount = ($this->amount ?? 0) * (($this->discount_percent ?? 0) / 100);
+        return max(0, ($this->amount ?? 0) - $discountAmount);
+    }
+
+    /**
+     * آیا فیس پرداخت شده است؟
+     */
+    public function getIsPaidAttribute()
+    {
+        return $this->status === 'paid';
+    }
+
+    /**
+     * آیا فیس قابل دریافت است؟
+     */
+    public function getCanBeCollectedAttribute()
+    {
+        return $this->status === 'pending' && 
+               $this->admissionRequest && 
+               $this->admissionRequest->status === 'admitted';
+    }
+
+    /**
+     * مبلغ فرمت شده
+     */
     public function getFormattedAmountAttribute()
     {
         return number_format($this->amount, 2);
     }
 
+    public function getFormattedPaidAmountAttribute()
+    {
+        return number_format($this->paid_amount, 2);
+    }
+
+    public function getFormattedRemainingAttribute()
+    {
+        return number_format($this->remaining_amount, 2);
+    }
+
+    public function getFormattedDiscountAttribute()
+    {
+        return number_format($this->discount, 2);
+    }
+
     // ============ متدهای عملیاتی ============
     
+    /**
+     * علامت‌گذاری به عنوان پرداخت شده
+     */
     public function markAsPaid($collectedBy = null)
     {
         $this->update([
             'status' => 'paid',
             'collected_by' => $collectedBy ?? auth()->id(),
-            'collected_at' => now()
+            'collected_at' => now(),
+            'remaining_amount' => 0
         ]);
 
-        // به‌روزرسانی admission_request
         if ($this->admissionRequest) {
-            $this->admissionRequest->increment('fee_paid', $this->amount);
+            $this->admissionRequest->increment('paid_amount', $this->amount);
             
-            $remaining = $this->admissionRequest->fee_amount - $this->admissionRequest->fee_paid;
+            $remaining = $this->admissionRequest->amount - $this->admissionRequest->paid_amount;
             if ($remaining <= 0) {
-                $this->admissionRequest->update(['fee_status' => 'paid']);
+                $this->admissionRequest->update(['payment_status' => 'paid']);
             } else {
-                $this->admissionRequest->update(['fee_status' => 'partial']);
+                $this->admissionRequest->update(['payment_status' => 'partial']);
             }
         }
     }
 
+    /**
+     * علامت‌گذاری به عنوان دریافت شده
+     */
     public function markAsCollected($collectorId = null)
     {
         $this->update([
@@ -222,25 +321,44 @@ class AdmissionFee extends Model
         ]);
     }
 
+    /**
+     * افزایش تعداد پرینت
+     */
     public function incrementPrintCount()
     {
         $this->increment('print_count');
         $this->update(['last_printed_at' => now()]);
     }
 
+    /**
+     * برگشت فیس
+     */
     public function refund()
     {
         $this->update(['status' => 'refunded']);
         
-        // برگرداندن مبلغ به admission_request
         if ($this->admissionRequest) {
-            $this->admissionRequest->decrement('fee_paid', $this->amount);
-            $this->admissionRequest->update(['fee_status' => 'pending']);
+            $this->admissionRequest->decrement('paid_amount', $this->amount);
+            $this->admissionRequest->update(['payment_status' => 'pending']);
         }
     }
 
+    /**
+     * لغو فیس
+     */
     public function cancel()
     {
         $this->update(['status' => 'cancelled']);
+    }
+
+    /**
+     * محاسبه و به‌روزرسانی مبلغ باقی‌مانده
+     */
+    public function calculateAndUpdateRemaining()
+    {
+        $discountAmount = ($this->amount ?? 0) * (($this->discount_percent ?? 0) / 100);
+        $remaining = max(0, ($this->amount ?? 0) - ($this->paid_amount ?? 0) - $discountAmount);
+        $this->update(['remaining_amount' => $remaining]);
+        return $remaining;
     }
 }

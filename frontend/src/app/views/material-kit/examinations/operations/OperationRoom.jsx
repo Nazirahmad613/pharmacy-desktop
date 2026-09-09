@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 
-export default function OperationFeeTab({ api, regId }) {
+export default function OperationFeeTab({ api, regId, registration }) {
   const [loading, setLoading] = useState(false);
   const [operationRequests, setOperationRequests] = useState([]);
   const [feeRecords, setFeeRecords] = useState([]);
@@ -27,6 +27,13 @@ export default function OperationFeeTab({ api, regId }) {
   const [activeTab, setActiveTab] = useState('unpaid');
   const [doctorSignature, setDoctorSignature] = useState("دکتر علی محمدی");
 
+  // ✅ استفاده از regId یا registration?.reg_id
+  const effectiveRegId = regId || registration?.reg_id;
+  
+  console.log("🔪 OperationFeeTab - regId از props:", regId);
+  console.log("🔪 OperationFeeTab - registration:", registration);
+  console.log("🔪 OperationFeeTab - effectiveRegId:", effectiveRegId);
+
   const [feeFormData, setFeeFormData] = useState({
     total_amount: "",
     paid_amount: "",
@@ -49,8 +56,14 @@ export default function OperationFeeTab({ api, regId }) {
   });
 
   useEffect(() => {
-    fetchAllData();
-  }, [regId]);
+    if (effectiveRegId) {
+      fetchAllData();
+    } else {
+      console.warn("⚠️ regId موجود نیست، درخواست‌ها بارگذاری نمی‌شوند");
+      setOperationRequests([]);
+      setFeeRecords([]);
+    }
+  }, [effectiveRegId]);
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -65,13 +78,21 @@ export default function OperationFeeTab({ api, regId }) {
     }
   };
 
+  // ============ دریافت درخواست‌های عملیات ============
   const fetchOperationRequests = async () => {
     try {
-      const url = `/operation/requests?per_page=100`;
+      let url = '/operation/requests?per_page=100';
       
-      console.log("📋 دریافت همه درخواست‌های عملیات:", url);
+      // ✅ استفاده از effectiveRegId
+      if (effectiveRegId) {
+        url = `/operation/requests/registration/${effectiveRegId}`;
+        console.log(`📋 دریافت درخواست‌های عملیات برای مراجعه ${effectiveRegId}:`, url);
+      } else {
+        console.log("📋 دریافت همه درخواست‌های عملیات:", url);
+      }
 
       const response = await api.get(url);
+      console.log("📥 پاسخ سرور:", response.data);
 
       let requests = [];
 
@@ -80,23 +101,34 @@ export default function OperationFeeTab({ api, regId }) {
           requests = response.data.data.data;
         } else if (Array.isArray(response.data?.data)) {
           requests = response.data.data;
+        } else if (Array.isArray(response.data)) {
+          requests = response.data;
+        } else if (response.data?.data && typeof response.data.data === 'object') {
+          requests = [response.data.data];
         }
         
         console.log(`✅ ${requests.length} درخواست عملیات دریافت شد`);
+      } else {
+        console.log("⚠️ خطا در دریافت درخواست‌ها:", response.data?.message);
       }
 
       setOperationRequests(requests);
 
     } catch (err) {
-      console.error("❌ خطا:", err);
+      console.error("❌ خطا در دریافت درخواست‌های عملیات:", err);
+      if (err.response?.status === 404) {
+        console.log("ℹ️ هیچ درخواست عملیاتی برای این مراجعه یافت نشد");
+      } else {
+        toast.error(`❌ خطا در دریافت درخواست‌ها: ${err.response?.data?.message || err.message}`);
+      }
       setOperationRequests([]);
     }
   };
 
   const fetchFeeRecords = async () => {
     try {
-      const url = regId
-        ? `/operation/fees?per_page=100&reg_id=${regId}`
+      const url = effectiveRegId
+        ? `/operation/fees?per_page=100&reg_id=${effectiveRegId}`
         : '/operation/fees?per_page=100';
 
       const response = await api.get(url);
@@ -112,8 +144,8 @@ export default function OperationFeeTab({ api, regId }) {
           fees = response.data;
         }
         
-        if (regId) {
-          fees = fees.filter(f => f.reg_id == regId);
+        if (effectiveRegId) {
+          fees = fees.filter(f => f.reg_id == effectiveRegId);
         }
       }
       
@@ -136,6 +168,115 @@ export default function OperationFeeTab({ api, regId }) {
     } catch (err) {
       console.error("❌ خطا در دریافت آمار:", err);
     }
+  };
+
+  // ============ ثبت درخواست عملیات جدید ============
+  const handleCreateRequest = async (e) => {
+    e.preventDefault();
+    
+    if (!effectiveRegId) {
+      toast.error("❌ شناسه مراجعه یافت نشد");
+      return;
+    }
+
+    if (!editRequestData.surgery_type.trim()) {
+      toast.warning("⚠️ لطفاً نوع جراحی را وارد کنید");
+      return;
+    }
+
+    if (!editRequestData.surgeon.trim()) {
+      toast.warning("⚠️ لطفاً نام جراح را وارد کنید");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = {
+        surgery_type: editRequestData.surgery_type.trim(),
+        surgeon: editRequestData.surgeon.trim(),
+        anesthesiologist: editRequestData.anesthesiologist?.trim() || null,
+        room_number: editRequestData.room_number?.trim() || null,
+        scheduled_date: editRequestData.scheduled_date || null,
+        estimated_duration: editRequestData.estimated_duration || null,
+        notes: editRequestData.notes?.trim() || null,
+        priority: editRequestData.priority || "normal"
+      };
+      
+      console.log("📤 ارسال payload ثبت درخواست جدید:", payload);
+      
+      const response = await api.post(`/operation/requests/registration/${effectiveRegId}`, payload);
+      
+      if (response.data?.success) {
+        toast.success("✅ درخواست عملیات با موفقیت ثبت شد");
+        setShowFeeForm(false);
+        setSelectedRequest(null);
+        setIsEditingRequest(false);
+        await fetchAllData();
+      } else {
+        toast.error(`❌ ${response.data?.message || "خطا در ثبت درخواست"}`);
+      }
+    } catch (err) {
+      console.error("❌ خطا در ثبت درخواست:", err);
+      
+      if (err.response?.status === 422) {
+        const errorData = err.response.data;
+        if (errorData.errors) {
+          Object.entries(errorData.errors).forEach(([field, messages]) => {
+            const fieldLabels = {
+              'surgery_type': 'نوع جراحی',
+              'surgeon': 'جراح',
+              'anesthesiologist': 'متخصص بیهوشی',
+              'room_number': 'شماره اتاق عمل',
+              'scheduled_date': 'زمان جراحی',
+              'estimated_duration': 'مدت زمان تخمینی',
+              'notes': 'یادداشت',
+              'priority': 'اولویت'
+            };
+            const label = fieldLabels[field] || field;
+            toast.error(`❌ ${label}: ${Array.isArray(messages) ? messages[0] : messages}`);
+          });
+        } else if (errorData.message) {
+          toast.error(`❌ ${errorData.message}`);
+        } else {
+          toast.error("❌ داده‌های ارسالی معتبر نیستند");
+        }
+      } else if (err.response?.data?.message) {
+        toast.error(`❌ ${err.response.data.message}`);
+      } else {
+        toast.error(`❌ خطا: ${err.message || "خطا در ثبت درخواست"}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============ باز کردن فرم ثبت درخواست جدید ============
+  const handleOpenNewRequestForm = () => {
+    console.log("🔪 handleOpenNewRequestForm - effectiveRegId:", effectiveRegId);
+    
+    if (!effectiveRegId) {
+      toast.error("❌ شناسه مراجعه یافت نشد. لطفاً یک مریض را انتخاب کنید.");
+      return;
+    }
+    
+    setIsEditingRequest(true);
+    setSelectedRequest(null);
+    setEditingFee(null);
+    setDebugErrors(null);
+    
+    // تنظیم داده‌های پیش‌فرض
+    setEditRequestData({
+      surgery_type: "",
+      surgeon: "",
+      anesthesiologist: "",
+      room_number: "",
+      scheduled_date: "",
+      estimated_duration: "",
+      notes: "",
+      priority: "normal"
+    });
+    
+    setShowFeeForm(true);
   };
 
   const handleOpenFeeForm = (request) => {
@@ -331,7 +472,7 @@ export default function OperationFeeTab({ api, regId }) {
       } else {
         payload = {
           operation_request_id: selectedRequest.id,
-          reg_id: selectedRequest.reg_id || selectedRequest.registration_id,
+          reg_id: selectedRequest.reg_id || selectedRequest.registration_id || effectiveRegId,
           patient_id: selectedRequest.patient_id,
           total_amount: parseFloat(feeFormData.total_amount),
           paid_amount: parseFloat(feeFormData.paid_amount) || 0,
@@ -493,7 +634,7 @@ export default function OperationFeeTab({ api, regId }) {
             </tr>
             <tr>
               <th style="text-align: right; padding: 8px; background: #e9ecef;">وضعیت فیس</th>
-              <td style="padding: 8px; color: #f59e0b; font-weight: bold;">❌ فیس اخذ نگردیده است /td>
+              <td style="padding: 8px; color: #f59e0b; font-weight: bold;">❌ فیس اخذ نگردیده است</td>
             </tr>
             ${request.notes ? `<tr>
               <th style="text-align: right; padding: 8px; background: #e9ecef;">یادداشت</th>
@@ -813,7 +954,7 @@ export default function OperationFeeTab({ api, regId }) {
               🔪 مدیریت فیس‌های عملیات
             </h3>
             <div style={{ color: '#9ca3af', fontSize: '13px', marginTop: '5px' }}>
-              {regId ? `مراجعه #${regId}` : 'تمام درخواست‌های عملیات'}
+              {effectiveRegId ? `مراجعه #${effectiveRegId}` : 'تمام درخواست‌های عملیات'}
             </div>
             <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>
               {unpaidRequests.length} درخواست بدون فیس | {paidRequests.length} درخواست دارای فیس
@@ -1335,7 +1476,7 @@ export default function OperationFeeTab({ api, regId }) {
       )}
 
       {/* فرم ثبت/ویرایش فیس یا ویرایش درخواست */}
-      {(showFeeForm && selectedRequest) && (
+      {(showFeeForm && (selectedRequest || isEditingRequest)) && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -1359,14 +1500,14 @@ export default function OperationFeeTab({ api, regId }) {
             overflowY: 'auto'
           }}>
             <h4 style={{ color: '#dc2626', marginBottom: '20px' }}>
-              {isEditingRequest 
-                ? '✏️ ویرایش درخواست عملیات' 
-                : (selectedRequest.id && !selectedRequest.id.toString().startsWith('temp_') && !selectedRequest.fee_id 
-                    ? '✏️ ویرایش درخواست عملیات' 
-                    : '💰 اخذ فیس عملیات')}
+              {isEditingRequest && !selectedRequest?.id 
+                ? '📝 ثبت درخواست عملیات جدید' 
+                : isEditingRequest 
+                  ? '✏️ ویرایش درخواست عملیات' 
+                  : (selectedRequest?.fee_id ? '✏️ ویرایش فیس' : '💰 اخذ فیس عملیات')}
             </h4>
 
-            {selectedRequest && (
+            {selectedRequest && !isEditingRequest && (
               <div style={{
                 backgroundColor: '#0f1a2a',
                 padding: '15px',
@@ -1401,9 +1542,9 @@ export default function OperationFeeTab({ api, regId }) {
               </div>
             )}
 
-            {/* فرم ویرایش درخواست */}
+            {/* فرم ویرایش/ثبت درخواست */}
             {isEditingRequest ? (
-              <form onSubmit={handleSaveRequest}>
+              <form onSubmit={selectedRequest?.id ? handleSaveRequest : handleCreateRequest}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                   <div style={{ gridColumn: 'span 2' }}>
                     <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
@@ -1604,7 +1745,7 @@ export default function OperationFeeTab({ api, regId }) {
                       fontWeight: 'bold'
                     }}
                   >
-                    {loading ? '⏳ در حال ذخیره...' : '💾 ذخیره تغییرات'}
+                    {loading ? '⏳ در حال ذخیره...' : selectedRequest?.id ? '💾 ذخیره تغییرات' : '📝 ثبت درخواست'}
                   </button>
                 </div>
               </form>
@@ -1820,64 +1961,32 @@ export default function OperationFeeTab({ api, regId }) {
         borderTop: '2px solid #374151'
       }}>
         <button
-          onClick={() => {
-            const regIdParam = regId;
-            if (regIdParam) {
-              const newRequest = {
-                id: null,
-                reg_id: regIdParam,
-                patient_id: null,
-                patient_name: 'مریض جدید',
-                surgery_type: '',
-                status: 'pending',
-                priority: 'normal',
-                surgeon: '',
-                anesthesiologist: '',
-                room_number: '',
-                estimated_duration: '',
-                notes: '',
-                fee_id: null,
-                fee_status: null,
-                fee_amount: null,
-                fee_paid: null,
-                created_at: new Date().toISOString()
-              };
-              setSelectedRequest(newRequest);
-              setEditingFee(null);
-              setIsEditingRequest(false);
-              setDebugErrors(null);
-              setFeeFormData({
-                total_amount: "",
-                paid_amount: "",
-                discount: "0",
-                payment_method: "cash",
-                description: "",
-                note: ""
-              });
-              setShowFeeForm(true);
-            } else {
-              toast.warning("⚠️ شناسه مراجعه یافت نشد");
-            }
-          }}
+          onClick={handleOpenNewRequestForm}
+          disabled={!effectiveRegId}
           style={{
-            backgroundColor: '#dc2626',
+            backgroundColor: !effectiveRegId ? '#6b7280' : '#dc2626',
             color: 'white',
             padding: '12px 30px',
             borderRadius: '8px',
             border: 'none',
-            cursor: 'pointer',
+            cursor: !effectiveRegId ? 'not-allowed' : 'pointer',
             fontSize: '16px',
             fontWeight: 'bold',
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            transition: 'all 0.2s'
+            transition: 'all 0.2s',
+            opacity: !effectiveRegId ? 0.5 : 1
           }}
-          onMouseEnter={(e) => e.target.style.backgroundColor = '#b91c1c'}
-          onMouseLeave={(e) => e.target.style.backgroundColor = '#dc2626'}
+          onMouseEnter={(e) => {
+            if (effectiveRegId) e.target.style.backgroundColor = '#b91c1c';
+          }}
+          onMouseLeave={(e) => {
+            if (effectiveRegId) e.target.style.backgroundColor = '#dc2626';
+          }}
         >
           <span style={{ fontSize: '20px' }}>➕</span>
-          ثبت درخواست عملیات جدید
+          {effectiveRegId ? 'ثبت درخواست عملیات جدید' : '⚠️ مریضی انتخاب نشده است'}
         </button>
       </div>
     </div>

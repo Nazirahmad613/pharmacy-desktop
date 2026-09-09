@@ -10,11 +10,138 @@ use App\Models\Patient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log; // ✅ اضافه کردن این خط
 
 class OperationController extends Controller
 {
     /**
      * دریافت لیست درخواست‌های عملیات
+     */
+    public function getByRegistration($regId)
+    {
+        try {
+            Log::info('🔪 getByRegistration called for reg_id: ' . $regId);
+            
+            // بررسی وجود مراجعه
+            $registration = Registrations::where('reg_id', $regId)->first();
+            if (!$registration) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'مراجعه یافت نشد'
+                ], 404);
+            }
+
+            // دریافت درخواست‌های عملیات برای این مراجعه
+            $requests = OperationRequest::with(['patient', 'doctor', 'fee'])
+                ->where('reg_id', $regId)
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            Log::info('✅ Found ' . $requests->count() . ' operation requests for reg_id: ' . $regId);
+
+            // فرمت کردن داده‌ها برای فرانت‌اند
+            $formattedRequests = $requests->map(function($request) {
+                return [
+                    'id' => $request->id,
+                    'reg_id' => $request->reg_id,
+                    'registration_id' => $request->reg_id,
+                    'patient_id' => $request->patient_id,
+                    'doctor_id' => $request->doctor_id,
+                    
+                    'patient' => $request->patient ? [
+                        'id' => $request->patient->id,
+                        'first_name' => $request->patient->first_name ?? '',
+                        'last_name' => $request->patient->last_name ?? '',
+                        'full_name' => trim(($request->patient->first_name ?? '') . ' ' . ($request->patient->last_name ?? '')),
+                        'national_id' => $request->patient->national_id ?? null,
+                        'mobile' => $request->patient->mobile ?? null,
+                        'gender' => $request->patient->gender ?? null,
+                        'age' => $request->patient->age ?? null,
+                    ] : null,
+                    
+                    'doctor' => $request->doctor ? [
+                        'id' => $request->doctor->id,
+                        'name' => $request->doctor->name ?? '',
+                    ] : null,
+                    
+                    'surgery_type' => $request->surgery_type,
+                    'surgeon' => $request->surgeon,
+                    'anesthesiologist' => $request->anesthesiologist,
+                    'room_number' => $request->room_number,
+                    'scheduled_date' => $request->scheduled_date,
+                    'estimated_duration' => $request->estimated_duration,
+                    'notes' => $request->notes,
+                    'priority' => $request->priority,
+                    'priority_label' => $this->getPriorityLabel($request->priority),
+                    'status' => $request->status,
+                    'status_label' => $this->getStatusLabel($request->status),
+                    
+                    'fee_id' => $request->fee_id,
+                    'fee_amount' => $request->fee ? $request->fee->total_amount : null,
+                    'fee_paid' => $request->fee ? $request->fee->paid_amount : null,
+                    'fee_status' => $request->fee ? $request->fee->payment_status : null,
+                    'has_fee' => !is_null($request->fee_id),
+                    
+                    'created_at' => $request->created_at,
+                    'updated_at' => $request->updated_at,
+                    
+                    'patient_name' => $request->patient ? 
+                        trim(($request->patient->first_name ?? '') . ' ' . ($request->patient->last_name ?? '')) : 
+                        'نامشخص',
+                    'registration' => $request->registration ? [
+                        'reg_id' => $request->registration->reg_id,
+                        'visit_number' => $request->registration->visit_number ?? null,
+                    ] : null,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $formattedRequests,
+                'message' => 'درخواست‌های عملیات با موفقیت دریافت شد'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error in getByRegistration: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت درخواست‌های عملیات: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * دریافت برچسب اولویت
+     */
+    private function getPriorityLabel($priority)
+    {
+        $labels = [
+            'high' => 'بالا',
+            'medium' => 'متوسط',
+            'normal' => 'عادی',
+            'low' => 'پایین'
+        ];
+        return $labels[$priority] ?? $priority;
+    }
+
+    /**
+     * دریافت برچسب وضعیت
+     */
+    private function getStatusLabel($status)
+    {
+        $labels = [
+            'pending' => 'در انتظار',
+            'scheduled' => 'برنامه‌ریزی شده',
+            'in_progress' => 'در حال انجام',
+            'completed' => 'تکمیل شده',
+            'cancelled' => 'لغو شده',
+            'postponed' => 'به تعویق افتاده'
+        ];
+        return $labels[$status] ?? $status;
+    }
+
+    /**
+     * دریافت لیست درخواست‌های عملیات (با فیلتر)
      */
     public function index(Request $request)
     {
@@ -72,6 +199,7 @@ class OperationController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in index: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت لیست عملیات',
@@ -81,147 +209,146 @@ class OperationController extends Controller
     }
 
     /**
+     * دریافت درخواست‌های بدون فیس برای اخذ فیس
+     */
+    public function getRequestsForFee(Request $request)
+    {
+        try {
+            $query = OperationRequest::with([
+                'patient',
+                'doctor',
+                'registration',
+                'fee'
+            ])
+            ->whereNull('fee_id')
+            ->where('status', '!=', 'cancelled')
+            ->orderBy('created_at', 'desc');
+
+            if ($request->filled('reg_id')) {
+                $query->where('reg_id', $request->reg_id);
+            }
+
+            $perPage = min(
+                max((int) $request->get('per_page', 100), 1),
+                500
+            );
+
+            $requests = $query->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'درخواست‌های بدون فیس عملیات دریافت شد',
+                'data' => $requests
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('خطا در دریافت درخواست‌های بدون فیس عملیات', [
+                'message' => $e->getMessage(),
+                'reg_id' => $request->reg_id ?? null
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت درخواست‌های بدون فیس عملیات',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * ثبت درخواست عملیات جدید
      */
+    public function store(Request $request, $regId)
+    {
+        try {
+            $registration = Registrations::find($regId);
 
+            if (!$registration) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'مراجعه یافت نشد'
+                ], 404);
+            }
 
-    public function getRequestsForFee(Request $request)
-{
-    try {
-        $query = OperationRequest::with([
-            'patient',
-            'doctor',
-            'registration',
-            'fee'
-        ])
-        // فقط درخواست‌هایی که فیس ندارند
-        ->whereNull('fee_id')
-        // درخواست‌های لغو شده نمایش داده نشوند
-        ->where('status', '!=', 'cancelled')
-        ->orderBy('created_at', 'desc');
+            $validator = Validator::make($request->all(), [
+                'surgery_type' => 'required|string|max:255',
+                'surgeon' => 'required|string|max:255',
+                'anesthesiologist' => 'nullable|string|max:255',
+                'room_number' => 'nullable|string|max:255',
+                'scheduled_date' => 'nullable|date',
+                'estimated_duration' => 'nullable|string|max:255',
+                'notes' => 'nullable|string',
+                'priority' => 'nullable|in:high,medium,normal,low',
+            ]);
 
-        // اگر reg_id ارسال شده باشد، فقط همان مراجعه
-        if ($request->filled('reg_id')) {
-            $query->where('reg_id', $request->reg_id);
-        }
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'خطا در اعتبارسنجی داده‌ها',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
 
-        $perPage = min(
-            max((int) $request->get('per_page', 100), 1),
-            500
-        );
+            DB::beginTransaction();
 
-        $requests = $query->paginate($perPage);
+            $existing = OperationRequest::where('reg_id', $regId)
+                ->whereIn('status', ['pending', 'in_progress'])
+                ->first();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'درخواست‌های بدون فیس عملیات دریافت شد',
-            'data' => $requests
-        ]);
+            if ($existing) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'این مراجعه قبلاً درخواست عملیات دارد'
+                ], 400);
+            }
 
-    } catch (\Exception $e) {
+            $operation = new OperationRequest();
 
-        \Log::error('خطا در دریافت درخواست‌های بدون فیس عملیات', [
-            'message' => $e->getMessage(),
-            'reg_id' => $request->reg_id
-        ]);
+            $operation->reg_id = $regId;
+            $operation->patient_id = $registration->patient_id;
+            $operation->doctor_id = $request->user()?->id ?? $registration->doctor_id;
+            $operation->surgery_type = $request->surgery_type;
+            $operation->surgeon = $request->surgeon;
+            $operation->anesthesiologist = $request->anesthesiologist;
+            $operation->room_number = $request->room_number;
+            $operation->scheduled_date = $request->scheduled_date;
+            $operation->estimated_duration = $request->estimated_duration;
+            $operation->notes = $request->notes;
+            $operation->status = 'pending';
+            $operation->priority = $request->priority ?? 'normal';
+            $operation->fee_status = 'pending';
+            $operation->fee_id = null;
+            $operation->fee_amount = null;
+            $operation->fee_paid = null;
 
-        return response()->json([
-            'success' => false,
-            'message' => 'خطا در دریافت درخواست‌های بدون فیس عملیات',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
- public function store(Request $request, $regId)
-{
-    try {
-        $registration = Registrations::find($regId);
+            $operation->save();
 
-        if (!$registration) {
+            DB::commit();
+
+            $operation->load([
+                'doctor',
+                'patient',
+                'registration'
+            ]);
+
             return response()->json([
-                'success' => false,
-                'message' => 'مراجعه یافت نشد'
-            ], 404);
-        }
+                'success' => true,
+                'message' => 'درخواست عملیات با موفقیت ثبت شد',
+                'data' => [
+                    'operation_request' => $operation,
+                ]
+            ], 201);
 
-        $validator = Validator::make($request->all(), [
-            'surgery_type' => 'required|string|max:255',
-            'surgeon' => 'required|string|max:255',
-            'anesthesiologist' => 'nullable|string|max:255',
-            'room_number' => 'nullable|string|max:255',
-            'scheduled_date' => 'nullable|date',
-            'estimated_duration' => 'nullable|string|max:255',
-            'notes' => 'nullable|string',
-            'priority' => 'nullable|in:high,medium,normal,low',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در اعتبارسنجی داده‌ها',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        DB::beginTransaction();
-
-        $existing = OperationRequest::where('reg_id', $regId)
-            ->whereIn('status', ['pending', 'in_progress'])
-            ->first();
-
-        if ($existing) {
+        } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('Error in store: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'این مراجعه قبلاً درخواست عملیات دارد'
-            ], 400);
+                'message' => 'خطا در ثبت درخواست عملیات: ' . $e->getMessage()
+            ], 500);
         }
-
-        $operation = new OperationRequest();
-
-        $operation->reg_id = $regId;
-        $operation->patient_id = $registration->patient_id;
-        $operation->doctor_id = $request->user()?->id ?? $registration->doctor_id;
-        $operation->surgery_type = $request->surgery_type;
-        $operation->surgeon = $request->surgeon;
-        $operation->anesthesiologist = $request->anesthesiologist;
-        $operation->room_number = $request->room_number;
-        $operation->scheduled_date = $request->scheduled_date;
-        $operation->estimated_duration = $request->estimated_duration;
-        $operation->notes = $request->notes;
-        $operation->status = 'pending';
-        $operation->priority = $request->priority ?? 'normal';
-        $operation->fee_status = 'pending';
-        $operation->fee_id = null; // ✅ مهم: این رو صراحتاً null قرار بده
-        $operation->fee_amount = null;
-        $operation->fee_paid = null;
-
-        $operation->save();
-
-        DB::commit();
-
-        $operation->load([
-            'doctor',
-            'patient',
-            'registration'
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'درخواست عملیات با موفقیت ثبت شد',
-            'data' => [
-                'operation_request' => $operation,
-            ]
-        ], 201);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json([
-            'success' => false,
-            'message' => 'خطا در ثبت درخواست عملیات: ' . $e->getMessage()
-        ], 500);
     }
-}
 
     /**
      * نمایش جزئیات یک درخواست عملیات
@@ -239,6 +366,7 @@ class OperationController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in show: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'عملیات مورد نظر یافت نشد'
@@ -255,7 +383,6 @@ class OperationController extends Controller
             $operation = OperationRequest::where('doctor_id', auth()->id())
                 ->findOrFail($id);
 
-            // بررسی اینکه عملیات قابل ویرایش باشد
             if (in_array($operation->status, ['completed', 'cancelled'])) {
                 return response()->json([
                     'success' => false,
@@ -296,6 +423,7 @@ class OperationController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in update: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در بروزرسانی عملیات',
@@ -346,6 +474,7 @@ class OperationController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in updateStatus: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در بروزرسانی وضعیت عملیات',
@@ -385,6 +514,7 @@ class OperationController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in destroy: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در حذف درخواست عملیات',
@@ -459,6 +589,7 @@ class OperationController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in feesIndex: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت لیست فیس‌های عملیات',
@@ -470,121 +601,115 @@ class OperationController extends Controller
     /**
      * ثبت فیس عملیات جدید
      */
-     
     public function storeFee(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'operation_request_id' => 'required|exists:operation_requests,id',
-        // ✅ reg_id کلید اصلی است، پس exists:registrations,reg_id
-        'reg_id' => 'required|exists:registrations,reg_id',
-        'patient_id' => 'required|exists:patients,id',
-        'total_amount' => 'required|numeric|min:0',
-        'paid_amount' => 'nullable|numeric|min:0',
-        'discount' => 'nullable|numeric|min:0|max:100',
-        'payment_method' => 'required|in:cash,card,online,insurance',
-        'description' => 'nullable|string',
-        'note' => 'nullable|string'
-    ]);
+    {
+        $validator = Validator::make($request->all(), [
+            'operation_request_id' => 'required|exists:operation_requests,id',
+            'reg_id' => 'required|exists:registrations,reg_id',
+            'patient_id' => 'required|exists:patients,id',
+            'total_amount' => 'required|numeric|min:0',
+            'paid_amount' => 'nullable|numeric|min:0',
+            'discount' => 'nullable|numeric|min:0|max:100',
+            'payment_method' => 'required|in:cash,card,online,insurance',
+            'description' => 'nullable|string',
+            'note' => 'nullable|string'
+        ]);
 
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false,
-            'message' => 'خطا در اعتبارسنجی',
-            'errors' => $validator->errors()
-        ], 422);
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در اعتبارسنجی',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $existingFee = OperationFee::where('operation_request_id', $request->operation_request_id)->first();
+            if ($existingFee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'برای این عملیات قبلاً فیس ثبت شده است'
+                ], 400);
+            }
+
+            $operation = OperationRequest::find($request->operation_request_id);
+            if (!$operation) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'درخواست عملیات یافت نشد'
+                ], 404);
+            }
+
+            $registration = Registrations::where('reg_id', $request->reg_id)->first();
+            if (!$registration) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'مراجعه با این شناسه یافت نشد'
+                ], 404);
+            }
+
+            $totalAmount = $request->total_amount;
+            $discount = $request->discount ?? 0;
+            $paidAmount = $request->paid_amount ?? 0;
+
+            $discountedAmount = $totalAmount - (($totalAmount * $discount) / 100);
+            $remainingAmount = max(0, $discountedAmount - $paidAmount);
+
+            $paymentStatus = 'pending';
+            if ($remainingAmount <= 0) {
+                $paymentStatus = 'paid';
+            } elseif ($paidAmount > 0) {
+                $paymentStatus = 'partial';
+            }
+
+            $fee = OperationFee::create([
+                'operation_request_id' => $request->operation_request_id,
+                'reg_id' => $request->reg_id,
+                'patient_id' => $request->patient_id,
+                'doctor_id' => $operation->doctor_id,
+                'total_amount' => $totalAmount,
+                'paid_amount' => $paidAmount,
+                'discount' => ($totalAmount * $discount) / 100,
+                'discount_percent' => $discount,
+                'remaining_amount' => $remainingAmount,
+                'payment_method' => $request->payment_method,
+                'payment_status' => $paymentStatus,
+                'description' => $request->description,
+                'note' => $request->note,
+                'collected_by' => auth()->id()
+            ]);
+
+            $operation->fee_id = $fee->id;
+            $operation->fee_amount = $totalAmount;
+            $operation->fee_paid = $paidAmount;
+            $operation->fee_status = $paymentStatus;
+            $operation->save();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'فیس عملیات با موفقیت ثبت شد',
+                'data' => $fee->load(['patient', 'doctor', 'collector', 'operationRequest'])
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('خطا در ثبت فیس عملیات', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در ثبت فیس عملیات: ' . $e->getMessage(),
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
-
-    try {
-        DB::beginTransaction();
-
-        // بررسی اینکه آیا برای این عملیات قبلاً فیس ثبت شده است
-        $existingFee = OperationFee::where('operation_request_id', $request->operation_request_id)->first();
-        if ($existingFee) {
-            return response()->json([
-                'success' => false,
-                'message' => 'برای این عملیات قبلاً فیس ثبت شده است'
-            ], 400);
-        }
-
-        $operation = OperationRequest::find($request->operation_request_id);
-        if (!$operation) {
-            return response()->json([
-                'success' => false,
-                'message' => 'درخواست عملیات یافت نشد'
-            ], 404);
-        }
-
-        // ✅ بررسی اینکه reg_id در registrations وجود دارد
-        $registration = Registrations::where('reg_id', $request->reg_id)->first();
-        if (!$registration) {
-            return response()->json([
-                'success' => false,
-                'message' => 'مراجعه با این شناسه یافت نشد'
-            ], 404);
-        }
-
-        $totalAmount = $request->total_amount;
-        $discount = $request->discount ?? 0;
-        $paidAmount = $request->paid_amount ?? 0;
-
-        $discountedAmount = $totalAmount - (($totalAmount * $discount) / 100);
-        $remainingAmount = max(0, $discountedAmount - $paidAmount);
-
-        $paymentStatus = 'pending';
-        if ($remainingAmount <= 0) {
-            $paymentStatus = 'paid';
-        } elseif ($paidAmount > 0) {
-            $paymentStatus = 'partial';
-        }
-
-        $fee = OperationFee::create([
-            'operation_request_id' => $request->operation_request_id,
-            'reg_id' => $request->reg_id,
-            'patient_id' => $request->patient_id,
-            'doctor_id' => $operation->doctor_id,
-            'total_amount' => $totalAmount,
-            'paid_amount' => $paidAmount,
-            'discount' => ($totalAmount * $discount) / 100,
-            'discount_percent' => $discount,
-            'remaining_amount' => $remainingAmount,
-            'payment_method' => $request->payment_method,
-            'payment_status' => $paymentStatus,
-            'description' => $request->description,
-            'note' => $request->note,
-            'collected_by' => auth()->id()
-        ]);
-
-        $operation->fee_id = $fee->id;
-        $operation->fee_amount = $totalAmount;
-        $operation->fee_paid = $paidAmount;
-        $operation->fee_status = $paymentStatus;
-        $operation->save();
-
-        DB::commit();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'فیس عملیات با موفقیت ثبت شد',
-            'data' => $fee->load(['patient', 'doctor', 'collector', 'operationRequest'])
-        ]);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        
-        // لاگ دقیق خطا
-        \Log::error('خطا در ثبت فیس عملیات', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-            'request' => $request->all()
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'خطا در ثبت فیس عملیات: ' . $e->getMessage(),
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
 
     /**
      * نمایش جزئیات یک فیس عملیات
@@ -601,6 +726,7 @@ class OperationController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in showFee: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'فیس عملیات مورد نظر یافت نشد'
@@ -611,93 +737,83 @@ class OperationController extends Controller
     /**
      * بروزرسانی فیس عملیات
      */
-   /**
- * بروزرسانی فیس عملیات
- */
-public function updateFee(Request $request, $id)
-{
-    try {
-        $fee = OperationFee::findOrFail($id);
+    public function updateFee(Request $request, $id)
+    {
+        try {
+            $fee = OperationFee::findOrFail($id);
 
-        // ❌ این شرط را کامنت کنید یا حذف کنید
-        // if ($fee->payment_status === 'paid') {
-        //     return response()->json([
-        //         'success' => false,
-        //         'message' => 'امکان ویرایش فیس پرداخت کامل شده وجود ندارد'
-        //     ], 400);
-        // }
+            $validator = Validator::make($request->all(), [
+                'total_amount' => 'sometimes|numeric|min:0',
+                'paid_amount' => 'sometimes|numeric|min:0',
+                'discount_percent' => 'sometimes|numeric|min:0|max:100',
+                'payment_method' => 'sometimes|in:cash,card,online,insurance',
+                'description' => 'nullable|string',
+                'note' => 'nullable|string'
+            ]);
 
-        $validator = Validator::make($request->all(), [
-            'total_amount' => 'sometimes|numeric|min:0',
-            'paid_amount' => 'sometimes|numeric|min:0',
-            'discount_percent' => 'sometimes|numeric|min:0|max:100',
-            'payment_method' => 'sometimes|in:cash,card,online,insurance',
-            'description' => 'nullable|string',
-            'note' => 'nullable|string'
-        ]);
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'خطا در اعتبارسنجی',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
 
-        if ($validator->fails()) {
+            DB::beginTransaction();
+
+            $totalAmount = $request->total_amount ?? $fee->total_amount;
+            $discountPercent = $request->discount_percent ?? $fee->discount_percent;
+            $paidAmount = $request->paid_amount ?? $fee->paid_amount;
+
+            $discount = ($totalAmount * $discountPercent) / 100;
+            $discountedAmount = $totalAmount - $discount;
+            $remainingAmount = max(0, $discountedAmount - $paidAmount);
+
+            $paymentStatus = 'pending';
+            if ($remainingAmount <= 0) {
+                $paymentStatus = 'paid';
+            } elseif ($paidAmount > 0) {
+                $paymentStatus = 'partial';
+            }
+
+            $fee->update([
+                'total_amount' => $totalAmount,
+                'paid_amount' => $paidAmount,
+                'discount' => $discount,
+                'discount_percent' => $discountPercent,
+                'remaining_amount' => $remainingAmount,
+                'payment_method' => $request->payment_method ?? $fee->payment_method,
+                'payment_status' => $paymentStatus,
+                'description' => $request->description ?? $fee->description,
+                'note' => $request->note ?? $fee->note
+            ]);
+
+            if ($fee->operationRequest) {
+                $fee->operationRequest->update([
+                    'fee_amount' => $totalAmount,
+                    'fee_paid' => $paidAmount,
+                    'fee_status' => $paymentStatus
+                ]);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'فیس عملیات با موفقیت بروزرسانی شد',
+                'data' => $fee->load(['patient', 'doctor', 'collector'])
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error in updateFee: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در اعتبارسنجی',
-                'errors' => $validator->errors()
-            ], 422);
+                'message' => 'خطا در بروزرسانی فیس عملیات',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        DB::beginTransaction();
-
-        $totalAmount = $request->total_amount ?? $fee->total_amount;
-        $discountPercent = $request->discount_percent ?? $fee->discount_percent;
-        $paidAmount = $request->paid_amount ?? $fee->paid_amount;
-
-        $discount = ($totalAmount * $discountPercent) / 100;
-        $discountedAmount = $totalAmount - $discount;
-        $remainingAmount = max(0, $discountedAmount - $paidAmount);
-
-        $paymentStatus = 'pending';
-        if ($remainingAmount <= 0) {
-            $paymentStatus = 'paid';
-        } elseif ($paidAmount > 0) {
-            $paymentStatus = 'partial';
-        }
-
-        $fee->update([
-            'total_amount' => $totalAmount,
-            'paid_amount' => $paidAmount,
-            'discount' => $discount,
-            'discount_percent' => $discountPercent,
-            'remaining_amount' => $remainingAmount,
-            'payment_method' => $request->payment_method ?? $fee->payment_method,
-            'payment_status' => $paymentStatus,
-            'description' => $request->description ?? $fee->description,
-            'note' => $request->note ?? $fee->note
-        ]);
-
-        if ($fee->operationRequest) {
-            $fee->operationRequest->update([
-                'fee_amount' => $totalAmount,
-                'fee_paid' => $paidAmount,
-                'fee_status' => $paymentStatus
-            ]);
-        }
-
-        DB::commit();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'فیس عملیات با موفقیت بروزرسانی شد',
-            'data' => $fee->load(['patient', 'doctor', 'collector'])
-        ]);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json([
-            'success' => false,
-            'message' => 'خطا در بروزرسانی فیس عملیات',
-            'error' => $e->getMessage()
-        ], 500);
     }
-}
 
     /**
      * حذف فیس عملیات
@@ -736,6 +852,7 @@ public function updateFee(Request $request, $id)
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('Error in destroyFee: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در حذف فیس عملیات',
@@ -774,6 +891,7 @@ public function updateFee(Request $request, $id)
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in feesStatistics: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت آمار فیس‌های عملیات',
@@ -817,6 +935,7 @@ public function updateFee(Request $request, $id)
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in getOperationWithFee: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'عملیات مورد نظر یافت نشد',
@@ -844,6 +963,7 @@ public function updateFee(Request $request, $id)
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in getOperationsWithoutFee: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت عملیات‌های بدون فیس',
@@ -870,6 +990,7 @@ public function updateFee(Request $request, $id)
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Error in getOperationsWithFee: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت عملیات‌های با فیس',

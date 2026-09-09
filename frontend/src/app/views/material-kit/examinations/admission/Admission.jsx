@@ -408,88 +408,135 @@ export default function Admission({
   };
 
   // ============ ثبت درخواست بستری ============
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+   // src/app/pages/treatment/admission/Admission.jsx
+
+// ============ اصلاح تابع handleSubmit ============
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  if (!formData.ward_id) {
+    toast.warning("⚠️ لطفاً بخش بستری را انتخاب کنید");
+    return;
+  }
+
+  if (instructionsList.length === 0 && !formData.diagnosis) {
+    toast.warning("⚠️ لطفاً حداقل تشخیص یا یک دستورالعمل وارد کنید");
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const instructionsText = getInstructionsText();
     
-    if (!formData.ward_id) {
-      toast.warning("⚠️ لطفاً بخش بستری را انتخاب کنید");
-      return;
-    }
+    const payload = {
+      reg_id: registration?.reg_id,  // این کلید مهم است
+      ward_id: formData.ward_id,
+      admission_date: new Date().toISOString().split('T')[0],
+      diagnosis: formData.diagnosis || registration?.diagnosis || "",
+      admission_instructions: instructionsText || formData.admission_instructions,
+      special_notes: formData.special_notes,
+      priority: formData.priority
+    };
 
-    if (instructionsList.length === 0 && !formData.diagnosis) {
-      toast.warning("⚠️ لطفاً حداقل تشخیص یا یک دستورالعمل وارد کنید");
-      return;
-    }
+    console.log("📤 Sending admission payload:", payload);
 
-    setLoading(true);
-    try {
-      const instructionsText = getInstructionsText();
+    const response = await api.post("/admissions", payload);
+    
+    console.log("📥 Admission response:", response.data);
+    
+    if (response.data?.success) {
+      toast.success("✅ درخواست بستری با موفقیت ثبت شد");
+      setIsAdmitted(true);
+      setAdmissionId(response.data.data?.id || null);
+      setAdmissionData(response.data.data);
       
-      const payload = {
-        reg_id: registration?.reg_id,
-        ward_id: formData.ward_id,
-        admission_date: new Date().toISOString().split('T')[0],
-        diagnosis: formData.diagnosis || registration?.diagnosis || "",
-        admission_instructions: instructionsText || formData.admission_instructions,
-        special_notes: formData.special_notes,
-        priority: formData.priority
-      };
-
-      const response = await api.post("/admissions", payload);
-      
-      if (response.data?.success) {
-        toast.success("✅ درخواست بستری با موفقیت ثبت شد");
-        setIsAdmitted(true);
-        setAdmissionId(response.data.data?.id || null);
-        setAdmissionData(response.data.data);
-        
-        await refreshAdmissionList();
-        
-        if (onSave) {
-          await onSave(payload);
-        }
-        
-        if (onRefresh) onRefresh();
-        
-        toast.info("➡️ لطفاً برای اخذ فیس بستری به بخش مدیریت فیس مراجعه کنید");
-        
-        if (onNextStep) {
-          onNextStep();
-        }
-        
-        if (onComplete) {
-          onComplete();
-        }
-      } else {
-        toast.error("❌ خطا در ثبت درخواست بستری");
+      // به روزرسانی وضعیت در parent
+      if (onSave) {
+        await onSave(payload);
       }
-    } catch (err) {
-      console.error("❌ خطای کامل:", err);
       
-      if (err.response?.status === 422) {
-        const errors = err.response?.data?.errors;
-        
-        if (errors) {
-          Object.keys(errors).forEach((field) => {
-            const messages = errors[field];
-            if (Array.isArray(messages)) {
-              messages.forEach((msg) => {
-                toast.error(`❌ ${field}: ${msg}`);
-              });
-            } else {
-              toast.error(`❌ ${field}: ${messages}`);
-            }
-          });
-        } else {
-          toast.error("❌ خطا در اعتبارسنجی اطلاعات");
-        }
-      } else {
-        toast.error(`❌ خطا: ${err.response?.data?.message || err.message}`);
+      if (onRefresh) onRefresh();
+      
+      toast.info("➡️ لطفاً برای اخذ فیس بستری به بخش مدیریت فیس مراجعه کنید");
+      
+      // رفتن به مرحله بعد
+      if (onNextStep) {
+        onNextStep();
       }
-    } finally {
-      setLoading(false);
+      
+      if (onComplete) {
+        onComplete();
+      }
+    } else {
+      toast.error("❌ خطا در ثبت درخواست بستری");
     }
-  };
+  } catch (err) {
+    console.error("❌ خطای کامل:", err);
+    
+    if (err.response?.status === 422) {
+      const errors = err.response?.data?.errors;
+      
+      if (errors) {
+        Object.keys(errors).forEach((field) => {
+          const messages = errors[field];
+          if (Array.isArray(messages)) {
+            messages.forEach((msg) => {
+              toast.error(`❌ ${field}: ${msg}`);
+            });
+          } else {
+            toast.error(`❌ ${field}: ${messages}`);
+          }
+        });
+      } else {
+        toast.error("❌ خطا در اعتبارسنجی اطلاعات");
+      }
+    } else {
+      toast.error(`❌ خطا: ${err.response?.data?.message || err.message}`);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
+
+// ============ اصلاح useEffect برای بررسی وضعیت بستری ============
+useEffect(() => {
+  if (allAdmissionRequests && Array.isArray(allAdmissionRequests)) {
+    setAdmissionRequests(allAdmissionRequests);
+    
+    // بررسی وضعیت بستری برای مریض فعلی
+    if (registration?.reg_id) {
+      const existingRequest = allAdmissionRequests.find(
+        req => req.reg_id === registration.reg_id
+      );
+      
+      if (existingRequest) {
+        setIsAdmitted(existingRequest.status === 'admitted');
+        setAdmissionId(existingRequest.id);
+        setAdmissionData(existingRequest);
+        
+        // پر کردن فرم با داده‌های موجود
+        if (existingRequest.ward_id) {
+          setFormData(prev => ({
+            ...prev,
+            ward_id: String(existingRequest.ward_id),
+            admission_type: existingRequest.admission_type || "emergency",
+            diagnosis: existingRequest.diagnosis || "",
+            admission_instructions: existingRequest.admission_instructions || "",
+            special_notes: existingRequest.special_notes || "",
+            priority: existingRequest.priority || "normal"
+          }));
+          
+          if (existingRequest.admission_instructions) {
+            const instructions = existingRequest.admission_instructions.split('\n').filter(item => item.trim());
+            setInstructionsList(instructions);
+          }
+        }
+      }
+    }
+  }
+  
+  fetchWards();
+}, [registration, allAdmissionRequests]);
 
   // ============ حذف درخواست بستری ============
   const handleDeleteRequest = async (id) => {

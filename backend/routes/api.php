@@ -42,7 +42,7 @@ use App\Http\Controllers\LaboratoryResultController;
 use App\Http\Controllers\RadiologyRequestController;
 use App\Http\Controllers\RadiologyFeeController;
 use App\Http\Controllers\RadiologyResultController;
-use App\Http\Controllers\OperationController; // ✅ استفاده از OperationController
+use App\Http\Controllers\OperationController;
 use App\Http\Controllers\AdmissionRequestController;
 use App\Http\Controllers\AdmissionFeeController;
 use App\Http\Controllers\WardController;
@@ -162,8 +162,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/wards', [DoctorTreatmentController::class, 'getWards']);
         Route::post('/admission', [DoctorTreatmentController::class, 'storeAdmission']);
 
-        Route::post('/{id}/send-to-treatment', [LaboratoryRequestController::class, 'sendToTreatment']);
-
         // ============================================================
         // ✅ مسیرهای معاینات (ExaminationController)
         // ============================================================
@@ -188,163 +186,174 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/treatment/{registrationId}/complete', [ExaminationController::class, 'complete']);
         
         // ============================================================
-        // ✅ مسیرهای لابراتوار برای دکتر
+        // ❌ این مسیرها را حذف می‌کنیم چون با مسیرهای اصلی تداخل دارند
         // ============================================================
-        Route::prefix('laboratory')->group(function () {
-            Route::get('/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
-            Route::post('/{registrationId}', [LaboratoryRequestController::class, 'store']);
+        // Route::prefix('laboratory')->group(function () {
+        //     Route::get('/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
+        //     Route::post('/{registrationId}', [LaboratoryRequestController::class, 'store']);
+        // });
+    });
+
+    // ============================================================
+    // ✅ ROUTES مدیریت درخواست‌های لابراتوار
+    // ============================================================
+    Route::prefix('laboratory-requests')->group(function () {
+        // دریافت همه درخواست‌ها (برای صفحه فیس)
+        Route::get('/all', [LaboratoryRequestController::class, 'getAllRequests']);
+        
+        // لیست درخواست‌ها (با فیلتر)
+        Route::get('/', [LaboratoryRequestController::class, 'index']);
+        
+        // دریافت کامل اطلاعات یک مراجعه (با نتایج)
+        Route::get('/registration/{registrationId}/full', [LaboratoryRequestController::class, 'getByRegistrationFull']);
+        
+        // دریافت درخواست‌های یک مراجعه
+        Route::get('/registration/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
+        
+        // ثبت درخواست جدید
+        Route::post('/registration/{registrationId}', [LaboratoryRequestController::class, 'store']);
+        
+        // دریافت یک درخواست خاص
+        Route::get('/{id}', [LaboratoryRequestController::class, 'show']);
+        
+        // ویرایش درخواست
+        Route::put('/{id}', [LaboratoryRequestController::class, 'update']);
+        
+        // حذف درخواست
+        Route::delete('/{id}', [LaboratoryRequestController::class, 'destroy']);
+        
+        // ارسال به لابراتوار
+        Route::post('/{id}/send-to-lab', [LaboratoryRequestController::class, 'sendToLab']);
+        
+        // دریافت درخواست‌های یک دکتر با نتایج
+        Route::get('/doctor/{doctorId}/with-results', [LaboratoryResultController::class, 'getDoctorRequestsWithResults'])
+            ->where('doctorId', '[0-9]+');
+        
+        // دریافت درخواست‌های یک بیمار با نتایج
+        Route::get('/patient/{patientId}/with-results', [LaboratoryResultController::class, 'getPatientRequestsWithResults'])
+            ->where('patientId', '[0-9]+');
+        
+        // ارسال نتیجه به درمان
+        Route::post('/{id}/send-to-treatment', [LaboratoryResultController::class, 'sendToTreatment']);
+    });
+
+    // ============================================================
+    // ✅ ROUTES مدیریت نتایج لابراتوار
+    // ============================================================
+    Route::prefix('laboratory-results')->group(function () {
+        // آپلود PDF
+        Route::post('upload-pdf', [LaboratoryResultController::class, 'uploadPdf']);
+        
+        // دریافت نتیجه بر اساس شناسه درخواست
+        Route::get('request/{requestId}', [LaboratoryResultController::class, 'getResultByRequestId'])
+            ->where('requestId', '[0-9]+');
+        
+        // دریافت نتایج یک بیمار
+        Route::get('patient/{patientId}', [LaboratoryResultController::class, 'getResultsByPatient'])
+            ->where('patientId', '[0-9]+');
+        
+        // دریافت نتایج یک مراجعه
+        Route::get('registration/{registrationId}', [LaboratoryResultController::class, 'getByRegistration'])
+            ->where('registrationId', '[0-9]+');
+        
+        // دریافت تمام درخواست‌ها با نتایج
+        Route::get('all', [LaboratoryResultController::class, 'getRequestsWithResults']);
+        
+        // لیست نتایج
+        Route::get('/', [LaboratoryResultController::class, 'index']);
+        
+        // ثبت نتیجه جدید
+        Route::post('/', [LaboratoryResultController::class, 'store']);
+        
+        // نمایش یک نتیجه
+        Route::get('/{id}', [LaboratoryResultController::class, 'show'])
+            ->where('id', '[0-9]+');
+        
+        // ویرایش نتیجه
+        Route::put('/{id}', [LaboratoryResultController::class, 'update'])
+            ->where('id', '[0-9]+');
+        
+        // حذف نتیجه
+        Route::delete('/{id}', [LaboratoryResultController::class, 'destroy'])
+            ->where('id', '[0-9]+');
+        
+        // دانلود PDF
+        Route::get('download/{id}', [LaboratoryResultController::class, 'downloadPdf'])
+            ->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ مسیرهای عملیات (Operation)
+    // ============================================================
+    Route::prefix('operation')->group(function () {
+        // ==================== Operation Requests ====================
+        Route::get('/requests', [OperationController::class, 'index']);
+        Route::get('/requests/registration/{regId}', [OperationController::class, 'getByRegistration']);
+        Route::get('/requests-for-fee', [OperationController::class, 'getRequestsForFee']);
+        Route::post('/requests/registration/{regId}', [OperationController::class, 'store']);
+        Route::get('/requests/{id}', [OperationController::class, 'show']);
+        Route::put('/requests/{id}', [OperationController::class, 'update']);
+        Route::delete('/requests/{id}', [OperationController::class, 'destroy']);
+        Route::patch('/requests/{id}/status', [OperationController::class, 'updateStatus']);
+
+        // ==================== Operations With / Without Fee ====================
+        Route::get('/without-fee', [OperationController::class, 'getOperationsWithoutFee']);
+        Route::get('/with-fee', [OperationController::class, 'getOperationsWithFee']);
+        Route::get('/{id}/with-fee', [OperationController::class, 'getOperationWithFee']);
+
+        // ==================== Operation Fees ====================
+        Route::prefix('fees')->group(function () {
+            Route::get('/', [OperationController::class, 'feesIndex']);
+            Route::post('/', [OperationController::class, 'storeFee']);
+            Route::get('/statistics', [OperationController::class, 'feesStatistics']);
+            Route::get('/{id}', [OperationController::class, 'showFee']);
+            Route::put('/{id}', [OperationController::class, 'updateFee']);
+            Route::delete('/{id}', [OperationController::class, 'destroyFee']);
         });
     });
 
     // ============================================================
-    // ✅ مسیرهای عملیات (Operation) - اصلاح شده با OperationController
+    // ✅ مسیرهای بستری (Admissions)
     // ============================================================
-   // ==================== Operation Routes ====================
-Route::prefix('operation')->group(function () {
-
-    // ==================== Operation Requests ====================
-
-    // لیست تمام درخواست‌های عملیات
-    Route::get('/requests', [OperationController::class, 'index']);
-
-
-    // دریافت درخواست‌های یک مراجعه
-    Route::get('/requests/registration/{regId}', [OperationController::class, 'getByRegistration']);
-Route::get(
-    '/operation/requests-for-fee',
-    [OperationController::class, 'getRequestsForFee']
-);
-
-    // ثبت درخواست عملیات برای یک مراجعه
-    Route::post('/requests/registration/{regId}', [OperationController::class, 'store']);
-
-    // مشاهده یک درخواست عملیات
-    Route::get('/requests/{id}', [OperationController::class, 'show']);
-
-    // ویرایش درخواست عملیات
-    Route::put('/requests/{id}', [OperationController::class, 'update']);
-
-    // حذف درخواست عملیات
-    Route::delete('/requests/{id}', [OperationController::class, 'destroy']);
-
-    // تغییر وضعیت درخواست عملیات
-    Route::patch('/requests/{id}/status', [OperationController::class, 'updateStatus']);
-
-
-    // ==================== Operations With / Without Fee ====================
-
-    Route::get('/without-fee', [OperationController::class, 'getOperationsWithoutFee']);
-
-    Route::get('/with-fee', [OperationController::class, 'getOperationsWithFee']);
-
-    Route::get('/{id}/with-fee', [OperationController::class, 'getOperationWithFee']);
-
-
-    // ==================== Operation Fees ====================
-
-    Route::prefix('fees')->group(function () {
-
-        // لیست فیس‌ها
-        Route::get('/', [OperationController::class, 'feesIndex']);
-
-        // ثبت فیس
-        Route::post('/', [OperationController::class, 'storeFee']);
-
-        // آمار فیس‌ها
-        Route::get('/statistics', [OperationController::class, 'feesStatistics']);
-
-        // مشاهده فیس
-        Route::get('/{id}', [OperationController::class, 'showFee']);
-
-        // ویرایش فیس
-        Route::put('/{id}', [OperationController::class, 'updateFee']);
-
-        // حذف فیس
-        Route::delete('/{id}', [OperationController::class, 'destroyFee']);
-    });
-});
-
- Route::prefix('admissions')->name('admissions.')->group(function () {
-        
-        // ===== دریافت تمام درخواست‌ها (برای تب مدیریت فیس) =====
-        Route::get('/all', [AdmissionRequestController::class, 'getAllRequests'])
-            ->name('all');
-        
-        // ===== CRUD اصلی =====
-        Route::get('/', [AdmissionRequestController::class, 'index'])
-            ->name('index');
-        Route::post('/', [AdmissionRequestController::class, 'store'])
-            ->name('store');
-        Route::get('/{id}', [AdmissionRequestController::class, 'show'])
-            ->name('show');
-        Route::put('/{id}', [AdmissionRequestController::class, 'update'])
-            ->name('update');
-        Route::delete('/{id}', [AdmissionRequestController::class, 'destroy'])
-            ->name('destroy');
-        
-        // ===== مسیرهای ویژه =====
-        Route::get('/active', [AdmissionRequestController::class, 'getActiveAdmissions'])
-            ->name('active');
-        Route::get('/statistics', [AdmissionRequestController::class, 'getStatistics'])
-            ->name('statistics');
-        Route::get('/status/{regId}', [AdmissionRequestController::class, 'getAdmissionStatus'])
-            ->name('status');
-        Route::get('/patient/{patientId}', [AdmissionRequestController::class, 'getPatientAdmissions'])
-            ->name('patient');
-        Route::get('/{id}/print', [AdmissionRequestController::class, 'printReceipt'])
-            ->name('print');
-        
-        // ===== عملیات =====
-        Route::post('/{id}/discharge', [AdmissionRequestController::class, 'discharge'])
-            ->name('discharge');
-        Route::post('/{id}/cancel', [AdmissionRequestController::class, 'cancel'])
-            ->name('cancel');
-        Route::post('/{id}/update-fee', [AdmissionRequestController::class, 'updateFeeInfo'])
-            ->name('update-fee');
-        Route::post('/complete-treatment/{regId}', [AdmissionRequestController::class, 'completeTreatment'])
-            ->name('complete-treatment');
+    Route::prefix('admissions')->name('admissions.')->group(function () {
+        Route::get('/all', [AdmissionRequestController::class, 'getAllRequests'])->name('all');
+        Route::get('/', [AdmissionRequestController::class, 'index'])->name('index');
+        Route::post('/', [AdmissionRequestController::class, 'store'])->name('store');
+        Route::get('/{id}', [AdmissionRequestController::class, 'show'])->name('show');
+        Route::put('/{id}', [AdmissionRequestController::class, 'update'])->name('update');
+        Route::delete('/{id}', [AdmissionRequestController::class, 'destroy'])->name('destroy');
+        Route::get('/active', [AdmissionRequestController::class, 'getActiveAdmissions'])->name('active');
+        Route::get('/statistics', [AdmissionRequestController::class, 'getStatistics'])->name('statistics');
+        Route::get('/status/{regId}', [AdmissionRequestController::class, 'getAdmissionStatus'])->name('status');
+        Route::get('/patient/{patientId}', [AdmissionRequestController::class, 'getPatientAdmissions'])->name('patient');
+        Route::get('/{id}/print', [AdmissionRequestController::class, 'printReceipt'])->name('print');
+        Route::post('/{id}/discharge', [AdmissionRequestController::class, 'discharge'])->name('discharge');
+        Route::post('/{id}/cancel', [AdmissionRequestController::class, 'cancel'])->name('cancel');
+        Route::post('/{id}/update-fee', [AdmissionRequestController::class, 'updateFeeInfo'])->name('update-fee');
+        Route::post('/complete-treatment/{regId}', [AdmissionRequestController::class, 'completeTreatment'])->name('complete-treatment');
     });
 
     // ============================================================
-    // ============ گروه مسیرهای فیس بستری (Admission Fees) ============
+    // ✅ مسیرهای فیس بستری (Admission Fees)
     // ============================================================
     Route::prefix('admission-fees')->name('admission-fees.')->group(function () {
-        
-        // ===== CRUD اصلی =====
-        Route::get('/', [AdmissionFeeController::class, 'index'])
-            ->name('index');
-        Route::post('/', [AdmissionFeeController::class, 'store'])
-            ->name('store');
-        Route::get('/{id}', [AdmissionFeeController::class, 'show'])
-            ->name('show');
-        Route::put('/{id}', [AdmissionFeeController::class, 'update'])
-            ->name('update');
-        Route::delete('/{id}', [AdmissionFeeController::class, 'destroy'])
-            ->name('destroy');
-        
-        // ===== مسیرهای ویژه =====
-        Route::get('/patient/{patientId}', [AdmissionFeeController::class, 'getPatientFees'])
-            ->name('patient');
-        Route::get('/admission/{admissionId}', [AdmissionFeeController::class, 'getAdmissionFees'])
-            ->name('admission');
-        Route::get('/pending/alerts', [AdmissionFeeController::class, 'getPendingFeesForAlert'])
-            ->name('pending-alerts');
-        Route::get('/statistics', [AdmissionFeeController::class, 'getFeeStatistics'])
-            ->name('statistics');
-        Route::get('/{id}/print', [AdmissionFeeController::class, 'printReceipt'])
-            ->name('print');
-        
-        // ===== عملیات =====
-        Route::post('/{id}/collect', [AdmissionFeeController::class, 'collectFee'])
-            ->name('collect');
-        Route::post('/registration/{regId}', [AdmissionFeeController::class, 'storeForRegistration'])
-            ->name('store-for-registration');
+        Route::get('/', [AdmissionFeeController::class, 'index'])->name('index');
+        Route::post('/', [AdmissionFeeController::class, 'store'])->name('store');
+        Route::get('/{id}', [AdmissionFeeController::class, 'show'])->name('show');
+        Route::put('/{id}', [AdmissionFeeController::class, 'update'])->name('update');
+        Route::delete('/{id}', [AdmissionFeeController::class, 'destroy'])->name('destroy');
+        Route::get('/patient/{patientId}', [AdmissionFeeController::class, 'getPatientFees'])->name('patient');
+        Route::get('/admission/{admissionId}', [AdmissionFeeController::class, 'getAdmissionFees'])->name('admission');
+        Route::get('/pending/alerts', [AdmissionFeeController::class, 'getPendingFeesForAlert'])->name('pending-alerts');
+        Route::get('/statistics', [AdmissionFeeController::class, 'getFeeStatistics'])->name('statistics');
+        Route::get('/{id}/print', [AdmissionFeeController::class, 'printReceipt'])->name('print');
+        Route::post('/{id}/collect', [AdmissionFeeController::class, 'collectFee'])->name('collect');
+        Route::post('/registration/{regId}', [AdmissionFeeController::class, 'storeForRegistration'])->name('store-for-registration');
     });
 
-
-
-
-     // ============ مسیرهای بخش‌ها (Wards) ============
+    // ============================================================
+    // ✅ مسیرهای بخش‌ها (Wards)
+    // ============================================================
     Route::prefix('wards')->name('wards.')->group(function () {
         Route::get('/', [WardController::class, 'index'])->name('index');
         Route::post('/', [WardController::class, 'store'])->name('store');
@@ -355,7 +364,9 @@ Route::get(
         Route::get('/{wardId}/beds', [WardController::class, 'getBeds'])->name('beds');
     });
 
-    // ============ مسیرهای تخت‌ها (Beds) ============
+    // ============================================================
+    // ✅ مسیرهای تخت‌ها (Beds)
+    // ============================================================
     Route::prefix('beds')->name('beds.')->group(function () {
         Route::get('/', [BedController::class, 'index'])->name('index');
         Route::post('/', [BedController::class, 'store'])->name('store');
@@ -367,271 +378,8 @@ Route::get(
         Route::post('/{id}/change-status', [BedController::class, 'changeStatus'])->name('change-status');
     });
 
-    // ============ مسیرهای هشدارهای فیس (Admission Fee Alerts) ============
-    Route::prefix('admission-fee-alerts')->name('admission-fee-alerts.')->group(function () {
-        Route::get('/', [AdmissionFeeAlertController::class, 'index'])->name('index');
-        Route::post('/', [AdmissionFeeAlertController::class, 'store'])->name('store');
-        Route::get('/unresolved', [AdmissionFeeAlertController::class, 'getUnresolvedAlerts'])->name('unresolved');
-        Route::get('/today', [AdmissionFeeAlertController::class, 'getTodayAlerts'])->name('today');
-        Route::get('/statistics', [AdmissionFeeAlertController::class, 'getStatistics'])->name('statistics');
-        Route::post('/check-and-create', [AdmissionFeeAlertController::class, 'checkAndCreateAlerts'])->name('check-and-create');
-        Route::get('/{id}', [AdmissionFeeAlertController::class, 'show'])->name('show');
-        Route::put('/{id}', [AdmissionFeeAlertController::class, 'update'])->name('update');
-        Route::post('/{id}/mark-sent', [AdmissionFeeAlertController::class, 'markAsSent'])->name('mark-sent');
-        Route::post('/{id}/mark-resolved', [AdmissionFeeAlertController::class, 'markAsResolved'])->name('mark-resolved');
-        Route::delete('/{id}', [AdmissionFeeAlertController::class, 'destroy'])->name('destroy');
-    });
-
     // ============================================================
-    // ============ گروه مسیرهای بخش‌ها (Wards) ============
-    // ============================================================
-    Route::prefix('wards')->name('wards.')->group(function () {
-        
-        Route::get('/', [WardController::class, 'index'])
-            ->name('index');
-        Route::post('/', [WardController::class, 'store'])
-            ->name('store');
-        Route::get('/{id}', [WardController::class, 'show'])
-            ->name('show');
-        Route::put('/{id}', [WardController::class, 'update'])
-            ->name('update');
-        Route::delete('/{id}', [WardController::class, 'destroy'])
-            ->name('destroy');
-        
-        // دریافت تخت‌های یک بخش
-        Route::get('/{wardId}/beds', [WardController::class, 'getBeds'])
-            ->name('beds');
-    });
-
-    // ============================================================
-    // ============ گروه مسیرهای تخت‌ها (Beds) ============
-    // ============================================================
-    Route::prefix('beds')->name('beds.')->group(function () {
-        
-        Route::get('/', [BedController::class, 'index'])
-            ->name('index');
-        Route::post('/', [BedController::class, 'store'])
-            ->name('store');
-        Route::get('/{id}', [BedController::class, 'show'])
-            ->name('show');
-        Route::put('/{id}', [BedController::class, 'update'])
-            ->name('update');
-        Route::delete('/{id}', [BedController::class, 'destroy'])
-            ->name('destroy');
-        
-        // دریافت تخت‌های موجود
-        Route::get('/available', [BedController::class, 'getAvailableBeds'])
-            ->name('available');
-        Route::get('/ward/{wardId}', [BedController::class, 'getBedsByWard'])
-            ->name('by-ward');
-    });
-
-    // ============================================================
-    // ✅ ROUTES مدیریت درخواست‌های لابراتوار
-    // ============================================================
-    Route::prefix('laboratory-requests')->group(function () {
-        Route::get('/all', [LaboratoryRequestController::class, 'getAllRequests']);
-        Route::get('/', [LaboratoryRequestController::class, 'index']);
-        Route::get('/registration/{registrationId}/full', [LaboratoryRequestController::class, 'getByRegistrationFull']);
-        Route::get('/registration/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
-        Route::post('/registration/{registrationId}', [LaboratoryRequestController::class, 'store']);
-        Route::get('/{id}', [LaboratoryRequestController::class, 'show']);
-        Route::put('/{id}', [LaboratoryRequestController::class, 'update']);
-        Route::delete('/{id}', [LaboratoryRequestController::class, 'destroy']);
-        Route::post('/{id}/send-to-lab', [LaboratoryRequestController::class, 'sendToLab']);
-        
-        Route::get('/doctor/{doctorId}/with-results', [LaboratoryResultController::class, 'getDoctorRequestsWithResults'])
-            ->name('laboratory-requests.doctor-with-results')
-            ->where('doctorId', '[0-9]+');
-        
-        Route::get('/patient/{patientId}/with-results', [LaboratoryResultController::class, 'getPatientRequestsWithResults'])
-            ->name('laboratory-requests.patient-with-results')
-            ->where('patientId', '[0-9]+');
-    });
-
-    // ============================================================
-    // ✅ ROUTES مدیریت نتایج لابراتوار
-    // ============================================================
-    Route::prefix('laboratory-results')->group(function () {
-        
-        Route::post('upload-pdf', [LaboratoryResultController::class, 'uploadPdf'])
-            ->name('laboratory-results.upload-pdf');
-        
-        Route::get('request/{requestId}', [LaboratoryResultController::class, 'getResultByRequestId'])
-            ->name('laboratory-results.by-request')
-            ->where('requestId', '[0-9]+');
-        
-        Route::get('patient/{patientId}', [LaboratoryResultController::class, 'getResultsByPatient'])
-            ->name('laboratory-results.by-patient')
-            ->where('patientId', '[0-9]+');
-        
-        Route::get('all', [LaboratoryResultController::class, 'getRequestsWithResults'])
-            ->name('laboratory-results.all');
-        
-        Route::get('/', [LaboratoryResultController::class, 'index'])
-            ->name('laboratory-results.index');
-        
-        Route::post('/', [LaboratoryResultController::class, 'store'])
-            ->name('laboratory-results.store');
-        
-        Route::get('/{id}', [LaboratoryResultController::class, 'show'])
-            ->name('laboratory-results.show')
-            ->where('id', '[0-9]+');
-        
-        Route::put('/{id}', [LaboratoryResultController::class, 'update'])
-            ->name('laboratory-results.update')
-            ->where('id', '[0-9]+');
-        
-        Route::delete('/{id}', [LaboratoryResultController::class, 'destroy'])
-            ->name('laboratory-results.destroy')
-            ->where('id', '[0-9]+');
-        
-        Route::get('download/{id}', [LaboratoryResultController::class, 'downloadPdf'])
-            ->name('laboratory-results.download')
-            ->where('id', '[0-9]+');
-    });
-
-    // ============================================================
-    // ✅ ============ رادیولوژی (اصلاح شده) ============
-    // ============================================================
-    
-    // ============================================================
-    // ✅ ROUTES مدیریت درخواست‌های رادیولوژی (RadiologyRequestController)
-    // ============================================================
-    Route::prefix('radiology-requests')->group(function () {
-        
-        // دریافت همه درخواست‌ها (حتی بدون فیس)
-        Route::get('/all', [RadiologyRequestController::class, 'getAllRequests']);
-        
-        // دریافت درخواست‌های یک مراجعه
-        Route::get('/registration/{regId}', [RadiologyRequestController::class, 'getByRegistration']);
-        
-        // دریافت اطلاعات کامل یک مراجعه
-        Route::get('/registration/{regId}/full', [RadiologyRequestController::class, 'getFullByRegistration']);
-        
-        // ثبت درخواست جدید
-        Route::post('/registration/{regId}', [RadiologyRequestController::class, 'store']);
-        
-        // دریافت یک درخواست خاص
-        Route::get('/{id}', [RadiologyRequestController::class, 'show']);
-        
-        // بروزرسانی درخواست
-        Route::put('/{id}', [RadiologyRequestController::class, 'update']);
-        
-        // حذف درخواست
-        Route::delete('/{id}', [RadiologyRequestController::class, 'destroy']);
-        
-        // تغییر وضعیت درخواست
-        Route::patch('/{id}/status', [RadiologyRequestController::class, 'updateStatus']);
-    });
-
-    // ============================================================
-    // ✅ ROUTES مدیریت فیس‌های رادیولوژی (RadiologyFeeController)
-    // ============================================================
-    Route::prefix('radiology-fees')->group(function () {
-        
-        // دریافت همه فیس‌ها
-        Route::get('/', [RadiologyFeeController::class, 'index']);
-        
-        // دریافت همه درخواست‌ها با وضعیت فیس
-        Route::get('/all-requests', [RadiologyFeeController::class, 'getAllRequests']);
-        
-        // دریافت اطلاعات یک مراجعه با فیس‌ها
-        Route::get('/registration/{regId}', [RadiologyFeeController::class, 'getByRegistration']);
-        
-        // ثبت فیس جدید برای یک مراجعه
-        Route::post('/registration/{regId}', [RadiologyFeeController::class, 'store']);
-        
-        // دریافت یک فیس خاص
-        Route::get('/{id}', [RadiologyFeeController::class, 'show']);
-        
-        // بروزرسانی فیس
-        Route::put('/{id}', [RadiologyFeeController::class, 'update']);
-        
-        // حذف فیس
-        Route::delete('/{id}', [RadiologyFeeController::class, 'destroy']);
-    });
-
-    // ============================================================
-    // ✅ ROUTES مدیریت نتایج رادیولوژی (RadiologyResultController)
-    // ✅ این مسیرها از جدول radiology_requests و فیلتر has_fee=true استفاده می‌کنند
-    // ============================================================
-    Route::prefix('radiology-results')->group(function () {
-        
-        // ============================================================
-        // 🔴 مهم: این مسیرها از جدول radiology_requests استفاده می‌کنند
-        // و فقط درخواست‌های دارای فیس (has_fee = true) را نمایش می‌دهند
-        // ============================================================
-        
-        // دریافت همه درخواست‌های دارای فیس (برای نمایش در صفحه نتایج)
-        Route::get('/all', [RadiologyResultController::class, 'getAllRequests']);
-        
-        // دریافت همه درخواست‌ها با نتایج (فقط دارای فیس)
-        Route::get('/with-results', [RadiologyResultController::class, 'getRequestsWithResults']);
-        
-        // دریافت درخواست‌های یک مراجعه (فقط دارای فیس)
-        Route::get('/registration/{regId}', [RadiologyResultController::class, 'getByRegistration']);
-        
-        // دریافت کامل اطلاعات یک مراجعه (فقط دارای فیس)
-        Route::get('/registration/{regId}/full', [RadiologyResultController::class, 'getFullByRegistration']);
-        
-        // دریافت درخواست‌های یک دکتر (فقط دارای فیس)
-        Route::get('/doctor/{doctorId}', [RadiologyResultController::class, 'getDoctorRequestsWithResults'])
-            ->where('doctorId', '[0-9]+');
-        
-        // دریافت درخواست‌های یک بیمار (فقط دارای فیس)
-        Route::get('/patient/{patientId}', [RadiologyResultController::class, 'getPatientRequestsWithResults'])
-            ->where('patientId', '[0-9]+');
-        
-        // ============================================================
-        // مسیرهای مربوط به نتایج (RadiologyResult)
-        // ============================================================
-        
-        // آپلود فایل PDF
-        Route::post('upload-pdf', [RadiologyResultController::class, 'uploadPdf'])
-            ->name('radiology-results.upload-pdf');
-        
-        // دریافت نتیجه بر اساس شناسه درخواست
-        Route::get('request/{requestId}', [RadiologyResultController::class, 'getResultByRequestId'])
-            ->name('radiology-results.by-request')
-            ->where('requestId', '[0-9]+');
-        
-        // دریافت تمام نتایج یک بیمار
-        Route::get('patient/{patientId}/results', [RadiologyResultController::class, 'getResultsByPatient'])
-            ->name('radiology-results.by-patient')
-            ->where('patientId', '[0-9]+');
-        
-        // لیست نتایج
-        Route::get('/', [RadiologyResultController::class, 'index'])
-            ->name('radiology-results.index');
-        
-        // ثبت نتیجه جدید
-        Route::post('/', [RadiologyResultController::class, 'store'])
-            ->name('radiology-results.store');
-        
-        // نمایش یک نتیجه
-        Route::get('/{id}', [RadiologyResultController::class, 'show'])
-            ->name('radiology-results.show')
-            ->where('id', '[0-9]+');
-        
-        // ویرایش نتیجه
-        Route::put('/{id}', [RadiologyResultController::class, 'update'])
-            ->name('radiology-results.update')
-            ->where('id', '[0-9]+');
-        
-        // حذف نتیجه
-        Route::delete('/{id}', [RadiologyResultController::class, 'destroy'])
-            ->name('radiology-results.destroy')
-            ->where('id', '[0-9]+');
-        
-        // دانلود فایل PDF
-        Route::get('download/{id}', [RadiologyResultController::class, 'downloadPdf'])
-            ->name('radiology-results.download')
-            ->where('id', '[0-9]+');
-    });
-
-    // ============================================================
-    // مسیرهای مدیریت فیس‌های لابراتوار
+    // ✅ مسیرهای فیس لابراتوار
     // ============================================================
     Route::prefix('laboratory-fees')->group(function () {
         Route::get('/', [LaboratoryFeeController::class, 'index']);
@@ -645,22 +393,74 @@ Route::get(
     });
 
     // ============================================================
+    // ✅ ROUTES رادیولوژی
+    // ============================================================
+    Route::prefix('radiology-requests')->group(function () {
+        Route::get('/all', [RadiologyRequestController::class, 'getAllRequests']);
+        Route::get('/registration/{regId}', [RadiologyRequestController::class, 'getByRegistration']);
+        Route::get('/registration/{regId}/full', [RadiologyRequestController::class, 'getFullByRegistration']);
+        Route::post('/registration/{regId}', [RadiologyRequestController::class, 'store']);
+        Route::get('/{id}', [RadiologyRequestController::class, 'show']);
+        Route::put('/{id}', [RadiologyRequestController::class, 'update']);
+        Route::delete('/{id}', [RadiologyRequestController::class, 'destroy']);
+        Route::patch('/{id}/status', [RadiologyRequestController::class, 'updateStatus']);
+    });
+
+    // ============================================================
+    // ✅ ROUTES فیس رادیولوژی
+    // ============================================================
+    Route::prefix('radiology-fees')->group(function () {
+        Route::get('/', [RadiologyFeeController::class, 'index']);
+        Route::get('/all-requests', [RadiologyFeeController::class, 'getAllRequests']);
+        Route::get('/registration/{regId}', [RadiologyFeeController::class, 'getByRegistration']);
+        Route::post('/registration/{regId}', [RadiologyFeeController::class, 'store']);
+        Route::get('/{id}', [RadiologyFeeController::class, 'show']);
+        Route::put('/{id}', [RadiologyFeeController::class, 'update']);
+        Route::delete('/{id}', [RadiologyFeeController::class, 'destroy']);
+    });
+
+    // ============================================================
+    // ✅ ROUTES نتایج رادیولوژی
+    // ============================================================
+    Route::prefix('radiology-results')->group(function () {
+        Route::get('/all', [RadiologyResultController::class, 'getAllRequests']);
+        Route::get('/with-results', [RadiologyResultController::class, 'getRequestsWithResults']);
+        Route::get('/registration/{regId}', [RadiologyResultController::class, 'getByRegistration']);
+        Route::get('/registration/{regId}/full', [RadiologyResultController::class, 'getFullByRegistration']);
+        Route::get('/doctor/{doctorId}', [RadiologyResultController::class, 'getDoctorRequestsWithResults'])
+            ->where('doctorId', '[0-9]+');
+        Route::get('/patient/{patientId}', [RadiologyResultController::class, 'getPatientRequestsWithResults'])
+            ->where('patientId', '[0-9]+');
+        Route::post('upload-pdf', [RadiologyResultController::class, 'uploadPdf']);
+        Route::get('request/{requestId}', [RadiologyResultController::class, 'getResultByRequestId'])
+            ->where('requestId', '[0-9]+');
+        Route::get('patient/{patientId}/results', [RadiologyResultController::class, 'getResultsByPatient'])
+            ->where('patientId', '[0-9]+');
+        Route::get('/', [RadiologyResultController::class, 'index']);
+        Route::post('/', [RadiologyResultController::class, 'store']);
+        Route::get('/{id}', [RadiologyResultController::class, 'show'])
+            ->where('id', '[0-9]+');
+        Route::put('/{id}', [RadiologyResultController::class, 'update'])
+            ->where('id', '[0-9]+');
+        Route::delete('/{id}', [RadiologyResultController::class, 'destroy'])
+            ->where('id', '[0-9]+');
+        Route::get('download/{id}', [RadiologyResultController::class, 'downloadPdf'])
+            ->where('id', '[0-9]+');
+    });
+
+    // ============================================================
     // مسیرهای فیس نسخه
     // ============================================================
-
-// ============================================================
-// مسیرهای فیس بستری (Admission Fees) - اصلاح شده
-// ============================================================
-Route::prefix('admission-fees')->group(function () {
-    Route::get('/', [AdmissionFeeController::class, 'index']);
-    Route::post('/', [AdmissionFeeController::class, 'store']);
-    Route::get('/statistics', [AdmissionFeeController::class, 'getFeeStatistics']);
-    Route::get('/{id}', [AdmissionFeeController::class, 'show']);
-    Route::put('/{id}', [AdmissionFeeController::class, 'update']);
-    Route::delete('/{id}', [AdmissionFeeController::class, 'destroy']);
-    Route::post('/{id}/collect', [AdmissionFeeController::class, 'collectFee']);
-    Route::get('/{id}/print', [AdmissionFeeController::class, 'printReceipt']);
-});
+    Route::prefix('prescription-fees')->group(function () {
+        Route::get('/', [PrescriptionFeeController::class, 'index']);
+        Route::get('/all-requests', [PrescriptionFeeController::class, 'getAllRequests']);
+        Route::get('/reg-id/{regId}', [PrescriptionFeeController::class, 'getRequestsByRegId']);
+        Route::get('/unpaid/{regId}', [PrescriptionFeeController::class, 'getUnpaidRequests']);
+        Route::post('/registration/{regId}', [PrescriptionFeeController::class, 'store']);
+        Route::put('/{id}', [PrescriptionFeeController::class, 'update']);
+        Route::delete('/{id}', [PrescriptionFeeController::class, 'destroy']);
+        Route::get('/{id}', [PrescriptionFeeController::class, 'show']);
+    });
 
     // ===== Prescriptions =====
     Route::get('/prescriptions/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);

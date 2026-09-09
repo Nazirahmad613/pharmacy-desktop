@@ -208,15 +208,22 @@ export default function TreatmentPage() {
         
         if (labResponse.data?.success) {
           const data = labResponse.data.data;
-          const tests = data.tests || data.all_tests || [];
+          
+          // ✅ پردازش صحیح تست‌ها
+          let tests = [];
+          if (data.tests && Array.isArray(data.tests)) {
+            tests = data.tests;
+          } else if (data.all_tests && Array.isArray(data.all_tests)) {
+            tests = data.all_tests;
+          }
           
           console.log(`✅ Found ${tests.length} laboratory tests`);
           
-          let testsWithResults = [];
+          // ✅ دریافت نتایج برای هر تست
           let hasAnyResult = false;
-          
-          for (const test of tests) {
+          const testsWithResults = await Promise.all(tests.map(async (test) => {
             try {
+              // ✅ استفاده از مسیر صحیح برای دریافت نتیجه
               const resultResponse = await api.get(`/laboratory-results/request/${test.id}`);
               console.log(`📥 Result for test ${test.id}:`, resultResponse.data);
               
@@ -234,8 +241,8 @@ export default function TreatmentPage() {
               test.result_details = null;
               test.has_result = false;
             }
-            testsWithResults.push(test);
-          }
+            return test;
+          }));
           
           const labData = {
             data: testsWithResults.length > 0 ? testsWithResults[0] : null,
@@ -417,7 +424,8 @@ export default function TreatmentPage() {
 
     toast.info(`👨‍⚕️ شروع معالجه برای ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''}`);
   };
-
+  
+  // ============ اصلاح تابع getPatientsInStage ============
   const getPatientsInStage = (stage) => {
     if (stage === "queue") {
       return queue.filter(p => 
@@ -431,20 +439,62 @@ export default function TreatmentPage() {
       return [];
     }
     
-    // ============ برای تب admission، تمام درخواست‌های بستری را برگردان ============
+    // ============ اصلاح برای تب admission ============
     if (stage === "admission") {
-      return allAdmissionRequests.map(request => ({
-        reg_id: request.reg_id,
-        patient: request.patient,
-        visit_number: request.visit_number,
-        ...request,
-        progress: {
-          completedSteps: request.status === 'admitted' ? ['admission'] : [],
-          currentStepIndex: 8
+      const admittedPatients = [];
+      
+      const patientIds = Object.keys(activePatients);
+      for (const id of patientIds) {
+        const patient = activePatients[id];
+        const progress = patient?.progress;
+        
+        if (progress) {
+          const currentIdx = progress.currentStepIndex || 0;
+          const admissionStepIndex = STEPS.findIndex(s => s.key === 'admission');
+          
+          if (currentIdx >= admissionStepIndex || progress.completedSteps?.includes('admission')) {
+            const admissionData = patient.data?.admission || {};
+            const isAdmitted = admissionData.isAdmitted || false;
+            
+            admittedPatients.push({
+              reg_id: parseInt(id),
+              ...patient.registration,
+              progress: progress,
+              patient: patient.registration?.patient || patient.registration,
+              status: isAdmitted ? 'admitted' : 'pending',
+              admission_id: admissionData.admissionId || null,
+              ward_name: admissionData.ward_name || null,
+              admission_data: admissionData
+            });
+          }
         }
-      }));
+      }
+      
+      if (allAdmissionRequests && allAdmissionRequests.length > 0) {
+        for (const request of allAdmissionRequests) {
+          const regId = request.reg_id;
+          if (!admittedPatients.find(p => p.reg_id === regId)) {
+            admittedPatients.push({
+              reg_id: regId,
+              patient: request.patient,
+              visit_number: request.visit_number,
+              status: request.status === 'admitted' ? 'admitted' : 'pending',
+              admission_id: request.id,
+              ward_name: request.ward?.name,
+              ...request,
+              progress: {
+                completedSteps: request.status === 'admitted' ? ['admission'] : [],
+                currentStepIndex: STEPS.findIndex(s => s.key === 'admission')
+              }
+            });
+          }
+        }
+      }
+      
+      return admittedPatients;
     }
     
+    // ============ بقیه مراحل ============
     const stageIndex = STEPS.findIndex(s => s.key === stage);
     if (stageIndex === -1) return [];
     
@@ -458,9 +508,11 @@ export default function TreatmentPage() {
       if (progress) {
         const currentIdx = progress.currentStepIndex || 0;
         
+        // ✅ اصلاح: برای تب لابراتوار، مریضانی که در این مرحله هستند را نمایش بده
         if (currentIdx === stageIndex) {
           const labData = patient.data?.laboratory || {};
           const radData = patient.data?.radiology || {};
+          
           patients.push({
             reg_id: parseInt(id),
             ...patient.registration,
@@ -477,6 +529,117 @@ export default function TreatmentPage() {
     return patients;
   };
 
+  // ============ اصلاح تابع saveCurrentStep برای بستری ============
+  const saveCurrentStep = async (data) => {
+    if (!selectedPatientId) {
+      toast.error("❌ مریضی انتخاب نشده است");
+      return null;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      const regId = selectedPatientId;
+      const currentStep = STEPS.find(s => s.key === activeTab);
+      if (!currentStep) return null;
+      
+      let url = "";
+      let payload = { ...data };
+      
+      switch (currentStep.key) {
+        case "examination":
+          url = `/doctor/examination/${regId}`;
+          break;
+        case "laboratory":
+          url = `/laboratory-requests/registration/${regId}`;
+          payload = {
+            test_type: data.test_type,
+            test_name: data.test_name || null,
+            test_description: data.test_description || null,
+            clinical_indication: data.clinical_indication || null,
+            special_notes: data.special_notes || null,
+            request_date: data.request_date || new Date().toISOString().split("T")[0],
+            sample_collection_date: data.sample_collection_date || null,
+          };
+          break;
+        case "radiology":
+          url = `/radiology-requests/registration/${regId}`;
+          payload = {
+            radiology_type: data.radiology_type,
+            body_part: data.body_part,
+            reason: data.reason,
+            notes: data.notes || null,
+            priority: data.priority || 'normal',
+            request_date: data.request_date || new Date().toISOString().split("T")[0],
+            clinical_indication: data.clinical_indication || null,
+            special_notes: data.special_notes || null,
+          };
+          break;
+        case "pres_insert":
+          url = `/doctor/prescription/${regId}`;
+          break;
+        case "followup":
+          url = `/doctor/followup/${regId}`;
+          break;
+        case "admission":
+          url = `/admissions`;
+          payload = {
+            reg_id: regId,
+            ward_id: data.ward_id,
+            admission_date: data.admission_date || new Date().toISOString().split('T')[0],
+            diagnosis: data.diagnosis || "",
+            admission_instructions: data.admission_instructions || "",
+            special_notes: data.special_notes || "",
+            priority: data.priority || "normal"
+          };
+          break;
+        case "operation":
+          url = `/doctor/operation/${regId}`;
+          break;
+        default:
+          url = `/doctor/${currentStep.key}/save`;
+      }
+      
+      const response = await api.post(url, payload);
+      
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || "ثبت اطلاعات با موفقیت انجام نشد");
+      }
+      
+      toast.success(`✅ ${currentStep.label} با موفقیت ثبت شد`);
+      
+      await loadAllPatientData(regId);
+      
+      if (currentStep.key === 'admission') {
+        await fetchAllAdmissions();
+        
+        setActivePatients(prev => {
+          const updated = { ...prev };
+          if (updated[regId]) {
+            if (!updated[regId].data) updated[regId].data = {};
+            updated[regId].data.admission = {
+              ...updated[regId].data.admission,
+              isAdmitted: true,
+              admissionId: response.data?.data?.id || null,
+              ward_name: payload.ward_name || null
+            };
+          }
+          saveState(updated, activeTab, selectedPatientId);
+          return updated;
+        });
+      }
+      
+      return response.data;
+      
+    } catch (err) {
+      console.error("❌ خطا در ثبت:", err);
+      toast.error(`❌ خطا: ${err.response?.data?.message || err.message}`);
+      throw err;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
   const goToNextStep = async () => {
     if (!selectedPatientId) {
       toast.warning("⚠️ لطفاً یک مریض را انتخاب کنید");
@@ -565,104 +728,7 @@ export default function TreatmentPage() {
     
     toast.info(`↩️ بازگشت به مرحله ${STEPS[prevIndex].label}`);
   };
-
-  const saveCurrentStep = async (data) => {
-    if (!selectedPatientId) {
-      toast.error("❌ مریضی انتخاب نشده است");
-      return null;
-    }
-    
-    setIsSubmitting(true);
-    
-    try {
-      const regId = selectedPatientId;
-      const currentStep = STEPS.find(s => s.key === activeTab);
-      if (!currentStep) return null;
-      
-      let url = "";
-      let payload = { ...data };
-      
-      switch (currentStep.key) {
-        case "examination":
-          url = `/doctor/examination/${regId}`;
-          break;
-        case "laboratory":
-          url = `/laboratory-requests/registration/${regId}`;
-          payload = {
-            test_type: data.test_type,
-            test_name: data.test_name || null,
-            test_description: data.test_description || null,
-            clinical_indication: data.clinical_indication || null,
-            special_notes: data.special_notes || null,
-            request_date: data.request_date || new Date().toISOString().split("T")[0],
-            sample_collection_date: data.sample_collection_date || null,
-          };
-          break;
-        case "radiology":
-          url = `/radiology-requests/registration/${regId}`;
-          payload = {
-            radiology_type: data.radiology_type,
-            body_part: data.body_part,
-            reason: data.reason,
-            notes: data.notes || null,
-            priority: data.priority || 'normal',
-            request_date: data.request_date || new Date().toISOString().split("T")[0],
-            clinical_indication: data.clinical_indication || null,
-            special_notes: data.special_notes || null,
-          };
-          break;
-        case "pres_insert":
-          url = `/doctor/prescription/${regId}`;
-          break;
-        case "followup":
-          url = `/doctor/followup/${regId}`;
-          break;
-        case "admission":
-          // ============ اصلاح: استفاده از مسیر جدید ============
-          url = `/admissions`;
-          payload = {
-            reg_id: regId,
-            ward_id: data.ward_id,
-            admission_date: data.admission_date || new Date().toISOString().split('T')[0],
-            diagnosis: data.diagnosis || "",
-            admission_instructions: data.admission_instructions || "",
-            special_notes: data.special_notes || "",
-            priority: data.priority || "normal"
-          };
-          break;
-        case "operation":
-          url = `/doctor/operation/${regId}`;
-          break;
-        default:
-          url = `/doctor/${currentStep.key}/save`;
-      }
-      
-      const response = await api.post(url, payload);
-      
-      if (!response.data?.success) {
-        throw new Error(response.data?.message || "ثبت اطلاعات با موفقیت انجام نشد");
-      }
-      
-      toast.success(`✅ ${currentStep.label} با موفقیت ثبت شد`);
-      
-      await loadAllPatientData(regId);
-      
-      // ============ بروزرسانی لیست درخواست‌های بستری ============
-      if (currentStep.key === 'admission') {
-        await fetchAllAdmissions();
-      }
-      
-      return response.data;
-      
-    } catch (err) {
-      console.error("❌ خطا در ثبت:", err);
-      toast.error(`❌ خطا: ${err.response?.data?.message || err.message}`);
-      throw err;
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
+ 
   const finishTreatment = async () => {
     if (!selectedPatientId) {
       toast.error("❌ مریضی انتخاب نشده است");
@@ -842,20 +908,11 @@ export default function TreatmentPage() {
                 <div
                   key={p.reg_id}
                   onClick={() => {
-                    if (activeTab === 'admission') {
-                      // برای تب بستری، فقط انتخاب کنید بدون تغییر
-                      setSelectedPatientId(p.reg_id);
-                      setSelectedRegistration(p);
-                      setActiveTab(activeTab);
-                      localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
-                      localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
-                    } else {
-                      setSelectedPatientId(p.reg_id);
-                      setSelectedRegistration(p);
-                      setActiveTab(activeTab);
-                      localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
-                      localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
-                    }
+                    setSelectedPatientId(p.reg_id);
+                    setSelectedRegistration(p);
+                    setActiveTab(activeTab);
+                    localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
+                    localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
                   }}
                   style={{
                     backgroundColor: selectedPatientId === p.reg_id ? '#3b82f6' : '#1a2a3a',
@@ -943,261 +1000,316 @@ export default function TreatmentPage() {
   };
 
   // ============ رندر فرم مریض انتخاب شده ============
-  const renderSelectedPatientForm = () => {
-    if (!selectedPatientId || !selectedRegistration) return null;
-    
-    const regId = selectedPatientId;
-    const patientData = activePatients[regId]?.data || {};
-    const isComplete = currentProgress.isComplete || false;
-    
-    switch (activeTab) {
-      case "examination":
+   // src/app/pages/treatment/TreatmentPage.jsx
+
+// ... بقیه کد ...
+
+// ============ رندر فرم مریض انتخاب شده ============
+const renderSelectedPatientForm = () => {
+  if (!selectedPatientId || !selectedRegistration) return null;
+  
+  const regId = selectedPatientId;
+  const patientData = activePatients[regId]?.data || {};
+  const isComplete = currentProgress.isComplete || false;
+  
+  switch (activeTab) {
+    case "examination":
+      return (
+        <ExaminationForm 
+          registration={selectedRegistration}
+          onComplete={() => {
+            setActiveTab('queue');
+            setSelectedPatientId(null);
+            setSelectedRegistration(null);
+            localStorage.removeItem(SELECTED_PATIENT_KEY);
+            localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+          }}
+          onRefresh={refreshData}
+          api={api}
+          onSave={saveCurrentStep}
+          onFinish={finishTreatment}
+          onNextStep={goToNextStep}
+          onPrevStep={goToPreviousStep}
+          currentStep={currentStep}
+          nextStep={nextStep}
+          prevStep={prevStep}
+          isSubmitting={isSubmitting}
+          isTreatmentComplete={isComplete}
+          savedData={patientData.examination?.data || null}
+          allExaminations={patientData.examination?.allExaminations || []}
+          isExamined={patientData.examination?.isExamined || false}
+          setIsExamined={(val) => {
+            updatePatientData(regId, 'examination', {
+              ...patientData.examination,
+              isExamined: val
+            });
+          }}
+          setAllExaminations={(exams) => {
+            updatePatientData(regId, 'examination', {
+              ...patientData.examination,
+              allExaminations: exams,
+              isExamined: exams && exams.length > 0
+            });
+          }}
+        />
+      );
+      
+    case "laboratory":
+      const labData = patientData.laboratory || { 
+        data: null, 
+        allTests: [], 
+        isRequested: false,
+        hasResult: false
+      };
+      
+      return (
+        <LaboratoryRequest 
+          registration={selectedRegistration}
+          onComplete={() => {
+            setActiveTab('queue');
+            setSelectedPatientId(null);
+            setSelectedRegistration(null);
+            localStorage.removeItem(SELECTED_PATIENT_KEY);
+            localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+          }}
+          onRefresh={refreshData}
+          api={api}
+          onSave={saveCurrentStep}
+          onFinish={finishTreatment}
+          onNextStep={goToNextStep}
+          onPrevStep={goToPreviousStep}
+          currentStep={currentStep}
+          nextStep={nextStep}
+          prevStep={prevStep}
+          isSubmitting={isSubmitting}
+          isTreatmentComplete={isComplete}
+          savedTests={labData.data}
+          allTests={labData.allTests || []}
+          isLabRequested={labData.isRequested || false}
+          hasLabResult={labData.hasResult || false}
+          setIsLabRequested={(val) => {
+            updatePatientData(regId, 'laboratory', {
+              ...labData,
+              isRequested: val
+            });
+          }}
+          setAllTests={(tests) => {
+            const hasResult = tests?.some(t => t.has_result === true && t.result_details) || false;
+            updatePatientData(regId, 'laboratory', {
+              ...labData,
+              allTests: tests || [],
+              isRequested: (tests || []).length > 0,
+              data: (tests || []).length > 0 ? tests[0] : null,
+              hasResult: hasResult
+            });
+          }}
+        />
+      );
+      
+    case "radiology":
+      const radData = patientData.radiology || { 
+        data: null, 
+        allRadiology: [], 
+        isRequested: false,
+        hasResult: false
+      };
+      
+      return (
+        <RadiologyRequest 
+          registration={selectedRegistration}
+          onComplete={() => {
+            setActiveTab('queue');
+            setSelectedPatientId(null);
+            setSelectedRegistration(null);
+            localStorage.removeItem(SELECTED_PATIENT_KEY);
+            localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+          }}
+          onRefresh={refreshData}
+          api={api}
+          onSave={saveCurrentStep}
+          onFinish={finishTreatment}
+          onNextStep={goToNextStep}
+          onPrevStep={goToPreviousStep}
+          currentStep={currentStep}
+          nextStep={nextStep}
+          prevStep={prevStep}
+          isSubmitting={isSubmitting}
+          isTreatmentComplete={isComplete}
+          savedRadiology={radData.data}
+          allRadiology={radData.allRadiology || []}
+          isRadiologyRequested={radData.isRequested || false}
+          hasRadiologyResult={radData.hasResult || false}
+          setIsRadiologyRequested={(val) => {
+            updatePatientData(regId, 'radiology', {
+              ...radData,
+              isRequested: val
+            });
+          }}
+          setAllRadiology={(items) => {
+            const hasResult = items?.some(t => t.has_result === true) || false;
+            updatePatientData(regId, 'radiology', {
+              ...radData,
+              allRadiology: items || [],
+              isRequested: (items || []).length > 0,
+              data: (items || []).length > 0 ? items[0] : null,
+              hasResult: hasResult
+            });
+          }}
+        />
+      );
+      
+    // ============ اصلاح شده: اضافه کردن regId به OperationRoom ============
+    case "operation":
+      // ✅ اطمینان از وجود regId
+      const operationRegId = selectedPatientId || selectedRegistration?.reg_id;
+      console.log("🔪 Operation - regId:", operationRegId);
+      console.log("🔪 Operation - selectedRegistration:", selectedRegistration);
+      
+      if (!operationRegId) {
         return (
-          <ExaminationForm 
-            registration={selectedRegistration}
-            onComplete={() => {
-              setActiveTab('queue');
-              setSelectedPatientId(null);
-              setSelectedRegistration(null);
-              localStorage.removeItem(SELECTED_PATIENT_KEY);
-              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
-            }}
-            onRefresh={refreshData}
-            api={api}
-            onSave={saveCurrentStep}
-            onFinish={finishTreatment}
-            onNextStep={goToNextStep}
-            onPrevStep={goToPreviousStep}
-            currentStep={currentStep}
-            nextStep={nextStep}
-            prevStep={prevStep}
-            isSubmitting={isSubmitting}
-            isTreatmentComplete={isComplete}
-            savedData={patientData.examination?.data || null}
-            allExaminations={patientData.examination?.allExaminations || []}
-            isExamined={patientData.examination?.isExamined || false}
-            setIsExamined={(val) => {
-              updatePatientData(regId, 'examination', {
-                ...patientData.examination,
-                isExamined: val
-              });
-            }}
-            setAllExaminations={(exams) => {
-              updatePatientData(regId, 'examination', {
-                ...patientData.examination,
-                allExaminations: exams,
-                isExamined: exams && exams.length > 0
-              });
-            }}
-          />
+          <div style={{ textAlign: 'center', padding: '40px', color: '#ef4444' }}>
+            <div style={{ fontSize: '48px', marginBottom: '10px' }}>⚠️</div>
+            <p>شناسه مراجعه یافت نشد. لطفاً یک مریض را انتخاب کنید.</p>
+            <button
+              onClick={() => {
+                setActiveTab('queue');
+                setSelectedPatientId(null);
+                setSelectedRegistration(null);
+              }}
+              style={{
+                marginTop: '20px',
+                padding: '10px 20px',
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer'
+              }}
+            >
+              بازگشت به صف انتظار
+            </button>
+          </div>
         );
-        
-      case "laboratory":
-        const labData = patientData.laboratory || { 
-          data: null, 
-          allTests: [], 
-          isRequested: false,
-          hasResult: false
-        };
-        
-        return (
-          <LaboratoryRequest 
-            registration={selectedRegistration}
-            onComplete={() => {
-              setActiveTab('queue');
-              setSelectedPatientId(null);
-              setSelectedRegistration(null);
-              localStorage.removeItem(SELECTED_PATIENT_KEY);
-              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
-            }}
-            onRefresh={refreshData}
-            api={api}
-            onSave={saveCurrentStep}
-            onFinish={finishTreatment}
-            onNextStep={goToNextStep}
-            onPrevStep={goToPreviousStep}
-            currentStep={currentStep}
-            nextStep={nextStep}
-            prevStep={prevStep}
-            isSubmitting={isSubmitting}
-            isTreatmentComplete={isComplete}
-            savedTests={labData.data}
-            allTests={labData.allTests || []}
-            isLabRequested={labData.isRequested || false}
-            hasLabResult={labData.hasResult || false}
-            setIsLabRequested={(val) => {
-              updatePatientData(regId, 'laboratory', {
-                ...labData,
-                isRequested: val
-              });
-            }}
-            setAllTests={(tests) => {
-              const hasResult = tests?.some(t => t.has_result === true && t.result_details) || false;
-              updatePatientData(regId, 'laboratory', {
-                ...labData,
-                allTests: tests || [],
-                isRequested: (tests || []).length > 0,
-                data: (tests || []).length > 0 ? tests[0] : null,
-                hasResult: hasResult
-              });
-            }}
-          />
-        );
-        
-      case "radiology":
-        const radData = patientData.radiology || { 
-          data: null, 
-          allRadiology: [], 
-          isRequested: false,
-          hasResult: false
-        };
-        
-        return (
-          <RadiologyRequest 
-            registration={selectedRegistration}
-            onComplete={() => {
-              setActiveTab('queue');
-              setSelectedPatientId(null);
-              setSelectedRegistration(null);
-              localStorage.removeItem(SELECTED_PATIENT_KEY);
-              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
-            }}
-            onRefresh={refreshData}
-            api={api}
-            onSave={saveCurrentStep}
-            onFinish={finishTreatment}
-            onNextStep={goToNextStep}
-            onPrevStep={goToPreviousStep}
-            currentStep={currentStep}
-            nextStep={nextStep}
-            prevStep={prevStep}
-            isSubmitting={isSubmitting}
-            isTreatmentComplete={isComplete}
-            savedRadiology={radData.data}
-            allRadiology={radData.allRadiology || []}
-            isRadiologyRequested={radData.isRequested || false}
-            hasRadiologyResult={radData.hasResult || false}
-            setIsRadiologyRequested={(val) => {
-              updatePatientData(regId, 'radiology', {
-                ...radData,
-                isRequested: val
-              });
-            }}
-            setAllRadiology={(items) => {
-              const hasResult = items?.some(t => t.has_result === true) || false;
-              updatePatientData(regId, 'radiology', {
-                ...radData,
-                allRadiology: items || [],
-                isRequested: (items || []).length > 0,
-                data: (items || []).length > 0 ? items[0] : null,
-                hasResult: hasResult
-              });
-            }}
-          />
-        );
-        
-      case "operation":
-        return (
-          <OperationRoom 
-            api={api}
-            registration={selectedRegistration}
-            registrationId={selectedPatientId}
-            patientId={selectedRegistration?.patient_id || selectedRegistration?.patient?.id}
-            onSelectPatient={handleSelectPatient}
-            onRefresh={refreshData}
-            onSave={saveCurrentStep}
-            onFinish={finishTreatment}
-            onNextStep={goToNextStep}
-            onPrevStep={goToPreviousStep}
-            currentStep={currentStep}
-            nextStep={nextStep}
-            prevStep={prevStep}
-            isSubmitting={isSubmitting}
-            isTreatmentComplete={isComplete}
-          />
-        );
-        
-      case "pres_insert":
-        return (
-          <PrescriptionForm 
-            registration={selectedRegistration}
-            onComplete={() => {
-              setActiveTab('queue');
-              setSelectedPatientId(null);
-              setSelectedRegistration(null);
-              localStorage.removeItem(SELECTED_PATIENT_KEY);
-              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
-            }}
-            onRefresh={refreshData}
-            api={api}
-            onSave={saveCurrentStep}
-            onFinish={finishTreatment}
-            onNextStep={goToNextStep}
-            onPrevStep={goToPreviousStep}
-            currentStep={currentStep}
-            nextStep={nextStep}
-            prevStep={prevStep}
-            isSubmitting={isSubmitting}
-            isTreatmentComplete={isComplete}
-          />
-        );
-        
-      case "followup":
-        return (
-          <FollowUp 
-            registration={selectedRegistration}
-            onComplete={() => {
-              setActiveTab('queue');
-              setSelectedPatientId(null);
-              setSelectedRegistration(null);
-              localStorage.removeItem(SELECTED_PATIENT_KEY);
-              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
-            }}
-            onRefresh={refreshData}
-            api={api}
-            onSave={saveCurrentStep}
-            onFinish={finishTreatment}
-            onNextStep={goToNextStep}
-            onPrevStep={goToPreviousStep}
-            currentStep={currentStep}
-            nextStep={nextStep}
-            prevStep={prevStep}
-            isSubmitting={isSubmitting}
-            isTreatmentComplete={isComplete}
-          />
-        );
-        
-      case "admission":
-        return (
-          <Admission 
-            registration={selectedRegistration}
-            onComplete={() => {
-              setActiveTab('queue');
-              setSelectedPatientId(null);
-              setSelectedRegistration(null);
-              localStorage.removeItem(SELECTED_PATIENT_KEY);
-              localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
-            }}
-            onRefresh={refreshData}
-            api={api}
-            onSave={saveCurrentStep}
-            onFinish={finishTreatment}
-            onNextStep={goToNextStep}
-            onPrevStep={goToPreviousStep}
-            currentStep={currentStep}
-            nextStep={nextStep}
-            prevStep={prevStep}
-            isSubmitting={isSubmitting}
-            isTreatmentComplete={isComplete}
-            allAdmissionRequests={allAdmissionRequests}
-            fetchAllAdmissions={fetchAllAdmissions}
-          />
-        );
-        
-      default:
-        return null;
-    }
-  };
+      }
+      
+      return (
+        <OperationRoom 
+          api={api}
+          registration={selectedRegistration}
+          registrationId={selectedPatientId}
+          patientId={selectedRegistration?.patient_id || selectedRegistration?.patient?.id}
+          regId={operationRegId}  // ✅ اضافه کردن regId
+          onSelectPatient={handleSelectPatient}
+          onRefresh={refreshData}
+          onSave={saveCurrentStep}
+          onFinish={finishTreatment}
+          onNextStep={goToNextStep}
+          onPrevStep={goToPreviousStep}
+          currentStep={currentStep}
+          nextStep={nextStep}
+          prevStep={prevStep}
+          isSubmitting={isSubmitting}
+          isTreatmentComplete={isComplete}
+        />
+      );
+      
+    case "pres_insert":
+      return (
+        <PrescriptionForm 
+          registration={selectedRegistration}
+          onComplete={() => {
+            setActiveTab('queue');
+            setSelectedPatientId(null);
+            setSelectedRegistration(null);
+            localStorage.removeItem(SELECTED_PATIENT_KEY);
+            localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+          }}
+          onRefresh={refreshData}
+          api={api}
+          onSave={saveCurrentStep}
+          onFinish={finishTreatment}
+          onNextStep={goToNextStep}
+          onPrevStep={goToPreviousStep}
+          currentStep={currentStep}
+          nextStep={nextStep}
+          prevStep={prevStep}
+          isSubmitting={isSubmitting}
+          isTreatmentComplete={isComplete}
+        />
+      );
+      
+    case "followup":
+      return (
+        <FollowUp 
+          registration={selectedRegistration}
+          onComplete={() => {
+            setActiveTab('queue');
+            setSelectedPatientId(null);
+            setSelectedRegistration(null);
+            localStorage.removeItem(SELECTED_PATIENT_KEY);
+            localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+          }}
+          onRefresh={refreshData}
+          api={api}
+          onSave={saveCurrentStep}
+          onFinish={finishTreatment}
+          onNextStep={goToNextStep}
+          onPrevStep={goToPreviousStep}
+          currentStep={currentStep}
+          nextStep={nextStep}
+          prevStep={prevStep}
+          isSubmitting={isSubmitting}
+          isTreatmentComplete={isComplete}
+        />
+      );
+      
+    case "admission":
+      // اطمینان از اینکه مریض انتخاب شده درست باشد
+      const admissionPatient = selectedPatientId ? activePatients[selectedPatientId] : null;
+      
+      // اگر مریضی انتخاب نشده، از اولین مریض در لیست استفاده کن
+      if (!selectedPatientId || !admissionPatient) {
+        const stagePatients = getPatientsInStage('admission');
+        if (stagePatients.length > 0 && !selectedPatientId) {
+          const firstPatient = stagePatients[0];
+          setSelectedPatientId(firstPatient.reg_id);
+          setSelectedRegistration(firstPatient);
+          localStorage.setItem(SELECTED_PATIENT_KEY, String(firstPatient.reg_id));
+        }
+      }
+      
+      return (
+        <Admission 
+          registration={selectedRegistration}
+          onComplete={() => {
+            setActiveTab('queue');
+            setSelectedPatientId(null);
+            setSelectedRegistration(null);
+            localStorage.removeItem(SELECTED_PATIENT_KEY);
+            localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+          }}
+          onRefresh={refreshData}
+          api={api}
+          onSave={saveCurrentStep}
+          onFinish={finishTreatment}
+          onNextStep={goToNextStep}
+          onPrevStep={goToPreviousStep}
+          currentStep={currentStep}
+          nextStep={nextStep}
+          prevStep={prevStep}
+          isSubmitting={isSubmitting}
+          isTreatmentComplete={isComplete}
+          allAdmissionRequests={allAdmissionRequests}
+          fetchAllAdmissions={fetchAllAdmissions}
+        />
+      );
+      
+    default:
+      return null;
+  }
+};
+
+// ... بقیه کد ...
 
   const renderProgressBar = () => {
     if (activeTab === 'queue' || activeTab === 'history') return null;
