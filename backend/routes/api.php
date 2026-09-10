@@ -47,6 +47,7 @@ use App\Http\Controllers\AdmissionRequestController;
 use App\Http\Controllers\AdmissionFeeController;
 use App\Http\Controllers\WardController;
 use App\Http\Controllers\BedController;
+use App\Http\Controllers\AccountController;
 
 
 /*
@@ -69,6 +70,33 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/sales-view', [SalesController::class, 'view']);
 Route::get('/sales/chart', [SalesController::class, 'chart']);
 
+
+
+
+    // ============================================================
+    // ✅ مسیرهای مدیریت حساب‌ها (Accounts)
+    // ============================================================
+    Route::prefix('accounts')->group(function () {
+        
+        // ==================== CRUD اصلی ====================
+        Route::get('/', [AccountController::class, 'index']);
+        Route::post('/', [AccountController::class, 'store']);
+        Route::get('/{id}', [AccountController::class, 'show']);
+        Route::put('/{id}', [AccountController::class, 'update']);
+        Route::delete('/{id}', [AccountController::class, 'destroy']);
+
+        // ==================== تغییر وضعیت ====================
+        Route::post('/{id}/toggle-status', [AccountController::class, 'toggleStatus']);
+        Route::post('/{id}/activate', [AccountController::class, 'activate']);
+        Route::post('/{id}/deactivate', [AccountController::class, 'deactivate']);
+
+        // ==================== لیست‌های کمکی ====================
+        Route::get('/parents/list', [AccountController::class, 'parents']);
+        Route::get('/transaction-accounts/list', [AccountController::class, 'transactionAccounts']);
+        Route::get('/types/list', [AccountController::class, 'types']);
+        Route::get('/categories/{accountType}', [AccountController::class, 'categories']);
+        Route::get('/summary/stats', [AccountController::class, 'summary']);
+    });
 /*
 |--------------------------------------------------------------------------
 | Stock Routes (PUBLIC)

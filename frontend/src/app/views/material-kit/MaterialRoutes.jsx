@@ -55,6 +55,11 @@ const AppLabResults = Loadable(lazy(() => import("./laboratory/LabResults")));
 const AppRadiology = Loadable(lazy(() => import("./radiology/Radiology")));
 
 // ============================================================
+// ===== ✅ ماژول حساب‌ها (Accounts) =====
+// ============================================================
+const AppAccounts = Loadable(lazy(() => import("./accounts/accounts")));
+
+// ============================================================
 // ===== Routes =====
 // ============================================================
 const materialRoutes = [
@@ -94,6 +99,11 @@ const materialRoutes = [
 
   // ===== Stock =====
   { path: "/material/stock", element: <AppStock /> },
+
+  // ============================================================
+  // ===== ✅ ماژول حساب‌ها (Accounts) =====
+  // ============================================================
+  { path: "/material/accounts", element: <AppAccounts /> },
 
   // ============================================================
   // ===== ✅ صفحات لابراتوار (فقط دو مسیر اصلی) =====

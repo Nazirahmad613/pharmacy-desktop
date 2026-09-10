@@ -9,20 +9,32 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('parchases', function (Blueprint $table) {
+
             $table->id('parchase_id');
+
+            // تاریخ خرید
             $table->date('parchase_date');
+
+            // مجموع خرید
             $table->bigInteger('total_parchase')->default(0);
+
+            // مبلغ پرداخت‌شده
             $table->bigInteger('par_paid')->default(0);
+
+            // مبلغ باقی‌مانده
             $table->bigInteger('due_par')->default(0);
 
-            $table->unsignedBigInteger('par_user')->nullable(); // کاربر ثبت‌کننده
+            // کاربر ثبت‌کننده خرید
+            $table->unsignedBigInteger('par_user')->nullable();
 
-            // ✅ اضافه کردن حمایت‌کننده مستقیم
+            // حساب تأمین‌کننده / شرکت فروشنده
+            // ارتباط مستقیم با جدول accounts
             $table->unsignedBigInteger('supplier_id')->nullable();
+
             $table->foreign('supplier_id')
-                  ->references('reg_id')
-                  ->on('registrations')
-                  ->onDelete('set null');
+                ->references('id')
+                ->on('accounts')
+                ->nullOnDelete();
 
             $table->timestamps();
         });
@@ -33,6 +45,7 @@ return new class extends Migration
         Schema::table('parchases', function (Blueprint $table) {
             $table->dropForeign(['supplier_id']);
         });
-        Schema::dropIfExists('parchases'); 
+
+        Schema::dropIfExists('parchases');
     }
 };

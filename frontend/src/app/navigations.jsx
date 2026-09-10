@@ -29,6 +29,8 @@ import PsychologyIcon from "@mui/icons-material/Psychology";
 import ImageIcon from "@mui/icons-material/Image";
 import RadioIcon from "@mui/icons-material/Radio";
 import ScannerIcon from "@mui/icons-material/Scanner";
+// ✅ آیکون جدید برای ماژول حساب‌ها
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 
 const navigations = [
   {
@@ -203,6 +205,21 @@ const navigations = [
             name: "لیست موجودی",
             path: "/material/stock",
             icon: <InventoryIcon />,
+          },
+        ],
+      },
+
+      // ============================================================
+      // ✅ ماژول جدید: مدیریت حساب‌ها (Accounts)
+      // ============================================================
+      {
+        name: "مدیریت حساب‌ها",
+        icon: <AccountBalanceWalletIcon />,
+        children: [
+          {
+            name: "حساب‌ها",
+            path: "/material/accounts",
+            icon: <AccountBalanceWalletIcon />,
           },
         ],
       },

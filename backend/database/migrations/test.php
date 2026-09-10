@@ -6,84 +6,46 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
-        Schema::create('operation_fees', function (Blueprint $table) {
+        Schema::create('parchases', function (Blueprint $table) {
 
-            $table->id();
+            $table->id('parchase_id');
 
-            // ارتباط با درخواست عملیات
-            $table->foreignId('operation_request_id')
-                ->constrained('operation_requests')
-                ->onDelete('cascade');
+            // تاریخ خرید
+            $table->date('parchase_date');
 
-            // ارتباط با مراجعه
-            // registrations.reg_id کلید اصلی است
-            $table->foreignId('reg_id')
-                ->constrained('registrations', 'reg_id')
-                ->onDelete('cascade');
+            // مجموع خرید
+            $table->bigInteger('total_parchase')->default(0);
 
-            // ارتباط با بیمار
-            $table->foreignId('patient_id')
-                ->constrained('patients')
-                ->onDelete('cascade');
+            // مبلغ پرداخت‌شده
+            $table->bigInteger('par_paid')->default(0);
 
-            // داکتر
-            $table->foreignId('doctor_id')
-                ->constrained('users')
-                ->onDelete('cascade');
+            // مبلغ باقی‌مانده
+            $table->bigInteger('due_par')->default(0);
 
-            // مبالغ
-            $table->decimal('total_amount', 12, 2);
-            $table->decimal('paid_amount', 12, 2)->default(0);
-            $table->decimal('discount', 12, 2)->default(0);
-            $table->decimal('discount_percent', 5, 2)->default(0);
-            $table->decimal('remaining_amount', 12, 2)->default(0);
+            // کاربر ثبت‌کننده خرید
+            $table->unsignedBigInteger('par_user')->nullable();
 
-            // روش پرداخت
-            $table->enum('payment_method', [
-                'cash',
-                'card',
-                'online',
-                'insurance'
-            ])->default('cash');
+            // حساب تأمین‌کننده / شرکت فروشنده
+            // ارتباط مستقیم با جدول accounts
+            $table->unsignedBigInteger('supplier_id')->nullable();
 
-            // وضعیت پرداخت
-            $table->enum('payment_status', [
-                'pending',
-                'partial',
-                'paid',
-                'refunded',
-                'cancelled'
-            ])->default('pending');
-
-            $table->datetime('payment_date')->nullable();
-
-            $table->string('transaction_id')->nullable();
-
-            $table->text('description')->nullable();
-
-            $table->text('note')->nullable();
-
-            // شخص جمع‌کننده فیس
-            $table->foreignId('collected_by')
-                ->constrained('users')
-                ->onDelete('cascade');
+            $table->foreign('supplier_id')
+                ->references('id')
+                ->on('accounts')
+                ->nullOnDelete();
 
             $table->timestamps();
-
-            // Index ها
-            $table->index(['payment_status', 'doctor_id']);
-            $table->index(['payment_method', 'payment_status']);
-            $table->index('payment_date');
-            $table->index('transaction_id');
-            $table->index('created_at');
-            $table->index('reg_id');
         });
     }
 
-    public function down()
+    public function down(): void
     {
-        Schema::dropIfExists('operation_fees');
+        Schema::table('parchases', function (Blueprint $table) {
+            $table->dropForeign(['supplier_id']);
+        });
+
+        Schema::dropIfExists('parchases');
     }
 };
