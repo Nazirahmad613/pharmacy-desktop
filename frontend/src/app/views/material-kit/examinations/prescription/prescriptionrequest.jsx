@@ -6,23 +6,23 @@ import { useAuth } from "app/contexts/AuthContext";
 import { useReactToPrint } from "react-to-print";
 import PrescriptionPrint from "../../PrescriptionPrint";
 
-export default function PrescriptionForm({ 
-  registration, 
-  regId, 
-  api: propApi, 
-  onComplete, 
-  onRefresh, 
-  onSave, 
-  onFinish, 
-  onNextStep, 
-  onPrevStep, 
-  currentStep, 
-  nextStep, 
-  prevStep, 
-  isSubmitting, 
-  isTreatmentComplete 
+export default function PrescriptionForm({
+  registration,
+  regId,
+  api: propApi,
+  onComplete,
+  onRefresh,
+  onSave,
+  onFinish,
+  onNextStep,
+  onPrevStep,
+  currentStep,
+  nextStep,
+  prevStep,
+  isSubmitting,
+  isTreatmentComplete
 }) {
-  const { api: authApi } = useAuth();
+  const { api: authApi, user } = useAuth();
   const api = propApi || authApi;
   const printRef = useRef(null);
 
@@ -36,94 +36,256 @@ export default function PrescriptionForm({
     type: "",
     is_custom: false,
     custom_name: "",
-    custom_type: ""
+    custom_type: "",
+    custom_supplier_name: ""
   };
 
   // اطلاعات مریض
   const [patientData, setPatientData] = useState(null);
   const [prescriptionNumber, setPrescriptionNumber] = useState("");
   const [prescriptionDate, setPrescriptionDate] = useState("");
-  
+
   // لیست‌ها
   const [medications, setMedications] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [allSuppliers, setAllSuppliers] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  
+  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+
   // آیتم‌های نسخه
   const [prescriptionItems, setPrescriptionItems] = useState([]);
   const [formItem, setFormItem] = useState(emptyItem);
   const [editingId, setEditingId] = useState(null);
-  
+
   // بررسی موجودی
-  const [stockAvailability, setStockAvailability] = useState({ 
-    available: false, 
-    totalStock: 0, 
+  const [stockAvailability, setStockAvailability] = useState({
+    available: false,
+    totalStock: 0,
     message: "",
-    checking: false 
+    checking: false
   });
-  
+
   // چاپ
   const [prescriptionPrintData, setPrescriptionPrintData] = useState(null);
   const [isPrintReady, setIsPrintReady] = useState(false);
-  
+
   // لودینگ
   const [loading, setLoading] = useState(true);
+
+  // ========== ✅ تابع کمکی: دریافت patient_id از سرور ==========
+  const fetchPatientIdFromServer = async (regIdValue) => {
+    if (!regIdValue) return null;
+    try {
+      console.log(`🔍 دریافت patient_id از سرور برای reg_id=${regIdValue}`);
+      const res = await api.get(`/registrations/${regIdValue}`);
+      const data = res.data?.data ?? res.data;
+      console.log("📥 پاسخ سرور registrations:", data);
+
+      const pid =
+        data?.patient_id ||
+        data?.patient?.id ||
+        data?.patient?.patient_id ||
+        data?.registration?.patient_id ||
+        null;
+
+      console.log("✅ patient_id از سرور:", pid);
+      return pid;
+    } catch (err) {
+      console.error("❌ خطا در دریافت patient_id از سرور:", err);
+      return null;
+    }
+  };
 
   // ========== مقداردهی اولیه ==========
   useEffect(() => {
     const initialize = async () => {
       setLoading(true);
-      
+
       const effectiveRegId = regId || registration?.reg_id;
-      
+
+      // ========== 🔍 لاگ کامل ==========
+      console.group("🔍 [PrescriptionForm] دیباگ مقداردهی اولیه");
+      console.log("📌 regId prop:", regId);
+      console.log("📌 registration prop:", registration);
+      console.log("📌 effectiveRegId:", effectiveRegId);
+
+      const rawStored = sessionStorage.getItem("selectedPatient");
+      console.log("📌 sessionStorage.selectedPatient (خام):", rawStored);
+
+      let storedPatient = null;
+      if (rawStored) {
+        try {
+          storedPatient = JSON.parse(rawStored);
+          console.log("📌 storedPatient (parsed):", storedPatient);
+          console.log("   ├─ patient_id:", storedPatient?.patient_id);
+          console.log("   ├─ reg_id:", storedPatient?.reg_id);
+          console.log("   ├─ id:", storedPatient?.id);
+          console.log("   ├─ full_name:", storedPatient?.full_name);
+          console.log("   └─ name:", storedPatient?.name);
+        } catch (e) {
+          console.error("❌ خطا در parse کردن storedPatient:", e);
+        }
+      } else {
+        console.warn("⚠️ sessionStorage.selectedPatient وجود ندارد!");
+      }
+
+      console.log("📌 کلیدهای sessionStorage:", Object.keys(sessionStorage));
+      console.groupEnd();
+
       if (registration) {
         const patient = registration.patient || registration;
+
+        console.group("🔍 [PrescriptionForm] ساختار registration");
+        console.log("📌 registration.patient_id:", registration.patient_id);
+        console.log("📌 registration.reg_id:", registration.reg_id);
+        console.log("📌 patient.patient_id:", patient?.patient_id);
+        console.log("📌 patient.id:", patient?.id);
+        console.groupEnd();
+
+        // ✅ 1) تلاش از منابع محلی
+        let resolvedPatientId =
+          patient?.patient_id ||
+          registration?.patient_id ||
+          storedPatient?.patient_id ||
+          storedPatient?.id ||
+          null;
+
+        // ✅ 2) اگر null بود، از سرور بگیر
+        if (!resolvedPatientId && effectiveRegId) {
+          console.log("⚠️ patient_id در منابع محلی نبود — از سرور می‌گیریم");
+          resolvedPatientId = await fetchPatientIdFromServer(effectiveRegId);
+        }
+
         const patientInfo = {
           reg_id: effectiveRegId,
-          full_name: `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || patient.full_name || patient.name || 'نامشخص',
-          name: `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || patient.full_name || patient.name || 'نامشخص',
-          age: patient.age || registration.age || '-',
-          gender: patient.gender === 'male' ? 'مرد' : patient.gender === 'female' ? 'زن' : (patient.gender || '-'),
-          phone: patient.phone || patient.mobile || registration.phone || '-',
-          tazkira_number: patient.national_id || patient.tazkira_number || registration.tazkira_number || '-',
-          blood_group: patient.blood_group || registration.blood_group || '-',
-          diagnosis: registration.diagnosis || patient.diagnosis || '-',
-          weight: registration.weight || patient.weight || '-',
-          blood_pressure: registration.blood_pressure || patient.blood_pressure || '-',
-          temperature: registration.temperature || patient.temperature || '-',
-          oxygen: registration.oxygen || patient.oxygen || '-',
-          doctor_id: registration.doctor_id || null,
-          doctor_name: registration.doctor_name || '-',
+          patient_id: resolvedPatientId,
+          full_name:
+            `${patient?.first_name || ""} ${patient?.last_name || ""}`.trim() ||
+            patient?.full_name ||
+            patient?.name ||
+            storedPatient?.full_name ||
+            "نامشخص",
+          age: patient?.age || registration.age || storedPatient?.age || "-",
+          gender:
+            patient?.gender === "male"
+              ? "مرد"
+              : patient?.gender === "female"
+              ? "زن"
+              : patient?.gender || storedPatient?.gender || "-",
+          phone:
+            patient?.phone ||
+            patient?.mobile ||
+            registration.phone ||
+            storedPatient?.phone ||
+            "-",
+          tazkira_number:
+            patient?.national_id ||
+            patient?.tazkira_number ||
+            registration.tazkira_number ||
+            storedPatient?.tazkira_number ||
+            "-",
+          blood_group:
+            patient?.blood_group ||
+            registration.blood_group ||
+            storedPatient?.blood_group ||
+            "-",
+          diagnosis:
+            registration.diagnosis ||
+            patient?.diagnosis ||
+            storedPatient?.diagnosis ||
+            "-",
+          weight:
+            registration.weight ??
+            patient?.weight ??
+            storedPatient?.weight ??
+            null,
+          blood_pressure:
+            registration.blood_pressure ||
+            patient?.blood_pressure ||
+            storedPatient?.blood_pressure ||
+            "-",
+          temperature:
+            registration.temperature ??
+            patient?.temperature ??
+            storedPatient?.temperature ??
+            null,
+          oxygen:
+            registration.oxygen ??
+            patient?.oxygen ??
+            storedPatient?.oxygen ??
+            null
         };
+
+        console.log("✅ [PrescriptionForm] patientInfo نهایی:", patientInfo);
+        console.log(
+          "   └─ patient_id نهایی:",
+          patientInfo.patient_id,
+          patientInfo.patient_id ? "✅" : "❌ خالی!"
+        );
+
         setPatientData(patientInfo);
-      } else {
-        const storedPatient = sessionStorage.getItem('selectedPatient');
-        if (storedPatient) {
-          try {
-            const patient = JSON.parse(storedPatient);
-            setPatientData(patient);
-          } catch (e) {
-            console.error("Error parsing patient data:", e);
-          }
+      } else if (storedPatient) {
+        console.group("🔍 [PrescriptionForm] فقط از sessionStorage");
+        console.log("📌 storedPatient.patient_id:", storedPatient.patient_id);
+        console.log("📌 storedPatient.id:", storedPatient.id);
+        console.log("📌 storedPatient.reg_id:", storedPatient.reg_id);
+        console.groupEnd();
+
+        const regIdForFetch =
+          storedPatient.reg_id || storedPatient.id || effectiveRegId;
+
+        // ✅ تلاش از منابع محلی
+        let resolvedPatientId =
+          storedPatient.patient_id ||
+          storedPatient.id ||
+          null;
+
+        // ✅ اگر null بود، از سرور بگیر
+        if (!resolvedPatientId && regIdForFetch) {
+          console.log("⚠️ patient_id در storedPatient نبود — از سرور می‌گیریم");
+          resolvedPatientId = await fetchPatientIdFromServer(regIdForFetch);
         }
+
+        setPatientData({
+          ...storedPatient,
+          reg_id: regIdForFetch,
+          patient_id: resolvedPatientId,
+          full_name:
+            storedPatient.full_name || storedPatient.name || "نامشخص",
+          age: storedPatient.age || "-",
+          gender:
+            storedPatient.gender === "male"
+              ? "مرد"
+              : storedPatient.gender === "female"
+              ? "زن"
+              : storedPatient.gender || "-"
+        });
+      } else {
+        console.error(
+          "❌ [PrescriptionForm] نه registration داریم نه storedPatient!"
+        );
       }
-      
-      setPrescriptionNumber(`RX-${Date.now()}`);
+
       setPrescriptionDate(new Date().toISOString().slice(0, 10));
-      
-      // بارگذاری لیست‌ها
-      await Promise.all([
-        loadMedications(),
-        loadCategories(),
-        loadSuppliers(),
-      ]);
-      
+
+      await Promise.all([loadMedications(), loadCategories()]);
+
       setLoading(false);
     };
-    
+
     initialize();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registration, regId]);
+
+  // ========== 🔍 لاگ patientData ==========
+  useEffect(() => {
+    if (patientData) {
+      console.group("🔍 [PrescriptionForm] patientData تغییر کرد");
+      console.log("📌 patientData.patient_id:", patientData.patient_id);
+      console.log("📌 patientData.reg_id:", patientData.reg_id);
+      console.log("📌 patientData.full_name:", patientData.full_name);
+      console.groupEnd();
+    }
+  }, [patientData]);
 
   // ========== توابع بارگذاری ==========
   const loadMedications = async () => {
@@ -144,73 +306,83 @@ export default function PrescriptionForm({
     }
   };
 
-  const loadSuppliers = async () => {
+  // ========== دریافت حمایت‌کننده‌ها ==========
+  const loadSuppliersForMedication = async (medId) => {
+    if (!medId) {
+      setSuppliers([]);
+      return;
+    }
+
+    setLoadingSuppliers(true);
+    setSuppliers([]);
+
     try {
-      const res = await api.get("/registrations");
-      const data = res.data.data ?? res.data ?? [];
-      const supplierList = data.filter(r => r.reg_type === "supplier");
-      setAllSuppliers(supplierList);
-      setSuppliers(supplierList);
+      const url = `/prescriptions/medication/${medId}/suppliers`;
+      const res = await api.get(url);
+
+      let list = [];
+      if (Array.isArray(res.data)) list = res.data;
+      else if (Array.isArray(res.data?.data)) list = res.data.data;
+      else if (res.data?.data && typeof res.data.data === "object")
+        list = res.data.data;
+
+      setSuppliers(list);
+
+      if (list.length === 0) {
+        toast.warning("⚠️ هیچ حمایت‌کننده‌ای برای این دارو یافت نشد");
+      }
     } catch (error) {
       console.error("Error loading suppliers:", error);
+      setSuppliers([]);
+      toast.error("❌ خطا در دریافت حمایت‌کننده‌ها");
+    } finally {
+      setLoadingSuppliers(false);
     }
   };
 
-  // ========== فیلتر داروها بر اساس کتگوری ==========
   const filteredMedications = medications.filter(
-    m => Number(m.category_id) === Number(formItem.category_id)
+    (m) => Number(m.category_id) === Number(formItem.category_id)
   );
 
-  const selectedMedication = medications.find(
-    m => Number(m.med_id) === Number(formItem.med_id)
-  );
-
-  // ========== فیلتر حمایت‌کننده‌ها بر اساس دارو ==========
   useEffect(() => {
-    if (!selectedMedication) {
-      setSuppliers(allSuppliers);
-      return;
-    }
-    
-    const medSupplierId = selectedMedication.supplier_id;
-    
-    if (!medSupplierId) {
-      setSuppliers(allSuppliers);
-      return;
-    }
-    
-    let filtered = [];
-    
-    if (Array.isArray(medSupplierId)) {
-      filtered = allSuppliers.filter(s => 
-        medSupplierId.some(id => Number(id) === Number(s.reg_id))
-      );
+    if (formItem.med_id && !formItem.is_custom) {
+      loadSuppliersForMedication(formItem.med_id);
     } else {
-      filtered = allSuppliers.filter(s => 
-        Number(medSupplierId) === Number(s.reg_id) ||
-        String(medSupplierId) === String(s.reg_id)
-      );
+      setSuppliers([]);
     }
-    
-    setSuppliers(filtered.length > 0 ? filtered : allSuppliers);
-  }, [selectedMedication, allSuppliers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formItem.med_id, formItem.is_custom]);
 
-  // ========== بررسی موجودی استاک ==========
+  // ========== بررسی موجودی ==========
   useEffect(() => {
     const checkStockAvailability = async () => {
-      // اگر داروی دستی است، بررسی موجودی لازم نیست
       if (formItem.is_custom) {
-        setStockAvailability({ available: true, totalStock: 0, message: "", checking: false });
+        setStockAvailability({
+          available: true,
+          totalStock: 0,
+          message: "",
+          checking: false
+        });
         return;
       }
 
-      if (!formItem.med_id || !formItem.supplier_id || !formItem.quantity || Number(formItem.quantity) <= 0) {
-        setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+      if (
+        !formItem.med_id ||
+        !formItem.supplier_id ||
+        !formItem.quantity ||
+        Number(formItem.quantity) <= 0
+      ) {
+        setStockAvailability({
+          available: false,
+          totalStock: 0,
+          message: "",
+          checking: false
+        });
         return;
       }
 
-      setStockAvailability(prev => ({ ...prev, checking: true }));
-      
+      setStockAvailability((prev) => ({ ...prev, checking: true }));
+
       try {
         const response = await api.post("/sales/check-stock", {
           med_id: formItem.med_id,
@@ -218,15 +390,15 @@ export default function PrescriptionForm({
           type: formItem.type || null,
           quantity: Number(formItem.quantity)
         });
-        
+
         if (response.data.success) {
           const isAvailable = response.data.available;
           const totalStock = response.data.total_quantity || 0;
-          
+
           setStockAvailability({
             available: isAvailable,
-            totalStock: totalStock,
-            message: isAvailable 
+            totalStock,
+            message: isAvailable
               ? `✅ موجودی کافی است (موجودی انبار: ${totalStock})`
               : `❌ موجودی کافی نیست! موجودی انبار: ${totalStock} - درخواستی: ${formItem.quantity}`,
             checking: false
@@ -242,42 +414,64 @@ export default function PrescriptionForm({
         });
       }
     };
-    
+
     const timer = setTimeout(() => {
       checkStockAvailability();
     }, 500);
-    
-    return () => clearTimeout(timer);
-  }, [formItem.med_id, formItem.supplier_id, formItem.quantity, formItem.type, formItem.is_custom, api]);
 
-  // ========== مدیریت تغییر فیلدها ==========
+    return () => clearTimeout(timer);
+  }, [
+    formItem.med_id,
+    formItem.supplier_id,
+    formItem.quantity,
+    formItem.type,
+    formItem.is_custom,
+    api
+  ]);
+
+  // ========== مدیریت تغییر ==========
   const handleChange = (field, value) => {
     let updated = { ...formItem, [field]: value };
-    
+
     if (field === "category_id") {
       updated.med_id = "";
       updated.supplier_id = "";
       updated.type = "";
-      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+      setSuppliers([]);
+      setStockAvailability({
+        available: false,
+        totalStock: 0,
+        message: "",
+        checking: false
+      });
     }
-    
+
     if (field === "med_id") {
-      const med = medications.find(m => Number(m.med_id) === Number(value));
+      const med = medications.find((m) => Number(m.med_id) === Number(value));
       updated.type = med?.type ?? "";
       updated.supplier_id = "";
-      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+      setStockAvailability({
+        available: false,
+        totalStock: 0,
+        message: "",
+        checking: false
+      });
     }
-    
+
     if (field === "supplier_id") {
-      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+      setStockAvailability({
+        available: false,
+        totalStock: 0,
+        message: "",
+        checking: false
+      });
     }
-    
+
     setFormItem(updated);
   };
 
-  // ========== افزودن آیتم به نسخه ==========
+  // ========== افزودن آیتم ==========
   const handleAddItem = () => {
-    // اعتبارسنجی
     if (formItem.is_custom) {
       if (!formItem.custom_name.trim()) {
         toast.error("❌ لطفاً نام دارو را وارد کنید");
@@ -285,6 +479,10 @@ export default function PrescriptionForm({
       }
       if (!formItem.category_id) {
         toast.error("❌ لطفاً کتگوری را انتخاب کنید");
+        return;
+      }
+      if (!formItem.custom_supplier_name.trim()) {
+        toast.error("❌ لطفاً نام حمایت‌کننده را وارد کنید");
         return;
       }
       if (!formItem.dosage.trim()) {
@@ -318,37 +516,57 @@ export default function PrescriptionForm({
       }
     }
 
-    const med = medications.find(m => Number(m.med_id) === Number(formItem.med_id));
-    const cat = categories.find(c => Number(c.category_id) === Number(formItem.category_id));
-    const sup = allSuppliers.find(s => Number(s.reg_id) === Number(formItem.supplier_id));
+    const med = medications.find(
+      (m) => Number(m.med_id) === Number(formItem.med_id)
+    );
+    const cat = categories.find(
+      (c) => Number(c.category_id) === Number(formItem.category_id)
+    );
+
+    let supplierName = "-";
+    if (formItem.is_custom) {
+      supplierName = formItem.custom_supplier_name.trim() || "-";
+    } else {
+      const sup = suppliers.find(
+        (s) => Number(s.reg_id) === Number(formItem.supplier_id)
+      );
+      supplierName = sup?.full_name ?? sup?.name ?? sup?.reg_name ?? "-";
+    }
 
     const newItem = {
       ...formItem,
       id: Date.now() + Math.random(),
-      med_name: formItem.is_custom ? formItem.custom_name.trim() : (med?.gen_name ?? "-"),
-      med_type: formItem.is_custom ? (formItem.custom_type || "سایر") : (med?.type ?? "-"),
+      med_name: formItem.is_custom
+        ? formItem.custom_name.trim()
+        : med?.gen_name ?? "-",
+      med_type: formItem.is_custom
+        ? formItem.custom_type || "سایر"
+        : med?.type ?? "-",
       category_name: cat?.category_name ?? "-",
-      supplier_name: sup?.full_name ?? sup?.name ?? "-",
+      supplier_name: supplierName
     };
 
     setPrescriptionItems([...prescriptionItems, newItem]);
-    
-    // ریست فرم (با حفظ کتگوری)
+
     setFormItem({
       ...emptyItem,
-      category_id: formItem.category_id,
+      category_id: formItem.category_id
     });
-    setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
-    
+    setSuppliers([]);
+    setStockAvailability({
+      available: false,
+      totalStock: 0,
+      message: "",
+      checking: false
+    });
+
     toast.success("✅ دارو با موفقیت اضافه شد");
   };
 
-  // ========== حذف آیتم ==========
   const handleRemoveItem = (id) => {
-    setPrescriptionItems(prev => prev.filter(item => item.id !== id));
+    setPrescriptionItems((prev) => prev.filter((item) => item.id !== id));
   };
 
-  // ========== کلید Enter ==========
   const handleKeyDown = (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -357,58 +575,141 @@ export default function PrescriptionForm({
 
   // ========== ذخیره نسخه ==========
   const handleSavePrescription = async () => {
+    console.group("🔍 [PrescriptionForm] شروع ذخیره نسخه");
+
     if (!patientData) {
+      console.error("❌ patientData خالی است!");
       toast.error("❌ لطفاً یک مریض انتخاب کنید");
-      return;
-    }
-    
-    if (prescriptionItems.length === 0) {
-      toast.error("❌ حداقل یک دارو باید تجویز شود");
+      console.groupEnd();
       return;
     }
 
+    console.log("📌 patientData کامل:", patientData);
+    console.log("📌 patientData.patient_id:", patientData.patient_id);
+    console.log("📌 patientData.reg_id:", patientData.reg_id);
+
+    let patientId = patientData.patient_id;
+    const regIdValue = patientData.reg_id;
+
+    // ✅ اگر patient_id نبود، یک‌بار دیگر از سرور بگیر
+    if (!patientId && regIdValue) {
+      console.warn("⚠️ patient_id خالی است — تلاش دوباره از سرور");
+      patientId = await fetchPatientIdFromServer(regIdValue);
+      if (patientId) {
+        console.log("✅ patient_id از سرور گرفته شد:", patientId);
+        setPatientData((prev) => ({ ...prev, patient_id: patientId }));
+      }
+    }
+
+    if (!patientId) {
+      console.error("❌ patient_id یافت نشد!");
+      toast.error(
+        "❌ شناسه اصلی مریض (patient_id) یافت نشد. لطفاً تب مریض را دوباره باز کنید."
+      );
+      console.groupEnd();
+      return;
+    }
+
+    if (!regIdValue) {
+      console.error("❌ reg_id یافت نشد!");
+      toast.error("❌ شناسه مراجعه یافت نشد");
+      console.groupEnd();
+      return;
+    }
+
+    if (prescriptionItems.length === 0) {
+      console.error("❌ آیتمی برای ذخیره وجود ندارد");
+      toast.error("❌ حداقل یک دارو باید تجویز شود");
+      console.groupEnd();
+      return;
+    }
+
+    const presDate =
+      prescriptionDate || new Date().toISOString().slice(0, 10);
+
     const payload = {
-      patient_id: patientData.reg_id,
-      reg_id: patientData.reg_id,
-      pres_num: prescriptionNumber,
-      pres_date: prescriptionDate || new Date().toISOString().slice(0, 10),
-      doc_id: patientData.doctor_id || null,
-      patient_name: patientData.full_name || patientData.name,
-      patient_age: patientData.age,
-      patient_gender: patientData.gender,
-      patient_phone: patientData.phone,
-      tazkira_number: patientData.tazkira_number,
-      blood_group: patientData.blood_group,
-      diagnosis: patientData.diagnosis,
-      weight: patientData.weight,
-      blood_pressure: patientData.blood_pressure,
-      temperature: patientData.temperature,
-      oxygen: patientData.oxygen,
-      items: prescriptionItems.map(item => ({
-        category_id: item.category_id,
-        med_id: item.med_id,
-        supplier_id: item.supplier_id,
-        type: item.med_type,
+      patient_id: Number(patientId),
+      reg_id: Number(regIdValue),
+      pres_date: presDate,
+
+      patient_name: patientData.full_name !== "-" ? patientData.full_name : null,
+      tazkira_number:
+        patientData.tazkira_number !== "-"
+          ? patientData.tazkira_number
+          : null,
+      patient_age:
+        patientData.age && patientData.age !== "-"
+          ? parseInt(patientData.age, 10) || null
+          : null,
+      patient_gender:
+        patientData.gender !== "-" ? patientData.gender : null,
+      patient_phone:
+        patientData.phone !== "-" ? patientData.phone : null,
+      patient_blood_group:
+        patientData.blood_group !== "-" ? patientData.blood_group : null,
+
+      diagnosis:
+        patientData.diagnosis !== "-" ? patientData.diagnosis : null,
+      weight:
+        patientData.weight !== null && patientData.weight !== "-"
+          ? Number(patientData.weight)
+          : null,
+      blood_pressure:
+        patientData.blood_pressure !== "-"
+          ? patientData.blood_pressure
+          : null,
+      temperature:
+        patientData.temperature !== null && patientData.temperature !== "-"
+          ? Number(patientData.temperature)
+          : null,
+      oxygen:
+        patientData.oxygen !== null && patientData.oxygen !== "-"
+          ? parseInt(patientData.oxygen, 10)
+          : null,
+
+      items: prescriptionItems.map((item) => ({
+        category_id: item.category_id ? Number(item.category_id) : null,
+        is_custom: item.is_custom || false,
+        med_id: item.is_custom ? null : Number(item.med_id),
+        supplier_id: item.is_custom ? null : Number(item.supplier_id),
+        med_name: item.is_custom
+          ? (item.custom_name?.trim() || item.med_name || null)
+          : null,
+        supplier_name: item.is_custom
+          ? (item.custom_supplier_name?.trim() || item.supplier_name || null)
+          : null,
+        type: item.med_type || null,
         dosage: item.dosage,
         quantity: Number(item.quantity),
-        remarks: item.remarks,
-        is_custom: item.is_custom || false,
-        med_name: item.med_name,
-      })),
+        remarks: item.remarks || null
+      }))
     };
+
+    console.log("📤 payload نهایی:", payload);
 
     try {
       if (editingId) {
-        await api.put(`/prescriptions/${editingId}`, payload);
+        const res = await api.put(`/prescriptions/${editingId}`, payload);
+        console.log("✅ پاسخ PUT:", res.data);
         toast.success("✅ نسخه با موفقیت بروزرسانی شد");
         setEditingId(null);
       } else {
-        await api.post("/prescriptions", payload);
-        toast.success("✅ نسخه با موفقیت ثبت شد");
+        const res = await api.post("/prescriptions", payload);
+        console.log("✅ پاسخ POST:", res.data);
+
+        const created = res.data?.data ?? res.data;
+        const presId = created?.pres_id;
+
+        if (presId) {
+          setPrescriptionNumber(String(presId));
+          toast.success(`✅ نسخه شماره ${presId} با موفقیت ثبت شد`);
+        } else {
+          toast.success("✅ نسخه با موفقیت ثبت شد");
+        }
       }
 
       setPrescriptionItems([]);
-      
+
       if (onSave) {
         try {
           await onSave(payload);
@@ -416,13 +717,12 @@ export default function PrescriptionForm({
           console.log("onSave callback error:", err);
         }
       }
-      
+
       if (onComplete) {
         onComplete();
       }
-      
     } catch (error) {
-      console.error("Error saving prescription:", error);
+      console.error("❌ خطا در ذخیره نسخه:", error);
       if (error.response) {
         const errors = error.response.data.errors;
         if (errors) {
@@ -437,6 +737,8 @@ export default function PrescriptionForm({
         toast.error(error.message || "خطا در ذخیره نسخه");
       }
     }
+
+    console.groupEnd();
   };
 
   // ========== چاپ ==========
@@ -467,32 +769,37 @@ export default function PrescriptionForm({
     }
 
     const printData = {
-      pres_num: prescriptionNumber,
+      pres_num: prescriptionNumber || "-",
       date: prescriptionDate,
-      patient_name: patientData?.full_name || patientData?.name || "-",
+      patient_name: patientData?.full_name || "-",
       patient_age: patientData?.age || "-",
       patient_gender: patientData?.gender || "-",
       patient_phone: patientData?.phone || "-",
       tazkira_number: patientData?.tazkira_number || "-",
       blood_group: patientData?.blood_group || "-",
       diagnosis: patientData?.diagnosis || "-",
-      weight: patientData?.weight || "-",
+      weight: patientData?.weight ?? "-",
       blood_pressure: patientData?.blood_pressure || "-",
-      temperature: patientData?.temperature || "-",
-      oxygen: patientData?.oxygen || "-",
-      doctor_name: patientData?.doctor_name || "-",
-      items: prescriptionItems,
+      temperature: patientData?.temperature ?? "-",
+      oxygen: patientData?.oxygen ?? "-",
+      doctor_name: user?.name || user?.full_name || "-",
+      items: prescriptionItems
     };
 
     setPrescriptionPrintData(printData);
     setIsPrintReady(true);
   };
 
-  // ========== انصراف ==========
   const handleCancel = () => {
     setPrescriptionItems([]);
     setFormItem(emptyItem);
-    setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+    setSuppliers([]);
+    setStockAvailability({
+      available: false,
+      totalStock: 0,
+      message: "",
+      checking: false
+    });
     if (onComplete) {
       onComplete();
     }
@@ -502,7 +809,7 @@ export default function PrescriptionForm({
   if (loading) {
     return (
       <MainLayoutjur>
-        <div style={{ textAlign: "center", padding: "50px", color: "#fff" }}>
+        <div style={{ textAlign: "center", padding: "50px", color: "#1f2937" }}>
           <h2>⏳ در حال بارگذاری...</h2>
         </div>
       </MainLayoutjur>
@@ -513,41 +820,83 @@ export default function PrescriptionForm({
     <MainLayoutjur>
       {/* ===== اطلاعات مریض ===== */}
       {patientData && (
-        <div style={{
-          backgroundColor: '#1a2a3a',
-          padding: '15px 20px',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          border: '1px solid #2a3a4a'
-        }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-            gap: '8px 15px'
-          }}>
+        <div
+          style={{
+            backgroundColor: "#ffffff",
+            padding: "15px 20px",
+            borderRadius: "8px",
+            marginBottom: "20px",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              gap: "8px 15px"
+            }}
+          >
             <div>
-              <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>نام مریض</span>
-              <span style={{ color: 'white', fontWeight: 'bold' }}>{patientData.full_name || patientData.name}</span>
+              <span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>
+                نام مریض
+              </span>
+              <span style={{ color: "#111827", fontWeight: "bold" }}>
+                {patientData.full_name}
+              </span>
             </div>
             <div>
-              <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>شماره مراجعه</span>
-              <span style={{ color: '#fcd34d', fontWeight: 'bold' }}>{patientData.reg_id || '-'}</span>
+              <span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>
+                شناسه مریض
+              </span>
+              <span
+                style={{
+                  color: patientData.patient_id ? "#059669" : "#dc2626",
+                  fontWeight: "bold"
+                }}
+              >
+                {patientData.patient_id || "❌ یافت نشد"}
+              </span>
             </div>
             <div>
-              <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>سن</span>
-              <span style={{ color: 'white' }}>{patientData.age ? `${patientData.age} سال` : '-'}</span>
+              <span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>
+                شماره مراجعه
+              </span>
+              <span style={{ color: "#b45309", fontWeight: "bold" }}>
+                {patientData.reg_id || "-"}
+              </span>
             </div>
             <div>
-              <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>جنسیت</span>
-              <span style={{ color: 'white' }}>{patientData.gender || '-'}</span>
+              <span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>
+                سن
+              </span>
+              <span style={{ color: "#111827" }}>
+                {patientData.age ? `${patientData.age} سال` : "-"}
+              </span>
             </div>
             <div>
-              <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>تشخیص</span>
-              <span style={{ color: 'white' }}>{patientData.diagnosis || '-'}</span>
+              <span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>
+                جنسیت
+              </span>
+              <span style={{ color: "#111827" }}>
+                {patientData.gender || "-"}
+              </span>
             </div>
             <div>
-              <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>شماره نسخه</span>
-              <span style={{ color: '#10b981', fontWeight: 'bold' }}>{prescriptionNumber}</span>
+              <span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>
+                تشخیص
+              </span>
+              <span style={{ color: "#111827" }}>
+                {patientData.diagnosis || "-"}
+              </span>
+            </div>
+            <div>
+              <span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>
+                شماره نسخه
+              </span>
+              <span style={{ color: "#059669", fontWeight: "bold" }}>
+                {prescriptionNumber || "— پس از ثبت —"}
+              </span>
             </div>
           </div>
         </div>
@@ -555,36 +904,78 @@ export default function PrescriptionForm({
 
       {/* ===== فرم اصلی ===== */}
       <div className="form-container">
-        <h3 style={{ color: '#10b981', marginBottom: '15px' }}>📝 ثبت نسخه</h3>
+        <h3 style={{ color: "#059669", marginBottom: "15px" }}>📝 ثبت نسخه</h3>
 
-        {/* ===== فرم افزودن دارو ===== */}
-        <div style={{ marginTop: '20px', borderTop: '1px solid #374151', paddingTop: '20px' }}>
-          <h4 style={{ color: '#60a5fa', marginBottom: '12px' }}>➕ افزودن دارو</h4>
-          
+        <div
+          style={{
+            marginTop: "20px",
+            borderTop: "1px solid #e5e7eb",
+            paddingTop: "20px"
+          }}
+        >
+          <h4 style={{ color: "#2563eb", marginBottom: "12px" }}>
+            ➕ افزودن دارو
+          </h4>
+
           <div className="form-grid" onKeyDown={handleKeyDown}>
-            {/* انتخاب روش تجویز */}
-            <div style={{ gridColumn: '1 / -1', marginBottom: '10px' }}>
-              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'white' }}>
+            <div style={{ gridColumn: "1 / -1", marginBottom: "10px" }}>
+              <div style={{ display: "flex", gap: "15px", flexWrap: "wrap" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    cursor: "pointer",
+                    color: "#111827"
+                  }}
+                >
                   <input
                     type="radio"
                     name="prescriptionType"
                     checked={!formItem.is_custom}
                     onChange={() => {
-                      setFormItem({ ...emptyItem, is_custom: false, category_id: formItem.category_id });
-                      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+                      setFormItem({
+                        ...emptyItem,
+                        is_custom: false,
+                        category_id: formItem.category_id
+                      });
+                      setSuppliers([]);
+                      setStockAvailability({
+                        available: false,
+                        totalStock: 0,
+                        message: "",
+                        checking: false
+                      });
                     }}
                   />
                   <span>📦 انتخاب از داروهای موجود</span>
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'white' }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    cursor: "pointer",
+                    color: "#111827"
+                  }}
+                >
                   <input
                     type="radio"
                     name="prescriptionType"
                     checked={formItem.is_custom}
                     onChange={() => {
-                      setFormItem({ ...emptyItem, is_custom: true, category_id: formItem.category_id });
-                      setStockAvailability({ available: true, totalStock: 0, message: "", checking: false });
+                      setFormItem({
+                        ...emptyItem,
+                        is_custom: true,
+                        category_id: formItem.category_id
+                      });
+                      setSuppliers([]);
+                      setStockAvailability({
+                        available: true,
+                        totalStock: 0,
+                        message: "",
+                        checking: false
+                      });
                     }}
                   />
                   <span>✍️ تجویز داروی دستی (خارج از سیستم)</span>
@@ -596,18 +987,11 @@ export default function PrescriptionForm({
               <label>کتگوری *</label>
               <select
                 value={formItem.category_id}
-                onChange={e => handleChange("category_id", e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #374151',
-                  backgroundColor: '#1f2937',
-                  color: 'white',
-                  width: '100%'
-                }}
+                onChange={(e) => handleChange("category_id", e.target.value)}
+                className="form-input"
               >
                 <option value="">انتخاب</option>
-                {categories.map(c => (
+                {categories.map((c) => (
                   <option key={c.category_id} value={c.category_id}>
                     {c.category_name}
                   </option>
@@ -622,16 +1006,11 @@ export default function PrescriptionForm({
                   <input
                     type="text"
                     value={formItem.custom_name}
-                    onChange={e => setFormItem({ ...formItem, custom_name: e.target.value })}
+                    onChange={(e) =>
+                      setFormItem({ ...formItem, custom_name: e.target.value })
+                    }
                     placeholder="نام دارو را وارد کنید"
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      border: '1px solid #374151',
-                      backgroundColor: '#1f2937',
-                      color: 'white',
-                      width: '100%'
-                    }}
+                    className="form-input"
                   />
                 </div>
                 <div>
@@ -639,16 +1018,26 @@ export default function PrescriptionForm({
                   <input
                     type="text"
                     value={formItem.custom_type}
-                    onChange={e => setFormItem({ ...formItem, custom_type: e.target.value })}
+                    onChange={(e) =>
+                      setFormItem({ ...formItem, custom_type: e.target.value })
+                    }
                     placeholder="مثلاً: قرص، شربت، آمپول"
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      border: '1px solid #374151',
-                      backgroundColor: '#1f2937',
-                      color: 'white',
-                      width: '100%'
-                    }}
+                    className="form-input"
+                  />
+                </div>
+                <div>
+                  <label>حمایت‌کننده *</label>
+                  <input
+                    type="text"
+                    value={formItem.custom_supplier_name}
+                    onChange={(e) =>
+                      setFormItem({
+                        ...formItem,
+                        custom_supplier_name: e.target.value
+                      })
+                    }
+                    placeholder="نام حمایت‌کننده را وارد کنید"
+                    className="form-input"
                   />
                 </div>
               </>
@@ -658,18 +1047,11 @@ export default function PrescriptionForm({
                   <label>دارو *</label>
                   <select
                     value={formItem.med_id}
-                    onChange={e => handleChange("med_id", e.target.value)}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      border: '1px solid #374151',
-                      backgroundColor: '#1f2937',
-                      color: 'white',
-                      width: '100%'
-                    }}
+                    onChange={(e) => handleChange("med_id", e.target.value)}
+                    className="form-input"
                   >
                     <option value="">انتخاب</option>
-                    {filteredMedications.map(m => (
+                    {filteredMedications.map((m) => (
                       <option key={m.med_id} value={m.med_id}>
                         {m.gen_name}
                       </option>
@@ -681,23 +1063,52 @@ export default function PrescriptionForm({
                   <label>حمایت‌کننده *</label>
                   <select
                     value={formItem.supplier_id}
-                    onChange={e => handleChange("supplier_id", e.target.value)}
+                    onChange={(e) => handleChange("supplier_id", e.target.value)}
+                    disabled={!formItem.med_id || loadingSuppliers}
+                    className="form-input"
                     style={{
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      border: `1px solid ${formItem.supplier_id && !stockAvailability.available && formItem.quantity ? '#dc2626' : '#374151'}`,
-                      backgroundColor: '#1f2937',
-                      color: 'white',
-                      width: '100%'
+                      borderColor:
+                        formItem.supplier_id &&
+                        !stockAvailability.available &&
+                        formItem.quantity
+                          ? "#dc2626"
+                          : "#d1d5db",
+                      opacity: !formItem.med_id || loadingSuppliers ? 0.6 : 1,
+                      cursor:
+                        !formItem.med_id || loadingSuppliers
+                          ? "not-allowed"
+                          : "pointer"
                     }}
                   >
-                    <option value="">انتخاب</option>
-                    {suppliers.map(s => (
+                    <option value="">
+                      {loadingSuppliers
+                        ? "⏳ در حال بارگذاری..."
+                        : !formItem.med_id
+                        ? "ابتدا دارو را انتخاب کنید"
+                        : suppliers.length === 0
+                        ? "حمایت‌کننده‌ای یافت نشد"
+                        : "انتخاب"}
+                    </option>
+                    {suppliers.map((s) => (
                       <option key={s.reg_id} value={s.reg_id}>
-                        {s.full_name ?? s.name}
+                        {s.full_name ?? s.name ?? s.reg_name}
                       </option>
                     ))}
                   </select>
+                  {!loadingSuppliers &&
+                    formItem.med_id &&
+                    suppliers.length === 0 && (
+                      <small
+                        style={{
+                          color: "#b45309",
+                          display: "block",
+                          marginTop: "4px",
+                          fontSize: "11px"
+                        }}
+                      >
+                        ⚠️ این دارو در هیچ خریدی ثبت نشده است
+                      </small>
+                    )}
                 </div>
 
                 <div>
@@ -706,15 +1117,8 @@ export default function PrescriptionForm({
                     type="text"
                     value={formItem.type}
                     readOnly
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      border: '1px solid #374151',
-                      backgroundColor: '#1f2937',
-                      color: '#60a5fa',
-                      width: '100%',
-                      fontWeight: 'bold'
-                    }}
+                    className="form-input"
+                    style={{ color: "#2563eb", fontWeight: "bold" }}
                   />
                 </div>
               </>
@@ -724,16 +1128,9 @@ export default function PrescriptionForm({
               <label>مقدار مصرف *</label>
               <input
                 value={formItem.dosage}
-                onChange={e => handleChange("dosage", e.target.value)}
+                onChange={(e) => handleChange("dosage", e.target.value)}
                 placeholder="مثلاً: 1×3"
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #374151',
-                  backgroundColor: '#1f2937',
-                  color: 'white',
-                  width: '100%'
-                }}
+                className="form-input"
               />
             </div>
 
@@ -743,24 +1140,31 @@ export default function PrescriptionForm({
                 type="number"
                 min="1"
                 value={formItem.quantity}
-                onChange={e => handleChange("quantity", e.target.value)}
+                onChange={(e) => handleChange("quantity", e.target.value)}
+                className="form-input"
                 style={{
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  border: `1px solid ${!formItem.is_custom && stockAvailability.message && !stockAvailability.available ? '#dc2626' : stockAvailability.available ? '#10b981' : '#374151'}`,
-                  backgroundColor: '#1f2937',
-                  color: 'white',
-                  width: '100%'
+                  borderColor:
+                    !formItem.is_custom &&
+                    stockAvailability.message &&
+                    !stockAvailability.available
+                      ? "#dc2626"
+                      : stockAvailability.available
+                      ? "#10b981"
+                      : "#d1d5db"
                 }}
               />
               {!formItem.is_custom && stockAvailability.message && (
-                <small style={{ 
-                  color: stockAvailability.available ? '#10b981' : '#dc2626',
-                  display: 'block',
-                  marginTop: '4px',
-                  fontWeight: 'bold'
-                }}>
-                  {stockAvailability.checking ? '⏳ در حال بررسی موجودی...' : stockAvailability.message}
+                <small
+                  style={{
+                    color: stockAvailability.available ? "#059669" : "#dc2626",
+                    display: "block",
+                    marginTop: "4px",
+                    fontWeight: "bold"
+                  }}
+                >
+                  {stockAvailability.checking
+                    ? "⏳ در حال بررسی موجودی..."
+                    : stockAvailability.message}
                 </small>
               )}
             </div>
@@ -769,69 +1173,63 @@ export default function PrescriptionForm({
               <label>ملاحظات</label>
               <input
                 value={formItem.remarks}
-                onChange={e => handleChange("remarks", e.target.value)}
+                onChange={(e) => handleChange("remarks", e.target.value)}
                 placeholder="توضیحات اضافی..."
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #374151',
-                  backgroundColor: '#1f2937',
-                  color: 'white',
-                  width: '100%'
-                }}
+                className="form-input"
               />
             </div>
           </div>
-          
-          <div style={{ marginTop: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={handleAddItem}
-              style={{
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                padding: '10px 25px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 'bold'
-              }}
-            >
+
+          <div
+            style={{
+              marginTop: "15px",
+              display: "flex",
+              gap: "10px",
+              flexWrap: "wrap"
+            }}
+          >
+            <button type="button" onClick={handleAddItem} className="btn-add">
               ➕ افزودن به نسخه
             </button>
             {formItem.is_custom && (
               <button
                 type="button"
                 onClick={() => {
-                  setFormItem({ ...emptyItem, category_id: formItem.category_id });
-                  setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+                  setFormItem({
+                    ...emptyItem,
+                    category_id: formItem.category_id
+                  });
+                  setStockAvailability({
+                    available: false,
+                    totalStock: 0,
+                    message: "",
+                    checking: false
+                  });
                 }}
-                style={{
-                  backgroundColor: '#6b7280',
-                  color: 'white',
-                  padding: '10px 25px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold'
-                }}
+                className="btn-cancel-custom"
               >
                 ❌ لغو ثبت دستی
               </button>
             )}
           </div>
-          
-          <div style={{ marginTop: '10px', fontSize: '12px', color: '#6b7280', textAlign: 'center' }}>
+
+          <div
+            style={{
+              marginTop: "10px",
+              fontSize: "12px",
+              color: "#6b7280",
+              textAlign: "center"
+            }}
+          >
             ⚡ برای افزودن سریع، کلید Enter را بزنید
           </div>
         </div>
 
-        {/* ===== لیست آیتم‌ها ===== */}
         {prescriptionItems.length > 0 && (
-          <div className="table-container" style={{ marginTop: '20px' }}>
-            <h4 style={{ color: '#60a5fa' }}>📋 لیست داروهای تجویز شده ({prescriptionItems.length})</h4>
+          <div className="table-container" style={{ marginTop: "20px" }}>
+            <h4 style={{ color: "#2563eb" }}>
+              📋 لیست داروهای تجویز شده ({prescriptionItems.length})
+            </h4>
             <table>
               <thead>
                 <tr>
@@ -854,15 +1252,7 @@ export default function PrescriptionForm({
                     <td>
                       {item.med_name || "-"}
                       {item.is_custom && (
-                        <span style={{
-                          background: '#8b5cf6',
-                          color: '#fff',
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          fontSize: '10px',
-                          fontWeight: 'bold',
-                          marginRight: '5px'
-                        }}>دستی</span>
+                        <span className="badge-custom">دستی</span>
                       )}
                     </td>
                     <td>{item.med_type || "-"}</td>
@@ -871,16 +1261,9 @@ export default function PrescriptionForm({
                     <td>{item.quantity}</td>
                     <td>{item.remarks || "-"}</td>
                     <td>
-                      <button 
+                      <button
                         onClick={() => handleRemoveItem(item.id)}
-                        style={{
-                          backgroundColor: '#dc2626',
-                          color: 'white',
-                          padding: '4px 12px',
-                          borderRadius: '4px',
-                          border: 'none',
-                          cursor: 'pointer'
-                        }}
+                        className="btn-delete"
                       >
                         حذف
                       </button>
@@ -890,7 +1273,14 @@ export default function PrescriptionForm({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'left', fontWeight: 'bold', color: '#fcd34d' }}>
+                  <td
+                    colSpan="9"
+                    style={{
+                      textAlign: "left",
+                      fontWeight: "bold",
+                      color: "#b45309"
+                    }}
+                  >
                     مجموع: {prescriptionItems.length} قلم دارو
                   </td>
                 </tr>
@@ -899,74 +1289,32 @@ export default function PrescriptionForm({
           </div>
         )}
 
-        {/* ===== دکمه‌های عملیات ===== */}
-        <div style={{
-          display: 'flex',
-          gap: '10px',
-          justifyContent: 'center',
-          marginTop: '20px',
-          flexWrap: 'wrap',
-          borderTop: '1px solid #374151',
-          paddingTop: '20px'
-        }}>
+        <div className="action-buttons">
           <button
             type="button"
             onClick={handleSavePrescription}
             disabled={prescriptionItems.length === 0 || isSubmitting}
-            style={{
-              backgroundColor: (prescriptionItems.length === 0 || isSubmitting) ? '#6b7280' : '#10b981',
-              color: 'white',
-              padding: '10px 25px',
-              borderRadius: '6px',
-              border: 'none',
-              cursor: (prescriptionItems.length === 0 || isSubmitting) ? 'not-allowed' : 'pointer',
-              fontSize: '14px',
-              fontWeight: 'bold',
-              opacity: (prescriptionItems.length === 0 || isSubmitting) ? 0.5 : 1
-            }}
+            className="btn-save"
           >
-            {isSubmitting ? '⏳ در حال ذخیره...' : '💾 ذخیره نسخه'}
+            {isSubmitting ? "⏳ در حال ذخیره..." : "💾 ذخیره نسخه"}
           </button>
 
           {prescriptionItems.length > 0 && (
             <button
               type="button"
               onClick={handlePrintClick}
-              style={{
-                backgroundColor: '#8b5cf6',
-                color: 'white',
-                padding: '10px 25px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 'bold'
-              }}
+              className="btn-print"
             >
               🖨️ چاپ نسخه
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={handleCancel}
-            style={{
-              backgroundColor: '#ef4444',
-              color: 'white',
-              padding: '10px 25px',
-              borderRadius: '6px',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: 'bold'
-            }}
-          >
+          <button type="button" onClick={handleCancel} className="btn-cancel">
             ❌ انصراف
           </button>
         </div>
       </div>
 
-      {/* ===== کامپوننت چاپ ===== */}
       <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
         {prescriptionPrintData && (
           <PrescriptionPrint ref={printRef} data={prescriptionPrintData} />
@@ -975,10 +1323,11 @@ export default function PrescriptionForm({
 
       <style>{`
         .form-container {
-          background: #1f2937;
+          background: #ffffff;
           padding: 25px;
           border-radius: 10px;
-          color: white;
+          color: #111827;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
         .form-grid {
           display: grid;
@@ -988,15 +1337,130 @@ export default function PrescriptionForm({
         .form-grid label {
           display: block;
           margin-bottom: 5px;
-          color: #9ca3af;
+          color: #374151;
           font-size: 13px;
+          font-weight: 600;
+        }
+        .form-input {
+          padding: 8px 12px;
+          border-radius: 6px;
+          border: 1px solid #d1d5db;
+          background-color: #ffffff;
+          color: #111827;
+          width: 100%;
+          font-size: 14px;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .form-input:focus {
+          border-color: #2563eb;
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        .form-input:disabled {
+          background-color: #f9fafb;
+          color: #6b7280;
+        }
+        .form-input option {
+          color: #111827;
+          background: #ffffff;
+        }
+        .btn-add {
+          background-color: #3b82f6;
+          color: #ffffff;
+          padding: 10px 25px;
+          border-radius: 6px;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: bold;
+        }
+        .btn-add:hover {
+          background-color: #2563eb;
+        }
+        .btn-cancel-custom {
+          background-color: #6b7280;
+          color: #ffffff;
+          padding: 10px 25px;
+          border-radius: 6px;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: bold;
+        }
+        .btn-cancel-custom:hover {
+          background-color: #4b5563;
+        }
+        .btn-delete {
+          background-color: #dc2626;
+          color: #ffffff;
+          padding: 4px 12px;
+          border-radius: 4px;
+          border: none;
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .btn-delete:hover {
+          background-color: #b91c1c;
+        }
+        .btn-save {
+          background-color: #059669;
+          color: #ffffff;
+          padding: 10px 25px;
+          border-radius: 6px;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: bold;
+        }
+        .btn-save:hover:not(:disabled) {
+          background-color: #047857;
+        }
+        .btn-save:disabled {
+          background-color: #9ca3af;
+          cursor: not-allowed;
+          opacity: 0.6;
+        }
+        .btn-print {
+          background-color: #7c3aed;
+          color: #ffffff;
+          padding: 10px 25px;
+          border-radius: 6px;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: bold;
+        }
+        .btn-print:hover {
+          background-color: #6d28d9;
+        }
+        .btn-cancel {
+          background-color: #ef4444;
+          color: #ffffff;
+          padding: 10px 25px;
+          border-radius: 6px;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: bold;
+        }
+        .btn-cancel:hover {
+          background-color: #dc2626;
+        }
+        .badge-custom {
+          background: #8b5cf6;
+          color: #ffffff;
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 10px;
+          font-weight: bold;
+          margin-right: 5px;
         }
         .table-container {
           overflow-x: auto;
-          background: #1a2a3a;
+          background: #ffffff;
           border-radius: 8px;
           padding: 15px;
-          border: 1px solid #2a3a4a;
+          border: 1px solid #e5e7eb;
         }
         .table-container table {
           width: 100%;
@@ -1004,21 +1468,35 @@ export default function PrescriptionForm({
           font-size: 13px;
         }
         .table-container th {
-          background: #0f1a2a;
-          color: #60a5fa;
+          background: #f9fafb;
+          color: #1e40af;
           padding: 10px 12px;
           text-align: center;
-          border: 1px solid #2a3a4a;
+          border: 1px solid #e5e7eb;
           white-space: nowrap;
+          font-weight: 700;
         }
         .table-container td {
           padding: 8px 12px;
           text-align: center;
-          border: 1px solid #2a3a4a;
-          color: white;
+          border: 1px solid #e5e7eb;
+          color: #111827;
+        }
+        .table-container tbody tr:hover {
+          background: #f9fafb;
         }
         .table-container tfoot td {
           font-weight: bold;
+          background: #f9fafb;
+        }
+        .action-buttons {
+          display: flex;
+          gap: 10px;
+          justify-content: center;
+          margin-top: 20px;
+          flex-wrap: wrap;
+          border-top: 1px solid #e5e7eb;
+          padding-top: 20px;
         }
       `}</style>
     </MainLayoutjur>

@@ -4,163 +4,102 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     public function up(): void
     {
-        Schema::create('registrations', function (Blueprint $table) {
-            $table->id('reg_id');
+        Schema::create('prescriptions', function (Blueprint $table) {
+            $table->id('pres_id');
 
             /*
             |--------------------------------------------------------------------------
-            | نوع ثبت
+            | روابط اصلی
+            |--------------------------------------------------------------------------
+            | patient_id : شناسه اصلی مریض (از جدول patients) — هویتی، یک بار ثبت
+            | reg_id     : شناسه مراجعه فعلی (از جدول registrations) — هر مراجعه جدید
+            | doc_id     : شناسه داکتر = users.id (کاربر لاگین‌شده با رول doctor)
             |--------------------------------------------------------------------------
             */
-            $table->enum('reg_type', [
-                'patient',
-            ])->comment('نوع مراجعه');
+            $table->unsignedBigInteger('patient_id')
+                ->comment('شناسه اصلی مریض — از جدول patients');
+
+            $table->unsignedBigInteger('reg_id')
+                ->comment('شناسه مراجعه فعلی — از جدول registrations');
+
+            $table->unsignedBigInteger('doc_id')
+                ->comment('شناسه داکتر = users.id (کاربر لاگین‌شده)');
 
             /*
             |--------------------------------------------------------------------------
-            | ارتباطات سیستم شفاخانه
+            | اطلاعات هویتی مریض (snapshot در زمان تجویز)
             |--------------------------------------------------------------------------
             */
-            // مریض اصلی از جدول patients
-            $table->foreignId('patient_id')
-                ->constrained('patients')
-                ->cascadeOnDelete();
-
-            // بخش مربوطه
-            $table->foreignId('department_id')
-                ->nullable()
-                ->constrained('departments')
-                ->nullOnDelete();
-
-            // داکتر معالج
-            $table->foreignId('doctor_id')
-                ->nullable()
-                ->constrained('users')
-                ->nullOnDelete();
+            $table->string('patient_name')->nullable();
+            $table->string('tazkira_number')->nullable();
+            $table->integer('patient_age')->nullable();
+            $table->string('patient_gender')->nullable();
+            $table->string('patient_phone')->nullable();
+            $table->string('patient_blood_group')->nullable();
+            $table->string('doc_name')->nullable();
 
             /*
             |--------------------------------------------------------------------------
-            | معلومات مراجعه
+            | اطلاعات بالینی (خاص همین نسخه)
             |--------------------------------------------------------------------------
             */
-            $table->string('visit_number', 50)->nullable();
-
-            $table->enum('visit_type', [
-                'OPD',
-                'IPD',
-                'Emergency',
-                'Laboratory',
-                'Radiology',
-                'Pharmacy'
-            ])->nullable();
-
-            $table->timestamp('sent_to_doctor_at')
-                ->nullable()
-                ->comment('زمان ارسال مریض به داکتر');
-
-            $table->timestamp('doctor_started_at')
-                ->nullable()
-                ->comment('زمان شروع معاینه توسط داکتر');
-
-            $table->integer('queue_number')->nullable();
+            $table->text('diagnosis')->nullable()->comment('تشخیص برای این نسخه');
+            $table->decimal('weight', 5, 2)->nullable()->comment('وزن (kg)');
+            $table->string('blood_pressure', 20)->nullable()->comment('فشار خون');
+            $table->decimal('temperature', 4, 1)->nullable()->comment('دما (°C)');
+            $table->tinyInteger('oxygen')->nullable()->comment('اکسیژن خون (%)');
 
             /*
             |--------------------------------------------------------------------------
-            | تاریخ صف (جدید)
+            | اطلاعات نسخه
+            |--------------------------------------------------------------------------
+            | pres_num بعد از insert توسط Controller = pres_id قرار می‌گیرد
             |--------------------------------------------------------------------------
             */
-            $table->date('queue_date')
-                ->nullable()
-                ->after('queue_number')
-                ->comment('تاریخ قرارگیری در صف');
-$table->unique([
-    'doctor_id',
-    'queue_date',
-    'queue_number'
-]);
-            /*
-            |--------------------------------------------------------------------------
-            | فیس مراجعه
-            |--------------------------------------------------------------------------
-            */
+            $table->unsignedBigInteger('pres_num')->nullable()->unique()
+                ->comment('شماره نسخه = pres_id (بعد از insert پر می‌شود)');
 
-
-$table->enum('queue_status', [
-    'Waiting',
-    'Called',
-    'Expired',
-    'Removed'
-])->default('Waiting');
-
-$table->timestamp('queue_expired_at')
-    ->nullable()
-    ->comment('زمان ختم اعتبار صف');
-            $table->decimal('registration_fee', 10, 2)
-                ->default(0)
-                ->comment('فیس ابتدایی مراجعه');
-
-            /*
-            |--------------------------------------------------------------------------
-            | گردش مریض (وضعیت‌های کامل)
-            |--------------------------------------------------------------------------
-            */
-            $table->enum('visit_status', [
-                'Waiting',      // ثبت شده و در انتظار
-                'Doctor',       // ارسال به داکتر
-                'Examining',    // در حال معاینه
-                'Laboratory',   // در لابراتوار
-                'Radiology',    // در رادیولوژی
-                'Admission',    // بستری شده
-                'Ward',         // در بخش بستری
-                'Operation',    // در اتاق عمل
-                'Pharmacy',     // داروخانه
-                'Billing',      // حسابداری
-                'Completed',    // مراجعه پایان یافته
-                'Cancelled',
-                'Discharged'        
-            ])->default('Waiting');
-
-            /*
-            |--------------------------------------------------------------------------
-            | تاریخ و یادداشت
-            |--------------------------------------------------------------------------
-            */
-            $table->date('visit_date')->nullable();
-
-            $table->text('note')->nullable();
-
-            /*
-            |--------------------------------------------------------------------------
-            | معلومات طبی اولیه
-            |--------------------------------------------------------------------------
-            */
-            $table->text('diagnosis')->nullable();
-
-            $table->decimal('weight', 5, 2)->nullable();
-
-            $table->string('blood_pressure', 20)->nullable();
-
-            $table->decimal('temperature', 4, 1)->nullable();
-
-            $table->tinyInteger('oxygen')->nullable();
-
-            /*
-            |--------------------------------------------------------------------------
-            | وضعیت
-            |--------------------------------------------------------------------------
-            */
-            $table->tinyInteger('status')->default(1);
+            $table->date('pres_date')->comment('تاریخ نسخه (از فرانت)');
 
             $table->timestamps();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Foreign Keys
+            |--------------------------------------------------------------------------
+            */
+            $table->foreign('patient_id')
+                ->references('patient_id')
+                ->on('patients')
+                ->restrictOnDelete();
+
+            $table->foreign('reg_id')
+                ->references('reg_id')
+                ->on('registrations')
+                ->restrictOnDelete();
+
+            $table->foreign('doc_id')
+                ->references('id')
+                ->on('users')
+                ->restrictOnDelete();
+
+            /*
+            |--------------------------------------------------------------------------
+            | ایندکس‌ها
+            |--------------------------------------------------------------------------
+            */
+            $table->index('patient_id');
+            $table->index('reg_id');
+            $table->index('doc_id');
+            $table->index('pres_date');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('registrations');
+        Schema::dropIfExists('prescriptions');
     }
 };

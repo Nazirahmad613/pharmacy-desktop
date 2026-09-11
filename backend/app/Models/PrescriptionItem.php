@@ -3,12 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class PrescriptionItem extends Model
 {
-    use HasFactory;
-
+    protected $table = 'prescription_items';
     protected $primaryKey = 'pres_it_id';
 
     protected $fillable = [
@@ -16,14 +14,21 @@ class PrescriptionItem extends Model
         'category_id',
         'med_id',
         'supplier_id',
+        'is_custom',
+        'med_name',
+        'supplier_name',
         'type',
         'dosage',
         'quantity',
-        'unit_price',
-        'total_price',
         'remarks',
     ];
 
+    protected $casts = [
+        'is_custom' => 'boolean',
+        'quantity'  => 'integer',
+    ];
+
+    // ========== روابط ==========
     public function prescription()
     {
         return $this->belongsTo(Prescription::class, 'pres_id', 'pres_id');
@@ -34,14 +39,13 @@ class PrescriptionItem extends Model
         return $this->belongsTo(Medication::class, 'med_id', 'med_id');
     }
 
-    public function supplier()
-    {
-        return $this->belongsTo(Registrations::class, 'supplier_id', 'reg_id');
-    }
-
-    // ← اضافه شد
     public function category()
     {
         return $this->belongsTo(Category::class, 'category_id', 'category_id');
+    }
+
+    public function supplier()
+    {
+        return $this->belongsTo(Registrations::class, 'supplier_id', 'reg_id');
     }
 }
