@@ -28,7 +28,10 @@ class PrescriptionItem extends Model
         'quantity'  => 'integer',
     ];
 
-    // ========== روابط ==========
+    // ============================================================
+    // روابط
+    // ============================================================
+
     public function prescription()
     {
         return $this->belongsTo(Prescription::class, 'pres_id', 'pres_id');
@@ -44,8 +47,13 @@ class PrescriptionItem extends Model
         return $this->belongsTo(Category::class, 'category_id', 'category_id');
     }
 
+    /**
+     * ✅ رابطه تأمین‌کننده — متصل به جدول accounts
+     * ------------------------------------------------------------
+     * supplier_id → accounts.id
+     */
     public function supplier()
     {
-        return $this->belongsTo(Registrations::class, 'supplier_id', 'reg_id');
+        return $this->belongsTo(Account::class, 'supplier_id', 'id');
     }
 }

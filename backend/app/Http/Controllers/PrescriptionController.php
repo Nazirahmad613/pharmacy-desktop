@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Account;
 use App\Models\Prescription;
 use App\Models\PrescriptionItem;
 use App\Models\Registrations;
@@ -18,7 +19,7 @@ use App\Services\StockService;
 class PrescriptionController extends Controller
 {
     // ============================================================
-    // ✅ تابع کمکی: یافتن تأمین‌کننده در accounts یا registrations
+    // ✅ تابع کمکی: یافتن تأمین‌کننده در accounts
     // ============================================================
     private function findSupplier($supplierId)
     {
@@ -26,91 +27,130 @@ class PrescriptionController extends Controller
             return null;
         }
 
-        // ✅ حالت 1: در جدول accounts (اصل تأمین‌کننده اینجاست)
-        $account = DB::table('accounts')->where('id', $supplierId)->first();
-        if ($account) {
-            return (object) [
-                'id'     => $account->id,
-                'name'   => $account->account_name ?? $account->name ?? 'نامشخص',
-                'source' => 'accounts',
-            ];
+        $account = Account::find($supplierId);
+
+        if (!$account) {
+            return null;
         }
 
-        // حالت 2: در جدول registrations (fallback)
-        $registration = DB::table('registrations')->where('reg_id', $supplierId)->first();
-        if ($registration) {
-            return (object) [
-                'id'     => $registration->reg_id,
-                'name'   => $registration->full_name
-                            ?? $registration->name
-                            ?? $registration->reg_name
-                            ?? 'نامشخص',
-                'source' => 'registrations',
-            ];
-        }
+        return (object) [
+            'id'     => $account->id,
+            'name'   => $account->account_name ?? 'نامشخص',
+            'source' => 'accounts',
+        ];
+    }
 
-        return null;
+    // ============================================================
+    // ✅ تابع کمکی: بررسی مجاز بودن گذار وضعیت
+    // ============================================================
+    private function canTransition(string $from, string $to): bool
+    {
+        $allowed = [
+            Prescription::STATUS_PENDING             => [
+                Prescription::STATUS_SENT_TO_PHARMACY,
+                Prescription::STATUS_CANCELLED,
+            ],
+            Prescription::STATUS_SENT_TO_PHARMACY    => [
+                Prescription::STATUS_PHARMACY_REGISTERED,
+                Prescription::STATUS_CANCELLED,
+            ],
+            Prescription::STATUS_PHARMACY_REGISTERED => [
+                Prescription::STATUS_PAID,
+                Prescription::STATUS_CANCELLED,
+            ],
+            Prescription::STATUS_PAID                => [],
+            Prescription::STATUS_CANCELLED           => [],
+        ];
+
+        return in_array($to, $allowed[$from] ?? [], true);
+    }
+
+    // ============================================================
+    // ✅ تابع کمکی: قالب‌بندی خروجی نسخه
+    // ============================================================
+    private function formatPrescription(Prescription $prescription): array
+    {
+        return [
+            'pres_id'         => $prescription->pres_id,
+            'pres_num'        => $prescription->pres_num,
+            'pres_date'       => $prescription->pres_date,
+            'patient_id'      => $prescription->patient_id,
+            'patient_name'    => $prescription->patient_name,
+            'reg_id'          => $prescription->reg_id,
+            'doc_id'          => $prescription->doc_id,
+            'doc_name'        => $prescription->doc_name,
+            'diagnosis'       => $prescription->diagnosis,
+            'weight'          => $prescription->weight,
+            'blood_pressure'  => $prescription->blood_pressure,
+            'temperature'     => $prescription->temperature,
+            'oxygen'          => $prescription->oxygen,
+
+            // ✅ وضعیت
+            'status'                 => $prescription->status,
+            'status_label'           => Prescription::STATUSES[$prescription->status] ?? $prescription->status,
+            'sent_to_pharmacy_at'    => $prescription->sent_to_pharmacy_at,
+            'pharmacy_registered_at' => $prescription->pharmacy_registered_at,
+            'paid_at'                => $prescription->paid_at,
+            'pharmacy_id'            => $prescription->pharmacy_id,
+            'pharmacy_name'          => optional($prescription->pharmacy)->name
+                                        ?? optional($prescription->pharmacy)->full_name
+                                        ?? null,
+            'status_note'            => $prescription->status_note,
+
+            'items'           => $prescription->items->map(function ($item) {
+                // ✅ حالا از رابطه supplier استفاده می‌کنیم
+                $supplierName = $item->is_custom
+                    ? $item->supplier_name
+                    : ($item->supplier->account_name ?? $item->supplier_name ?? 'نامشخص');
+
+                return [
+                    'pres_it_id'      => $item->pres_it_id,
+                    'category_id'     => $item->category_id,
+                    'category_name'   => $item->category->category_name ?? 'نامشخص',
+                    'med_id'          => $item->med_id,
+                    'med_name'        => $item->is_custom
+                        ? $item->med_name
+                        : ($item->medication->gen_name ?? 'نامشخص'),
+                    'supplier_id'     => $item->supplier_id,
+                    'supplier_name'   => $supplierName,
+                    'is_custom'       => (bool) $item->is_custom,
+                    'type'            => $item->type,
+                    'dosage'          => $item->dosage,
+                    'quantity'        => $item->quantity,
+                    'remarks'         => $item->remarks,
+                ];
+            }),
+        ];
     }
 
     // ============================================================
     // INDEX - لیست نسخه‌ها
     // ============================================================
-    public function index()
+    public function index(Request $request)
     {
-        $prescriptions = Prescription::with([
-                'items.medication',
-                'items.supplier',
-                'items.category',
-                'patient',
-                'registration',
-                'doctor'
-            ])
-            ->latest()
-            ->get()
-            ->map(function ($prescription) {
-                return [
-                    'pres_id'         => $prescription->pres_id,
-                    'pres_num'        => $prescription->pres_num,
-                    'pres_date'       => $prescription->pres_date,
-                    'patient_id'      => $prescription->patient_id,
-                    'patient_name'    => $prescription->patient_name,
-                    'reg_id'          => $prescription->reg_id,
-                    'doc_id'          => $prescription->doc_id,
-                    'doc_name'        => $prescription->doc_name,
-                    'diagnosis'       => $prescription->diagnosis,
-                    'weight'          => $prescription->weight,
-                    'blood_pressure'  => $prescription->blood_pressure,
-                    'temperature'     => $prescription->temperature,
-                    'oxygen'          => $prescription->oxygen,
-                    'items'           => $prescription->items->map(function ($item) {
-                        // ✅ نام تأمین‌کننده از accounts
-                        $supplierName = $item->supplier_name;
-                        if (!$supplierName && $item->supplier_id) {
-                            $acc = DB::table('accounts')->where('id', $item->supplier_id)->first();
-                            $supplierName = $acc->account_name ?? 'نامشخص';
-                        }
+        $query = Prescription::with([
+            'items.medication',
+            'items.supplier',
+            'items.category',
+            'patient',
+            'registration',
+            'doctor',
+            'pharmacy',
+        ]);
 
-                        return [
-                            'pres_it_id'      => $item->pres_it_id,
-                            'category_id'     => $item->category_id,
-                            'category_name'   => $item->category->category_name ?? 'نامشخص',
-                            'med_id'          => $item->med_id,
-                            'med_name'        => $item->is_custom
-                                ? $item->med_name
-                                : ($item->medication->gen_name ?? 'نامشخص'),
-                            'supplier_id'     => $item->supplier_id,
-                            'supplier_name'   => $item->is_custom
-                                ? $item->supplier_name
-                                : $supplierName,
-                            'is_custom'       => (bool) $item->is_custom,
-                            'type'            => $item->type,
-                            'dosage'          => $item->dosage,
-                            'quantity'        => $item->quantity,
-                            'remarks'         => $item->remarks,
-                        ];
-                    }),
-                ];
-            });
+        // ✅ فیلتر اختیاری بر اساس وضعیت
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        // ✅ فیلتر اختیاری بر اساس داکتر
+        if ($request->filled('doc_id')) {
+            $query->where('doc_id', $request->doc_id);
+        }
+
+        $prescriptions = $query->latest()
+            ->get()
+            ->map(fn ($p) => $this->formatPrescription($p));
 
         return response()->json([
             'success' => true,
@@ -119,77 +159,58 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ دریافت حمایت‌کنندگان یک دارو (از جدول خریدها)
+    // MY PRESCRIPTIONS - نسخه‌های داکتر لاگین‌شده (برای تب وضعیت داکتر)
+    // ============================================================
+    public function myPrescriptions(Request $request)
+    {
+        $doctorId = Auth::id();
+
+        $query = Prescription::with([
+            'items.medication',
+            'items.supplier',
+            'items.category',
+            'patient',
+            'registration',
+            'pharmacy',
+        ])->where('doc_id', $doctorId);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $prescriptions = $query->latest()
+            ->get()
+            ->map(fn ($p) => $this->formatPrescription($p));
+
+        return response()->json([
+            'success' => true,
+            'data'    => $prescriptions
+        ]);
+    }
+
+    // ============================================================
+    // ✅ دریافت حمایت‌کنندگان یک دارو
     // ============================================================
     public function getMedicationSuppliers($med_id)
     {
         try {
-            $sample = DB::table('parchaseitems')
-                ->where('med_id', $med_id)
-                ->whereNotNull('supplier_id')
-                ->first();
-
-            if (!$sample) {
-                return response()->json([
-                    'success' => true,
-                    'data'    => [],
-                    'count'   => 0,
-                ]);
-            }
-
-            $supplierId = $sample->supplier_id;
-
-            $inAccounts      = DB::table('accounts')->where('id', $supplierId)->exists();
-            $inRegistrations = DB::table('registrations')->where('reg_id', $supplierId)->exists();
-
-            // حالت 1: در accounts هست (اصل)
-            if ($inAccounts) {
-                $suppliers = DB::table('parchaseitems')
-                    ->join('accounts', 'accounts.id', '=', 'parchaseitems.supplier_id')
-                    ->where('parchaseitems.med_id', $med_id)
-                    ->select(
-                        'accounts.id as reg_id',
-                        'accounts.account_name as full_name',
-                        'accounts.account_name as name'
-                    )
-                    ->distinct()
-                    ->orderBy('accounts.account_name')
-                    ->get();
-
-                return response()->json([
-                    'success' => true,
-                    'source'  => 'accounts',
-                    'data'    => $suppliers,
-                    'count'   => $suppliers->count(),
-                ]);
-            }
-
-            // حالت 2: در registrations
-            if ($inRegistrations) {
-                $suppliers = DB::table('parchaseitems')
-                    ->join('registrations', 'registrations.reg_id', '=', 'parchaseitems.supplier_id')
-                    ->where('parchaseitems.med_id', $med_id)
-                    ->select(
-                        'registrations.reg_id',
-                        DB::raw("COALESCE(registrations.name, registrations.full_name, 'تأمین‌کننده #' || registrations.reg_id) as full_name"),
-                        DB::raw("COALESCE(registrations.name, registrations.full_name, 'تأمین‌کننده #' || registrations.reg_id) as name")
-                    )
-                    ->distinct()
-                    ->get();
-
-                return response()->json([
-                    'success' => true,
-                    'source'  => 'registrations',
-                    'data'    => $suppliers,
-                    'count'   => $suppliers->count(),
-                ]);
-            }
+            $suppliers = DB::table('parchaseitems')
+                ->join('accounts', 'accounts.id', '=', 'parchaseitems.supplier_id')
+                ->where('parchaseitems.med_id', $med_id)
+                ->select(
+                    'accounts.id as reg_id',
+                    'accounts.account_name as full_name',
+                    'accounts.account_name as name'
+                )
+                ->distinct()
+                ->orderBy('accounts.account_name')
+                ->get();
 
             return response()->json([
                 'success' => true,
-                'source'  => 'none',
-                'data'    => [],
-                'count'   => 0,
+                'source'  => 'accounts',
+                'data'    => $suppliers,
+                'count'   => $suppliers->count(),
             ]);
 
         } catch (\Exception $e) {
@@ -211,12 +232,10 @@ class PrescriptionController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            // ✅ اطلاعات اصلی
             'patient_id'      => 'required|exists:patients,id',
             'reg_id'          => 'required|exists:registrations,reg_id',
             'pres_date'       => 'required|date',
 
-            // ✅ اطلاعات هویتی
             'patient_name'        => 'nullable|string|max:255',
             'tazkira_number'      => 'nullable|string|max:100',
             'patient_age'         => 'nullable|integer|min:0',
@@ -224,28 +243,19 @@ class PrescriptionController extends Controller
             'patient_phone'       => 'nullable|string|max:30',
             'patient_blood_group' => 'nullable|string|max:10',
 
-            // ✅ اطلاعات بالینی
             'diagnosis'       => 'nullable|string',
             'weight'          => 'nullable|numeric|min:0|max:999',
             'blood_pressure'  => 'nullable|string|max:50',
             'temperature'     => 'nullable|numeric|min:0|max:99',
             'oxygen'          => 'nullable|integer|min:0|max:100',
 
-            // ✅ آیتم‌ها
             'items'                    => 'required|array|min:1',
             'items.*.category_id'      => 'nullable|exists:categories,category_id',
             'items.*.is_custom'        => 'required|boolean',
-
-            // ✅ برای داروی معمولی: med_id الزامی
-            // ✅ supplier_id → دیگر exists روی registrations ندارد
-            // چون تأمین‌کننده از accounts می‌آید
             'items.*.med_id'           => 'nullable|required_if:items.*.is_custom,false|exists:medications,med_id',
             'items.*.supplier_id'      => 'nullable|required_if:items.*.is_custom,false|integer|min:1',
-
-            // ✅ برای داروی دستی
             'items.*.med_name'         => 'nullable|required_if:items.*.is_custom,true|string|max:255',
             'items.*.supplier_name'    => 'nullable|required_if:items.*.is_custom,true|string|max:255',
-
             'items.*.type'             => 'nullable|string|max:100',
             'items.*.dosage'           => 'required|string|max:100',
             'items.*.quantity'         => 'required|integer|min:1',
@@ -265,7 +275,6 @@ class PrescriptionController extends Controller
         DB::beginTransaction();
 
         try {
-            // ✅ داکتر = کاربر لاگین‌شده
             $doctorId = Auth::id();
             if (!$doctorId) {
                 throw new \Exception('کاربر لاگین‌شده یافت نشد');
@@ -276,15 +285,12 @@ class PrescriptionController extends Controller
                 throw new \Exception('داکتر در سیستم یافت نشد');
             }
 
-            // ============================================================
-            // ✅ بررسی موجودی فقط برای آیتم‌های غیر دستی
-            // ============================================================
+            // ✅ بررسی موجودی
             foreach ($validated['items'] as $index => $item) {
                 if (!empty($item['is_custom'])) {
                     continue;
                 }
 
-                // ✅ از تابع کمکی استفاده کن (accounts یا registrations)
                 $supplier = $this->findSupplier($item['supplier_id']);
                 if (!$supplier) {
                     throw new \Exception("تأمین‌کننده با شناسه {$item['supplier_id']} معتبر نیست");
@@ -304,7 +310,7 @@ class PrescriptionController extends Controller
                 }
             }
 
-            // ✅ ایجاد نسخه
+            // ✅ ایجاد نسخه با وضعیت اولیه pending
             $prescription = Prescription::create([
                 'patient_id'          => $validated['patient_id'],
                 'reg_id'              => $validated['reg_id'],
@@ -325,6 +331,9 @@ class PrescriptionController extends Controller
                 'temperature'         => $validated['temperature'] ?? null,
                 'oxygen'              => $validated['oxygen'] ?? null,
                 'pres_date'           => $validated['pres_date'],
+
+                // ✅ وضعیت اولیه
+                'status'              => Prescription::STATUS_PENDING,
             ]);
 
             // ✅ شماره نسخه = pres_id
@@ -371,11 +380,9 @@ class PrescriptionController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'نسخه با موفقیت ثبت شد',
-                'data'    => $prescription->load([
-                    'items.medication',
-                    'items.supplier',
-                    'items.category'
-                ])
+                'data'    => $this->formatPrescription(
+                    $prescription->load(['items.medication', 'items.supplier', 'items.category', 'pharmacy'])
+                )
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -429,6 +436,10 @@ class PrescriptionController extends Controller
             'items.*.dosage'        => 'required|string|max:100',
             'items.*.quantity'      => 'required|integer|min:1',
             'items.*.remarks'       => 'nullable|string',
+
+            // ✅ وضعیت اختیاری برای بروزرسانی از سمت داکتر/ادمین
+            'status'                => 'nullable|in:pending,sent_to_pharmacy,pharmacy_registered,paid,cancelled',
+            'status_note'           => 'nullable|string',
         ]);
 
         DB::beginTransaction();
@@ -436,6 +447,15 @@ class PrescriptionController extends Controller
         try {
             $prescription = Prescription::with('items')->findOrFail($id);
             $oldData = $prescription->toArray();
+
+            // ✅ اگر وضعیت جدید داده شده، گذار را بررسی کن
+            if (!empty($validated['status']) && $validated['status'] !== $prescription->status) {
+                if (!$this->canTransition($prescription->status, $validated['status'])) {
+                    throw new \Exception(
+                        "گذر از وضعیت '{$prescription->status}' به '{$validated['status']}' مجاز نیست"
+                    );
+                }
+            }
 
             // ✅ برگرداندن موجودی آیتم‌های قبلی
             foreach ($prescription->items as $oldItem) {
@@ -454,7 +474,6 @@ class PrescriptionController extends Controller
                     continue;
                 }
 
-                // ✅ اصلاح شد
                 $supplier = $this->findSupplier($item['supplier_id']);
                 if (!$supplier) {
                     throw new \Exception("تأمین‌کننده با شناسه {$item['supplier_id']} معتبر نیست");
@@ -490,6 +509,8 @@ class PrescriptionController extends Controller
                 'temperature'         => $validated['temperature'] ?? null,
                 'oxygen'              => $validated['oxygen'] ?? null,
                 'pres_date'           => $validated['pres_date'],
+                'status'              => $validated['status'] ?? $prescription->status,
+                'status_note'         => $validated['status_note'] ?? $prescription->status_note,
             ]);
 
             // ✅ حذف آیتم‌های قدیمی
@@ -538,11 +559,9 @@ class PrescriptionController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'نسخه با موفقیت بروزرسانی شد',
-                'data'    => $prescription->load([
-                    'items.medication',
-                    'items.supplier',
-                    'items.category'
-                ])
+                'data'    => $this->formatPrescription(
+                    $prescription->load(['items.medication', 'items.supplier', 'items.category', 'pharmacy'])
+                )
             ], 200);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -557,6 +576,180 @@ class PrescriptionController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در بروزرسانی نسخه',
+                'error'   => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    // ============================================================
+    // ✅ SEND TO PHARMACY - ارسال نسخه به دواخانه
+    // ============================================================
+    public function sendToPharmacy($id)
+    {
+        return $this->changeStatus(
+            $id,
+            Prescription::STATUS_SENT_TO_PHARMACY,
+            ['sent_to_pharmacy_at' => now()],
+            'نسخه به دواخانه ارسال شد'
+        );
+    }
+
+    // ============================================================
+    // ✅ PHARMACY REGISTERED - ثبت در دواخانه
+    // ============================================================
+    public function markPharmacyRegistered(Request $request, $id)
+    {
+        $request->validate([
+            'pharmacy_id' => 'nullable|exists:users,id',
+            'status_note' => 'nullable|string',
+        ]);
+
+        $extra = [
+            'pharmacy_registered_at' => now(),
+            'pharmacy_id'            => $request->pharmacy_id ?? Auth::id(),
+            'status_note'            => $request->status_note,
+        ];
+
+        return $this->changeStatus(
+            $id,
+            Prescription::STATUS_PHARMACY_REGISTERED,
+            $extra,
+            'نسخه در دواخانه ثبت شد'
+        );
+    }
+
+    // ============================================================
+    // ✅ MARK PAID - اخذ پول توسط رجستریشن
+    // ============================================================
+    public function markPaid($id)
+    {
+        return $this->changeStatus(
+            $id,
+            Prescription::STATUS_PAID,
+            ['paid_at' => now()],
+            'پول نسخه اخذ شد'
+        );
+    }
+
+    // ============================================================
+    // ✅ CANCEL - لغو نسخه
+    // ============================================================
+    public function cancel(Request $request, $id)
+    {
+        $request->validate([
+            'status_note' => 'nullable|string|max:500',
+        ]);
+
+        return $this->changeStatus(
+            $id,
+            Prescription::STATUS_CANCELLED,
+            ['status_note' => $request->status_note],
+            'نسخه لغو شد'
+        );
+    }
+
+    // ============================================================
+    // ✅ UPDATE STATUS - تغییر عمومی وضعیت (با بررسی گذار)
+    // ============================================================
+    public function updateStatus(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'status'      => 'required|in:pending,sent_to_pharmacy,pharmacy_registered,paid,cancelled',
+            'status_note' => 'nullable|string|max:500',
+        ]);
+
+        $extra = ['status_note' => $validated['status_note'] ?? null];
+
+        // ✅ پر کردن timestampهای مربوطه
+        switch ($validated['status']) {
+            case Prescription::STATUS_SENT_TO_PHARMACY:
+                $extra['sent_to_pharmacy_at'] = now();
+                break;
+            case Prescription::STATUS_PHARMACY_REGISTERED:
+                $extra['pharmacy_registered_at'] = now();
+                $extra['pharmacy_id']            = Auth::id();
+                break;
+            case Prescription::STATUS_PAID:
+                $extra['paid_at'] = now();
+                break;
+        }
+
+        return $this->changeStatus(
+            $id,
+            $validated['status'],
+            $extra,
+            'وضعیت نسخه بروزرسانی شد'
+        );
+    }
+
+    // ============================================================
+    // ✅ تابع کمکی: تغییر وضعیت + لاگ
+    // ============================================================
+    private function changeStatus($id, string $newStatus, array $extra = [], string $successMessage = '')
+    {
+        DB::beginTransaction();
+
+        try {
+            $prescription = Prescription::findOrFail($id);
+
+            if ($prescription->status === $newStatus) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'وضعیت قبلاً در همین حالت بود',
+                    'data'    => $this->formatPrescription($prescription->load('pharmacy')),
+                ]);
+            }
+
+            if (!$this->canTransition($prescription->status, $newStatus)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "گذر از وضعیت '{$prescription->status}' به '{$newStatus}' مجاز نیست",
+                ], 422);
+            }
+
+            $oldStatus = $prescription->status;
+
+            $prescription->update(array_merge([
+                'status' => $newStatus,
+            ], $extra));
+
+            DB::commit();
+
+            LogService::create(
+                'status_change',
+                'prescriptions',
+                $prescription->pres_id,
+                "Prescription status changed: {$oldStatus} → {$newStatus}",
+                [
+                    'old_status' => $oldStatus,
+                    'new_status' => $newStatus,
+                    'extra'      => $extra,
+                ]
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => $successMessage ?: 'وضعیت بروزرسانی شد',
+                'data'    => $this->formatPrescription(
+                    $prescription->fresh()->load(['items.medication', 'items.supplier', 'items.category', 'pharmacy'])
+                ),
+            ]);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'نسخه یافت نشد',
+            ], 404);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Prescription Status Change Error', [
+                'error' => $e->getMessage(),
+                'id'    => $id,
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در تغییر وضعیت',
                 'error'   => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
@@ -613,7 +806,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // CHECK STOCK - بررسی موجودی قبل از ثبت نسخه
+    // CHECK STOCK
     // ============================================================
     public function checkStockBeforePrescription(Request $request)
     {
@@ -633,7 +826,6 @@ class PrescriptionController extends Controller
                     continue;
                 }
 
-                // ✅ اصلاح شد
                 $supplier = $this->findSupplier($item['supplier_id']);
 
                 $isAvailable = StockService::check(
@@ -690,12 +882,13 @@ class PrescriptionController extends Controller
                 'items.category',
                 'patient',
                 'registration',
-                'doctor'
+                'doctor',
+                'pharmacy',
             ])->findOrFail($id);
 
             return response()->json([
                 'success' => true,
-                'data'    => $prescription
+                'data'    => $this->formatPrescription($prescription),
             ]);
 
         } catch (\Exception $e) {

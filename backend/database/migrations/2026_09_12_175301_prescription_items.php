@@ -16,10 +16,10 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | روابط اصلی
             |--------------------------------------------------------------------------
-            | pres_id     : FK → prescriptions
-            | category_id : FK → categories (nullable)
-            | med_id      : FK → medications (nullable برای داروی دستی)
-            | supplier_id : FK → registrations (nullable برای داروی دستی)
+            | pres_id     : FK → prescriptions.pres_id
+            | category_id : FK → categories.category_id   (nullable)
+            | med_id      : FK → medications.med_id        (nullable برای داروی دستی)
+            | supplier_id : FK → accounts.id               (nullable برای داروی دستی)
             |--------------------------------------------------------------------------
             */
             $table->unsignedBigInteger('pres_id');
@@ -80,9 +80,10 @@ return new class extends Migration
                 ->on('medications')
                 ->nullOnDelete();
 
+            // ✅ اصلاح شد: supplier_id → accounts.id (نه registrations.reg_id)
             $table->foreign('supplier_id')
-                ->references('reg_id')
-                ->on('registrations')
+                ->references('id')
+                ->on('accounts')
                 ->nullOnDelete();
 
             /*

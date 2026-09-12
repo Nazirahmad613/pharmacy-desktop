@@ -491,12 +491,53 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ===== Prescriptions =====
-    Route::get('/prescriptions/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);
-    Route::get('/prescriptions', [PrescriptionController::class, 'index']);
-    Route::post('/prescriptions', [PrescriptionController::class, 'store']);
-    Route::put('/prescriptions/{pres_id}', [PrescriptionController::class, 'update']);
-    Route::delete('/prescriptions/{pres_id}', [PrescriptionController::class, 'destroy']);
+     
+Route::prefix('prescriptions')->group(function () {
 
+    // ============================================================
+    // ✅ CRUD اصلی
+    // ============================================================
+    Route::get ('/',                    [PrescriptionController::class, 'index']);
+    Route::post('/',                    [PrescriptionController::class, 'store']);
+    Route::get ('/{pres_id}',           [PrescriptionController::class, 'show']);
+    Route::put ('/{pres_id}',           [PrescriptionController::class, 'update']);
+    Route::delete('/{pres_id}',         [PrescriptionController::class, 'destroy']);
+
+    // ============================================================
+    // ✅ نسخه‌های داکتر لاگین‌شده (تب وضعیت داکتر)
+    // ============================================================
+    Route::get('/my/list',              [PrescriptionController::class, 'myPrescriptions']);
+
+    // ============================================================
+    // ✅ بررسی موجودی و تأمین‌کننده
+    // ============================================================
+    Route::post('/check-stock',         [PrescriptionController::class, 'checkStockBeforePrescription']);
+    Route::get ('/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);
+
+    // ============================================================
+    // ✅ چرخه وضعیت نسخه
+    // ============================================================
+
+    // pending → sent_to_pharmacy
+    Route::post('/{pres_id}/send-to-pharmacy',
+        [PrescriptionController::class, 'sendToPharmacy']);
+
+    // sent_to_pharmacy → pharmacy_registered
+    Route::post('/{pres_id}/pharmacy-registered',
+        [PrescriptionController::class, 'markPharmacyRegistered']);
+
+    // pharmacy_registered → paid
+    Route::post('/{pres_id}/mark-paid',
+        [PrescriptionController::class, 'markPaid']);
+
+    // → cancelled (از هر مرحله‌ای)
+    Route::post('/{pres_id}/cancel',
+        [PrescriptionController::class, 'cancel']);
+
+    // تغییر عمومی وضعیت (با بررسی گذار)
+    Route::patch('/{pres_id}/status',
+        [PrescriptionController::class, 'updateStatus']);
+});
     // ===== Stock & Sales Reports =====
     Route::get('/salesd', [SalesFullDetailsController::class, 'index']);
 

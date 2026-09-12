@@ -841,6 +841,14 @@ class Account extends Model
     | نوع ماهیت به شکل قابل فهم
     |--------------------------------------------------------------------------
     */
+public function prescriptionItems(): HasMany
+    {
+        return $this->hasMany(
+            PrescriptionItem::class,
+            'supplier_id',
+            'id'
+        );
+        }
 
     public function getNormalBalanceLabelAttribute(): string
     {

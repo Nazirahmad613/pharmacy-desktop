@@ -4,65 +4,59 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
-        Schema::create('prescriptions', function (Blueprint $table) {
-            $table->id('pres_id');
+        Schema::create('prescription_items', function (Blueprint $table) {
+
+            $table->bigIncrements('pres_it_id');
 
             /*
             |--------------------------------------------------------------------------
             | روابط اصلی
             |--------------------------------------------------------------------------
-            | patient_id : شناسه اصلی مریض (FK → patients.id)
-            | reg_id     : شناسه مراجعه فعلی (FK → registrations.reg_id)
-            | doc_id     : شناسه داکتر = users.id (کاربر لاگین‌شده با رول doctor)
+            | pres_id     : FK → prescriptions.pres_id
+            | category_id : FK → categories.category_id   (nullable)
+            | med_id      : FK → medications.med_id        (nullable برای داروی دستی)
+            | supplier_id : FK → accounts.id               (nullable برای داروی دستی)
             |--------------------------------------------------------------------------
             */
-            $table->unsignedBigInteger('patient_id')
-                ->comment('شناسه اصلی مریض — FK → patients.id');
-
-            $table->unsignedBigInteger('reg_id')
-                ->comment('شناسه مراجعه فعلی — FK → registrations.reg_id');
-
-            $table->unsignedBigInteger('doc_id')
-                ->comment('شناسه داکتر = users.id (کاربر لاگین‌شده)');
+            $table->unsignedBigInteger('pres_id');
+            $table->unsignedBigInteger('category_id')->nullable();
+            $table->unsignedBigInteger('med_id')->nullable();
+            $table->unsignedBigInteger('supplier_id')->nullable();
 
             /*
             |--------------------------------------------------------------------------
-            | اطلاعات هویتی مریض (snapshot در زمان تجویز)
+            | اطلاعات دارو
+            |--------------------------------------------------------------------------
+            | is_custom = true  →  med_id و supplier_id برابر null
+            |                       med_name و supplier_name پر می‌شوند (تایپ‌شده)
+            |
+            | is_custom = false →  med_id و supplier_id پر هستند
+            |                       med_name و supplier_name برابر null
             |--------------------------------------------------------------------------
             */
-            $table->string('patient_name')->nullable();
-            $table->string('tazkira_number')->nullable();
-            $table->integer('patient_age')->nullable();
-            $table->string('patient_gender')->nullable();
-            $table->string('patient_phone')->nullable();
-            $table->string('patient_blood_group')->nullable();
-            $table->string('doc_name')->nullable();
+            $table->boolean('is_custom')->default(false)
+                ->comment('true = داروی دستی خارج از سیستم');
 
-            /*
-            |--------------------------------------------------------------------------
-            | اطلاعات بالینی (خاص همین نسخه)
-            |--------------------------------------------------------------------------
-            */
-            $table->text('diagnosis')->nullable()->comment('تشخیص برای این نسخه');
-            $table->decimal('weight', 5, 2)->nullable()->comment('وزن (kg)');
-            $table->string('blood_pressure', 20)->nullable()->comment('فشار خون');
-            $table->decimal('temperature', 4, 1)->nullable()->comment('دما (°C)');
-            $table->tinyInteger('oxygen')->nullable()->comment('اکسیژن خون (%)');
+            $table->string('med_name')->nullable()
+                ->comment('نام دارو — برای داروی دستی');
 
-            /*
-            |--------------------------------------------------------------------------
-            | اطلاعات نسخه
-            |--------------------------------------------------------------------------
-            | pres_num بعد از insert توسط Controller = pres_id قرار می‌گیرد
-            |--------------------------------------------------------------------------
-            */
-            $table->unsignedBigInteger('pres_num')->nullable()->unique()
-                ->comment('شماره نسخه = pres_id (بعد از insert پر می‌شود)');
+            $table->string('supplier_name')->nullable()
+                ->comment('نام حمایت‌کننده — برای داروی دستی');
 
-            $table->date('pres_date')->comment('تاریخ نسخه (از فرانت)');
+            $table->string('type')->nullable()
+                ->comment('نوع دارو (قرص، شربت، آمپول)');
+
+            $table->string('dosage')
+                ->comment('مقدار مصرف (مثلاً 1×3)');
+
+            $table->integer('quantity')
+                ->comment('تعداد');
+
+            $table->text('remarks')->nullable();
 
             $table->timestamps();
 
@@ -71,36 +65,42 @@ return new class extends Migration {
             | Foreign Keys
             |--------------------------------------------------------------------------
             */
-            // ✅ اصلاح شد: id نه patient_id
-            $table->foreign('patient_id')
-                ->references('id')
-                ->on('patients')
-                ->restrictOnDelete();
+            $table->foreign('pres_id')
+                ->references('pres_id')
+                ->on('prescriptions')
+                ->cascadeOnDelete();
 
-            $table->foreign('reg_id')
-                ->references('reg_id')
-                ->on('registrations')
-                ->restrictOnDelete();
+            $table->foreign('category_id')
+                ->references('category_id')
+                ->on('categories')
+                ->nullOnDelete();
 
-            $table->foreign('doc_id')
+            $table->foreign('med_id')
+                ->references('med_id')
+                ->on('medications')
+                ->nullOnDelete();
+
+            // ✅ اصلاح شد: supplier_id → accounts.id (نه registrations.reg_id)
+            $table->foreign('supplier_id')
                 ->references('id')
-                ->on('users')
-                ->restrictOnDelete();
+                ->on('accounts')
+                ->nullOnDelete();
 
             /*
             |--------------------------------------------------------------------------
-            | ایندکس‌ها
+            | Indexes
             |--------------------------------------------------------------------------
             */
-            $table->index('patient_id');
-            $table->index('reg_id');
-            $table->index('doc_id');
-            $table->index('pres_date');
+            $table->index('pres_id');
+            $table->index('category_id');
+            $table->index('med_id');
+            $table->index('supplier_id');
+            $table->index('is_custom');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('prescriptions');
+        Schema::dropIfExists('prescription_items');
     }
 };
