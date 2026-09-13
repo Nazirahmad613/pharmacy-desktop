@@ -39,6 +39,7 @@ class MedicationController extends Controller
                 'gen_name' => 'required|string|max:255',
                 'dosage' => 'required|string|max:255',
                 'minimum_quantity' => 'nullable|integer|min:1|max:1000',
+                'barcode' => 'nullable|string|max:255|unique:medications,barcode',
             ], [
                 'category_id.required' => 'انتخاب کتگوری الزامی است',
                 'category_id.exists' => 'کتگوری انتخاب شده معتبر نیست',
@@ -64,6 +65,7 @@ class MedicationController extends Controller
                 'gen_name' => $request->gen_name,
                 'dosage' => $request->dosage,
                 'minimum_quantity' => $request->minimum_quantity ?? 10,
+                'barcode' => $request->barcode,
             ]);
 
             // بارگذاری رابطه کتگوری
@@ -128,6 +130,7 @@ class MedicationController extends Controller
                 'gen_name' => 'required|string|max:255',
                 'dosage' => 'required|string|max:255',
                 'minimum_quantity' => 'nullable|integer|min:1|max:1000',
+                'barcode' => 'nullable|string|max:255|unique:medications,barcode,' . $id . ',med_id',
             ], [
                 'category_id.required' => 'انتخاب کتگوری الزامی است',
                 'category_id.exists' => 'کتگوری انتخاب شده معتبر نیست',
@@ -151,6 +154,7 @@ class MedicationController extends Controller
                 'gen_name' => $request->gen_name,
                 'dosage' => $request->dosage,
                 'minimum_quantity' => $request->minimum_quantity ?? 10,
+                'barcode' => $request->barcode,
             ]);
 
             // بارگذاری رابطه کتگوری

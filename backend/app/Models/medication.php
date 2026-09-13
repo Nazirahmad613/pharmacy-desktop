@@ -17,8 +17,10 @@ class Medication extends Model
         'dosage',
         'category_id',
         'type',
+     'barcode',
         'added_med',
-        'minimum_quantity' // ✅ اضافه شد
+        'minimum_quantity'
+         // ✅ اضافه شد
     ];
 
     protected $casts = [
