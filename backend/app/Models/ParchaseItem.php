@@ -22,7 +22,9 @@ class ParchaseItem extends Model
         'unit_price',
         'total_price',
         'exp_date',
-        'supplier_id', // اضافه شد
+        'supplier_id',
+        'batch_no',
+        'remaining_qty',
     ];
 
     public function parchase(): BelongsTo

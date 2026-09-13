@@ -1,3 +1,4 @@
+```php
 <?php
 
 use Illuminate\Database\Migrations\Migration;
@@ -16,20 +17,42 @@ return new class extends Migration
             $table->unsignedBigInteger('category_id');
             $table->unsignedBigInteger('supplier_id'); // ← ارجاع به accounts.id
 
+            // شماره Batch / Lot دوا
+            $table->string('batch_no')->nullable();
+
             $table->string('type')->nullable();
 
             $table->integer('quantity');
+
+            // موجودی باقی‌مانده از همین Batch
+            $table->integer('remaining_qty')->default(0);
+
             $table->integer('unit_price');
             $table->integer('total_price');
             $table->date('exp_date');
+
             $table->timestamps();
 
-            $table->foreign('parchase_id')->references('parchase_id')->on('parchases')->onDelete('cascade');
-            $table->foreign('med_id')->references('med_id')->on('medications')->onDelete('cascade');
-            $table->foreign('category_id')->references('category_id')->on('categories')->onDelete('cascade');
+            $table->foreign('parchase_id')
+                ->references('parchase_id')
+                ->on('parchases')
+                ->onDelete('cascade');
 
-            // ✅ اصلاح شد: ارجاع به accounts.id مثل parchases
-            $table->foreign('supplier_id')->references('id')->on('accounts')->onDelete('cascade');
+            $table->foreign('med_id')
+                ->references('med_id')
+                ->on('medications')
+                ->onDelete('cascade');
+
+            $table->foreign('category_id')
+                ->references('category_id')
+                ->on('categories')
+                ->onDelete('cascade');
+
+            // ✅ ارجاع به accounts.id مثل parchases
+            $table->foreign('supplier_id')
+                ->references('id')
+                ->on('accounts')
+                ->onDelete('cascade');
         });
     }
 

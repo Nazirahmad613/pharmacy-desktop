@@ -57,6 +57,10 @@ export default function ParchaseForm() {
     category_id: "",
     med_id: "",
     type: "",
+
+    // ✅ شماره Batch / Lot دوا
+    batch_no: "",
+
     quantity: "",
     unit_price: "",
     total_price: 0,
@@ -404,6 +408,7 @@ export default function ParchaseForm() {
     if (
       !formItem.category_id ||
       !formItem.med_id ||
+      !formItem.batch_no ||
       !formItem.quantity ||
       !formItem.unit_price ||
       !formItem.exp_date
@@ -453,6 +458,10 @@ export default function ParchaseForm() {
       category_id: "",
       med_id: "",
       type: "",
+
+      // ✅ پاک کردن Batch بعد از اضافه‌شدن آیتم
+      batch_no: "",
+
       quantity: "",
       unit_price: "",
       total_price: 0,
@@ -501,6 +510,10 @@ export default function ParchaseForm() {
       category_id: "",
       med_id: "",
       type: "",
+
+      // ✅ Batch
+      batch_no: "",
+
       quantity: "",
       unit_price: "",
       total_price: 0,
@@ -597,6 +610,10 @@ export default function ParchaseForm() {
 
             type:
               item.type ?? null,
+
+            // ✅ ارسال شماره Batch به Backend
+            batch_no:
+              item.batch_no ?? null,
 
             quantity:
               Number(item.quantity),
@@ -818,6 +835,11 @@ export default function ParchaseForm() {
               item.type ??
               "",
 
+            // ✅ Batch از دیتابیس هنگام تصحیح
+            batch_no:
+              item.batch_no ??
+              "",
+
             quantity:
               item.quantity ?? "",
 
@@ -915,10 +937,12 @@ export default function ParchaseForm() {
         type:
           first.type ?? "",
 
+        // ✅ Batch آیتم اول
+        batch_no:
+          first.batch_no ?? "",
+
         quantity: "",
-
         unit_price: "",
-
         total_price: 0,
 
         exp_date: "",
@@ -1209,6 +1233,31 @@ export default function ParchaseForm() {
           </div>
 
 
+          {/* Batch */}
+
+          <div>
+
+            <label>
+              شماره Batch / Lot
+            </label>
+
+            <input
+              type="text"
+              value={
+                formItem.batch_no
+              }
+              onChange={(e) =>
+                handleChange(
+                  "batch_no",
+                  e.target.value
+                )
+              }
+              placeholder="شماره Batch دوا"
+            />
+
+          </div>
+
+
           {/* تعداد */}
 
           <div>
@@ -1336,6 +1385,10 @@ export default function ParchaseForm() {
                 </th>
 
                 <th>
+                  Batch / Lot
+                </th>
+
+                <th>
                   تعداد
                 </th>
 
@@ -1385,6 +1438,10 @@ export default function ParchaseForm() {
 
                     <td>
                       {item.type}
+                    </td>
+
+                    <td>
+                      {item.batch_no}
                     </td>
 
                     <td>
