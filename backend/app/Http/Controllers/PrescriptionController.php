@@ -19,9 +19,6 @@ use App\Services\PrescriptionService;
 
 class PrescriptionController extends Controller
 {
-    /**
-     * ✅ تزریق سرویس تجویز (FEFO)
-     */
     public function __construct(
         private PrescriptionService $prescriptionService
     ) {}
@@ -31,15 +28,9 @@ class PrescriptionController extends Controller
     // ============================================================
     private function findSupplier($supplierId)
     {
-        if (!$supplierId) {
-            return null;
-        }
-
+        if (!$supplierId) return null;
         $account = Account::find($supplierId);
-
-        if (!$account) {
-            return null;
-        }
+        if (!$account) return null;
 
         return (object) [
             'id'     => $account->id,
@@ -74,7 +65,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ تابع کمکی: قالب‌بندی خروجی نسخه
+    // ✅ تابع کمکی: قالب‌بندی خروجی نسخه — با همه فیلدها
     // ============================================================
     private function formatPrescription(Prescription $prescription): array
     {
@@ -93,6 +84,13 @@ class PrescriptionController extends Controller
             'temperature'     => $prescription->temperature,
             'oxygen'          => $prescription->oxygen,
 
+            // ✅ فیلدهای اضافی مریض که توی فرم ویرایش و چاپ لازمه
+            'tazkira_number'      => $prescription->tazkira_number,
+            'patient_age'         => $prescription->patient_age,
+            'patient_gender'      => $prescription->patient_gender,
+            'patient_phone'       => $prescription->patient_phone,
+            'patient_blood_group' => $prescription->patient_blood_group,
+
             // ✅ وضعیت
             'status'                 => $prescription->status,
             'status_label'           => Prescription::STATUSES[$prescription->status] ?? $prescription->status,
@@ -105,40 +103,49 @@ class PrescriptionController extends Controller
                                         ?? null,
             'status_note'            => $prescription->status_note,
 
-            'items'           => $prescription->items->map(function ($item) {
-                // ✅ حالا از رابطه supplier استفاده می‌کنیم
+            // ============================================================
+            // ✅ اقلام نسخه — با همه فیلدها + fallback
+            // ============================================================
+            'items' => $prescription->items->map(function ($item) {
+
+                // نام حمایت‌کننده
                 $supplierName = $item->is_custom
-                    ? $item->supplier_name
+                    ? ($item->supplier_name ?? 'نامشخص')
                     : ($item->supplier->account_name ?? $item->supplier_name ?? 'نامشخص');
+
+                // نام دارو
+                $medName = $item->is_custom
+                    ? ($item->med_name ?? 'نامشخص')
+                    : ($item->medication->gen_name ?? $item->med_name ?? 'نامشخص');
+
+                // نام کتگوری — با fallback از هر دو منبع
+                $categoryName = $item->category->category_name
+                    ?? $item->category_name
+                    ?? 'نامشخص';
 
                 return [
                     'pres_it_id'      => $item->pres_it_id,
                     'category_id'     => $item->category_id,
-                    'category_name'   => $item->category->category_name ?? 'نامشخص',
+                    'category_name'   => $categoryName,
                     'med_id'          => $item->med_id,
-                    'med_name'        => $item->is_custom
-                        ? $item->med_name
-                        : ($item->medication->gen_name ?? 'نامشخص'),
+                    'med_name'        => $medName,
                     'supplier_id'     => $item->supplier_id,
                     'supplier_name'   => $supplierName,
                     'is_custom'       => (bool) $item->is_custom,
                     'type'            => $item->type,
-
-                    // ✅ جدید: اطلاعات بچ و بارکد
                     'stock_id'        => $item->stock_id,
                     'barcode'         => $item->barcode,
                     'batch_number'    => $item->batch_number,
-
                     'dosage'          => $item->dosage,
                     'quantity'        => $item->quantity,
                     'remarks'         => $item->remarks,
                 ];
-            }),
+            })->values()->toArray(),
         ];
     }
 
     // ============================================================
-    // INDEX - لیست نسخه‌ها
+    // INDEX
     // ============================================================
     public function index(Request $request)
     {
@@ -161,6 +168,10 @@ class PrescriptionController extends Controller
             $query->where('doc_id', $request->doc_id);
         }
 
+        if ($request->filled('reg_id')) {
+            $query->where('reg_id', $request->reg_id);
+        }
+
         $prescriptions = $query->latest()
             ->get()
             ->map(fn ($p) => $this->formatPrescription($p));
@@ -172,7 +183,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // MY PRESCRIPTIONS - نسخه‌های داکتر لاگین‌شده
+    // MY PRESCRIPTIONS
     // ============================================================
     public function myPrescriptions(Request $request)
     {
@@ -203,14 +214,16 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ دریافت حمایت‌کنندگان یک دارو
+    // ✅ حمایت‌کنندگان یک دارو (از stock)
     // ============================================================
     public function getMedicationSuppliers($med_id)
     {
         try {
-            $suppliers = DB::table('parchaseitems')
-                ->join('accounts', 'accounts.id', '=', 'parchaseitems.supplier_id')
-                ->where('parchaseitems.med_id', $med_id)
+            $suppliers = DB::table('stock')
+                ->join('accounts', 'accounts.id', '=', 'stock.supplier_id')
+                ->where('stock.med_id', $med_id)
+                ->where('stock.quantity', '>', 0)
+                ->whereDate('stock.exp_date', '>=', now()->toDateString())
                 ->select(
                     'accounts.id as reg_id',
                     'accounts.account_name as full_name',
@@ -222,7 +235,7 @@ class PrescriptionController extends Controller
 
             return response()->json([
                 'success' => true,
-                'source'  => 'accounts',
+                'source'  => 'stock',
                 'data'    => $suppliers,
                 'count'   => $suppliers->count(),
             ]);
@@ -241,7 +254,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ جدید: دریافت اطلاعات بچ بعدی (FEFO) برای نمایش در فرم
+    // ✅ بچ بعدی (FEFO)
     // ============================================================
     public function getNextBatch(Request $request)
     {
@@ -253,9 +266,9 @@ class PrescriptionController extends Controller
 
         try {
             $stock = StockService::getNextBatch(
-                $request->med_id,
-                $request->supplier_id,
-                $request->quantity ?? 1
+                (int) $request->med_id,
+                $request->supplier_id ? (int) $request->supplier_id : null,
+                (int) ($request->quantity ?? 1)
             );
 
             if (!$stock) {
@@ -265,7 +278,6 @@ class PrescriptionController extends Controller
                 ], 404);
             }
 
-            // ✅ بارکد از medications گرفته می‌شود
             $medication = Medication::find($request->med_id);
 
             return response()->json([
@@ -290,7 +302,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // STORE - ثبت نسخه جدید (با FEFO)
+    // STORE
     // ============================================================
     public function store(Request $request)
     {
@@ -339,42 +351,11 @@ class PrescriptionController extends Controller
 
         try {
             $doctorId = Auth::id();
-            if (!$doctorId) {
-                throw new \Exception('کاربر لاگین‌شده یافت نشد');
-            }
+            if (!$doctorId) throw new \Exception('کاربر لاگین‌شده یافت نشد');
 
             $doctor = User::find($doctorId);
-            if (!$doctor) {
-                throw new \Exception('داکتر در سیستم یافت نشد');
-            }
+            if (!$doctor) throw new \Exception('داکتر در سیستم یافت نشد');
 
-            // ✅ بررسی موجودی با FEFO
-            foreach ($validated['items'] as $item) {
-                if (!empty($item['is_custom'])) {
-                    continue;
-                }
-
-                $supplier = $this->findSupplier($item['supplier_id']);
-                if (!$supplier) {
-                    throw new \Exception("تأمین‌کننده با شناسه {$item['supplier_id']} معتبر نیست");
-                }
-
-                // ✅ چک می‌کنیم که آیا بچ کافی با FEFO وجود دارد
-                $stock = StockService::getNextBatch(
-                    $item['med_id'],
-                    $item['supplier_id'],
-                    $item['quantity']
-                );
-
-                if (!$stock) {
-                    $medication = Medication::find($item['med_id']);
-                    throw new \Exception(
-                        "موجودی دوا '{$medication->gen_name}' از تأمین‌کننده {$supplier->name} کافی نیست"
-                    );
-                }
-            }
-
-            // ✅ ایجاد نسخه با وضعیت اولیه pending
             $prescription = Prescription::create([
                 'patient_id'          => $validated['patient_id'],
                 'reg_id'              => $validated['reg_id'],
@@ -398,21 +379,18 @@ class PrescriptionController extends Controller
                 'status'              => Prescription::STATUS_PENDING,
             ]);
 
-            // ✅ شماره نسخه = pres_id
             $prescription->pres_num = $prescription->pres_id;
             $prescription->save();
 
-            // ✅ ثبت آیتم‌ها با FEFO (از PrescriptionService)
             foreach ($validated['items'] as $item) {
                 $isCustom = !empty($item['is_custom']);
 
                 if ($isCustom) {
-                    // داروی دستی
                     $this->prescriptionService->prescribeCustomItem(
                         $prescription->pres_id,
                         $item['med_name'] ?? '',
                         $item['supplier_name'] ?? '',
-                        $item['quantity'],
+                        (int) $item['quantity'],
                         $item['dosage'],
                         [
                             'category_id' => $item['category_id'] ?? null,
@@ -421,16 +399,14 @@ class PrescriptionController extends Controller
                         ]
                     );
                 } else {
-                    // داروی سیستمی با FEFO
                     $this->prescriptionService->prescribeItem(
                         $prescription->pres_id,
-                        $item['med_id'],
-                        $item['supplier_id'],
-                        $item['quantity'],
+                        (int) $item['med_id'],
+                        (int) $item['supplier_id'],
+                        (int) $item['quantity'],
                         $item['dosage'],
                         [
                             'category_id' => $item['category_id'] ?? null,
-                            'type'        => $item['type'] ?? null,
                             'remarks'     => $item['remarks'] ?? null,
                         ]
                     );
@@ -472,14 +448,14 @@ class PrescriptionController extends Controller
             ]);
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در ثبت نسخه',
+                'message' => $e->getMessage(),
                 'error'   => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
 
     // ============================================================
-    // UPDATE - بروزرسانی نسخه (با FEFO)
+    // UPDATE
     // ============================================================
     public function update(Request $request, $id)
     {
@@ -531,37 +507,12 @@ class PrescriptionController extends Controller
                 }
             }
 
-            // ✅ برگرداندن موجودی آیتم‌های قبلی (reverseDecrease روی همان بچ)
+            // ✅ برگرداندن موجودی آیتم‌های قبلی
             foreach ($prescription->items as $oldItem) {
                 if (!$oldItem->is_custom && $oldItem->med_id && $oldItem->stock_id) {
                     StockService::reverseDecreaseByStockId(
                         $oldItem->stock_id,
                         $oldItem->quantity
-                    );
-                }
-            }
-
-            // ✅ بررسی موجودی برای آیتم‌های جدید با FEFO
-            foreach ($validated['items'] as $item) {
-                if (!empty($item['is_custom'])) {
-                    continue;
-                }
-
-                $supplier = $this->findSupplier($item['supplier_id']);
-                if (!$supplier) {
-                    throw new \Exception("تأمین‌کننده با شناسه {$item['supplier_id']} معتبر نیست");
-                }
-
-                $stock = StockService::getNextBatch(
-                    $item['med_id'],
-                    $item['supplier_id'],
-                    $item['quantity']
-                );
-
-                if (!$stock) {
-                    $medication = Medication::find($item['med_id']);
-                    throw new \Exception(
-                        "موجودی دوا '{$medication->gen_name}' از تأمین‌کننده {$supplier->name} کافی نیست"
                     );
                 }
             }
@@ -589,7 +540,7 @@ class PrescriptionController extends Controller
             // ✅ حذف آیتم‌های قدیمی
             PrescriptionItem::where('pres_id', $prescription->pres_id)->delete();
 
-            // ✅ ثبت آیتم‌های جدید با FEFO
+            // ✅ ثبت آیتم‌های جدید
             foreach ($validated['items'] as $item) {
                 $isCustom = !empty($item['is_custom']);
 
@@ -598,7 +549,7 @@ class PrescriptionController extends Controller
                         $prescription->pres_id,
                         $item['med_name'] ?? '',
                         $item['supplier_name'] ?? '',
-                        $item['quantity'],
+                        (int) $item['quantity'],
                         $item['dosage'],
                         [
                             'category_id' => $item['category_id'] ?? null,
@@ -609,13 +560,12 @@ class PrescriptionController extends Controller
                 } else {
                     $this->prescriptionService->prescribeItem(
                         $prescription->pres_id,
-                        $item['med_id'],
-                        $item['supplier_id'],
-                        $item['quantity'],
+                        (int) $item['med_id'],
+                        (int) $item['supplier_id'],
+                        (int) $item['quantity'],
                         $item['dosage'],
                         [
                             'category_id' => $item['category_id'] ?? null,
-                            'type'        => $item['type'] ?? null,
                             'remarks'     => $item['remarks'] ?? null,
                         ]
                     );
@@ -660,14 +610,14 @@ class PrescriptionController extends Controller
             ]);
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در بروزرسانی نسخه',
+                'message' => $e->getMessage(),
                 'error'   => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
 
     // ============================================================
-    // ✅ SEND TO PHARMACY - ارسال نسخه به دواخانه
+    // SEND TO PHARMACY
     // ============================================================
     public function sendToPharmacy($id)
     {
@@ -680,7 +630,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ PHARMACY REGISTERED - ثبت در دواخانه
+    // PHARMACY REGISTERED
     // ============================================================
     public function markPharmacyRegistered(Request $request, $id)
     {
@@ -704,7 +654,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ MARK PAID - اخذ پول توسط رجستریشن
+    // MARK PAID
     // ============================================================
     public function markPaid($id)
     {
@@ -717,7 +667,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ CANCEL - لغو نسخه
+    // CANCEL
     // ============================================================
     public function cancel(Request $request, $id)
     {
@@ -734,7 +684,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ UPDATE STATUS - تغییر عمومی وضعیت
+    // UPDATE STATUS
     // ============================================================
     public function updateStatus(Request $request, $id)
     {
@@ -767,7 +717,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ تابع کمکی: تغییر وضعیت + لاگ
+    // CHANGE STATUS (helper)
     // ============================================================
     private function changeStatus($id, string $newStatus, array $extra = [], string $successMessage = '')
     {
@@ -846,7 +796,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // DESTROY - حذف نسخه
+    // DESTROY
     // ============================================================
     public function destroy($id)
     {
@@ -856,7 +806,6 @@ class PrescriptionController extends Controller
             $prescription = Prescription::with('items')->findOrFail($id);
             $data = $prescription->toArray();
 
-            // ✅ برگرداندن موجودی به همان بچ
             foreach ($prescription->items as $item) {
                 if (!$item->is_custom && $item->stock_id) {
                     StockService::reverseDecreaseByStockId(
@@ -912,20 +861,17 @@ class PrescriptionController extends Controller
             $unavailableItems = [];
 
             foreach ($request->items as $index => $item) {
-                if (!empty($item['is_custom'])) {
-                    continue;
-                }
+                if (!empty($item['is_custom'])) continue;
 
                 $supplier = $this->findSupplier($item['supplier_id']);
 
-                // ✅ چک FEFO
-                $stock = StockService::getNextBatch(
-                    $item['med_id'],
-                    $item['supplier_id'],
-                    $item['quantity']
+                $total = StockService::getAvailableQuantity(
+                    (int) $item['med_id'],
+                    (int) $item['supplier_id'],
+                    null
                 );
 
-                if (!$stock) {
+                if ($total < (int) $item['quantity']) {
                     $medication = Medication::find($item['med_id']);
 
                     $unavailableItems[] = [
@@ -935,6 +881,7 @@ class PrescriptionController extends Controller
                         'supplier_id'       => $item['supplier_id'],
                         'supplier_name'     => $supplier->name ?? 'نامشخص',
                         'required_quantity' => $item['quantity'],
+                        'available_quantity'=> $total,
                     ];
                 }
             }
@@ -962,7 +909,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // SHOW - دریافت جزئیات یک نسخه خاص
+    // SHOW
     // ============================================================
     public function show($id)
     {

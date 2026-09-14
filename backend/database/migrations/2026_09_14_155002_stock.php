@@ -18,6 +18,9 @@ return new class extends Migration
             // ✅ تأمین‌کننده (از جدول accounts می‌آید)
             $table->unsignedBigInteger('supplier_id');
 
+            // ✅ آیتم خرید (از جدول parchaseitems می‌آید)
+            $table->unsignedBigInteger('purchase_item_id')->nullable();
+
             // ✅ نوعیت (از جدول parchaseitems گرفته می‌شود)
             $table->string('type')->nullable()->comment('نوعیت دارو یا محصول');
 
@@ -41,6 +44,7 @@ return new class extends Migration
             // ایندکس‌ها
             $table->index('med_id');
             $table->index('supplier_id');
+            $table->index('purchase_item_id');
             $table->index('exp_date');
             $table->index('type');
 
@@ -50,10 +54,16 @@ return new class extends Migration
                   ->on('medications')
                   ->onDelete('cascade');
 
-            // ✅ اصلاح شد: ارجاع به accounts.id مثل parchases و parchaseitems
+            // ✅ ارجاع به accounts.id مثل parchases و parchaseitems
             $table->foreign('supplier_id')
                   ->references('id')
                   ->on('accounts')
+                  ->onDelete('cascade');
+
+            // ✅ ارجاع به parchaseitems (اصلاح شد: parchase_it_id به جای id)
+            $table->foreign('purchase_item_id')
+                  ->references('parchase_it_id')
+                  ->on('parchaseitems')
                   ->onDelete('cascade');
 
             // ترکیب یکتا (هر دارو + هر تأمین‌کننده + هر تاریخ انقضا + نوعیت = یک رکورد)

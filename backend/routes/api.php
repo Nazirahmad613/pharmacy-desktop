@@ -495,24 +495,18 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::prefix('prescriptions')->group(function () {
 
     // ============================================================
-    // ✅ CRUD اصلی
+    // ✅ روت‌های خاص (باید قبل از {pres_id} باشن)
     // ============================================================
-    Route::get ('/',                    [PrescriptionController::class, 'index']);
-    Route::post('/',                    [PrescriptionController::class, 'store']);
-    Route::get ('/{pres_id}',           [PrescriptionController::class, 'show']);
-    Route::put ('/{pres_id}',           [PrescriptionController::class, 'update']);
-    Route::delete('/{pres_id}',         [PrescriptionController::class, 'destroy']);
 
-    // ============================================================
-    // ✅ نسخه‌های داکتر لاگین‌شده (تب وضعیت داکتر)
-    // ============================================================
-    Route::get('/my/list',              [PrescriptionController::class, 'myPrescriptions']);
+    // ✅ دریافت اطلاعات بچ بعدی (FEFO) — این روت جدید اضافه شد
+    Route::get('/next-batch', [PrescriptionController::class, 'getNextBatch']);
 
-    // ============================================================
+    // ✅ نسخه‌های داکتر لاگین‌شده
+    Route::get('/my/list', [PrescriptionController::class, 'myPrescriptions']);
+
     // ✅ بررسی موجودی و تأمین‌کننده
-    // ============================================================
-    Route::post('/check-stock',         [PrescriptionController::class, 'checkStockBeforePrescription']);
-    Route::get ('/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);
+    Route::post('/check-stock', [PrescriptionController::class, 'checkStockBeforePrescription']);
+    Route::get('/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);
 
     // ============================================================
     // ✅ چرخه وضعیت نسخه
@@ -537,6 +531,15 @@ Route::prefix('prescriptions')->group(function () {
     // تغییر عمومی وضعیت (با بررسی گذار)
     Route::patch('/{pres_id}/status',
         [PrescriptionController::class, 'updateStatus']);
+
+    // ============================================================
+    // ✅ CRUD اصلی (باید آخر باشن تا با روت‌های خاص تداخل نکنن)
+    // ============================================================
+    Route::get('/',                    [PrescriptionController::class, 'index']);
+    Route::post('/',                   [PrescriptionController::class, 'store']);
+    Route::get('/{pres_id}',           [PrescriptionController::class, 'show']);
+    Route::put('/{pres_id}',           [PrescriptionController::class, 'update']);
+    Route::delete('/{pres_id}',        [PrescriptionController::class, 'destroy']);
 });
     // ===== Stock & Sales Reports =====
     Route::get('/salesd', [SalesFullDetailsController::class, 'index']);

@@ -17,13 +17,6 @@ class PrescriptionService
     /**
      * تجویز یک قلم دارو از انبار با منطق FEFO
      *
-     * جریان:
-     * 1. بارکد از medications خوانده می‌شود
-     * 2. نزدیک‌ترین بچ‌ها (کم‌ترین exp_date) انتخاب می‌شوند
-     * 3. موجودی کاهش می‌یابد (ممکن است چند بچ مصرف شود)
-     * 4. برای هر بچ مصرف‌شده یک PrescriptionItem ثبت می‌شود
-     * 5. برای هر بچ مصرف‌شده یک StockSale ثبت می‌شود
-     *
      * @return array آرایه‌ای از PrescriptionItemهای ایجادشده
      */
     public function prescribeItem(
@@ -50,32 +43,79 @@ class PrescriptionService
             }
             $barcode = $medication->barcode;
 
+            // ============================================================
+            // 🔍 لاگ تشخیصی ۱ — همه stockهای این med_id
+            // ============================================================
+            $allStocksForMed = Stock::where('med_id', $medId)->get([
+                'stock_id', 'supplier_id', 'quantity', 'exp_date', 'type', 'batch_number'
+            ])->toArray();
+
+            Log::info('🔍 PRESCRIBE_DEBUG_1', [
+                'presId' => $presId,
+                'medId' => $medId,
+                'supplierId' => $supplierId,
+                'quantity' => $quantity,
+                'today' => now()->toDateString(),
+                'today_format_Ymd' => now()->format('Y-m-d'),
+                'all_stocks_for_med' => $allStocksForMed,
+            ]);
+
+            // ============================================================
             // 2️⃣ کوئری FEFO
+            // ============================================================
+            // ⚠️ تغییر مهم: whereDate به where ساده با فرمت Y-m-d
+            // دلیل: whereDate توی SQLite گاهی با فرمت datetime کار نمی‌کنه
+            // ============================================================
             $stockQuery = Stock::where('med_id', $medId)
                 ->where('quantity', '>', 0)
-                ->whereDate('exp_date', '>=', now()->toDateString())
-                ->orderBy('exp_date', 'asc')       // نزدیک‌ترین انقضا
-                ->orderBy('stock_id', 'asc');      // ترتیب ثانویه
+                ->where('exp_date', '>=', now()->format('Y-m-d'))
+                ->orderBy('exp_date', 'asc')
+                ->orderBy('stock_id', 'asc');
 
-            // ✅ اگر supplier مشخص است، فیلتر کن
             if ($supplierId) {
                 $stockQuery->where('supplier_id', $supplierId);
             }
 
-            // ✅ اگر type در extra هست، فیلتر کن
-            if (!empty($extra['type'])) {
-                $stockQuery->where('type', $extra['type']);
-            }
-
             $stocks = $stockQuery->lockForUpdate()->get();
+
+            // ============================================================
+            // 🔍 لاگ تشخیصی ۲ — نتیجه کوئری FEFO
+            // ============================================================
+            Log::info('🔍 PRESCRIBE_DEBUG_2', [
+                'stocks_found' => $stocks->count(),
+                'total_available' => (int) $stocks->sum('quantity'),
+                'stocks_data' => $stocks->map(fn($s) => [
+                    'stock_id' => $s->stock_id,
+                    'supplier_id' => $s->supplier_id,
+                    'quantity' => $s->quantity,
+                    'exp_date' => $s->exp_date,
+                    'type' => $s->type,
+                ])->toArray(),
+                'sql' => $stockQuery->toSql(),
+                'bindings' => $stockQuery->getBindings(),
+            ]);
 
             // 3️⃣ بررسی موجودی کل
             $totalAvailable = (int) $stocks->sum('quantity');
 
             if ($totalAvailable < $quantity) {
+                // 🔍 لاگ تشخیصی ۳ — چرا موجودی کافی نیست
+                $allStocksRaw = Stock::where('med_id', $medId)->get()->toArray();
+                
+                Log::warning('🔍 PRESCRIBE_DEBUG_3_STOCK_NOT_ENOUGH', [
+                    'medId' => $medId,
+                    'supplierId' => $supplierId,
+                    'quantity_requested' => $quantity,
+                    'total_available_in_query' => $totalAvailable,
+                    'all_stocks_raw' => $allStocksRaw,
+                    'query_sql' => $stockQuery->toSql(),
+                    'query_bindings' => $stockQuery->getBindings(),
+                ]);
+
                 throw new \Exception(
                     "موجودی دوا '{$medication->gen_name}' کافی نیست. " .
-                    "درخواستی: {$quantity}، موجود: {$totalAvailable}"
+                    "درخواستی: {$quantity}، موجود: {$totalAvailable} " .
+                    "(medId={$medId}, supplierId=" . ($supplierId ?? 'null') . ")"
                 );
             }
 
@@ -92,10 +132,8 @@ class PrescriptionService
                 $availableInBatch = (int) $stock->quantity;
                 $usedQuantity = min($availableInBatch, $remaining);
 
-                // کاهش موجودی
                 $stock->decrement('quantity', $usedQuantity);
 
-                // ✅ ثبت PrescriptionItem برای این بچ
                 $item = PrescriptionItem::create([
                     'pres_id'       => $presId,
                     'category_id'   => $extra['category_id'] ?? null,
@@ -106,14 +144,13 @@ class PrescriptionService
                     'med_name'      => null,
                     'supplier_name' => null,
                     'type'          => $stock->type ?? ($extra['type'] ?? null),
-                    'barcode'       => $barcode,                    // ✅ از medications
-                    'batch_number'  => $stock->batch_number,         // ✅ از stock
+                    'barcode'       => $barcode,
+                    'batch_number'  => $stock->batch_number,
                     'dosage'        => $dosage,
                     'quantity'      => $usedQuantity,
                     'remarks'       => $extra['remarks'] ?? null,
                 ]);
 
-                // ✅ ثبت StockSale برای این بچ
                 StockSale::create([
                     'stock_id'      => $stock->stock_id,
                     'pres_it_id'    => $item->pres_it_id,
@@ -152,11 +189,6 @@ class PrescriptionService
     // ============================================================
     // تجویز داروی دستی (خارج از سیستم)
     // ============================================================
-    /**
-     * تجویز داروی دستی — بدون اتصال به stock
-     *
-     * فقط med_name و supplier_name را نگه می‌دارد.
-     */
     public function prescribeCustomItem(
         int $presId,
         string $medName,
@@ -194,13 +226,8 @@ class PrescriptionService
 
 
     // ============================================================
-    // تجویز بر اساس بارکد (برای اسکن بارکد)
+    // تجویز بر اساس بارکد
     // ============================================================
-    /**
-     * تجویز با اسکن بارکد
-     *
-     * بارکد → medications.med_id → FEFO
-     */
     public function prescribeByBarcode(
         int $presId,
         string $barcode,
@@ -230,12 +257,6 @@ class PrescriptionService
     // ============================================================
     // برگرداندن موجودی هنگام ویرایش/حذف نسخه
     // ============================================================
-    /**
-     * برگرداندن همه اقلام یک نسخه به انبار
-     *
-     * برای ویرایش یا حذف نسخه استفاده می‌شود.
-     * موجودی به همان بچ اصلی برمی‌گردد.
-     */
     public function restorePrescriptionItems(int $presId): int
     {
         return DB::transaction(function () use ($presId) {
@@ -250,7 +271,6 @@ class PrescriptionService
 
             foreach ($items as $item) {
 
-                // ✅ برگرداندن به همان بچ اصلی
                 $stock = Stock::lockForUpdate()->find($item->stock_id);
 
                 if ($stock) {
@@ -270,11 +290,9 @@ class PrescriptionService
                     ]);
                 }
 
-                // ✅ حذف رکورد فروش مربوطه
                 StockSale::where('pres_it_id', $item->pres_it_id)->delete();
             }
 
-            // ✅ حذف اقلام نسخه
             PrescriptionItem::where('pres_id', $presId)->delete();
 
             Log::info('Prescription items restored', [
@@ -288,14 +306,8 @@ class PrescriptionService
 
 
     // ============================================================
-    // پیش‌نمایش بچ‌های مصرفی (بدون کاهش موجودی)
+    // پیش‌نمایش بچ‌های مصرفی
     // ============================================================
-    /**
-     * پیش‌نمایش: کدام بچ‌ها مصرف خواهند شد؟
-     *
-     * برای نمایش در فرانت‌اند قبل از ثبت نسخه.
-     * موجودی کاهش نمی‌یابد.
-     */
     public function previewBatches(
         int $medId,
         ?int $supplierId,
@@ -312,18 +324,15 @@ class PrescriptionService
             ];
         }
 
+        // ⚠️ whereDate → where
         $query = Stock::where('med_id', $medId)
             ->where('quantity', '>', 0)
-            ->whereDate('exp_date', '>=', now()->toDateString())
+            ->where('exp_date', '>=', now()->format('Y-m-d'))
             ->orderBy('exp_date', 'asc')
             ->orderBy('stock_id', 'asc');
 
         if ($supplierId) {
             $query->where('supplier_id', $supplierId);
-        }
-
-        if ($type) {
-            $query->where('type', $type);
         }
 
         $stocks = $query->get();
@@ -382,13 +391,8 @@ class PrescriptionService
 
 
     // ============================================================
-    // پیش‌نمایش چند قلم (برای فرم نسخه)
+    // پیش‌نمایش چند قلم
     // ============================================================
-    /**
-     * پیش‌نمایش همه اقلام یک نسخه
-     *
-     * @param array $items هر آیتم شامل: med_id, supplier_id, quantity, type
-     */
     public function previewItems(array $items): array
     {
         $results = [];
@@ -396,7 +400,6 @@ class PrescriptionService
 
         foreach ($items as $index => $item) {
 
-            // داروی دستی — نیازی به بررسی موجودی نیست
             if (!empty($item['is_custom'])) {
                 $results[] = [
                     'index'       => $index,
@@ -436,13 +439,8 @@ class PrescriptionService
 
 
     // ============================================================
-    // تجویز چند قلم (برای store نسخه)
+    // تجویز چند قلم
     // ============================================================
-    /**
-     * تجویز همه اقلام یک نسخه
-     *
-     * @return array خلاصه نتایج
-     */
     public function prescribeItems(int $presId, array $items): array
     {
         return DB::transaction(function () use ($presId, $items) {
@@ -476,11 +474,9 @@ class PrescriptionService
                         $item['dosage'],
                         [
                             'category_id' => $item['category_id'] ?? null,
-                            'type'        => $item['type'] ?? null,
                             'remarks'     => $item['remarks'] ?? null,
                         ]
                     );
-                    // prescribeItem ممکن است چند آیتم برگرداند (FEFO چند بچی)
                     $allCreatedItems = array_merge($allCreatedItems, $created);
                 }
             }
