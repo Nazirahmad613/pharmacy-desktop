@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import MainLayoutjur from "../../../../components/MainLayoutjur";
 import { toast, ToastContainer } from "react-toastify";
@@ -41,7 +40,7 @@ export default function ParchaseForm() {
   const [categories, setCategories] = useState([]);
   const [medications, setMedications] = useState([]);
 
-  // تأمین‌کنندگان اکنون از جدول accounts می‌آیند
+  // تأمین‌کنندگان از جدول accounts می‌آیند
   const [suppliers, setSuppliers] = useState([]);
 
   const [totalPurchase, setTotalPurchase] = useState(0);
@@ -145,35 +144,12 @@ export default function ParchaseForm() {
 
   const loadSuppliersAndPurchases = async () => {
     try {
-      /*
-       * قبلاً:
-       *
-       * /registrations
-       *
-       * استفاده می‌شد.
-       *
-       * اکنون تأمین‌کننده یک Account است.
-       */
-
       const accountRes = await api.get("/accounts");
 
       let accountsData =
         accountRes.data.data ??
         accountRes.data ??
         [];
-
-      /*
-       * اگر API حساب‌ها را به صورت pagination برگرداند
-       * مثلاً:
-       *
-       * {
-       *   data: {
-       *      data: [...]
-       *   }
-       * }
-       *
-       * این حالت نیز مدیریت می‌شود.
-       */
 
       if (
         accountsData &&
@@ -182,15 +158,6 @@ export default function ParchaseForm() {
       ) {
         accountsData = accountsData.data;
       }
-
-      /*
-       * فقط حساب‌های تأمین‌کننده دوا
-       *
-       * account_type = payable
-       * account_category = medicine_suppliers
-       *
-       * و حساب فعال
-       */
 
       const suppliersList = accountsData.filter(
         (account) =>
@@ -205,11 +172,6 @@ export default function ParchaseForm() {
       );
 
       setSuppliers(suppliersList);
-
-      /*
-       * بعد از دریافت حساب‌ها،
-       * خریدها را دریافت می‌کنیم.
-       */
 
       await fetchPurchases(suppliersList);
 
@@ -240,10 +202,6 @@ export default function ParchaseForm() {
         res.data ??
         [];
 
-      /*
-       * اگر API خریدها pagination داشته باشد
-       */
-
       const purchasesData =
         Array.isArray(data)
           ? data
@@ -256,16 +214,6 @@ export default function ParchaseForm() {
           ? suppliersList
           : suppliers;
 
-      /*
-       * اضافه کردن نام تأمین‌کننده به هر خرید
-       *
-       * مهم:
-       *
-       * supplier_id اکنون accounts.id است
-       *
-       * نه registrations.reg_id
-       */
-
       const purchasesWithTotals =
         purchasesData.map((purchase) => {
 
@@ -277,16 +225,87 @@ export default function ParchaseForm() {
               0
             ) || 0;
 
-          /*
-           * پیدا کردن Account تأمین‌کننده
-           */
-
           const supplier =
             currentSuppliers.find(
               (account) =>
                 Number(account.id) ===
                 Number(purchase.supplier_id)
             );
+
+          // ✅ نام کتگوری‌ها
+          const categoryNames =
+            (purchase.items ?? [])
+              .map(
+                (item) =>
+                  item.category?.category_name ??
+                  categories.find(
+                    (c) =>
+                      Number(c.category_id) ===
+                      Number(item.category_id)
+                  )?.category_name ??
+                  null
+              )
+              .filter(
+                (c) =>
+                  c !== null &&
+                  c !== undefined &&
+                  c !== ""
+              )
+              .join(", ");
+
+          // ✅ نام دواها
+          const medicineNames =
+            (purchase.items ?? [])
+              .map(
+                (item) =>
+                  item.medication?.gen_name ??
+                  medications.find(
+                    (m) =>
+                      Number(m.med_id) ===
+                      Number(item.med_id)
+                  )?.gen_name ??
+                  null
+              )
+              .filter(
+                (m) =>
+                  m !== null &&
+                  m !== undefined &&
+                  m !== ""
+              )
+              .join(", ");
+
+          // ✅ بارکد دواها
+          const barcodes =
+            (purchase.items ?? [])
+              .map(
+                (item) =>
+                  item.medication?.barcode ??
+                  medications.find(
+                    (m) =>
+                      Number(m.med_id) ===
+                      Number(item.med_id)
+                  )?.barcode ??
+                  null
+              )
+              .filter(
+                (b) =>
+                  b !== null &&
+                  b !== undefined &&
+                  b !== ""
+              )
+              .join(", ");
+
+          // ✅ شماره‌های Batch / Lot
+          const batchNumbers =
+            (purchase.items ?? [])
+              .map((item) => item.batch_no)
+              .filter(
+                (b) =>
+                  b !== null &&
+                  b !== undefined &&
+                  b !== ""
+              )
+              .join(", ");
 
           return {
             ...purchase,
@@ -297,6 +316,18 @@ export default function ParchaseForm() {
               supplier?.account_name ??
               purchase.supplier?.account_name ??
               "-",
+
+            category_names:
+              categoryNames || "-",
+
+            medicine_names:
+              medicineNames || "-",
+
+            medicine_barcodes:
+              barcodes || "-",
+
+            batch_numbers:
+              batchNumbers || "-",
           };
         });
 
@@ -342,17 +373,20 @@ export default function ParchaseForm() {
     };
 
     // ----------------------------------------------------------
-    // تغییر Category
+    // تغییر Category → پاک کردن فیلدهای وابسته
     // ----------------------------------------------------------
 
     if (field === "category_id") {
       updated.med_id = "";
       updated.type = "";
       updated.unit_price = "";
+      updated.batch_no = "";       // ✅ پاک شود
+      updated.exp_date = "";        // ✅ پاک شود
+      updated.total_price = 0;
     }
 
     // ----------------------------------------------------------
-    // تغییر دوا
+    // تغییر دوا → بروزرسانی نوع و قیمت
     // ----------------------------------------------------------
 
     if (field === "med_id") {
@@ -369,6 +403,10 @@ export default function ParchaseForm() {
 
       updated.unit_price =
         med?.unit_price ?? "";
+
+      // ✅ پاک کردن بچ و انقضا برای جلوگیری از اشتباه
+      updated.batch_no = "";
+      updated.exp_date = "";
     }
 
     // ----------------------------------------------------------
@@ -458,10 +496,7 @@ export default function ParchaseForm() {
       category_id: "",
       med_id: "",
       type: "",
-
-      // ✅ پاک کردن Batch بعد از اضافه‌شدن آیتم
       batch_no: "",
-
       quantity: "",
       unit_price: "",
       total_price: 0,
@@ -510,10 +545,7 @@ export default function ParchaseForm() {
       category_id: "",
       med_id: "",
       type: "",
-
-      // ✅ Batch
       batch_no: "",
-
       quantity: "",
       unit_price: "",
       total_price: 0,
@@ -531,53 +563,31 @@ export default function ParchaseForm() {
 
   const handleSavePurchase = async () => {
 
-    // ----------------------------------------------------------
-    // بررسی تأمین‌کننده
-    // ----------------------------------------------------------
-
     if (!selectedSupplier) {
-
       toast.error(
         "❌ لطفاً تأمین‌کننده را انتخاب کنید"
       );
-
       return;
     }
-
-    // ----------------------------------------------------------
-    // بررسی آیتم‌ها
-    // ----------------------------------------------------------
 
     if (
       purchasedItems.length === 0
     ) {
-
       toast.error(
         "❌ حداقل یک آیتم به خرید اضافه کنید"
       );
-
       return;
     }
-
-    // ----------------------------------------------------------
-    // بررسی مبلغ پرداختی
-    // ----------------------------------------------------------
 
     if (
       Number(par_paid) >
       Number(totalPurchase)
     ) {
-
       toast.error(
         "❌ مبلغ پرداخت‌شده نمی‌تواند بیشتر از مجموع خرید باشد"
       );
-
       return;
     }
-
-    // ----------------------------------------------------------
-    // Payload
-    // ----------------------------------------------------------
 
     const payload = {
 
@@ -589,12 +599,6 @@ export default function ParchaseForm() {
 
       par_paid:
         Number(par_paid || 0),
-
-      /*
-       * بسیار مهم:
-       *
-       * selectedSupplier اکنون accounts.id است.
-       */
 
       supplier_id:
         Number(selectedSupplier),
@@ -611,7 +615,7 @@ export default function ParchaseForm() {
             type:
               item.type ?? null,
 
-            // ✅ ارسال شماره Batch به Backend
+            // ✅ ارسال شماره Batch
             batch_no:
               item.batch_no ?? null,
 
@@ -634,10 +638,6 @@ export default function ParchaseForm() {
 
       let res;
 
-      // --------------------------------------------------------
-      // بروزرسانی
-      // --------------------------------------------------------
-
       if (editingPurchaseId) {
 
         res =
@@ -650,13 +650,7 @@ export default function ParchaseForm() {
           "✅ خرید با موفقیت بروزرسانی شد"
         );
 
-      }
-
-      // --------------------------------------------------------
-      // ثبت خرید جدید
-      // --------------------------------------------------------
-
-      else {
+      } else {
 
         res =
           await api.post(
@@ -669,18 +663,10 @@ export default function ParchaseForm() {
         );
       }
 
-      // --------------------------------------------------------
-      // ذخیره دیتا برای چاپ
-      // --------------------------------------------------------
-
       setPurchaseData(
         res.data?.data ??
         res.data
       );
-
-      // --------------------------------------------------------
-      // پاک کردن فرم
-      // --------------------------------------------------------
 
       setPurchasedItems([]);
 
@@ -695,10 +681,6 @@ export default function ParchaseForm() {
       setSelectedSupplier("");
 
       setEditingPurchaseId(null);
-
-      // --------------------------------------------------------
-      // لود مجدد خریدها
-      // --------------------------------------------------------
 
       await fetchPurchases();
 
@@ -791,11 +773,6 @@ export default function ParchaseForm() {
     purchase
   ) => {
 
-    /*
-     * غنی‌سازی آیتم‌ها برای نمایش نام دوا
-     * و نام Category
-     */
-
     const enrichedItems =
       (purchase.items ?? [])
         .map((item) => {
@@ -835,7 +812,7 @@ export default function ParchaseForm() {
               item.type ??
               "",
 
-            // ✅ Batch از دیتابیس هنگام تصحیح
+            // ✅ Batch
             batch_no:
               item.batch_no ??
               "",
@@ -854,27 +831,15 @@ export default function ParchaseForm() {
           };
         });
 
-    // ----------------------------------------------------------
-    // قرار دادن آیتم‌ها در فرم
-    // ----------------------------------------------------------
-
     setPurchasedItems(
       enrichedItems
     );
-
-    // ----------------------------------------------------------
-    // supplier_id اکنون accounts.id است
-    // ----------------------------------------------------------
 
     setSelectedSupplier(
       purchase.supplier_id
         ? String(purchase.supplier_id)
         : ""
     );
-
-    // ----------------------------------------------------------
-    // سایر اطلاعات خرید
-    // ----------------------------------------------------------
 
     setParPaid(
       Number(purchase.par_paid || 0)
@@ -916,10 +881,6 @@ export default function ParchaseForm() {
       purchase.parchase_id
     );
 
-    // ----------------------------------------------------------
-    // قرار دادن اولین آیتم در فرم
-    // ----------------------------------------------------------
-
     if (
       enrichedItems.length > 0
     ) {
@@ -937,7 +898,6 @@ export default function ParchaseForm() {
         type:
           first.type ?? "",
 
-        // ✅ Batch آیتم اول
         batch_no:
           first.batch_no ?? "",
 
@@ -949,7 +909,6 @@ export default function ParchaseForm() {
       });
     }
 
-    // رفتن به ابتدای صفحه
     window.scrollTo({
       top: 0,
       behavior: "smooth",
@@ -962,10 +921,6 @@ export default function ParchaseForm() {
 
   return (
     <MainLayoutjur>
-
-      {/* ======================================================
-          اطلاعات خرید
-      ======================================================= */}
 
       <div className="form-container">
 
@@ -982,14 +937,8 @@ export default function ParchaseForm() {
 
         <div className="form-grid">
 
-          {/* تاریخ خرید */}
-
           <div>
-
-            <label>
-              تاریخ خرید
-            </label>
-
+            <label>تاریخ خرید</label>
             <input
               type="date"
               value={parchaseDate}
@@ -999,35 +948,19 @@ export default function ParchaseForm() {
                 )
               }
             />
-
           </div>
 
-
-          {/* مجموع */}
-
           <div>
-
-            <label>
-              مجموع خرید
-            </label>
-
+            <label>مجموع خرید</label>
             <input
               type="number"
               value={totalPurchase}
               readOnly
             />
-
           </div>
 
-
-          {/* پرداخت */}
-
           <div>
-
-            <label>
-              مبلغ پرداخت شده
-            </label>
-
+            <label>مبلغ پرداخت شده</label>
             <input
               type="number"
               min="0"
@@ -1040,34 +973,18 @@ export default function ParchaseForm() {
                 )
               }
             />
-
           </div>
 
-
-          {/* باقی‌مانده */}
-
           <div>
-
-            <label>
-              مبلغ باقی‌مانده
-            </label>
-
+            <label>مبلغ باقی‌مانده</label>
             <input
               type="number"
               value={due_par}
               readOnly
             />
-
           </div>
 
-
-          {/* ==================================================
-              تأمین‌کننده
-              اکنون از Accounts گرفته می‌شود
-          =================================================== */}
-
           <div>
-
             <label>
               تأمین‌کننده / شرکت فروشنده دوا
             </label>
@@ -1080,7 +997,6 @@ export default function ParchaseForm() {
                 )
               }
             >
-
               <option value="">
                 -- انتخاب تأمین‌کننده --
               </option>
@@ -1100,36 +1016,22 @@ export default function ParchaseForm() {
               )}
 
             </select>
-
           </div>
 
         </div>
       </div>
 
-
-      {/* ======================================================
-          فرم آیتم‌ها
-      ======================================================= */}
-
       <div className="form-container">
 
-        <h3>
-          افزودن آیتم
-        </h3>
+        <h3>افزودن آیتم</h3>
 
         <div
           className="form-grid"
           onKeyDown={handleKeyDown}
         >
 
-          {/* Category */}
-
           <div>
-
-            <label>
-              کتگوری
-            </label>
-
+            <label>کتگوری</label>
             <select
               value={
                 formItem.category_id
@@ -1141,7 +1043,6 @@ export default function ParchaseForm() {
                 )
               }
             >
-
               <option value="">
                 -- انتخاب --
               </option>
@@ -1164,18 +1065,10 @@ export default function ParchaseForm() {
               )}
 
             </select>
-
           </div>
 
-
-          {/* دوا */}
-
           <div>
-
-            <label>
-              دوا
-            </label>
-
+            <label>دوا</label>
             <select
               value={
                 formItem.med_id
@@ -1187,7 +1080,6 @@ export default function ParchaseForm() {
                 )
               }
             >
-
               <option value="">
                 -- انتخاب --
               </option>
@@ -1210,42 +1102,22 @@ export default function ParchaseForm() {
               )}
 
             </select>
-
           </div>
 
-
-          {/* نوع دوا */}
-
           <div>
-
-            <label>
-              نوع دوا
-            </label>
-
+            <label>نوع دوا</label>
             <input
               type="text"
-              value={
-                formItem.type
-              }
+              value={formItem.type}
               readOnly
             />
-
           </div>
 
-
-          {/* Batch */}
-
           <div>
-
-            <label>
-              شماره Batch / Lot
-            </label>
-
+            <label>شماره Batch / Lot</label>
             <input
               type="text"
-              value={
-                formItem.batch_no
-              }
+              value={formItem.batch_no}
               onChange={(e) =>
                 handleChange(
                   "batch_no",
@@ -1254,24 +1126,14 @@ export default function ParchaseForm() {
               }
               placeholder="شماره Batch دوا"
             />
-
           </div>
 
-
-          {/* تعداد */}
-
           <div>
-
-            <label>
-              تعداد
-            </label>
-
+            <label>تعداد</label>
             <input
               type="number"
               min="1"
-              value={
-                formItem.quantity
-              }
+              value={formItem.quantity}
               onChange={(e) =>
                 handleChange(
                   "quantity",
@@ -1279,24 +1141,14 @@ export default function ParchaseForm() {
                 )
               }
             />
-
           </div>
 
-
-          {/* قیمت واحد */}
-
           <div>
-
-            <label>
-              قیمت واحد
-            </label>
-
+            <label>قیمت واحد</label>
             <input
               type="number"
               min="0"
-              value={
-                formItem.unit_price
-              }
+              value={formItem.unit_price}
               onChange={(e) =>
                 handleChange(
                   "unit_price",
@@ -1304,42 +1156,22 @@ export default function ParchaseForm() {
                 )
               }
             />
-
           </div>
 
-
-          {/* قیمت مجموعی */}
-
           <div>
-
-            <label>
-              قیمت مجموعی
-            </label>
-
+            <label>قیمت مجموعی</label>
             <input
               type="number"
-              value={
-                formItem.total_price
-              }
+              value={formItem.total_price}
               readOnly
             />
-
           </div>
 
-
-          {/* تاریخ انقضا */}
-
           <div>
-
-            <label>
-              تاریخ انقضا
-            </label>
-
+            <label>تاریخ انقضا</label>
             <input
               type="date"
-              value={
-                formItem.exp_date
-              }
+              value={formItem.exp_date}
               onChange={(e) =>
                 handleChange(
                   "exp_date",
@@ -1347,125 +1179,51 @@ export default function ParchaseForm() {
                 )
               }
             />
-
           </div>
 
         </div>
       </div>
 
-
-      {/* ======================================================
-          جدول آیتم‌های خرید
-      ======================================================= */}
-
       {purchasedItems.length > 0 && (
-
         <div className="table-container">
-
           <table className="dark-table">
-
             <thead>
-
               <tr>
-
-                <th>
-                  شماره
-                </th>
-
-                <th>
-                  کتگوری
-                </th>
-
-                <th>
-                  دوا
-                </th>
-
-                <th>
-                  نوع دوا
-                </th>
-
-                <th>
-                  Batch / Lot
-                </th>
-
-                <th>
-                  تعداد
-                </th>
-
-                <th>
-                  قیمت واحد
-                </th>
-
-                <th>
-                  قیمت مجموعی
-                </th>
-
-                <th>
-                  تاریخ انقضا
-                </th>
-
-                <th>
-                  عملیات
-                </th>
-
+                <th>شماره</th>
+                <th>کتگوری</th>
+                <th>دوا</th>
+                <th>نوع دوا</th>
+                <th>Batch / Lot</th>
+                <th>تعداد</th>
+                <th>قیمت واحد</th>
+                <th>قیمت مجموعی</th>
+                <th>تاریخ انقضا</th>
+                <th>عملیات</th>
               </tr>
-
             </thead>
 
-
             <tbody>
-
               {purchasedItems.map(
                 (item, index) => (
-
-                  <tr
-                    key={item.id}
-                  >
-
-                    <td>
-                      {index + 1}
-                    </td>
-
-                    <td>
-                      {
-                        item.category_name
-                      }
-                    </td>
-
-                    <td>
-                      {item.med_name}
-                    </td>
-
-                    <td>
-                      {item.type}
-                    </td>
-
-                    <td>
-                      {item.batch_no}
-                    </td>
-
-                    <td>
-                      {item.quantity}
-                    </td>
-
+                  <tr key={item.id}>
+                    <td>{index + 1}</td>
+                    <td>{item.category_name}</td>
+                    <td>{item.med_name}</td>
+                    <td>{item.type}</td>
+                    <td>{item.batch_no}</td>
+                    <td>{item.quantity}</td>
                     <td>
                       {Number(
                         item.unit_price || 0
                       ).toLocaleString()}
                     </td>
-
                     <td>
                       {Number(
                         item.total_price || 0
                       ).toLocaleString()}
                     </td>
-
+                    <td>{item.exp_date}</td>
                     <td>
-                      {item.exp_date}
-                    </td>
-
-                    <td>
-
                       <button
                         className="delete"
                         onClick={() =>
@@ -1476,26 +1234,14 @@ export default function ParchaseForm() {
                       >
                         حذف
                       </button>
-
                     </td>
-
                   </tr>
-
                 )
               )}
-
             </tbody>
-
           </table>
-
         </div>
-
       )}
-
-
-      {/* ======================================================
-          دکمه‌های عملیات
-      ======================================================= */}
 
       <div
         style={{
@@ -1506,13 +1252,9 @@ export default function ParchaseForm() {
         }}
       >
 
-        {/* ثبت / بروزرسانی */}
-
         <button
           className="edit"
-          onClick={
-            handleSavePurchase
-          }
+          onClick={handleSavePurchase}
           style={{
             backgroundColor:
               editingPurchaseId
@@ -1525,173 +1267,101 @@ export default function ParchaseForm() {
             : "ثبت خرید"}
         </button>
 
-
-        {/* چاپ */}
-
         <button
           onClick={() => {
-
             if (!purchaseData) {
-
               toast.error(
                 "ابتدا خرید را ثبت کنید"
               );
-
               return;
             }
-
             handlePrint();
           }}
           style={{
-            backgroundColor:
-              "#4CAF50",
-
+            backgroundColor: "#4CAF50",
             color: "white",
-
-            padding:
-              "10px 20px",
-
-            borderRadius:
-              "5px",
-
+            padding: "10px 20px",
+            borderRadius: "5px",
             border: "none",
-
             cursor: "pointer",
-
             fontSize: "14px",
-
             fontWeight: "bold",
           }}
         >
           چاپ خرید
         </button>
 
-
-        {/* لغو ویرایش */}
-
         {editingPurchaseId && (
-
           <button
             type="button"
-            onClick={
-              handleCancelEdit
-            }
+            onClick={handleCancelEdit}
             style={{
-              backgroundColor:
-                "#6c757d",
-
+              backgroundColor: "#6c757d",
               color: "white",
-
-              padding:
-                "10px 20px",
-
-              borderRadius:
-                "5px",
-
+              padding: "10px 20px",
+              borderRadius: "5px",
               border: "none",
-
               cursor: "pointer",
-
               fontSize: "14px",
-
               fontWeight: "bold",
             }}
           >
             انصراف
           </button>
-
         )}
 
       </div>
 
-
-      {/* ======================================================
-          خریدهای ثبت‌شده
-      ======================================================= */}
-
       {allPurchases.length > 0 && (
-
         <div
           className="form-container"
-          style={{
-            marginTop: "30px",
-          }}
+          style={{ marginTop: "30px" }}
         >
-
-          <h3>
-            خریدهای ثبت شده
-          </h3>
-
+          <h3>خریدهای ثبت شده</h3>
 
           <table className="dark-table">
-
             <thead>
-
               <tr>
-
-                <th>
-                  شماره
-                </th>
-
-                <th>
-                  تاریخ
-                </th>
-
-                <th>
-                  تأمین‌کننده
-                </th>
-
-                <th>
-                  مجموع
-                </th>
-
-                <th>
-                  پرداخت شده
-                </th>
-
-                <th>
-                  باقی مانده
-                </th>
-
-                <th>
-                  عملیات
-                </th>
-
+                <th>شماره خرید</th>
+                <th>تاریخ</th>
+                <th>تأمین‌کننده</th>
+                <th>کتگوری دوا</th>
+                <th>نام دوا</th>
+                <th>بارکد دوا</th>
+                <th>Batch / Lot</th>
+                <th>مجموع</th>
+                <th>پرداخت شده</th>
+                <th>باقی مانده</th>
+                <th>عملیات</th>
               </tr>
-
             </thead>
 
-
             <tbody>
-
               {allPurchases.map(
-                (purchase, index) => (
-
+                (purchase) => (
                   <tr
-                    key={
-                      purchase.parchase_id
-                    }
+                    key={purchase.parchase_id}
                   >
-
+                    <td>{purchase.parchase_id}</td>
+                    <td>{purchase.parchase_date}</td>
                     <td>
-                      {index + 1}
-                    </td>
-
-                    <td>
-                      {
-                        purchase.parchase_date
-                      }
-                    </td>
-
-                    <td>
-                      {
-                        purchase.supplier_name ??
+                      {purchase.supplier_name ??
                         purchase.supplier
                           ?.account_name ??
-                        "-"
-                      }
+                        "-"}
                     </td>
-
+                    <td>
+                      {purchase.category_names ?? "-"}
+                    </td>
+                    <td>
+                      {purchase.medicine_names ?? "-"}
+                    </td>
+                    <td>
+                      {purchase.medicine_barcodes ?? "-"}
+                    </td>
+                    <td>
+                      {purchase.batch_numbers ?? "-"}
+                    </td>
                     <td>
                       {Number(
                         purchase.totalPurchase ??
@@ -1699,14 +1369,11 @@ export default function ParchaseForm() {
                         0
                       ).toLocaleString()}
                     </td>
-
                     <td>
                       {Number(
-                        purchase.par_paid ??
-                        0
+                        purchase.par_paid ?? 0
                       ).toLocaleString()}
                     </td>
-
                     <td>
                       {Number(
                         purchase.due_par ??
@@ -1717,43 +1384,23 @@ export default function ParchaseForm() {
                             0
                           ) -
                           Number(
-                            purchase.par_paid ??
-                            0
+                            purchase.par_paid ?? 0
                           )
                         )
                       ).toLocaleString()}
                     </td>
-
                     <td>
-
-                      {/* حذف */}
-
                       <button
                         style={{
-                          backgroundColor:
-                            "#dc2626",
-
+                          backgroundColor: "#dc2626",
                           color: "#fff",
-
-                          padding:
-                            "5px 12px",
-
-                          borderRadius:
-                            "5px",
-
+                          padding: "5px 12px",
+                          borderRadius: "5px",
                           border: "none",
-
-                          cursor:
-                            "pointer",
-
-                          fontSize:
-                            "12px",
-
-                          fontWeight:
-                            "bold",
-
-                          marginLeft:
-                            "5px",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          marginLeft: "5px",
                         }}
                         onClick={() =>
                           handleDeletePurchase(
@@ -1764,113 +1411,57 @@ export default function ParchaseForm() {
                         حذف
                       </button>
 
-
-                      {/* تصحیح */}
-
                       <button
                         style={{
-                          backgroundColor:
-                            "#dcc215",
-
+                          backgroundColor: "#dcc215",
                           color: "#000",
-
-                          padding:
-                            "5px 12px",
-
-                          borderRadius:
-                            "5px",
-
+                          padding: "5px 12px",
+                          borderRadius: "5px",
                           border: "none",
-
-                          cursor:
-                            "pointer",
-
-                          fontSize:
-                            "12px",
-
-                          fontWeight:
-                            "bold",
-
-                          marginLeft:
-                            "5px",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          marginLeft: "5px",
                         }}
                         onClick={() =>
-                          handleEditPurchase(
-                            purchase
-                          )
+                          handleEditPurchase(purchase)
                         }
                       >
                         تصحیح
                       </button>
 
-
-                      {/* چاپ */}
-
                       <button
                         style={{
-                          backgroundColor:
-                            "#0da62f",
-
+                          backgroundColor: "#0da62f",
                           color: "#fff",
-
-                          padding:
-                            "5px 12px",
-
-                          borderRadius:
-                            "5px",
-
+                          padding: "5px 12px",
+                          borderRadius: "5px",
                           border: "none",
-
-                          cursor:
-                            "pointer",
-
-                          fontSize:
-                            "12px",
-
-                          fontWeight:
-                            "bold",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          fontWeight: "bold",
                         }}
                         onClick={() =>
-                          handlePrintExisting(
-                            purchase
-                          )
+                          handlePrintExisting(purchase)
                         }
                       >
                         چاپ
                       </button>
-
                     </td>
-
                   </tr>
-
                 )
               )}
-
             </tbody>
-
           </table>
-
         </div>
-
       )}
-
-
-      {/* ======================================================
-          Toast
-      ======================================================= */}
 
       <ToastContainer
         position="top-right"
         autoClose={3000}
       />
 
-
-      {/* ======================================================
-          کامپوننت مخفی چاپ
-      ======================================================= */}
-
       {purchaseData && (
-
         <div
           style={{
             position: "absolute",
@@ -1878,18 +1469,13 @@ export default function ParchaseForm() {
             top: 0,
           }}
         >
-
           <PurchasePrint
             ref={printRef}
-            purchaseData={
-              purchaseData
-            }
+            purchaseData={purchaseData}
           />
-
         </div>
-
       )}
 
     </MainLayoutjur>
   );
-};
+}

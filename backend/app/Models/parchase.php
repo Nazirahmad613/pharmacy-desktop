@@ -28,7 +28,7 @@ class Parchase extends Model
 
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\Registrations::class, 'supplier_id', 'reg_id');
+        return $this->belongsTo(\App\Models\account::class, 'supplier_id', 'id');
     }
 
     public function getRemainingAttribute(): float

@@ -15,9 +15,17 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use App\Services\LogService;
 use App\Services\StockService;
+use App\Services\PrescriptionService;
 
 class PrescriptionController extends Controller
 {
+    /**
+     * ✅ تزریق سرویس تجویز (FEFO)
+     */
+    public function __construct(
+        private PrescriptionService $prescriptionService
+    ) {}
+
     // ============================================================
     // ✅ تابع کمکی: یافتن تأمین‌کننده در accounts
     // ============================================================
@@ -115,6 +123,12 @@ class PrescriptionController extends Controller
                     'supplier_name'   => $supplierName,
                     'is_custom'       => (bool) $item->is_custom,
                     'type'            => $item->type,
+
+                    // ✅ جدید: اطلاعات بچ و بارکد
+                    'stock_id'        => $item->stock_id,
+                    'barcode'         => $item->barcode,
+                    'batch_number'    => $item->batch_number,
+
                     'dosage'          => $item->dosage,
                     'quantity'        => $item->quantity,
                     'remarks'         => $item->remarks,
@@ -132,18 +146,17 @@ class PrescriptionController extends Controller
             'items.medication',
             'items.supplier',
             'items.category',
+            'items.stock',
             'patient',
             'registration',
             'doctor',
             'pharmacy',
         ]);
 
-        // ✅ فیلتر اختیاری بر اساس وضعیت
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        // ✅ فیلتر اختیاری بر اساس داکتر
         if ($request->filled('doc_id')) {
             $query->where('doc_id', $request->doc_id);
         }
@@ -159,7 +172,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // MY PRESCRIPTIONS - نسخه‌های داکتر لاگین‌شده (برای تب وضعیت داکتر)
+    // MY PRESCRIPTIONS - نسخه‌های داکتر لاگین‌شده
     // ============================================================
     public function myPrescriptions(Request $request)
     {
@@ -169,6 +182,7 @@ class PrescriptionController extends Controller
             'items.medication',
             'items.supplier',
             'items.category',
+            'items.stock',
             'patient',
             'registration',
             'pharmacy',
@@ -227,7 +241,56 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // STORE - ثبت نسخه جدید
+    // ✅ جدید: دریافت اطلاعات بچ بعدی (FEFO) برای نمایش در فرم
+    // ============================================================
+    public function getNextBatch(Request $request)
+    {
+        $request->validate([
+            'med_id'      => 'required|exists:medications,med_id',
+            'supplier_id' => 'nullable|integer|exists:accounts,id',
+            'quantity'    => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            $stock = StockService::getNextBatch(
+                $request->med_id,
+                $request->supplier_id,
+                $request->quantity ?? 1
+            );
+
+            if (!$stock) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'موجودی کافی یافت نشد',
+                ], 404);
+            }
+
+            // ✅ بارکد از medications گرفته می‌شود
+            $medication = Medication::find($request->med_id);
+
+            return response()->json([
+                'success' => true,
+                'data'    => [
+                    'stock_id'     => $stock->stock_id,
+                    'barcode'      => $medication->barcode ?? null,
+                    'batch_number' => $stock->batch_number,
+                    'exp_date'     => $stock->exp_date,
+                    'quantity'     => $stock->quantity,
+                    'selling_price'=> $stock->selling_price,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت اطلاعات بچ',
+                'error'   => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    // ============================================================
+    // STORE - ثبت نسخه جدید (با FEFO)
     // ============================================================
     public function store(Request $request)
     {
@@ -285,8 +348,8 @@ class PrescriptionController extends Controller
                 throw new \Exception('داکتر در سیستم یافت نشد');
             }
 
-            // ✅ بررسی موجودی
-            foreach ($validated['items'] as $index => $item) {
+            // ✅ بررسی موجودی با FEFO
+            foreach ($validated['items'] as $item) {
                 if (!empty($item['is_custom'])) {
                     continue;
                 }
@@ -296,13 +359,14 @@ class PrescriptionController extends Controller
                     throw new \Exception("تأمین‌کننده با شناسه {$item['supplier_id']} معتبر نیست");
                 }
 
-                $isAvailable = StockService::check(
+                // ✅ چک می‌کنیم که آیا بچ کافی با FEFO وجود دارد
+                $stock = StockService::getNextBatch(
                     $item['med_id'],
                     $item['supplier_id'],
                     $item['quantity']
                 );
 
-                if (!$isAvailable) {
+                if (!$stock) {
                     $medication = Medication::find($item['med_id']);
                     throw new \Exception(
                         "موجودی دوا '{$medication->gen_name}' از تأمین‌کننده {$supplier->name} کافی نیست"
@@ -331,8 +395,6 @@ class PrescriptionController extends Controller
                 'temperature'         => $validated['temperature'] ?? null,
                 'oxygen'              => $validated['oxygen'] ?? null,
                 'pres_date'           => $validated['pres_date'],
-
-                // ✅ وضعیت اولیه
                 'status'              => Prescription::STATUS_PENDING,
             ]);
 
@@ -340,29 +402,37 @@ class PrescriptionController extends Controller
             $prescription->pres_num = $prescription->pres_id;
             $prescription->save();
 
-            // ✅ ثبت آیتم‌ها
+            // ✅ ثبت آیتم‌ها با FEFO (از PrescriptionService)
             foreach ($validated['items'] as $item) {
                 $isCustom = !empty($item['is_custom']);
 
-                PrescriptionItem::create([
-                    'pres_id'       => $prescription->pres_id,
-                    'category_id'   => $item['category_id'] ?? null,
-                    'med_id'        => $isCustom ? null : $item['med_id'],
-                    'supplier_id'   => $isCustom ? null : $item['supplier_id'],
-                    'is_custom'     => $isCustom,
-                    'med_name'      => $isCustom ? ($item['med_name'] ?? null) : null,
-                    'supplier_name' => $isCustom ? ($item['supplier_name'] ?? null) : null,
-                    'type'          => $item['type'] ?? null,
-                    'dosage'        => $item['dosage'],
-                    'quantity'      => $item['quantity'],
-                    'remarks'       => $item['remarks'] ?? null,
-                ]);
-
-                if (!$isCustom) {
-                    StockService::decrease(
+                if ($isCustom) {
+                    // داروی دستی
+                    $this->prescriptionService->prescribeCustomItem(
+                        $prescription->pres_id,
+                        $item['med_name'] ?? '',
+                        $item['supplier_name'] ?? '',
+                        $item['quantity'],
+                        $item['dosage'],
+                        [
+                            'category_id' => $item['category_id'] ?? null,
+                            'type'        => $item['type'] ?? null,
+                            'remarks'     => $item['remarks'] ?? null,
+                        ]
+                    );
+                } else {
+                    // داروی سیستمی با FEFO
+                    $this->prescriptionService->prescribeItem(
+                        $prescription->pres_id,
                         $item['med_id'],
                         $item['supplier_id'],
-                        $item['quantity']
+                        $item['quantity'],
+                        $item['dosage'],
+                        [
+                            'category_id' => $item['category_id'] ?? null,
+                            'type'        => $item['type'] ?? null,
+                            'remarks'     => $item['remarks'] ?? null,
+                        ]
                     );
                 }
             }
@@ -373,7 +443,7 @@ class PrescriptionController extends Controller
                 'create',
                 'prescriptions',
                 $prescription->pres_id,
-                'Prescription created',
+                'Prescription created with FEFO',
                 $prescription->load('items')->toArray()
             );
 
@@ -381,7 +451,13 @@ class PrescriptionController extends Controller
                 'success' => true,
                 'message' => 'نسخه با موفقیت ثبت شد',
                 'data'    => $this->formatPrescription(
-                    $prescription->load(['items.medication', 'items.supplier', 'items.category', 'pharmacy'])
+                    $prescription->load([
+                        'items.medication',
+                        'items.supplier',
+                        'items.category',
+                        'items.stock',
+                        'pharmacy'
+                    ])
                 )
             ], 201);
 
@@ -403,7 +479,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // UPDATE - بروزرسانی نسخه
+    // UPDATE - بروزرسانی نسخه (با FEFO)
     // ============================================================
     public function update(Request $request, $id)
     {
@@ -437,7 +513,6 @@ class PrescriptionController extends Controller
             'items.*.quantity'      => 'required|integer|min:1',
             'items.*.remarks'       => 'nullable|string',
 
-            // ✅ وضعیت اختیاری برای بروزرسانی از سمت داکتر/ادمین
             'status'                => 'nullable|in:pending,sent_to_pharmacy,pharmacy_registered,paid,cancelled',
             'status_note'           => 'nullable|string',
         ]);
@@ -448,7 +523,6 @@ class PrescriptionController extends Controller
             $prescription = Prescription::with('items')->findOrFail($id);
             $oldData = $prescription->toArray();
 
-            // ✅ اگر وضعیت جدید داده شده، گذار را بررسی کن
             if (!empty($validated['status']) && $validated['status'] !== $prescription->status) {
                 if (!$this->canTransition($prescription->status, $validated['status'])) {
                     throw new \Exception(
@@ -457,18 +531,17 @@ class PrescriptionController extends Controller
                 }
             }
 
-            // ✅ برگرداندن موجودی آیتم‌های قبلی
+            // ✅ برگرداندن موجودی آیتم‌های قبلی (reverseDecrease روی همان بچ)
             foreach ($prescription->items as $oldItem) {
-                if (!$oldItem->is_custom && $oldItem->med_id && $oldItem->supplier_id) {
-                    StockService::reverseDecrease(
-                        $oldItem->med_id,
-                        $oldItem->supplier_id,
+                if (!$oldItem->is_custom && $oldItem->med_id && $oldItem->stock_id) {
+                    StockService::reverseDecreaseByStockId(
+                        $oldItem->stock_id,
                         $oldItem->quantity
                     );
                 }
             }
 
-            // ✅ بررسی موجودی برای آیتم‌های جدید
+            // ✅ بررسی موجودی برای آیتم‌های جدید با FEFO
             foreach ($validated['items'] as $item) {
                 if (!empty($item['is_custom'])) {
                     continue;
@@ -479,13 +552,13 @@ class PrescriptionController extends Controller
                     throw new \Exception("تأمین‌کننده با شناسه {$item['supplier_id']} معتبر نیست");
                 }
 
-                $isAvailable = StockService::check(
+                $stock = StockService::getNextBatch(
                     $item['med_id'],
                     $item['supplier_id'],
                     $item['quantity']
                 );
 
-                if (!$isAvailable) {
+                if (!$stock) {
                     $medication = Medication::find($item['med_id']);
                     throw new \Exception(
                         "موجودی دوا '{$medication->gen_name}' از تأمین‌کننده {$supplier->name} کافی نیست"
@@ -516,29 +589,35 @@ class PrescriptionController extends Controller
             // ✅ حذف آیتم‌های قدیمی
             PrescriptionItem::where('pres_id', $prescription->pres_id)->delete();
 
-            // ✅ ثبت آیتم‌های جدید
+            // ✅ ثبت آیتم‌های جدید با FEFO
             foreach ($validated['items'] as $item) {
                 $isCustom = !empty($item['is_custom']);
 
-                PrescriptionItem::create([
-                    'pres_id'       => $prescription->pres_id,
-                    'category_id'   => $item['category_id'] ?? null,
-                    'med_id'        => $isCustom ? null : $item['med_id'],
-                    'supplier_id'   => $isCustom ? null : $item['supplier_id'],
-                    'is_custom'     => $isCustom,
-                    'med_name'      => $isCustom ? ($item['med_name'] ?? null) : null,
-                    'supplier_name' => $isCustom ? ($item['supplier_name'] ?? null) : null,
-                    'type'          => $item['type'] ?? null,
-                    'dosage'        => $item['dosage'],
-                    'quantity'      => $item['quantity'],
-                    'remarks'       => $item['remarks'] ?? null,
-                ]);
-
-                if (!$isCustom) {
-                    StockService::decrease(
+                if ($isCustom) {
+                    $this->prescriptionService->prescribeCustomItem(
+                        $prescription->pres_id,
+                        $item['med_name'] ?? '',
+                        $item['supplier_name'] ?? '',
+                        $item['quantity'],
+                        $item['dosage'],
+                        [
+                            'category_id' => $item['category_id'] ?? null,
+                            'type'        => $item['type'] ?? null,
+                            'remarks'     => $item['remarks'] ?? null,
+                        ]
+                    );
+                } else {
+                    $this->prescriptionService->prescribeItem(
+                        $prescription->pres_id,
                         $item['med_id'],
                         $item['supplier_id'],
-                        $item['quantity']
+                        $item['quantity'],
+                        $item['dosage'],
+                        [
+                            'category_id' => $item['category_id'] ?? null,
+                            'type'        => $item['type'] ?? null,
+                            'remarks'     => $item['remarks'] ?? null,
+                        ]
                     );
                 }
             }
@@ -549,7 +628,7 @@ class PrescriptionController extends Controller
                 'update',
                 'prescriptions',
                 $id,
-                'Prescription updated',
+                'Prescription updated with FEFO',
                 [
                     'old' => $oldData,
                     'new' => $prescription->load('items')->toArray()
@@ -560,7 +639,13 @@ class PrescriptionController extends Controller
                 'success' => true,
                 'message' => 'نسخه با موفقیت بروزرسانی شد',
                 'data'    => $this->formatPrescription(
-                    $prescription->load(['items.medication', 'items.supplier', 'items.category', 'pharmacy'])
+                    $prescription->load([
+                        'items.medication',
+                        'items.supplier',
+                        'items.category',
+                        'items.stock',
+                        'pharmacy'
+                    ])
                 )
             ], 200);
 
@@ -649,7 +734,7 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ UPDATE STATUS - تغییر عمومی وضعیت (با بررسی گذار)
+    // ✅ UPDATE STATUS - تغییر عمومی وضعیت
     // ============================================================
     public function updateStatus(Request $request, $id)
     {
@@ -660,7 +745,6 @@ class PrescriptionController extends Controller
 
         $extra = ['status_note' => $validated['status_note'] ?? null];
 
-        // ✅ پر کردن timestampهای مربوطه
         switch ($validated['status']) {
             case Prescription::STATUS_SENT_TO_PHARMACY:
                 $extra['sent_to_pharmacy_at'] = now();
@@ -731,7 +815,13 @@ class PrescriptionController extends Controller
                 'success' => true,
                 'message' => $successMessage ?: 'وضعیت بروزرسانی شد',
                 'data'    => $this->formatPrescription(
-                    $prescription->fresh()->load(['items.medication', 'items.supplier', 'items.category', 'pharmacy'])
+                    $prescription->fresh()->load([
+                        'items.medication',
+                        'items.supplier',
+                        'items.category',
+                        'items.stock',
+                        'pharmacy'
+                    ])
                 ),
             ]);
 
@@ -766,11 +856,11 @@ class PrescriptionController extends Controller
             $prescription = Prescription::with('items')->findOrFail($id);
             $data = $prescription->toArray();
 
+            // ✅ برگرداندن موجودی به همان بچ
             foreach ($prescription->items as $item) {
-                if (!$item->is_custom && $item->med_id && $item->supplier_id) {
-                    StockService::reverseDecrease(
-                        $item->med_id,
-                        $item->supplier_id,
+                if (!$item->is_custom && $item->stock_id) {
+                    StockService::reverseDecreaseByStockId(
+                        $item->stock_id,
                         $item->quantity
                     );
                 }
@@ -828,13 +918,14 @@ class PrescriptionController extends Controller
 
                 $supplier = $this->findSupplier($item['supplier_id']);
 
-                $isAvailable = StockService::check(
+                // ✅ چک FEFO
+                $stock = StockService::getNextBatch(
                     $item['med_id'],
                     $item['supplier_id'],
                     $item['quantity']
                 );
 
-                if (!$isAvailable) {
+                if (!$stock) {
                     $medication = Medication::find($item['med_id']);
 
                     $unavailableItems[] = [
@@ -880,6 +971,7 @@ class PrescriptionController extends Controller
                 'items.medication',
                 'items.supplier',
                 'items.category',
+                'items.stock',
                 'patient',
                 'registration',
                 'doctor',

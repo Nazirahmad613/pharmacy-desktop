@@ -79,7 +79,8 @@ export default function PrescriptionForm({
     available: false,
     totalStock: 0,
     message: "",
-    checking: false
+    checking: false,
+    nextBatch: null    // ✅ جدید: اطلاعات بچ بعدی (FEFO)
   });
 
   // چاپ
@@ -112,13 +113,9 @@ export default function PrescriptionForm({
   // ✅ تابع مرکزی ساخت اطلاعات چاپ
   // ============================================================
   const buildPrintData = ({ prescription, items }) => {
-    // مقادیر پیش‌فرض از patientData (فرم فعلی)
     const pd = patientData || {};
-
-    // اگر نسخه ثبت‌شده داریم، از snapshot خودش می‌خوانیم
     const p = prescription || {};
 
-    // ✅ تابع کمکی برای انتخاب اولین مقدار غیرخالی
     const pick = (...vals) => {
       for (const v of vals) {
         if (v !== undefined && v !== null && v !== "" && v !== "-") return v;
@@ -127,11 +124,9 @@ export default function PrescriptionForm({
     };
 
     return {
-      // شماره نسخه و تاریخ
       pres_num: p.pres_num || p.pres_id || prescriptionNumber || "-",
       date: p.pres_date || prescriptionDate || "-",
 
-      // اطلاعات هویتی مریض — از نسخه (snapshot) و fallback به patientData
       patient_name: pick(p.patient_name, pd.full_name),
       patient_age: pick(p.patient_age, pd.age),
       patient_gender: pick(p.patient_gender, pd.gender),
@@ -139,17 +134,14 @@ export default function PrescriptionForm({
       tazkira_number: pick(p.tazkira_number, pd.tazkira_number),
       blood_group: pick(p.patient_blood_group, pd.blood_group),
 
-      // اطلاعات بالینی
       diagnosis: pick(p.diagnosis, pd.diagnosis),
       weight: pick(p.weight, pd.weight),
       blood_pressure: pick(p.blood_pressure, pd.blood_pressure),
       temperature: pick(p.temperature, pd.temperature),
       oxygen: pick(p.oxygen, pd.oxygen),
 
-      // داکتر
       doctor_name: pick(p.doc_name, user?.name, user?.full_name, "-"),
 
-      // اقلام نسخه
       items: (items || []).map(it => ({
         med_name: it.med_name || "-",
         med_type: it.med_type || it.type || "-",
@@ -159,6 +151,10 @@ export default function PrescriptionForm({
         remarks: it.remarks || "-",
         is_custom: !!it.is_custom,
         category_name: it.category_name || "-",
+
+        // ✅ جدید: بارکد و شماره بچ
+        barcode: it.barcode || "-",
+        batch_number: it.batch_number || "-",
       }))
     };
   };
@@ -320,42 +316,75 @@ export default function PrescriptionForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formItem.med_id, formItem.is_custom]);
 
-  // ========== بررسی موجودی ==========
+  // ============================================================
+  // ✅ بررسی موجودی با FEFO (بچ بعدی)
+  // ============================================================
   useEffect(() => {
     const checkStockAvailability = async () => {
       if (formItem.is_custom) {
-        setStockAvailability({ available: true, totalStock: 0, message: "", checking: false });
+        setStockAvailability({
+          available: true, totalStock: 0, message: "",
+          checking: false, nextBatch: null
+        });
         return;
       }
       if (!formItem.med_id || !formItem.supplier_id || !formItem.quantity || Number(formItem.quantity) <= 0) {
-        setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+        setStockAvailability({
+          available: false, totalStock: 0, message: "",
+          checking: false, nextBatch: null
+        });
         return;
       }
+
       setStockAvailability(prev => ({ ...prev, checking: true }));
+
       try {
-        const response = await api.post("/sales/check-stock", {
-          med_id: formItem.med_id,
-          supplier_id: formItem.supplier_id,
-          type: formItem.type || null,
-          quantity: Number(formItem.quantity)
+        // ✅ استفاده از endpoint جدید در PrescriptionController
+        const response = await api.get("/prescriptions/next-batch", {
+          params: {
+            med_id: formItem.med_id,
+            supplier_id: formItem.supplier_id,
+            quantity: Number(formItem.quantity)
+          }
         });
-        if (response.data.success) {
-          const isAvailable = response.data.available;
-          const totalStock = response.data.total_quantity || 0;
+
+        if (response.data?.success) {
+          const batch = response.data.data;
+
           setStockAvailability({
-            available: isAvailable,
-            totalStock,
-            message: isAvailable
-              ? `✅ موجودی کافی است (موجودی انبار: ${totalStock})`
-              : `❌ موجودی کافی نیست! موجودی انبار: ${totalStock} - درخواستی: ${formItem.quantity}`,
-            checking: false
+            available: true,
+            totalStock: batch.quantity || 0,
+            message: `✅ بچ انتخاب‌شده: ${batch.batch_number || "بدون بچ"} — انقضا: ${batch.exp_date || "-"} — بارکد: ${batch.barcode || "-"}`,
+            checking: false,
+            nextBatch: batch
+          });
+        } else {
+          setStockAvailability({
+            available: false,
+            totalStock: 0,
+            message: response.data?.message || "❌ موجودی کافی نیست",
+            checking: false,
+            nextBatch: null
           });
         }
       } catch (error) {
-        setStockAvailability({
-          available: false, totalStock: 0,
-          message: "⚠️ خطا در بررسی موجودی", checking: false
-        });
+        if (error.response?.status === 404) {
+          setStockAvailability({
+            available: false,
+            totalStock: 0,
+            message: "❌ موجودی کافی برای این دارو یافت نشد",
+            checking: false,
+            nextBatch: null
+          });
+        } else {
+          setStockAvailability({
+            available: false,
+            totalStock: 0,
+            message: "⚠️ خطا در بررسی موجودی",
+            checking: false,
+            nextBatch: null
+          });
+        }
       }
     };
 
@@ -369,16 +398,16 @@ export default function PrescriptionForm({
     if (field === "category_id") {
       updated.med_id = ""; updated.supplier_id = ""; updated.type = "";
       setSuppliers([]);
-      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null });
     }
     if (field === "med_id") {
       const med = medications.find(m => Number(m.med_id) === Number(value));
       updated.type = med?.type ?? "";
       updated.supplier_id = "";
-      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null });
     }
     if (field === "supplier_id") {
-      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null });
     }
     setFormItem(updated);
   };
@@ -413,19 +442,28 @@ export default function PrescriptionForm({
       supplierName = sup?.full_name ?? sup?.name ?? sup?.reg_name ?? "-";
     }
 
+    // ✅ جدید: اطلاعات بچ از stockAvailability
+    const batchInfo = stockAvailability.nextBatch || {};
+
     const newItem = {
       ...formItem,
       id: Date.now() + Math.random(),
       med_name: formItem.is_custom ? formItem.custom_name.trim() : med?.gen_name ?? "-",
       med_type: formItem.is_custom ? formItem.custom_type || "سایر" : med?.type ?? "-",
       category_name: cat?.category_name ?? "-",
-      supplier_name: supplierName
+      supplier_name: supplierName,
+
+      // ✅ جدید: بارکد و شماره بچ (نمایش در جدول)
+      barcode: batchInfo.barcode ?? null,
+      batch_number: batchInfo.batch_number ?? null,
+      stock_id: batchInfo.stock_id ?? null,
+      exp_date: batchInfo.exp_date ?? null,
     };
 
     setPrescriptionItems([...prescriptionItems, newItem]);
     setFormItem({ ...emptyItem, category_id: formItem.category_id });
     setSuppliers([]);
-    setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+    setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null });
     toast.success("✅ دارو با موفقیت اضافه شد");
   };
 
@@ -446,7 +484,6 @@ export default function PrescriptionForm({
       const data = res.data?.data ?? res.data;
       if (!data) { toast.error("خطا در دریافت نسخه"); return; }
 
-      // ✅ اطلاعات هویتی مریض را هم از snapshot نسخه بروز می‌کنیم
       setPatientData(prev => ({
         ...prev,
         full_name: data.patient_name ?? prev?.full_name,
@@ -482,6 +519,11 @@ export default function PrescriptionForm({
         dosage: it.dosage ?? "",
         quantity: it.quantity ?? "",
         remarks: it.remarks ?? "",
+
+        // ✅ جدید: بارکد و بچ
+        barcode: it.barcode ?? null,
+        batch_number: it.batch_number ?? null,
+        stock_id: it.stock_id ?? null,
       }));
 
       setPrescriptionItems(items);
@@ -506,7 +548,7 @@ export default function PrescriptionForm({
     }
   };
 
-  // ========== ✅ چاپ نسخه ثبت‌شده (با استفاده از buildPrintData) ==========
+  // ========== ✅ چاپ نسخه ثبت‌شده ==========
   const handlePrintExisting = (pres) => {
     const printData = buildPrintData({
       prescription: pres,
@@ -584,6 +626,9 @@ export default function PrescriptionForm({
         dosage: item.dosage,
         quantity: Number(item.quantity),
         remarks: item.remarks || null
+
+        // ⚠️ نیازی به ارسال barcode/batch_number/stock_id نیست
+        // چون سرور خودش FEFO انتخاب می‌کند
       }))
     };
 
@@ -642,7 +687,6 @@ export default function PrescriptionForm({
     }
   }, [isPrintReady, handlePrint]);
 
-  // ========== ✅ چاپ نسخه در حال ساخت (با استفاده از buildPrintData) ==========
   const handlePrintClick = () => {
     if (!prescriptionItems.length) { toast.error("آیتمی برای چاپ وجود ندارد"); return; }
     const printData = buildPrintData({
@@ -659,7 +703,7 @@ export default function PrescriptionForm({
     setSuppliers([]);
     setEditingId(null);
     setPrescriptionNumber("");
-    setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+    setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null });
     if (onComplete) onComplete();
   };
 
@@ -751,7 +795,7 @@ export default function PrescriptionForm({
                     onChange={() => {
                       setFormItem({ ...emptyItem, is_custom: false, category_id: formItem.category_id });
                       setSuppliers([]);
-                      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+                      setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null });
                     }}
                   />
                   <span>📦 انتخاب از داروهای موجود</span>
@@ -764,7 +808,7 @@ export default function PrescriptionForm({
                     onChange={() => {
                       setFormItem({ ...emptyItem, is_custom: true, category_id: formItem.category_id });
                       setSuppliers([]);
-                      setStockAvailability({ available: true, totalStock: 0, message: "", checking: false });
+                      setStockAvailability({ available: true, totalStock: 0, message: "", checking: false, nextBatch: null });
                     }}
                   />
                   <span>✍️ تجویز داروی دستی</span>
@@ -902,7 +946,8 @@ export default function PrescriptionForm({
               {!formItem.is_custom && stockAvailability.message && (
                 <small style={{
                   color: stockAvailability.available ? "#059669" : "#dc2626",
-                  display: "block", marginTop: "4px", fontWeight: "bold"
+                  display: "block", marginTop: "4px", fontWeight: "bold",
+                  fontSize: "11px"
                 }}>
                   {stockAvailability.checking ? "⏳ در حال بررسی موجودی..." : stockAvailability.message}
                 </small>
@@ -927,7 +972,7 @@ export default function PrescriptionForm({
                 type="button"
                 onClick={() => {
                   setFormItem({ ...emptyItem, category_id: formItem.category_id });
-                  setStockAvailability({ available: false, totalStock: 0, message: "", checking: false });
+                  setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null });
                 }}
                 className="btn-cancel-custom"
               >
@@ -954,6 +999,9 @@ export default function PrescriptionForm({
                   <th>نام دارو</th>
                   <th>نوع</th>
                   <th>حمایت‌کننده</th>
+                  {/* ✅ جدید: بارکد و بچ */}
+                  <th>بارکد</th>
+                  <th>Batch</th>
                   <th>مقدار مصرف</th>
                   <th>تعداد</th>
                   <th>ملاحظات</th>
@@ -971,6 +1019,17 @@ export default function PrescriptionForm({
                     </td>
                     <td>{item.med_type || "-"}</td>
                     <td>{item.supplier_name || "-"}</td>
+                    {/* ✅ جدید: بارکد و بچ */}
+                    <td>
+                      {item.barcode ? (
+                        <span className="badge-barcode">{item.barcode}</span>
+                      ) : "-"}
+                    </td>
+                    <td>
+                      {item.batch_number ? (
+                        <span className="badge-batch">{item.batch_number}</span>
+                      ) : "-"}
+                    </td>
                     <td>{item.dosage || "-"}</td>
                     <td>{item.quantity}</td>
                     <td>{item.remarks || "-"}</td>
@@ -982,7 +1041,7 @@ export default function PrescriptionForm({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan="9" style={{ textAlign: "left", fontWeight: "bold", color: "#b45309" }}>
+                  <td colSpan="11" style={{ textAlign: "left", fontWeight: "bold", color: "#b45309" }}>
                     مجموع: {prescriptionItems.length} قلم دارو
                   </td>
                 </tr>
@@ -1014,7 +1073,7 @@ export default function PrescriptionForm({
       </div>
 
       {/* ============================================================
-          ✅ لیست نسخه‌ها به‌صورت ردیفی (Row-based)
+          ✅ لیست نسخه‌ها
       ============================================================ */}
       <div className="prescriptions-list-container">
         <div className="list-header">
@@ -1176,6 +1235,9 @@ export default function PrescriptionForm({
                                     <th>نام دارو</th>
                                     <th>نوع</th>
                                     <th>حمایت‌کننده</th>
+                                    {/* ✅ جدید */}
+                                    <th>بارکد</th>
+                                    <th>Batch</th>
                                     <th>مقدار مصرف</th>
                                     <th>تعداد</th>
                                     <th>ملاحظات</th>
@@ -1194,6 +1256,17 @@ export default function PrescriptionForm({
                                       </td>
                                       <td>{it.type || "-"}</td>
                                       <td>{it.supplier_name || "-"}</td>
+                                      {/* ✅ جدید */}
+                                      <td>
+                                        {it.barcode ? (
+                                          <span className="badge-barcode">{it.barcode}</span>
+                                        ) : "-"}
+                                      </td>
+                                      <td>
+                                        {it.batch_number ? (
+                                          <span className="badge-batch">{it.batch_number}</span>
+                                        ) : "-"}
+                                      </td>
                                       <td>{it.dosage || "-"}</td>
                                       <td>{it.quantity}</td>
                                       <td>{it.remarks || "-"}</td>
@@ -1337,6 +1410,25 @@ export default function PrescriptionForm({
           font-size: 10px;
           font-weight: bold;
           margin-right: 5px;
+        }
+        /* ✅ جدید: استایل بج بارکد و بچ */
+        .badge-barcode {
+          background: #dbeafe;
+          color: #1e40af;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 600;
+          font-family: monospace;
+        }
+        .badge-batch {
+          background: #fef3c7;
+          color: #92400e;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 600;
+          font-family: monospace;
         }
         .table-container {
           overflow-x: auto;

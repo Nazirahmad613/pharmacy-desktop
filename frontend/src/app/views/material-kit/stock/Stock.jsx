@@ -13,11 +13,6 @@ import {
     FaSortAmountUp,
     FaTag,
     FaSignOutAlt,
-    FaPlus,
-    FaEdit,
-    FaTrash,
-    FaSave,
-    FaTimes,
     FaBell,
     FaShoppingCart
 } from 'react-icons/fa';
@@ -39,25 +34,6 @@ const Stock = () => {
     const [errorMessage, setErrorMessage] = useState('');
     const [debugInfo, setDebugInfo] = useState(null);
     const [showWarnings, setShowWarnings] = useState(false);
-
-    // ============================================================
-    // State فرم
-    // ============================================================
-
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingStock, setEditingStock] = useState(null);
-
-    const [formData, setFormData] = useState({
-        med_id: '',
-        supplier_id: '',
-        type: '',
-        exp_date: '',
-        quantity: '',
-        batch_number: '',
-        purchase_price: '',
-        selling_price: ''
-    });
-
 
     // ============================================================
     // توکن و احراز هویت
@@ -187,118 +163,6 @@ const Stock = () => {
 
 
     // ============================================================
-    // توابع فرم
-    // ============================================================
-
-    const handleFormChange = (e) => {
-        setFormData({
-            ...formData,
-            [e.target.name]: e.target.value
-        });
-    };
-
-
-    const handleAddNew = () => {
-        setEditingStock(null);
-
-        setFormData({
-            med_id: '',
-            supplier_id: '',
-            type: '',
-            exp_date: '',
-            quantity: '',
-            batch_number: '',
-            purchase_price: '',
-            selling_price: ''
-        });
-
-        setIsFormOpen(true);
-    };
-
-
-    const handleEdit = (stock) => {
-        setEditingStock(stock);
-
-        setFormData({
-            med_id: stock.med_id || '',
-            supplier_id: stock.supplier_id || '',
-            type: stock.type || '',
-            exp_date: stock.exp_date || '',
-            quantity: stock.quantity ?? '',
-            batch_number: stock.batch_number || '',
-            purchase_price: stock.purchase_price ?? '',
-            selling_price: stock.selling_price ?? ''
-        });
-
-        setIsFormOpen(true);
-    };
-
-
-    const handleSubmit = async () => {
-        try {
-            const payload = {
-                med_id: formData.med_id,
-                supplier_id: formData.supplier_id,
-                type: formData.type || null,
-                exp_date: formData.exp_date,
-                quantity: Number(formData.quantity),
-                batch_number: formData.batch_number || null,
-                purchase_price:
-                    formData.purchase_price === ''
-                        ? null
-                        : Number(formData.purchase_price),
-                selling_price:
-                    formData.selling_price === ''
-                        ? null
-                        : Number(formData.selling_price)
-            };
-
-
-            if (editingStock) {
-                await api.put(`/stock/${editingStock.stock_id}`, payload);
-            } else {
-                await api.post('/stock', payload);
-            }
-
-            setIsFormOpen(false);
-            setEditingStock(null);
-
-            await loadAllData();
-        } catch (error) {
-            console.error('Error saving stock:', error);
-
-            setErrorMessage(
-                error.response?.data?.message ||
-                'خطا در ذخیره اطلاعات'
-            );
-        }
-    };
-
-
-    const handleDelete = async (stockId) => {
-        if (window.confirm('آیا از حذف این آیتم اطمینان دارید؟')) {
-            try {
-                await api.delete(`/stock/${stockId}`);
-                await loadAllData();
-            } catch (error) {
-                console.error('Error deleting stock:', error);
-
-                setErrorMessage(
-                    error.response?.data?.message ||
-                    'خطا در حذف اطلاعات'
-                );
-            }
-        }
-    };
-
-
-    const handleCancel = () => {
-        setIsFormOpen(false);
-        setEditingStock(null);
-    };
-
-
-    // ============================================================
     // مرتب‌سازی
     // ============================================================
 
@@ -341,27 +205,21 @@ const Stock = () => {
             gray: 'bg-gray-100 text-gray-800',
         };
 
-        const texts = {
-            'موجود': 'موجود',
-            'موجودی کم': 'موجودی کم',
-            'در حال انقضا': 'در حال انقضا',
-            'در حال انقضا (فوری)': 'در حال انقضا (فوری)',
-            'منقضی شده': 'منقضی شده',
-            'ناموجود': 'ناموجود',
-        };
-
         return (
             <span
                 className={`
+                    inline-flex
+                    items-center
                     px-3
                     py-1
                     rounded-full
                     text-xs
                     font-medium
+                    whitespace-nowrap
                     ${colors[statusColor] || colors.gray}
                 `}
             >
-                {texts[status] || status}
+                {status || 'نامشخص'}
             </span>
         );
     };
@@ -382,7 +240,6 @@ const Stock = () => {
             inhaler: 'bg-indigo-100 text-indigo-800',
             cream: 'bg-pink-100 text-pink-800',
             gel: 'bg-amber-100 text-amber-800',
-            supplier: 'bg-orange-100 text-orange-800',
             other: 'bg-gray-100 text-gray-800',
         };
 
@@ -396,18 +253,20 @@ const Stock = () => {
             inhaler: 'اسپری',
             cream: 'کرم',
             gel: 'ژل',
-            supplier: 'تأمین‌کننده',
             other: 'سایر',
         };
 
         return (
             <span
                 className={`
+                    inline-flex
+                    items-center
                     px-2
                     py-1
                     rounded
                     text-xs
                     font-medium
+                    whitespace-nowrap
                     ${typeColors[type] || 'bg-gray-100 text-gray-800'}
                 `}
             >
@@ -418,23 +277,13 @@ const Stock = () => {
 
 
     // ============================================================
-    // Barcode دارو
+    // Barcode و نام دارو
     // ============================================================
 
     const getBarcode = (stock) => {
-        return (
-            stock.barcode ||
-            stock.med_barcode ||
-            stock.medication_barcode ||
-            stock.medication?.barcode ||
-            '---'
-        );
+        return stock.barcode || '---';
     };
 
-
-    // ============================================================
-    // نام دارو
-    // ============================================================
 
     const getMedicationName = (stock) => {
         return (
@@ -541,13 +390,14 @@ const Stock = () => {
         } else if (activeTab === 'expiring') {
             data = [...expiringItems];
         } else if (activeTab === 'lowstock') {
-            data = [
-                ...filteredStocks.filter(
-                    (s) =>
-                        s.status === 'موجودی کم' ||
-                        Number(s.quantity) <= 5
-                )
-            ];
+            // ✅ از lowStockWarnings مستقیم استفاده کن
+            //    با فیلتر جستجو
+            const search = searchTerm.toLowerCase().trim();
+
+            data = lowStockWarnings.filter((w) => {
+                if (!search) return true;
+                return String(w.med_name || '').toLowerCase().includes(search);
+            });
         }
 
         data.sort((a, b) => {
@@ -559,7 +409,8 @@ const Stock = () => {
                 sortField === 'quantity' ||
                 sortField === 'days_left' ||
                 sortField === 'purchase_price' ||
-                sortField === 'selling_price'
+                sortField === 'selling_price' ||
+                sortField === 'current_stock'
             ) {
                 aVal = Number(aVal) || 0;
                 bVal = Number(bVal) || 0;
@@ -786,25 +637,6 @@ const Stock = () => {
                                 </span>
                             </button>
                         )}
-
-                        <button
-                            onClick={handleAddNew}
-                            className="
-                                bg-blue-600
-                                hover:bg-blue-700
-                                text-white
-                                px-4
-                                py-2
-                                rounded-lg
-                                flex
-                                items-center
-                                gap-2
-                                transition-colors
-                            "
-                        >
-                            <FaPlus />
-                            افزودن موجودی جدید
-                        </button>
                     </div>
                 </div>
 
@@ -834,7 +666,7 @@ const Stock = () => {
                                 onClick={() => setShowWarnings(false)}
                                 className="text-gray-400 hover:text-gray-600"
                             >
-                                <FaTimes size={16} />
+                                ✕
                             </button>
                         </div>
 
@@ -894,311 +726,9 @@ const Stock = () => {
                                                 نیاز به سفارش: {warning.need_order}
                                             </span>
                                         )}
-
-                                        {warning.percentage > 0 &&
-                                            warning.percentage <= 50 && (
-                                                <div className="w-20 bg-gray-200 rounded-full h-2">
-                                                    <div
-                                                        className="bg-red-500 h-2 rounded-full"
-                                                        style={{
-                                                            width: `${warning.percentage}%`
-                                                        }}
-                                                    />
-                                                </div>
-                                            )}
                                     </div>
                                 </div>
                             ))}
-                        </div>
-                    </div>
-                )}
-
-
-                {/* ==================================================
-                    Form
-                ================================================== */}
-
-                {isFormOpen && (
-                    <div
-                        className="
-                            bg-white
-                            rounded-xl
-                            shadow-lg
-                            border
-                            border-gray-200
-                            p-5
-                            mb-6
-                        "
-                    >
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold text-gray-800">
-                                {editingStock ? 'ویرایش موجودی' : 'افزودن موجودی جدید'}
-                            </h3>
-
-                            <button
-                                onClick={handleCancel}
-                                className="text-gray-400 hover:text-gray-600 transition-colors"
-                            >
-                                <FaTimes size={20} />
-                            </button>
-                        </div>
-
-                        <div className="flex flex-wrap gap-4">
-
-                            {/* med_id */}
-                            <div className="flex-1 min-w-[150px]">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    شناسه دارو
-                                </label>
-                                <input
-                                    type="text"
-                                    name="med_id"
-                                    value={formData.med_id}
-                                    onChange={handleFormChange}
-                                    placeholder="شناسه دارو"
-                                    className="
-                                        w-full
-                                        px-3
-                                        py-2
-                                        border
-                                        border-gray-300
-                                        rounded-lg
-                                        focus:ring-2
-                                        focus:ring-blue-500
-                                        focus:border-blue-500
-                                    "
-                                />
-                            </div>
-
-                            {/* supplier */}
-                            <div className="flex-1 min-w-[170px]">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    شناسه تأمین‌کننده
-                                </label>
-                                <input
-                                    type="text"
-                                    name="supplier_id"
-                                    value={formData.supplier_id}
-                                    onChange={handleFormChange}
-                                    placeholder="شناسه تأمین‌کننده"
-                                    className="
-                                        w-full
-                                        px-3
-                                        py-2
-                                        border
-                                        border-gray-300
-                                        rounded-lg
-                                        focus:ring-2
-                                        focus:ring-blue-500
-                                        focus:border-blue-500
-                                    "
-                                />
-                            </div>
-
-                            {/* type */}
-                            <div className="flex-1 min-w-[140px]">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    نوعیت
-                                </label>
-                                <select
-                                    name="type"
-                                    value={formData.type}
-                                    onChange={handleFormChange}
-                                    className="
-                                        w-full
-                                        px-3
-                                        py-2
-                                        border
-                                        border-gray-300
-                                        rounded-lg
-                                        focus:ring-2
-                                        focus:ring-blue-500
-                                        focus:border-blue-500
-                                    "
-                                >
-                                    <option value="">انتخاب نوع</option>
-                                    <option value="tablet">قرص</option>
-                                    <option value="capsule">کپسول</option>
-                                    <option value="syrup">شربت</option>
-                                    <option value="injection">آمپول</option>
-                                    <option value="ointment">پماد</option>
-                                    <option value="drop">قطره</option>
-                                    <option value="inhaler">اسپری</option>
-                                    <option value="cream">کرم</option>
-                                    <option value="gel">ژل</option>
-                                    <option value="other">سایر</option>
-                                </select>
-                            </div>
-
-                            {/* batch */}
-                            <div className="flex-1 min-w-[150px]">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    شماره Batch
-                                </label>
-                                <input
-                                    type="text"
-                                    name="batch_number"
-                                    value={formData.batch_number}
-                                    onChange={handleFormChange}
-                                    placeholder="شماره Batch / Lot"
-                                    className="
-                                        w-full
-                                        px-3
-                                        py-2
-                                        border
-                                        border-gray-300
-                                        rounded-lg
-                                        focus:ring-2
-                                        focus:ring-blue-500
-                                        focus:border-blue-500
-                                    "
-                                />
-                            </div>
-
-                            {/* exp date */}
-                            <div className="flex-1 min-w-[150px]">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    تاریخ انقضا
-                                </label>
-                                <input
-                                    type="date"
-                                    name="exp_date"
-                                    value={formData.exp_date}
-                                    onChange={handleFormChange}
-                                    className="
-                                        w-full
-                                        px-3
-                                        py-2
-                                        border
-                                        border-gray-300
-                                        rounded-lg
-                                        focus:ring-2
-                                        focus:ring-blue-500
-                                        focus:border-blue-500
-                                    "
-                                />
-                            </div>
-
-                            {/* quantity */}
-                            <div className="w-[120px]">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    تعداد
-                                </label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    name="quantity"
-                                    value={formData.quantity}
-                                    onChange={handleFormChange}
-                                    placeholder="تعداد"
-                                    className="
-                                        w-full
-                                        px-3
-                                        py-2
-                                        border
-                                        border-gray-300
-                                        rounded-lg
-                                        focus:ring-2
-                                        focus:ring-blue-500
-                                        focus:border-blue-500
-                                    "
-                                />
-                            </div>
-
-                            {/* purchase price */}
-                            <div className="w-[140px]">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    قیمت خرید
-                                </label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    name="purchase_price"
-                                    value={formData.purchase_price}
-                                    onChange={handleFormChange}
-                                    placeholder="قیمت خرید"
-                                    className="
-                                        w-full
-                                        px-3
-                                        py-2
-                                        border
-                                        border-gray-300
-                                        rounded-lg
-                                        focus:ring-2
-                                        focus:ring-blue-500
-                                        focus:border-blue-500
-                                    "
-                                />
-                            </div>
-
-                            {/* selling price */}
-                            <div className="w-[140px]">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    قیمت فروش
-                                </label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    name="selling_price"
-                                    value={formData.selling_price}
-                                    onChange={handleFormChange}
-                                    placeholder="قیمت فروش"
-                                    className="
-                                        w-full
-                                        px-3
-                                        py-2
-                                        border
-                                        border-gray-300
-                                        rounded-lg
-                                        focus:ring-2
-                                        focus:ring-blue-500
-                                        focus:border-blue-500
-                                    "
-                                />
-                            </div>
-
-                            {/* Buttons */}
-                            <div className="flex items-end gap-2">
-                                <button
-                                    onClick={handleSubmit}
-                                    className="
-                                        bg-green-600
-                                        hover:bg-green-700
-                                        text-white
-                                        px-5
-                                        py-2
-                                        rounded-lg
-                                        flex
-                                        items-center
-                                        gap-2
-                                        transition-colors
-                                    "
-                                >
-                                    <FaSave />
-                                    {editingStock ? 'بروزرسانی' : 'ذخیره'}
-                                </button>
-
-                                <button
-                                    onClick={handleCancel}
-                                    className="
-                                        bg-gray-300
-                                        hover:bg-gray-400
-                                        text-gray-700
-                                        px-5
-                                        py-2
-                                        rounded-lg
-                                        flex
-                                        items-center
-                                        gap-2
-                                        transition-colors
-                                    "
-                                >
-                                    <FaTimes />
-                                    انصراف
-                                </button>
-                            </div>
                         </div>
                     </div>
                 )}
@@ -1318,101 +848,154 @@ const Stock = () => {
                     Filters
                 ================================================== */}
 
-                <div className="flex flex-wrap gap-3 mb-5">
-
-                    {/* Search */}
-                    <div className="flex-1 min-w-[250px] relative">
-                        <FaSearch className="absolute right-3 top-3 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="جستجوی نام دارو، Barcode، Batch یا تأمین‌کننده..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="
-                                w-full
-                                px-10
-                                py-2
-                                border
-                                border-gray-300
-                                rounded-lg
-                                focus:ring-2
-                                focus:ring-blue-500
-                                focus:border-blue-500
-                                transition-all
-                                bg-white
-                            "
-                        />
-                    </div>
-
-                    {/* Supplier */}
-                    <div className="w-64 relative">
-                        <FaFilter className="absolute right-3 top-3 text-gray-400" />
-                        <select
-                            value={filterSupplier}
-                            onChange={(e) => setFilterSupplier(e.target.value)}
-                            className="
-                                w-full
-                                px-10
-                                py-2
-                                border
-                                border-gray-300
-                                rounded-lg
-                                focus:ring-2
-                                focus:ring-blue-500
-                                focus:border-blue-500
-                                appearance-none
-                                bg-white
-                            "
-                        >
-                            <option value="">همه تأمین‌کنندگان</option>
-                            {uniqueSuppliers.map((supplier) => (
-                                <option key={supplier} value={supplier}>
-                                    {supplier}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Type */}
-                    <div className="w-64 relative">
-                        <FaTag className="absolute right-3 top-3 text-gray-400" />
-                        <select
-                            value={filterType}
-                            onChange={(e) => setFilterType(e.target.value)}
-                            className="
-                                w-full
-                                px-10
-                                py-2
-                                border
-                                border-gray-300
-                                rounded-lg
-                                focus:ring-2
-                                focus:ring-blue-500
-                                focus:border-blue-500
-                                appearance-none
-                                bg-white
-                            "
-                        >
-                            <option value="">همه نوعیت‌ها</option>
-                            {uniqueTypes.map((type) => (
-                                <option key={type} value={type}>
-                                    {type}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
+                <div
+                    style={{
+                        backgroundColor: '#ffffff',
+                        borderRadius: '12px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                        border: '1px solid #F3F4F6',
+                        padding: '16px',
+                        marginBottom: '20px'
+                    }}
+                >
                     <div
-                        className="
-                            bg-gray-100
-                            rounded-lg
-                            px-4
-                            py-2
-                            text-sm
-                            text-gray-500
-                        "
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            flexWrap: 'nowrap',
+                            alignItems: 'center',
+                            gap: '12px',
+                            width: '100%'
+                        }}
                     >
-                        <span className="font-medium">{displayData.length}</span> آیتم
+                        <div style={{ position: 'relative', flex: '1 1 auto', minWidth: '200px' }}>
+                            <FaSearch
+                                style={{
+                                    position: 'absolute',
+                                    right: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    color: '#9CA3AF',
+                                    pointerEvents: 'none'
+                                }}
+                            />
+                            <input
+                                type="text"
+                                placeholder="جستجوی نام دارو، بارکد، Batch یا تأمین‌کننده..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    paddingRight: '38px',
+                                    paddingLeft: '12px',
+                                    paddingTop: '10px',
+                                    paddingBottom: '10px',
+                                    border: '1px solid #D1D5DB',
+                                    borderRadius: '8px',
+                                    fontSize: '14px',
+                                    backgroundColor: '#ffffff',
+                                    outline: 'none',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
+                        </div>
+
+                        <div style={{ position: 'relative', flex: '0 0 220px', width: '220px' }}>
+                            <FaFilter
+                                style={{
+                                    position: 'absolute',
+                                    right: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    color: '#9CA3AF',
+                                    pointerEvents: 'none'
+                                }}
+                            />
+                            <select
+                                value={filterSupplier}
+                                onChange={(e) => setFilterSupplier(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    paddingRight: '38px',
+                                    paddingLeft: '12px',
+                                    paddingTop: '10px',
+                                    paddingBottom: '10px',
+                                    border: '1px solid #D1D5DB',
+                                    borderRadius: '8px',
+                                    fontSize: '14px',
+                                    backgroundColor: '#ffffff',
+                                    appearance: 'none',
+                                    WebkitAppearance: 'none',
+                                    MozAppearance: 'none',
+                                    cursor: 'pointer',
+                                    outline: 'none',
+                                    boxSizing: 'border-box'
+                                }}
+                            >
+                                <option value="">همه تأمین‌کنندگان</option>
+                                {uniqueSuppliers.map((supplier) => (
+                                    <option key={supplier} value={supplier}>
+                                        {supplier}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div style={{ position: 'relative', flex: '0 0 220px', width: '220px' }}>
+                            <FaTag
+                                style={{
+                                    position: 'absolute',
+                                    right: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    color: '#9CA3AF',
+                                    pointerEvents: 'none'
+                                }}
+                            />
+                            <select
+                                value={filterType}
+                                onChange={(e) => setFilterType(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    paddingRight: '38px',
+                                    paddingLeft: '12px',
+                                    paddingTop: '10px',
+                                    paddingBottom: '10px',
+                                    border: '1px solid #D1D5DB',
+                                    borderRadius: '8px',
+                                    fontSize: '14px',
+                                    backgroundColor: '#ffffff',
+                                    appearance: 'none',
+                                    WebkitAppearance: 'none',
+                                    MozAppearance: 'none',
+                                    cursor: 'pointer',
+                                    outline: 'none',
+                                    boxSizing: 'border-box'
+                                }}
+                            >
+                                <option value="">همه نوعیت‌ها</option>
+                                {uniqueTypes.map((type) => (
+                                    <option key={type} value={type}>
+                                        {type}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div
+                            style={{
+                                backgroundColor: '#DBEAFE',
+                                color: '#1D4ED8',
+                                borderRadius: '8px',
+                                padding: '10px 16px',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                whiteSpace: 'nowrap',
+                                flex: '0 0 auto'
+                            }}
+                        >
+                            {displayData.length} آیتم
+                        </div>
                     </div>
                 </div>
 
@@ -1430,219 +1013,128 @@ const Stock = () => {
                         border-gray-100
                         overflow-hidden
                     "
+                    style={{ backgroundColor: '#ffffff' }}
                 >
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
+                    <div
+                        className="overflow-x-auto"
+                        style={{
+                            backgroundColor: '#ffffff',
+                            overflowX: 'auto',
+                            width: '100%'
+                        }}
+                    >
+                        <table
+                            className="min-w-full divide-y divide-gray-200"
+                            style={{
+                                backgroundColor: '#ffffff',
+                                minWidth: '1200px'
+                            }}
+                        >
 
                             <thead className="bg-gray-50">
                                 <tr>
-
-                                    {/* Medication */}
                                     <th
                                         onClick={() => handleSort('med_name')}
                                         className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                            cursor-pointer
-                                            hover:text-blue-600
+                                            px-4 py-3 text-right text-xs font-semibold
+                                            text-gray-600 uppercase tracking-wider
+                                            cursor-pointer hover:text-blue-600 whitespace-nowrap
                                         "
                                     >
                                         {getSortIcon('med_name')}
                                         نام دارو
                                     </th>
 
-                                    {/* Barcode */}
-                                    <th
-                                        className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                        "
-                                    >
-                                        Barcode
+                                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
+                                        بارکد
                                     </th>
 
-                                    {/* Supplier */}
                                     <th
                                         onClick={() => handleSort('supplier_name')}
                                         className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                            cursor-pointer
-                                            hover:text-blue-600
+                                            px-4 py-3 text-right text-xs font-semibold
+                                            text-gray-600 uppercase tracking-wider
+                                            cursor-pointer hover:text-blue-600 whitespace-nowrap
                                         "
                                     >
                                         {getSortIcon('supplier_name')}
                                         تأمین‌کننده
                                     </th>
 
-                                    {/* Type */}
                                     <th
                                         onClick={() => handleSort('type')}
                                         className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                            cursor-pointer
-                                            hover:text-blue-600
+                                            px-4 py-3 text-right text-xs font-semibold
+                                            text-gray-600 uppercase tracking-wider
+                                            cursor-pointer hover:text-blue-600 whitespace-nowrap
                                         "
                                     >
                                         {getSortIcon('type')}
                                         نوعیت
                                     </th>
 
-                                    {/* Batch */}
-                                    <th
-                                        className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                        "
-                                    >
+                                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                                         Batch
                                     </th>
 
-                                    {/* Expiry */}
                                     <th
                                         onClick={() => handleSort('exp_date')}
                                         className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                            cursor-pointer
-                                            hover:text-blue-600
+                                            px-4 py-3 text-right text-xs font-semibold
+                                            text-gray-600 uppercase tracking-wider
+                                            cursor-pointer hover:text-blue-600 whitespace-nowrap
                                         "
                                     >
                                         {getSortIcon('exp_date')}
                                         تاریخ انقضا
                                     </th>
 
-                                    {/* Quantity */}
                                     <th
                                         onClick={() => handleSort('quantity')}
                                         className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                            cursor-pointer
-                                            hover:text-blue-600
+                                            px-4 py-3 text-right text-xs font-semibold
+                                            text-gray-600 uppercase tracking-wider
+                                            cursor-pointer hover:text-blue-600 whitespace-nowrap
                                         "
                                     >
                                         {getSortIcon('quantity')}
                                         موجودی
                                     </th>
 
-                                    {/* Purchase price */}
                                     <th
                                         onClick={() => handleSort('purchase_price')}
                                         className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                            cursor-pointer
-                                            hover:text-blue-600
+                                            px-4 py-3 text-right text-xs font-semibold
+                                            text-gray-600 uppercase tracking-wider
+                                            cursor-pointer hover:text-blue-600 whitespace-nowrap
                                         "
                                     >
                                         {getSortIcon('purchase_price')}
                                         قیمت خرید
                                     </th>
 
-                                    {/* Selling price */}
                                     <th
                                         onClick={() => handleSort('selling_price')}
                                         className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                            cursor-pointer
-                                            hover:text-blue-600
+                                            px-4 py-3 text-right text-xs font-semibold
+                                            text-gray-600 uppercase tracking-wider
+                                            cursor-pointer hover:text-blue-600 whitespace-nowrap
                                         "
                                     >
                                         {getSortIcon('selling_price')}
                                         قیمت فروش
                                     </th>
 
-                                    {/* Status */}
                                     <th
                                         onClick={() => handleSort('status')}
                                         className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                            cursor-pointer
-                                            hover:text-blue-600
+                                            px-4 py-3 text-right text-xs font-semibold
+                                            text-gray-600 uppercase tracking-wider
+                                            cursor-pointer hover:text-blue-600 whitespace-nowrap
                                         "
                                     >
                                         {getSortIcon('status')}
                                         وضعیت
-                                    </th>
-
-                                    {/* Operations */}
-                                    <th
-                                        className="
-                                            px-5
-                                            py-3
-                                            text-right
-                                            text-xs
-                                            font-semibold
-                                            text-gray-600
-                                            uppercase
-                                            tracking-wider
-                                        "
-                                    >
-                                        عملیات
                                     </th>
                                 </tr>
                             </thead>
@@ -1652,125 +1144,99 @@ const Stock = () => {
                                 {displayData.length > 0 ? (
                                     displayData.map((stock, index) => (
                                         <tr
-                                            key={stock.stock_id || index}
+                                            key={stock.stock_id || stock.med_id || index}
                                             className="hover:bg-gray-50 transition-colors"
                                         >
-
-                                            {/* Medication */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
+                                            <td className="px-4 py-3 whitespace-nowrap">
                                                 <div className="text-sm font-medium text-gray-900">
                                                     {getMedicationName(stock)}
                                                 </div>
-                                                <div className="text-xs text-gray-400 mt-0.5">
-                                                    ID: {stock.med_id}
-                                                </div>
+                                                {stock.med_id && (
+                                                    <div className="text-xs text-gray-400 mt-0.5">
+                                                        ID: {stock.med_id}
+                                                    </div>
+                                                )}
                                             </td>
 
-                                            {/* Barcode */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
-                                                <div className="text-sm font-mono font-medium text-blue-700">
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                                <span className="text-sm font-mono font-medium text-blue-700">
                                                     {getBarcode(stock)}
-                                                </div>
+                                                </span>
                                             </td>
 
-                                            {/* Supplier */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
-                                                <div className="text-sm text-gray-600">
-                                                    {stock.supplier_name || 'نامشخص'}
-                                                </div>
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                                <span className="text-sm text-gray-700">
+                                                    {stock.supplier_name || '---'}
+                                                </span>
                                             </td>
 
-                                            {/* Type */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
+                                            <td className="px-4 py-3 whitespace-nowrap">
                                                 {getTypeBadge(stock.type)}
                                             </td>
 
-                                            {/* Batch */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
+                                            <td className="px-4 py-3 whitespace-nowrap">
                                                 <span
                                                     className="
-                                                        inline-flex
-                                                        items-center
-                                                        px-2.5
-                                                        py-1
-                                                        rounded-md
-                                                        text-xs
-                                                        font-mono
-                                                        font-medium
-                                                        bg-gray-100
-                                                        text-gray-700
+                                                        inline-flex items-center px-2.5 py-1
+                                                        rounded-md text-xs font-mono font-medium
+                                                        bg-gray-100 text-gray-700
                                                     "
                                                 >
                                                     {stock.batch_number || '---'}
                                                 </span>
                                             </td>
 
-                                            {/* Expiry */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
-                                                <div className="text-sm text-gray-900">
-                                                    {stock.exp_date_fa || stock.exp_date}
-                                                </div>
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="text-sm text-gray-900">
+                                                        {stock.exp_date_fa || stock.exp_date || '---'}
+                                                    </span>
 
-                                                {stock.days_left !== undefined &&
-                                                    stock.days_left >= 0 && (
-                                                        <div
-                                                            className={`
-                                                                text-xs
-                                                                mt-0.5
-                                                                font-medium
-                                                                ${
-                                                                    stock.days_left <= 7
-                                                                        ? 'text-red-600'
-                                                                        : stock.days_left <= 15
-                                                                            ? 'text-orange-600'
-                                                                            : stock.days_left <= 30
-                                                                                ? 'text-yellow-600'
-                                                                                : 'text-green-600'
-                                                                }
-                                                            `}
-                                                        >
-                                                            {stock.days_left === 0
-                                                                ? 'امروز'
-                                                                : `${stock.days_left} روز مانده`}
-                                                        </div>
-                                                    )}
+                                                    {stock.days_left !== undefined &&
+                                                        stock.days_left >= 0 && (
+                                                            <span
+                                                                className={`
+                                                                    text-xs font-medium
+                                                                    ${
+                                                                        stock.days_left <= 7
+                                                                            ? 'text-red-600'
+                                                                            : stock.days_left <= 15
+                                                                                ? 'text-orange-600'
+                                                                                : stock.days_left <= 30
+                                                                                    ? 'text-yellow-600'
+                                                                                    : 'text-green-600'
+                                                                    }
+                                                                `}
+                                                            >
+                                                                {stock.days_left === 0
+                                                                    ? 'امروز'
+                                                                    : `${stock.days_left} روز مانده`}
+                                                            </span>
+                                                        )}
+                                                </div>
                                             </td>
 
-                                            {/* Quantity */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
+                                            <td className="px-4 py-3 whitespace-nowrap">
                                                 <div className="flex items-center gap-1">
                                                     <span
                                                         className={`
-                                                            text-base
-                                                            font-bold
+                                                            text-base font-bold
                                                             ${
-                                                                stock.quantity <= 5
+                                                                (stock.quantity ?? stock.current_stock) <= 5
                                                                     ? 'text-red-600'
-                                                                    : stock.quantity <= 10
+                                                                    : (stock.quantity ?? stock.current_stock) <= 10
                                                                         ? 'text-orange-600'
-                                                                        : stock.quantity <= 20
-                                                                            ? 'text-yellow-600'
-                                                                            : 'text-gray-900'
+                                                                        : 'text-gray-900'
                                                             }
                                                         `}
                                                     >
-                                                        {Number(stock.quantity) || 0}
+                                                        {Number(stock.quantity ?? stock.current_stock) || 0}
                                                     </span>
-                                                    <span className="text-xs text-gray-400">
-                                                        عدد
-                                                    </span>
+                                                    <span className="text-xs text-gray-400">عدد</span>
                                                 </div>
-
-                                                {stock.quantity <= 10 &&
-                                                    stock.quantity > 0 && (
-                                                        <div className="text-xs text-red-500 mt-0.5">
-                                                            نیاز به سفارش
-                                                        </div>
-                                                    )}
                                             </td>
 
-                                            {/* Purchase price */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
+                                            <td className="px-4 py-3 whitespace-nowrap">
                                                 <span className="text-sm font-medium text-gray-700">
                                                     {stock.purchase_price !== null &&
                                                     stock.purchase_price !== undefined &&
@@ -1780,8 +1246,7 @@ const Stock = () => {
                                                 </span>
                                             </td>
 
-                                            {/* Selling price */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
+                                            <td className="px-4 py-3 whitespace-nowrap">
                                                 <span className="text-sm font-bold text-green-700">
                                                     {stock.selling_price !== null &&
                                                     stock.selling_price !== undefined &&
@@ -1791,8 +1256,7 @@ const Stock = () => {
                                                 </span>
                                             </td>
 
-                                            {/* Status */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
+                                            <td className="px-4 py-3 whitespace-nowrap">
                                                 <div className="flex items-center gap-1">
                                                     {stock.status_color === 'green' && (
                                                         <FaCheckCircle className="text-green-600 text-sm" />
@@ -1807,43 +1271,17 @@ const Stock = () => {
                                                         <FaExclamationTriangle className="text-red-600 text-sm" />
                                                     )}
 
-                                                    {getStatusBadge(stock.status, stock.status_color)}
-                                                </div>
-                                            </td>
-
-                                            {/* Operations */}
-                                            <td className="px-5 py-3 whitespace-nowrap">
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={() => handleEdit(stock)}
-                                                        className="
-                                                            text-blue-600
-                                                            hover:text-blue-800
-                                                            transition-colors
-                                                        "
-                                                        title="ویرایش"
-                                                    >
-                                                        <FaEdit size={16} />
-                                                    </button>
-
-                                                    <button
-                                                        onClick={() => handleDelete(stock.stock_id)}
-                                                        className="
-                                                            text-red-600
-                                                            hover:text-red-800
-                                                            transition-colors
-                                                        "
-                                                        title="حذف"
-                                                    >
-                                                        <FaTrash size={16} />
-                                                    </button>
+                                                    {getStatusBadge(
+                                                        stock.status || stock.status_text,
+                                                        stock.status_color
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan="11" className="px-5 py-12 text-center">
+                                        <td colSpan="10" className="px-5 py-12 text-center">
                                             <FaBox className="mx-auto h-10 w-10 text-gray-300 mb-3" />
 
                                             <h3 className="text-base font-medium text-gray-900 mb-1">
@@ -1868,25 +1306,30 @@ const Stock = () => {
                     ================================================== */}
 
                     {displayData.length > 0 && (
-                        <div className="bg-gray-50 px-5 py-3 border-t border-gray-100">
+                        <div
+                            className="px-5 py-3 border-t border-gray-100"
+                            style={{ backgroundColor: '#ffffff' }}
+                        >
                             <div
-                                className="
-                                    flex
-                                    flex-wrap
-                                    justify-between
-                                    items-center
-                                    text-sm
-                                    text-gray-600
-                                    gap-3
-                                "
+                                style={{
+                                    display: 'flex',
+                                    flexDirection: 'row',
+                                    flexWrap: 'wrap',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    fontSize: '14px',
+                                    color: '#4B5563',
+                                    gap: '16px',
+                                    backgroundColor: '#ffffff'
+                                }}
                             >
-                                <div>
+                                <div style={{ whiteSpace: 'nowrap' }}>
                                     مجموع موجودی:
-                                    <span className="font-bold text-gray-900 mr-1">
+                                    <span style={{ fontWeight: 'bold', color: '#111827', marginRight: '4px' }}>
                                         {displayData
                                             .reduce(
                                                 (sum, item) =>
-                                                    sum + (Number(item.quantity) || 0),
+                                                    sum + (Number(item.quantity ?? item.current_stock) || 0),
                                                 0
                                             )
                                             .toLocaleString()}
@@ -1894,22 +1337,22 @@ const Stock = () => {
                                     عدد
                                 </div>
 
-                                <div>
+                                <div style={{ whiteSpace: 'nowrap' }}>
                                     تعداد اقلام:
-                                    <span className="font-bold text-gray-900 mr-1">
+                                    <span style={{ fontWeight: 'bold', color: '#111827', marginRight: '4px' }}>
                                         {displayData.length}
                                     </span>
                                 </div>
 
-                                <div>
+                                <div style={{ whiteSpace: 'nowrap' }}>
                                     تعداد تأمین‌کنندگان:
-                                    <span className="font-bold text-gray-900 mr-1">
+                                    <span style={{ fontWeight: 'bold', color: '#111827', marginRight: '4px' }}>
                                         {uniqueSuppliers.length}
                                     </span>
                                 </div>
 
                                 {lowStockWarnings.length > 0 && (
-                                    <div className="text-red-500 flex items-center gap-1">
+                                    <div style={{ color: '#EF4444', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
                                         <FaExclamationTriangle />
                                         {lowStockWarnings.length} دوا با موجودی کم
                                     </div>

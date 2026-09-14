@@ -20,12 +20,17 @@ return new class extends Migration
             | category_id : FK → categories.category_id   (nullable)
             | med_id      : FK → medications.med_id        (nullable برای داروی دستی)
             | supplier_id : FK → accounts.id               (nullable برای داروی دستی)
+            | stock_id    : FK → stock.stock_id            (nullable برای داروی دستی)
             |--------------------------------------------------------------------------
             */
             $table->unsignedBigInteger('pres_id');
             $table->unsignedBigInteger('category_id')->nullable();
             $table->unsignedBigInteger('med_id')->nullable();
             $table->unsignedBigInteger('supplier_id')->nullable();
+
+            // ✅ جدید: اتصال به بچ مشخص ستاک (FEFO)
+            $table->unsignedBigInteger('stock_id')->nullable()
+                ->comment('FK → stock.stock_id — بچ تجویز شده (FEFO)');
 
             /*
             |--------------------------------------------------------------------------
@@ -49,6 +54,14 @@ return new class extends Migration
 
             $table->string('type')->nullable()
                 ->comment('نوع دارو (قرص، شربت، آمپول)');
+
+            // ✅ جدید: بارکد (Snapshot از medications)
+            $table->string('barcode')->nullable()
+                ->comment('بارکد دوا — Snapshot از medications');
+
+            // ✅ جدید: شماره بچ (Snapshot از stock)
+            $table->string('batch_number')->nullable()
+                ->comment('شماره بچ — Snapshot از stock');
 
             $table->string('dosage')
                 ->comment('مقدار مصرف (مثلاً 1×3)');
@@ -80,10 +93,15 @@ return new class extends Migration
                 ->on('medications')
                 ->nullOnDelete();
 
-            // ✅ اصلاح شد: supplier_id → accounts.id (نه registrations.reg_id)
             $table->foreign('supplier_id')
                 ->references('id')
                 ->on('accounts')
+                ->nullOnDelete();
+
+            // ✅ جدید: FK به stock
+            $table->foreign('stock_id')
+                ->references('stock_id')
+                ->on('stock')
                 ->nullOnDelete();
 
             /*
@@ -95,6 +113,9 @@ return new class extends Migration
             $table->index('category_id');
             $table->index('med_id');
             $table->index('supplier_id');
+            $table->index('stock_id');       // ✅ جدید
+            $table->index('barcode');         // ✅ جدید
+            $table->index('batch_number');    // ✅ جدید
             $table->index('is_custom');
         });
     }

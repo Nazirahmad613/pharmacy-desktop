@@ -32,7 +32,7 @@ class ParchasesController extends Controller
         $validated = $request->validate([
             'parchase_date' => 'required|date',
             'par_paid'      => 'required|numeric|min:0',
-            'supplier_id'   => 'required|exists:registrations,reg_id',
+            'supplier_id'   => 'required|exists:accounts,id',
             'items'         => 'required|array|min:1',
             'items.*.med_id'      => 'required|exists:medications,med_id',
             'items.*.category_id' => 'required|exists:categories,category_id',
@@ -142,7 +142,7 @@ class ParchasesController extends Controller
         $validated = $request->validate([
             'parchase_date' => 'required|date',
             'par_paid'      => 'required|numeric|min:0',
-            'supplier_id'   => 'required|exists:registrations,reg_id',
+            'supplier_id'   => 'required|exists:accounts,id',
             'items'         => 'required|array|min:1',
             'items.*.med_id'      => 'required|exists:medications,med_id',
             'items.*.category_id' => 'required|exists:categories,category_id',
