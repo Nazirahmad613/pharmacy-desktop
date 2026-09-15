@@ -6,25 +6,87 @@ use App\Models\Stock;
 use App\Models\Medication;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
 
 class StockService
 {
     // ============================================================
+    // ابزارهای کمکی داخلی
+    // ============================================================
+
+    /**
+     * نرمال‌سازی رشته‌ها (type / batch_number)
+     */
+    private static function normalizeString($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '' || strtolower($value) === 'null') {
+            return null;
+        }
+
+        return $value;
+    }
+
+    /**
+     * نرمال‌سازی تاریخ به فرمت Y-m-d
+     */
+    private static function normalizeDate($date): ?string
+    {
+        if ($date === null || $date === '') {
+            return null;
+        }
+
+        if ($date instanceof \DateTimeInterface) {
+            return $date->format('Y-m-d');
+        }
+
+        $ts = strtotime((string) $date);
+
+        return $ts ? date('Y-m-d', $ts) : null;
+    }
+
+    /**
+     * تشخیص خطای Unique
+     */
+    private static function isUniqueViolation(QueryException $e): bool
+    {
+        $sqlState   = $e->errorInfo[0] ?? null;
+        $driverCode = $e->errorInfo[1] ?? null;
+
+        return $sqlState === '23000'
+            || $sqlState === '23505'
+            || $driverCode === 19
+            || $driverCode === 1062;
+    }
+
+    /**
+     * ساخت کوئری پایه بر اساس کلید Unique واقعی
+     * (بدون batch_number چون در unique نیست)
+     */
+    private static function baseUniqueQuery($medId, $supplierId, $expDate, $type)
+    {
+        $query = Stock::where('med_id', $medId)
+            ->where('supplier_id', $supplierId)
+            ->whereDate('exp_date', $expDate);
+
+        if ($type === null) {
+            $query->whereNull('type');
+        } else {
+            $query->where('type', $type);
+        }
+
+        return $query;
+    }
+
+
+    // ============================================================
     // افزایش موجودی
     // ============================================================
-    /**
-     * ورود کالا به انبار
-     *
-     * موجودی بر اساس موارد زیر در یک Batch نگهداری می‌شود:
-     * - med_id
-     * - supplier_id
-     * - batch_number
-     * - exp_date
-     * - type
-     *
-     * توجه:
-     * Barcode مربوط به Medication است و در جدول Stock نگهداری نمی‌شود.
-     */
     public static function increase(
         $medId,
         $supplierId,
@@ -34,80 +96,104 @@ class StockService
         $batchNumber = null,
         $purchasePrice = null,
         $sellingPrice = null,
-        $purchaseItemId = null   // ✅ جدید
+        $purchaseItemId = null
     ) {
-        $query = Stock::where('med_id', $medId)
-            ->where('supplier_id', $supplierId)
-            ->where('exp_date', $expDate)
-            ->where('type', $type);
+        $normalizedType    = self::normalizeString($type);
+        $normalizedBatch   = self::normalizeString($batchNumber);
+        $normalizedExpDate = self::normalizeDate($expDate);
 
-        if ($batchNumber === null || $batchNumber === '') {
-            $query->whereNull('batch_number');
-        } else {
-            $query->where('batch_number', $batchNumber);
-        }
+        return DB::transaction(function () use (
+            $medId, $supplierId, $normalizedExpDate, $quantity,
+            $normalizedType, $normalizedBatch,
+            $purchasePrice, $sellingPrice, $purchaseItemId
+        ) {
+            $stock = self::baseUniqueQuery(
+                $medId, $supplierId, $normalizedExpDate, $normalizedType
+            )->lockForUpdate()->first();
 
-        $stock = $query->first();
+            if ($stock) {
+                $stock->increment('quantity', $quantity);
 
-        if ($stock) {
-            $stock->increment('quantity', $quantity);
+                $updateData = [];
 
-            $updateData = [];
+                if ($purchasePrice !== null)   $updateData['purchase_price']   = $purchasePrice;
+                if ($sellingPrice !== null)    $updateData['selling_price']    = $sellingPrice;
+                if ($normalizedBatch !== null) $updateData['batch_number']     = $normalizedBatch;
+                if ($purchaseItemId !== null)  $updateData['purchase_item_id'] = $purchaseItemId;
 
-            if ($purchasePrice !== null) {
-                $updateData['purchase_price'] = $purchasePrice;
+                if (!empty($updateData)) {
+                    $stock->update($updateData);
+                }
+
+                Log::info('Stock increased (updated)', [
+                    'stock_id'     => $stock->stock_id,
+                    'med_id'       => $medId,
+                    'supplier_id'  => $supplierId,
+                    'batch_number' => $normalizedBatch,
+                    'exp_date'     => $normalizedExpDate,
+                    'type'         => $normalizedType,
+                    'quantity'     => $quantity,
+                ]);
+
+                return true;
             }
 
-            if ($sellingPrice !== null) {
-                $updateData['selling_price'] = $sellingPrice;
+            try {
+                Stock::create([
+                    'med_id'           => $medId,
+                    'supplier_id'      => $supplierId,
+                    'exp_date'         => $normalizedExpDate,
+                    'quantity'         => $quantity,
+                    'type'             => $normalizedType,
+                    'batch_number'     => $normalizedBatch,
+                    'purchase_price'   => $purchasePrice,
+                    'selling_price'    => $sellingPrice,
+                    'purchase_item_id' => $purchaseItemId,
+                ]);
+
+                Log::info('Stock increased (created)', [
+                    'med_id'       => $medId,
+                    'supplier_id'  => $supplierId,
+                    'batch_number' => $normalizedBatch,
+                    'exp_date'     => $normalizedExpDate,
+                    'type'         => $normalizedType,
+                    'quantity'     => $quantity,
+                ]);
+            } catch (QueryException $e) {
+                if (self::isUniqueViolation($e)) {
+                    $existing = self::baseUniqueQuery(
+                        $medId, $supplierId, $normalizedExpDate, $normalizedType
+                    )->lockForUpdate()->first();
+
+                    if ($existing) {
+                        $existing->increment('quantity', $quantity);
+
+                        if ($normalizedBatch !== null) {
+                            $existing->update(['batch_number' => $normalizedBatch]);
+                        }
+
+                        Log::info('Stock increased (race condition caught)', [
+                            'stock_id'    => $existing->stock_id,
+                            'med_id'      => $medId,
+                            'supplier_id' => $supplierId,
+                            'quantity'    => $quantity,
+                        ]);
+
+                        return true;
+                    }
+                }
+
+                throw $e;
             }
 
-            // ✅ اگر purchase_item_id جدید داده شده، به‌روز کن
-            if ($purchaseItemId !== null) {
-                $updateData['purchase_item_id'] = $purchaseItemId;
-            }
-
-            if (!empty($updateData)) {
-                $stock->update($updateData);
-            }
-        } else {
-            Stock::create([
-                'med_id'           => $medId,
-                'supplier_id'      => $supplierId,
-                'exp_date'         => $expDate,
-                'quantity'         => $quantity,
-                'type'             => $type,
-                'batch_number'     => $batchNumber,
-                'purchase_price'   => $purchasePrice,
-                'selling_price'    => $sellingPrice,
-                'purchase_item_id' => $purchaseItemId,   // ✅ جدید
-            ]);
-        }
-
-        Log::info('Stock increased', [
-            'med_id'           => $medId,
-            'supplier_id'      => $supplierId,
-            'batch_number'     => $batchNumber,
-            'exp_date'         => $expDate,
-            'type'             => $type,
-            'quantity'         => $quantity,
-            'purchase_price'   => $purchasePrice,
-            'selling_price'    => $sellingPrice,
-            'purchase_item_id' => $purchaseItemId,
-        ]);
-
-        return true;
+            return true;
+        });
     }
 
 
     // ============================================================
     // کاهش موجودی (با Supplier - سازگاری با کد قدیمی)
     // ============================================================
-    /**
-     * کاهش موجودی بر اساس FEFO با فیلتر Supplier
-     *
-     * برای سازگاری با ساختار فعلی نگهداری شده است.
-     */
     public static function decrease(
         $medId,
         $supplierId,
@@ -118,24 +204,23 @@ class StockService
             return false;
         }
 
-        return DB::transaction(function () use (
-            $medId,
-            $supplierId,
-            $quantity,
-            $type
-        ) {
+        $normalizedType = self::normalizeString($type);
 
-            $stocks = Stock::where('med_id', $medId)
+        return DB::transaction(function () use (
+            $medId, $supplierId, $quantity, $normalizedType
+        ) {
+            $query = Stock::where('med_id', $medId)
                 ->where('supplier_id', $supplierId)
                 ->where('quantity', '>', 0)
-                ->whereDate('exp_date', '>=', now()->toDateString())
-                ->where(function ($query) use ($type) {
-                    if ($type === null || $type === '' || $type === 'null') {
-                        $query->whereNull('type');
-                    } else {
-                        $query->where('type', $type);
-                    }
-                })
+                ->whereDate('exp_date', '>=', now()->toDateString());
+
+            if ($normalizedType === null) {
+                $query->whereNull('type');
+            } else {
+                $query->where('type', $normalizedType);
+            }
+
+            $stocks = $query
                 ->orderBy('exp_date', 'asc')
                 ->orderBy('stock_id', 'asc')
                 ->lockForUpdate()
@@ -147,7 +232,7 @@ class StockService
                 Log::warning('Stock decrease failed', [
                     'med_id'      => $medId,
                     'supplier_id' => $supplierId,
-                    'type'        => $type,
+                    'type'        => $normalizedType,
                     'requested'   => $quantity,
                     'available'   => $totalAvailable,
                 ]);
@@ -155,26 +240,20 @@ class StockService
                 return false;
             }
 
-            $remainingToDecrease = $quantity;
+            $remaining = $quantity;
 
             foreach ($stocks as $stock) {
-                if ($remainingToDecrease <= 0) {
-                    break;
-                }
+                if ($remaining <= 0) break;
 
-                $decreaseAmount = min(
-                    (int) $stock->quantity,
-                    $remainingToDecrease
-                );
-
-                $stock->decrement('quantity', $decreaseAmount);
-                $remainingToDecrease -= $decreaseAmount;
+                $used = min((int) $stock->quantity, $remaining);
+                $stock->decrement('quantity', $used);
+                $remaining -= $used;
             }
 
             Log::info('Stock decreased using FEFO', [
                 'med_id'      => $medId,
                 'supplier_id' => $supplierId,
-                'type'        => $type,
+                'type'        => $normalizedType,
                 'quantity'    => $quantity,
             ]);
 
@@ -186,19 +265,6 @@ class StockService
     // ============================================================
     // کاهش موجودی بر اساس Medication (FEFO چند بچی)
     // ============================================================
-    /**
-     * کاهش موجودی برای فروش / نسخه
-     *
-     * این متد Supplier را اجباری نمی‌کند.
-     *
-     * جریان:
-     * Barcode → Medication → med_id → Stock Lots → FEFO
-     *
-     * اگر یک Batch کافی نباشد، Batch بعدی مصرف می‌شود.
-     *
-     * خروجی: batches مصرف‌شده را برمی‌گرداند تا در
-     * prescription_items و stock_sales ثبت شود.
-     */
     public static function decreaseByMedication(
         $medId,
         $quantity,
@@ -212,13 +278,11 @@ class StockService
             ];
         }
 
-        return DB::transaction(function () use (
-            $medId,
-            $quantity,
-            $type
-        ) {
+        $normalizedType = self::normalizeString($type);
 
-            // ✅ بارکد از medications خوانده می‌شود
+        return DB::transaction(function () use (
+            $medId, $quantity, $normalizedType
+        ) {
             $medication = Medication::find($medId);
             $barcode = $medication->barcode ?? null;
 
@@ -226,11 +290,10 @@ class StockService
                 ->where('quantity', '>', 0)
                 ->whereDate('exp_date', '>=', now()->toDateString());
 
-            if ($type !== null && $type !== '' && $type !== 'null') {
-                $query->where('type', $type);
+            if ($normalizedType !== null) {
+                $query->where('type', $normalizedType);
             }
 
-            // FEFO: نزدیک‌ترین تاریخ انقضا اول
             $stocks = $query
                 ->orderBy('exp_date', 'asc')
                 ->orderBy('stock_id', 'asc')
@@ -242,7 +305,7 @@ class StockService
             if ($totalAvailable < $quantity) {
                 Log::warning('FEFO stock decrease failed', [
                     'med_id'    => $medId,
-                    'type'      => $type,
+                    'type'      => $normalizedType,
                     'requested' => $quantity,
                     'available' => $totalAvailable,
                 ]);
@@ -261,23 +324,20 @@ class StockService
             $usedBatches = [];
 
             foreach ($stocks as $stock) {
-                if ($remaining <= 0) {
-                    break;
-                }
+                if ($remaining <= 0) break;
 
                 $availableInBatch = (int) $stock->quantity;
-                $usedQuantity = min($availableInBatch, $remaining);
+                $usedQuantity     = min($availableInBatch, $remaining);
 
                 $stock->decrement('quantity', $usedQuantity);
 
-                // ✅ خروجی شامل stock_id و barcode (از medications)
                 $usedBatches[] = [
                     'stock_id'       => $stock->stock_id,
                     'med_id'         => $stock->med_id,
                     'med_name'       => $medication->gen_name ?? null,
-                    'barcode'        => $barcode,              // ✅ از medications
+                    'barcode'        => $barcode,
                     'supplier_id'    => $stock->supplier_id,
-                    'batch_number'   => $stock->batch_number,  // ✅ از stock
+                    'batch_number'   => $stock->batch_number,
                     'exp_date'       => $stock->exp_date,
                     'type'           => $stock->type,
                     'quantity'       => $usedQuantity,
@@ -290,7 +350,7 @@ class StockService
 
             Log::info('Stock decreased by medication using FEFO', [
                 'med_id'             => $medId,
-                'type'               => $type,
+                'type'               => $normalizedType,
                 'requested_quantity' => $quantity,
                 'batches_used'       => $usedBatches,
             ]);
@@ -311,10 +371,6 @@ class StockService
     // ============================================================
     // کاهش موجودی بر اساس Barcode
     // ============================================================
-    /**
-     * Barcode از جدول medications خوانده می‌شود.
-     * Barcode در Stock ذخیره نمی‌شود.
-     */
     public static function decreaseByBarcode(
         $barcode,
         $quantity,
@@ -358,17 +414,8 @@ class StockService
 
 
     // ============================================================
-    // ✅ جدید: دریافت اطلاعات بچ بعدی (FEFO) برای فرم تجویز
+    // دریافت اطلاعات بچ بعدی (FEFO) برای فرم تجویز
     // ============================================================
-    /**
-     * نزدیک‌ترین بچ با موجودی کافی را برمی‌گرداند
-     * (بدون کاهش موجودی — فقط برای نمایش در فرم)
-     *
-     * اگر quantity داده شود، بچی که حداقل این مقدار را دارد برمی‌گردد.
-     * اگر بچ اول کافی نباشد، بچ بعدی و...
-     * اگر هیچ بچی به‌تنهایی کافی نباشد، null برمی‌گرداند
-     * (ولی معمولاً در این حالت از decreaseByMedication با چند بچ استفاده می‌شود).
-     */
     public static function getNextBatch(
         $medId,
         $supplierId = null,
@@ -390,13 +437,8 @@ class StockService
 
 
     // ============================================================
-    // ✅ جدید: برگرداندن موجودی به بچ مشخص (با stock_id)
+    // برگرداندن موجودی به بچ مشخص (با stock_id)
     // ============================================================
-    /**
-     * برگرداندن موجودی به همان بچ اصلی
-     *
-     * برای ویرایش یا حذف نسخه استفاده می‌شود.
-     */
     public static function reverseDecreaseByStockId(
         $stockId,
         $quantity
@@ -406,7 +448,6 @@ class StockService
         }
 
         return DB::transaction(function () use ($stockId, $quantity) {
-
             $stock = Stock::lockForUpdate()->find($stockId);
 
             if (!$stock) {
@@ -444,14 +485,6 @@ class StockService
     // ============================================================
     // برگرداندن موجودی (بر اساس پارامترهای بچ - سازگاری قدیمی)
     // ============================================================
-    /**
-     * این متد برای ویرایش یا حذف خرید استفاده می‌شود.
-     *
-     * موجودی باید به همان Batch و همان تاریخ انقضا برگردد.
-     *
-     * ترتیب پارامترها مطابق فراخوانی فعلی ParchasesController:
-     * medId, supplierId, expDate, quantity, type, batchNumber
-     */
     public static function reverseDecrease(
         $medId,
         $supplierId,
@@ -464,55 +497,82 @@ class StockService
             return false;
         }
 
+        $normalizedType    = self::normalizeString($type);
+        $normalizedBatch   = self::normalizeString($batchNumber);
+        $normalizedExpDate = self::normalizeDate($expDate);
+
         return DB::transaction(function () use (
-            $medId,
-            $supplierId,
-            $expDate,
-            $quantity,
-            $type,
-            $batchNumber
+            $medId, $supplierId, $normalizedExpDate, $quantity,
+            $normalizedType, $normalizedBatch
         ) {
-
-            $query = Stock::where('med_id', $medId)
-                ->where('supplier_id', $supplierId)
-                ->where('exp_date', $expDate);
-
-            if ($type === null || $type === '' || $type === 'null') {
-                $query->whereNull('type');
-            } else {
-                $query->where('type', $type);
-            }
-
-            if ($batchNumber === null || $batchNumber === '') {
-                $query->whereNull('batch_number');
-            } else {
-                $query->where('batch_number', $batchNumber);
-            }
-
-            $stock = $query->lockForUpdate()->first();
+            $stock = self::baseUniqueQuery(
+                $medId, $supplierId, $normalizedExpDate, $normalizedType
+            )->lockForUpdate()->first();
 
             if ($stock) {
                 $stock->increment('quantity', $quantity);
-            } else {
-                // اگر رکورد اصلی دیگر وجود نداشت، همان Batch دوباره ساخته می‌شود
-                $stock = Stock::create([
+
+                if ($normalizedBatch !== null) {
+                    $stock->update(['batch_number' => $normalizedBatch]);
+                }
+
+                Log::info('Stock reversed (updated)', [
+                    'stock_id'     => $stock->stock_id,
                     'med_id'       => $medId,
                     'supplier_id'  => $supplierId,
-                    'exp_date'     => $expDate,
+                    'batch_number' => $normalizedBatch,
+                    'exp_date'     => $normalizedExpDate,
+                    'type'         => $normalizedType,
                     'quantity'     => $quantity,
-                    'type'         => $type,
-                    'batch_number' => $batchNumber,
                 ]);
+
+                return true;
             }
 
-            Log::info('Stock reversed to exact batch', [
-                'med_id'       => $medId,
-                'supplier_id'  => $supplierId,
-                'batch_number' => $batchNumber,
-                'exp_date'     => $expDate,
-                'type'         => $type,
-                'quantity'     => $quantity,
-            ]);
+            try {
+                Stock::create([
+                    'med_id'       => $medId,
+                    'supplier_id'  => $supplierId,
+                    'exp_date'     => $normalizedExpDate,
+                    'quantity'     => $quantity,
+                    'type'         => $normalizedType,
+                    'batch_number' => $normalizedBatch,
+                ]);
+
+                Log::info('Stock reversed (created)', [
+                    'med_id'       => $medId,
+                    'supplier_id'  => $supplierId,
+                    'batch_number' => $normalizedBatch,
+                    'exp_date'     => $normalizedExpDate,
+                    'type'         => $normalizedType,
+                    'quantity'     => $quantity,
+                ]);
+            } catch (QueryException $e) {
+                if (self::isUniqueViolation($e)) {
+                    $existing = self::baseUniqueQuery(
+                        $medId, $supplierId, $normalizedExpDate, $normalizedType
+                    )->lockForUpdate()->first();
+
+                    if ($existing) {
+                        $existing->increment('quantity', $quantity);
+
+                        if ($normalizedBatch !== null) {
+                            $existing->update(['batch_number' => $normalizedBatch]);
+                        }
+
+                        Log::info('Stock reversed (race condition caught)', [
+                            'stock_id'    => $existing->stock_id,
+                            'med_id'      => $medId,
+                            'supplier_id' => $supplierId,
+                            'quantity'    => $quantity,
+                        ]);
+
+                        return true;
+                    }
+                }
+
+                throw $e;
+            }
 
             return true;
         });
@@ -528,12 +588,7 @@ class StockService
         $quantity,
         $type = null
     ) {
-        $total = self::getAvailableQuantity(
-            $medId,
-            $supplierId,
-            $type
-        );
-
+        $total = self::getAvailableQuantity($medId, $supplierId, $type);
         $isAvailable = $total >= $quantity;
 
         Log::info('Stock check', [
@@ -557,12 +612,14 @@ class StockService
         $quantity,
         $type = null
     ) {
+        $normalizedType = self::normalizeString($type);
+
         $query = Stock::where('med_id', $medId)
             ->where('quantity', '>', 0)
             ->whereDate('exp_date', '>=', now()->toDateString());
 
-        if ($type !== null && $type !== '' && $type !== 'null') {
-            $query->where('type', $type);
+        if ($normalizedType !== null) {
+            $query->where('type', $normalizedType);
         }
 
         $total = (int) $query->sum('quantity');
@@ -583,20 +640,22 @@ class StockService
         $supplierId,
         $type = null
     ) {
+        $normalizedType = self::normalizeString($type);
+
         $query = Stock::where('med_id', $medId)
             ->where('supplier_id', $supplierId);
 
-        if ($type && $type !== 'null' && $type !== '') {
-            $query->where('type', $type);
+        if ($normalizedType !== null) {
+            $query->where('type', $normalizedType);
         }
 
         $total = (int) $query->sum('quantity');
 
         Log::info('Get available quantity', [
-            'med_id'        => $medId,
-            'supplier_id'   => $supplierId,
-            'type'          => $type,
-            'total_quantity'=> $total,
+            'med_id'         => $medId,
+            'supplier_id'    => $supplierId,
+            'type'           => $normalizedType,
+            'total_quantity' => $total,
         ]);
 
         return $total;
@@ -611,11 +670,13 @@ class StockService
         $supplierId,
         $type = null
     ) {
+        $normalizedType = self::normalizeString($type);
+
         $query = Stock::where('med_id', $medId)
             ->where('supplier_id', $supplierId);
 
-        if ($type && $type !== 'null' && $type !== '') {
-            $query->where('type', $type);
+        if ($normalizedType !== null) {
+            $query->where('type', $normalizedType);
         }
 
         return $query
@@ -633,6 +694,8 @@ class StockService
         $supplierId = null,
         $type = null
     ) {
+        $normalizedType = self::normalizeString($type);
+
         $query = Stock::where('med_id', $medId)
             ->where('quantity', '>', 0)
             ->whereDate('exp_date', '>=', now()->toDateString());
@@ -641,8 +704,8 @@ class StockService
             $query->where('supplier_id', $supplierId);
         }
 
-        if ($type && $type !== 'null' && $type !== '') {
-            $query->where('type', $type);
+        if ($normalizedType !== null) {
+            $query->where('type', $normalizedType);
         }
 
         $stocks = $query
@@ -676,12 +739,14 @@ class StockService
         $medId,
         $type = null
     ) {
+        $normalizedType = self::normalizeString($type);
+
         $query = Stock::where('med_id', $medId)
             ->where('quantity', '>', 0)
             ->whereDate('exp_date', '>=', now()->toDateString());
 
-        if ($type !== null && $type !== '' && $type !== 'null') {
-            $query->where('type', $type);
+        if ($normalizedType !== null) {
+            $query->where('type', $normalizedType);
         }
 
         return $query
@@ -710,14 +775,9 @@ class StockService
     // متدهای هشدار موجودی
     // ============================================================
 
-    /**
-     * دریافت داروهای با موجودی کم
-     * بر اساس minimum_quantity از جدول medications
-     */
     public static function getLowStockMedications()
     {
         try {
-
             $medications = Medication::with([
                 'stocks' => function ($q) {
                     $q->select(
@@ -730,35 +790,25 @@ class StockService
             $lowStockItems = [];
 
             foreach ($medications as $medication) {
-
                 $totalQuantity = (int) (
-                    $medication->stocks
-                        ->sum('total_quantity') ?? 0
+                    $medication->stocks->sum('total_quantity') ?? 0
                 );
 
-                $minQuantity = (int) (
-                    $medication->minimum_quantity ?? 10
-                );
+                $minQuantity = (int) ($medication->minimum_quantity ?? 10);
 
                 if ($totalQuantity <= $minQuantity) {
-
-                    $status = $totalQuantity <= 0
-                        ? 'ناموجود'
-                        : 'موجودی کم';
-
-                    $color = $totalQuantity <= 0
-                        ? 'red'
-                        : 'orange';
+                    $status = $totalQuantity <= 0 ? 'ناموجود' : 'موجودی کم';
+                    $color  = $totalQuantity <= 0 ? 'red' : 'orange';
 
                     $lowStockItems[] = [
-                        'med_id'            => $medication->med_id,
-                        'med_name'          => $medication->gen_name,
-                        'current_stock'     => $totalQuantity,
-                        'minimum_quantity'  => $minQuantity,
-                        'status'            => $status,
-                        'color'             => $color,
-                        'need_order'        => max(0, $minQuantity - $totalQuantity),
-                        'percentage'        => $totalQuantity > 0
+                        'med_id'           => $medication->med_id,
+                        'med_name'         => $medication->gen_name,
+                        'current_stock'    => $totalQuantity,
+                        'minimum_quantity' => $minQuantity,
+                        'status'           => $status,
+                        'color'            => $color,
+                        'need_order'       => max(0, $minQuantity - $totalQuantity),
+                        'percentage'       => $totalQuantity > 0
                             ? round(($totalQuantity / $minQuantity) * 100)
                             : 0,
                     ];
@@ -774,9 +824,7 @@ class StockService
             ]);
 
             return $lowStockItems;
-
         } catch (\Exception $e) {
-
             Log::error('Error getting low stock medications', [
                 'error' => $e->getMessage(),
             ]);
@@ -786,13 +834,9 @@ class StockService
     }
 
 
-    /**
-     * بررسی موجودی یک داروی خاص
-     */
     public static function checkLowStockByMedication($medId)
     {
         try {
-
             $medication = Medication::find($medId);
 
             if (!$medication) {
@@ -800,10 +844,7 @@ class StockService
             }
 
             $totalQuantity = (int) Stock::where('med_id', $medId)->sum('quantity');
-
-            $minQuantity = (int) (
-                $medication->minimum_quantity ?? 10
-            );
+            $minQuantity   = (int) ($medication->minimum_quantity ?? 10);
 
             return [
                 'is_low'           => $totalQuantity <= $minQuantity,
@@ -814,9 +855,7 @@ class StockService
                     ? round(($totalQuantity / $minQuantity) * 100)
                     : 0,
             ];
-
         } catch (\Exception $e) {
-
             Log::error('Error checking low stock for medication', [
                 'med_id' => $medId,
                 'error'  => $e->getMessage(),
@@ -827,9 +866,6 @@ class StockService
     }
 
 
-    /**
-     * دریافت آمار کلی موجودی کم
-     */
     public static function getLowStockSummary()
     {
         $lowStockItems = self::getLowStockMedications();
@@ -854,27 +890,19 @@ class StockService
     }
 
 
-    /**
-     * دریافت هشدارهای فوری
-     */
     public static function getCriticalWarnings()
     {
         $lowStockItems = self::getLowStockMedications();
 
         return array_filter($lowStockItems, function ($item) {
-            return $item['current_stock'] <= 0
-                || $item['current_stock'] <= 5;
+            return $item['current_stock'] <= 0 || $item['current_stock'] <= 5;
         });
     }
 
 
-    /**
-     * دریافت همه داروها به همراه وضعیت موجودی
-     */
     public static function getAllMedicationsStockStatus()
     {
         try {
-
             $medications = Medication::with([
                 'stocks' => function ($q) {
                     $q->select(
@@ -887,15 +915,11 @@ class StockService
             $allItems = [];
 
             foreach ($medications as $medication) {
-
                 $totalQuantity = (int) (
-                    $medication->stocks
-                        ->sum('total_quantity') ?? 0
+                    $medication->stocks->sum('total_quantity') ?? 0
                 );
 
-                $minQuantity = (int) (
-                    $medication->minimum_quantity ?? 10
-                );
+                $minQuantity = (int) ($medication->minimum_quantity ?? 10);
 
                 $allItems[] = [
                     'med_id'           => $medication->med_id,
@@ -916,9 +940,7 @@ class StockService
             }
 
             return $allItems;
-
         } catch (\Exception $e) {
-
             Log::error('Error getting all medications stock status', [
                 'error' => $e->getMessage(),
             ]);

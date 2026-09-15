@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/AdmissionFeeController.php
 
 namespace App\Http\Controllers;
 
@@ -19,29 +20,33 @@ class AdmissionFeeController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = AdmissionFee::with(['patient', 'admissionRequest', 'collector', 'doctor', 'registration']);
+            $query = AdmissionFee::with([
+                'patient', 
+                'admissionRequest.ward',
+                'admissionRequest.bed',
+                'admissionRequest.patient',
+                'admissionRequest.doctor',
+                'collector', 
+                'doctor', 
+                'registration'
+            ]);
 
-            // فیلتر بر اساس بیمار
             if ($request->has('patient_id')) {
                 $query->where('patient_id', $request->patient_id);
             }
 
-            // فیلتر بر اساس درخواست بستری
             if ($request->has('admission_request_id')) {
                 $query->where('admission_request_id', $request->admission_request_id);
             }
 
-            // فیلتر بر اساس reg_id
             if ($request->has('reg_id')) {
                 $query->where('reg_id', $request->reg_id);
             }
 
-            // فیلتر بر اساس وضعیت
             if ($request->has('status') && $request->status !== 'all') {
                 $query->where('status', $request->status);
             }
 
-            // فیلتر بر اساس تاریخ
             if ($request->has('from_date')) {
                 $query->whereDate('fee_date', '>=', $request->from_date);
             }
@@ -49,17 +54,14 @@ class AdmissionFeeController extends Controller
                 $query->whereDate('fee_date', '<=', $request->to_date);
             }
 
-            // فیلتر بر اساس روش پرداخت
             if ($request->has('payment_method')) {
                 $query->where('payment_method', $request->payment_method);
             }
 
-            // فیلتر بر اساس پزشک
             if ($request->has('doctor_id')) {
                 $query->where('doctor_id', $request->doctor_id);
             }
 
-            // جستجو
             if ($request->has('search') && $request->search) {
                 $search = $request->search;
                 $query->where(function($q) use ($search) {
@@ -67,21 +69,23 @@ class AdmissionFeeController extends Controller
                       ->orWhereHas('patient', function($p) use ($search) {
                           $p->where('first_name', 'like', "%{$search}%")
                             ->orWhere('last_name', 'like', "%{$search}%")
-                            ->orWhere('mobile', 'like', "%{$search}%");
+                            ->orWhere('mobile', 'like', "%{$search}%")
+                            ->orWhere('national_id', 'like', "%{$search}%");
                       });
                 });
             }
 
-            $fees = $query->orderBy('created_at', 'desc')->paginate($request->per_page ?? 15);
+            $fees = $query->orderBy('created_at', 'desc')->get();
 
-            // محاسبه آمار
+            // آمار
             $stats = [
                 'total' => AdmissionFee::count(),
                 'pending' => AdmissionFee::where('status', 'pending')->count(),
                 'paid' => AdmissionFee::where('status', 'paid')->count(),
                 'total_amount' => AdmissionFee::sum('amount'),
                 'paid_amount' => AdmissionFee::where('status', 'paid')->sum('amount'),
-                'pending_amount' => AdmissionFee::where('status', 'pending')->sum('amount')
+                'pending_amount' => AdmissionFee::where('status', 'pending')->sum('amount'),
+                'remaining_amount' => AdmissionFee::sum('remaining_amount'),
             ];
 
             return response()->json([
@@ -101,7 +105,7 @@ class AdmissionFeeController extends Controller
     }
 
     /**
-     * ثبت فیس بستری جدید با محاسبه دقیق مبالغ
+     * ثبت فیس بستری جدید
      * reg_id از طریق admission_request_id از جدول admission_requests دریافت می‌شود
      */
     public function store(Request $request)
@@ -112,6 +116,7 @@ class AdmissionFeeController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'paid_amount' => 'nullable|numeric|min:0',
             'discount' => 'nullable|numeric|min:0|max:100',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
             'fee_type' => 'required|in:daily,weekly,monthly,custom',
             'period' => 'nullable|in:morning,evening,night,full_day',
             'day_number' => 'nullable|integer|min:1',
@@ -132,7 +137,6 @@ class AdmissionFeeController extends Controller
         try {
             DB::beginTransaction();
 
-            // بررسی وضعیت بستری
             $admission = AdmissionRequest::with(['registration'])
                 ->find($request->admission_request_id);
                 
@@ -143,41 +147,48 @@ class AdmissionFeeController extends Controller
                 ], 404);
             }
 
-            if ($admission->status !== 'admitted') {
+            // ⚠️ می‌توان فیس برای بیمار ترخیص شده هم ثبت کرد (مثلاً فیس نهایی بعد از ترخیص)
+            // اما نمی‌توان برای بیمار لغو شده ثبت کرد
+            if ($admission->status === 'cancelled') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'بیمار بستری نمی‌باشد'
+                    'message' => 'نمی‌توان برای درخواست لغو شده فیس ثبت کرد'
                 ], 400);
             }
 
-            // دریافت reg_id از جدول admission_requests
             $regId = $admission->reg_id;
-            
             if (!$regId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'شناسه مراجعه (reg_id) برای این درخواست بستری یافت نشد'
+                    'message' => 'شناسه مراجعه برای این درخواست بستری یافت نشد'
                 ], 400);
             }
 
-            // دریافت doctor_id از admission
             $doctorId = $admission->doctor_id;
 
             // ============ محاسبه دقیق مبالغ ============
             $amount = (float) $request->amount;
             $paidAmount = (float) ($request->paid_amount ?? 0);
-            $discountPercent = (float) ($request->discount ?? 0);
-
+            
+            // اولویت: discount_percent → اگر نبود discount → اگر نبود صفر
+            $discountPercent = (float) ($request->discount_percent ?? 0);
+            $manualDiscount = (float) ($request->discount ?? 0);
+            
             // محاسبه مبلغ تخفیف
-            $discountAmount = ($amount * $discountPercent) / 100;
+            if ($discountPercent > 0) {
+                $discountAmount = ($amount * $discountPercent) / 100;
+            } else {
+                $discountAmount = $manualDiscount;
+                // اگر مبلغ تخفیف دستی وارد شده، درصد معادل را محاسبه کن
+                if ($manualDiscount > 0 && $amount > 0) {
+                    $discountPercent = round(($manualDiscount / $amount) * 100, 2);
+                }
+            }
             
-            // محاسبه مبلغ پس از تخفیف
-            $amountAfterDiscount = $amount - $discountAmount;
-            
-            // محاسبه مبلغ باقی‌مانده
-            $remainingAmount = max(0, $amountAfterDiscount - $paidAmount);
+            // محاسبه remaining_amount
+            $remainingAmount = max(0, $amount - $discountAmount - $paidAmount);
 
-            // تعیین وضعیت بر اساس مبلغ باقی‌مانده
+            // تعیین وضعیت
             $status = 'pending';
             $collectedBy = null;
             $collectedAt = null;
@@ -186,15 +197,12 @@ class AdmissionFeeController extends Controller
                 $status = 'paid';
                 $collectedBy = auth()->id();
                 $collectedAt = now();
-            } elseif ($remainingAmount <= 0 && $paidAmount == 0) {
-                // اگر مبلغ صفر باشد اما پرداختی هم صفر باشد، در انتظار بماند
-                $status = 'pending';
             }
 
-            // ایجاد شماره رسید
+            // شماره رسید
             $receiptNumber = 'FEE-' . date('Ymd') . '-' . str_pad(AdmissionFee::count() + 1, 6, '0', STR_PAD_LEFT);
 
-            // ایجاد فیس بستری
+            // ایجاد فیس
             $fee = AdmissionFee::create([
                 'admission_request_id' => $request->admission_request_id,
                 'patient_id' => $request->patient_id,
@@ -219,17 +227,13 @@ class AdmissionFeeController extends Controller
                 'collected_at' => $collectedAt
             ]);
 
-            // به‌روزرسانی وضعیت فیس در admission_request
-            $this->updateAdmissionFeeStatus($admission);
-
             DB::commit();
 
-            // بارگذاری روابط با doctor
-            $fee->load(['patient', 'admissionRequest', 'collector', 'doctor', 'registration']);
+            $fee->load(['patient', 'admissionRequest.ward', 'collector', 'doctor', 'registration']);
 
             return response()->json([
                 'success' => true,
-                'message' => 'درخواست فیس بستری با موفقیت ایجاد شد',
+                'message' => 'فیس بستری با موفقیت ثبت شد',
                 'data' => $fee
             ], 201);
 
@@ -254,8 +258,17 @@ class AdmissionFeeController extends Controller
     public function show($id)
     {
         try {
-            $fee = AdmissionFee::with(['patient', 'admissionRequest', 'collector', 'doctor', 'registration'])
-                ->find($id);
+            $fee = AdmissionFee::with([
+                'patient', 
+                'admissionRequest.ward',
+                'admissionRequest.bed',
+                'admissionRequest.patient',
+                'admissionRequest.doctor',
+                'admissionRequest.dischargedBy',
+                'collector', 
+                'doctor', 
+                'registration'
+            ])->find($id);
 
             if (!$fee) {
                 return response()->json([
@@ -280,7 +293,7 @@ class AdmissionFeeController extends Controller
     }
 
     /**
-     * به‌روزرسانی فیس بستری با محاسبه دقیق مبالغ
+     * به‌روزرسانی فیس بستری
      */
     public function update(Request $request, $id)
     {
@@ -303,7 +316,8 @@ class AdmissionFeeController extends Controller
         $validator = Validator::make($request->all(), [
             'amount' => 'sometimes|numeric|min:0.01',
             'paid_amount' => 'sometimes|numeric|min:0',
-            'discount' => 'sometimes|numeric|min:0|max:100',
+            'discount' => 'sometimes|numeric|min:0',
+            'discount_percent' => 'sometimes|numeric|min:0|max:100',
             'fee_type' => 'sometimes|in:daily,weekly,monthly,custom',
             'period' => 'nullable|in:morning,evening,night,full_day',
             'day_number' => 'nullable|integer|min:1',
@@ -324,33 +338,38 @@ class AdmissionFeeController extends Controller
         try {
             DB::beginTransaction();
 
-            // دریافت مقادیر جدید یا استفاده از مقادیر فعلی
             $amount = (float) ($request->amount ?? $fee->amount);
             $paidAmount = (float) ($request->paid_amount ?? $fee->paid_amount);
-            $discountPercent = (float) ($request->discount ?? $fee->discount_percent ?? 0);
+            
+            // منطق تخفیف
+            if ($request->has('discount_percent')) {
+                $discountPercent = (float) $request->discount_percent;
+                $discountAmount = ($amount * $discountPercent) / 100;
+            } elseif ($request->has('discount')) {
+                $discountAmount = (float) $request->discount;
+                $discountPercent = $amount > 0 ? round(($discountAmount / $amount) * 100, 2) : 0;
+            } else {
+                $discountAmount = (float) ($fee->discount ?? 0);
+                $discountPercent = (float) ($fee->discount_percent ?? 0);
+            }
 
-            // محاسبه دقیق مبالغ
-            $discountAmount = ($amount * $discountPercent) / 100;
-            $amountAfterDiscount = $amount - $discountAmount;
-            $remainingAmount = max(0, $amountAfterDiscount - $paidAmount);
+            $remainingAmount = max(0, $amount - $discountAmount - $paidAmount);
 
-            // تعیین وضعیت بر اساس مبلغ باقی‌مانده
+            // وضعیت
             $status = $fee->status;
             $collectedBy = $fee->collected_by;
             $collectedAt = $fee->collected_at;
 
             if ($remainingAmount <= 0 && $paidAmount > 0) {
                 $status = 'paid';
-                $collectedBy = auth()->id();
-                $collectedAt = now();
+                $collectedBy = $collectedBy ?? auth()->id();
+                $collectedAt = $collectedAt ?? now();
             } elseif ($remainingAmount > 0 && $fee->status === 'paid') {
-                // اگر قبلاً paid بوده اما حالا باقی‌مانده دارد، وضعیت را به pending برگردان
                 $status = 'pending';
                 $collectedBy = null;
                 $collectedAt = null;
             }
 
-            // به‌روزرسانی فیس
             $updateData = [
                 'amount' => $amount,
                 'paid_amount' => $paidAmount,
@@ -359,45 +378,23 @@ class AdmissionFeeController extends Controller
                 'remaining_amount' => $remainingAmount,
                 'status' => $status,
                 'collected_by' => $collectedBy,
-                'collected_at' => $collectedAt
+                'collected_at' => $collectedAt,
             ];
 
-            // افزودن فیلدهای اختیاری
-            if ($request->has('fee_type')) {
-                $updateData['fee_type'] = $request->fee_type;
-            }
-            if ($request->has('period')) {
-                $updateData['period'] = $request->period;
-            }
-            if ($request->has('day_number')) {
-                $updateData['day_number'] = $request->day_number;
-            }
-            if ($request->has('description')) {
-                $updateData['description'] = $request->description;
-            }
-            if ($request->has('notes')) {
-                $updateData['notes'] = $request->notes;
-            }
-            if ($request->has('payment_method')) {
-                $updateData['payment_method'] = $request->payment_method;
-            }
-            if ($request->has('fee_date')) {
-                $updateData['fee_date'] = $request->fee_date;
-            }
-            if ($request->has('fee_time')) {
-                $updateData['fee_time'] = $request->fee_time;
-            }
+            if ($request->has('fee_type')) $updateData['fee_type'] = $request->fee_type;
+            if ($request->has('period')) $updateData['period'] = $request->period;
+            if ($request->has('day_number')) $updateData['day_number'] = $request->day_number;
+            if ($request->has('description')) $updateData['description'] = $request->description;
+            if ($request->has('notes')) $updateData['notes'] = $request->notes;
+            if ($request->has('payment_method')) $updateData['payment_method'] = $request->payment_method;
+            if ($request->has('fee_date')) $updateData['fee_date'] = $request->fee_date;
+            if ($request->has('fee_time')) $updateData['fee_time'] = $request->fee_time;
 
             $fee->update($updateData);
 
-            // به‌روزرسانی وضعیت فیس در admission_request
-            if ($fee->admissionRequest) {
-                $this->updateAdmissionFeeStatus($fee->admissionRequest);
-            }
-
             DB::commit();
 
-            $fee->load(['patient', 'admissionRequest', 'collector', 'doctor', 'registration']);
+            $fee->load(['patient', 'admissionRequest.ward', 'collector', 'doctor', 'registration']);
 
             return response()->json([
                 'success' => true,
@@ -440,50 +437,55 @@ class AdmissionFeeController extends Controller
             ], 400);
         }
 
+        // ⚠️ نکته: حالا اجازه می‌دهیم برای بیمار ترخیص شده هم فیس دریافت شود
+        // چون ممکن است فیس نهایی بعد از ترخیص محاسبه شود
+        // فقط برای بیمار لغو شده ممنوع است
+        
         $admission = $fee->admissionRequest;
-        if (!$admission || $admission->status !== 'admitted') {
+        if ($admission && $admission->status === 'cancelled') {
             return response()->json([
                 'success' => false,
-                'message' => 'بیمار بستری نمی‌باشد'
+                'message' => 'نمی‌توان فیس درخواست لغو شده را دریافت کرد'
             ], 400);
         }
 
         try {
             DB::beginTransaction();
 
-            // محاسبه مبلغ باقی‌مانده
-            $discountAmount = ($fee->amount * ($fee->discount_percent ?? 0)) / 100;
+            $discountAmount = (float) ($fee->discount ?? 0);
             $remainingAmount = max(0, $fee->amount - $fee->paid_amount - $discountAmount);
 
-            // اگر مبلغ باقی‌مانده صفر است، فیس را پرداخت شده علامت بزن
             if ($remainingAmount <= 0) {
+                // قبلاً کامل پرداخت شده
                 $fee->update([
                     'status' => 'paid',
                     'collected_by' => auth()->id(),
                     'collected_at' => now(),
-                    'remaining_amount' => 0
+                    'remaining_amount' => 0,
                 ]);
             } else {
-                // در غیر این صورت، مبلغ پرداخت شده را به روزرسانی کن
+                // پرداخت مبلغ باقی‌مانده
                 $newPaidAmount = $fee->paid_amount + $remainingAmount;
                 $fee->update([
                     'paid_amount' => $newPaidAmount,
                     'remaining_amount' => 0,
                     'status' => 'paid',
                     'collected_by' => auth()->id(),
-                    'collected_at' => now()
+                    'collected_at' => now(),
                 ]);
             }
-
-            // به‌روزرسانی وضعیت فیس در admission_request
-            $this->updateAdmissionFeeStatus($admission);
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
                 'message' => 'فیس بستری با موفقیت دریافت شد',
-                'data' => $fee->fresh(['patient', 'admissionRequest', 'collector', 'doctor'])
+                'data' => $fee->fresh([
+                    'patient', 
+                    'admissionRequest.ward', 
+                    'collector', 
+                    'doctor'
+                ])
             ]);
 
         } catch (\Exception $e) {
@@ -516,20 +518,6 @@ class AdmissionFeeController extends Controller
 
         try {
             DB::beginTransaction();
-
-            // اگر فیس پرداخت شده باشد، مبلغ را از کل پرداختی کم کن
-            if ($fee->status === 'paid') {
-                $admission = $fee->admissionRequest;
-                if ($admission) {
-                    $admission->decrement('paid_amount', $fee->amount);
-                    
-                    if ($admission->paid_amount == 0) {
-                        $admission->update(['payment_status' => 'pending']);
-                    } elseif ($admission->paid_amount > 0) {
-                        $admission->update(['payment_status' => 'partial']);
-                    }
-                }
-            }
 
             $fee->delete();
 
@@ -568,8 +556,13 @@ class AdmissionFeeController extends Controller
                 ], 404);
             }
 
-            $query = AdmissionFee::with(['admissionRequest', 'collector', 'doctor'])
-                ->where('patient_id', $patientId);
+            $query = AdmissionFee::with([
+                'admissionRequest.ward',
+                'admissionRequest.bed',
+                'collector', 
+                'doctor'
+            ])
+            ->where('patient_id', $patientId);
 
             if ($request->has('admission_request_id')) {
                 $query->where('admission_request_id', $request->admission_request_id);
@@ -581,12 +574,12 @@ class AdmissionFeeController extends Controller
 
             $fees = $query->orderBy('created_at', 'desc')->get();
 
-            // محاسبه آمار
             $statistics = [
                 'total_fees' => $fees->count(),
                 'total_amount' => $fees->sum('amount'),
                 'paid_amount' => $fees->where('status', 'paid')->sum('amount'),
                 'pending_amount' => $fees->where('status', 'pending')->sum('amount'),
+                'remaining_amount' => $fees->sum('remaining_amount'),
                 'total_paid' => $fees->where('status', 'paid')->count(),
                 'total_pending' => $fees->where('status', 'pending')->count()
             ];
@@ -616,7 +609,9 @@ class AdmissionFeeController extends Controller
     public function getAdmissionFees($admissionId)
     {
         try {
-            $admission = AdmissionRequest::find($admissionId);
+            $admission = AdmissionRequest::with(['patient', 'ward', 'bed', 'doctor'])
+                ->find($admissionId);
+                
             if (!$admission) {
                 return response()->json([
                     'success' => false,
@@ -624,7 +619,7 @@ class AdmissionFeeController extends Controller
                 ], 404);
             }
 
-            $fees = AdmissionFee::with(['collector', 'doctor', 'patient'])
+            $fees = AdmissionFee::with(['collector', 'doctor', 'patient', 'admissionRequest.ward'])
                 ->where('admission_request_id', $admissionId)
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -636,7 +631,8 @@ class AdmissionFeeController extends Controller
                     'fees' => $fees,
                     'total_amount' => $fees->sum('amount'),
                     'paid_amount' => $fees->where('status', 'paid')->sum('amount'),
-                    'pending_amount' => $fees->where('status', 'pending')->sum('amount')
+                    'pending_amount' => $fees->where('status', 'pending')->sum('amount'),
+                    'remaining_amount' => $fees->sum('remaining_amount'),
                 ]
             ]);
 
@@ -651,15 +647,49 @@ class AdmissionFeeController extends Controller
     }
 
     /**
-     * دریافت فیس‌های نیازمند هشدار (بیشتر از 24 ساعت)
+     * دریافت فیس‌های نیازمند هشدار
+     * ⭐ حالا از فیلدهای last_fee_alert_at و fee_alert_count در admission_requests استفاده می‌کند
      */
     public function getPendingFeesForAlert()
     {
         try {
-            $pendingFees = AdmissionFee::with(['patient', 'admissionRequest', 'collector', 'doctor'])
+            $pendingFees = AdmissionFee::with([
+                'patient', 
+                'admissionRequest.ward',
+                'admissionRequest.bed',
+                'admissionRequest.patient',
+                'collector', 
+                'doctor'
+            ])
                 ->where('status', 'pending')
-                ->where('created_at', '<=', now()->subHours(24))
-                ->get();
+                ->where('remaining_amount', '>', 0)
+                ->orderBy('created_at', 'asc')
+                ->get()
+                ->map(function ($fee) {
+                    $admission = $fee->admissionRequest;
+                    return [
+                        'id' => $fee->id,
+                        'admission_request_id' => $fee->admission_request_id,
+                        'fee_id' => $fee->id,
+                        'patient_id' => $fee->patient_id,
+                        'patient' => $fee->patient,
+                        'patient_name' => $fee->patient?->full_name ?? 
+                                         (($fee->patient?->first_name ?? '') . ' ' . ($fee->patient?->last_name ?? '')),
+                        'ward_name' => $admission?->ward?->name,
+                        'location' => $admission?->location,
+                        'room_number' => $admission?->room_number,
+                        'bed_number' => $admission?->bed_number ?? $admission?->bed?->bed_number,
+                        'admission_date' => $admission?->admission_date,
+                        'fee_date' => $fee->fee_date,
+                        'fee_amount' => $fee->amount,
+                        'paid_amount' => $fee->paid_amount,
+                        'discount' => $fee->discount,
+                        'remaining_amount' => $fee->remaining_amount,
+                        'last_fee_alert_at' => $admission?->last_fee_alert_at,
+                        'fee_alert_count' => $admission?->fee_alert_count,
+                        'created_at' => $fee->created_at,
+                    ];
+                });
 
             return response()->json([
                 'success' => true,
@@ -683,8 +713,17 @@ class AdmissionFeeController extends Controller
     public function printReceipt($id)
     {
         try {
-            $fee = AdmissionFee::with(['patient', 'admissionRequest', 'collector', 'doctor', 'registration'])
-                ->find($id);
+            $fee = AdmissionFee::with([
+                'patient', 
+                'admissionRequest.ward',
+                'admissionRequest.bed',
+                'admissionRequest.patient',
+                'admissionRequest.doctor',
+                'admissionRequest.dischargedBy',
+                'collector', 
+                'doctor', 
+                'registration'
+            ])->find($id);
 
             if (!$fee) {
                 return response()->json([
@@ -693,23 +732,78 @@ class AdmissionFeeController extends Controller
                 ], 404);
             }
 
-            // افزایش تعداد پرینت
             $fee->increment('print_count');
             $fee->update(['last_printed_at' => now()]);
 
-            // داده‌های مورد نیاز برای پرینت
+            $admission = $fee->admissionRequest;
+
+            // ساختار نرمال‌شده برای Frontend
             $receiptData = [
-                'fee' => $fee,
-                'patient' => $fee->patient,
-                'admission' => $fee->admissionRequest,
-                'collector' => $fee->collector,
-                'doctor' => $fee->doctor,
-                'registration' => $fee->registration,
+                // اطلاعات بیمارستان
                 'hospital_name' => config('app.name', 'بیمارستان'),
                 'hospital_address' => config('app.address', ''),
                 'hospital_phone' => config('app.phone', ''),
-                'print_count' => $fee->print_count,
-                'print_date' => now()->format('Y/m/d H:i')
+
+                // اطلاعات فیس
+                'fee' => [
+                    'id' => $fee->id,
+                    'receipt_number' => $fee->receipt_number,
+                    'fee_date' => $fee->fee_date,
+                    'fee_time' => $fee->fee_time,
+                    'amount' => $fee->amount,
+                    'paid_amount' => $fee->paid_amount,
+                    'discount' => $fee->discount,
+                    'discount_percent' => $fee->discount_percent,
+                    'remaining_amount' => $fee->remaining_amount,
+                    'payment_method' => $fee->payment_method,
+                    'status' => $fee->status,
+                    'description' => $fee->description,
+                    'day_number' => $fee->day_number,
+                    'fee_type' => $fee->fee_type,
+                    'period' => $fee->period,
+                    'print_count' => $fee->print_count,
+                ],
+
+                // اطلاعات بیمار (نرمال‌شده)
+                'patient' => $fee->patient ? [
+                    'id' => $fee->patient->id,
+                    'full_name' => $fee->patient->full_name ?? 
+                                  (($fee->patient->first_name ?? '') . ' ' . ($fee->patient->last_name ?? '')),
+                    'first_name' => $fee->patient->first_name,
+                    'last_name' => $fee->patient->last_name,
+                    'national_id' => $fee->patient->national_id,
+                    'mobile' => $fee->patient->mobile ?? $fee->patient->phone,
+                    'phone' => $fee->patient->phone ?? $fee->patient->mobile,
+                    'age' => $fee->patient->age,
+                    'gender' => $fee->patient->gender,
+                ] : null,
+
+                // اطلاعات بستری
+                'admission' => $admission ? [
+                    'id' => $admission->id,
+                    'admission_date' => $admission->admission_date,
+                    'ward' => $admission->ward ? [
+                        'id' => $admission->ward->id,
+                        'name' => $admission->ward->name,
+                    ] : null,
+                    'ward_name' => $admission->ward?->name,
+                    'bed' => $admission->bed ? [
+                        'id' => $admission->bed->id,
+                        'bed_number' => $admission->bed->bed_number,
+                    ] : null,
+                    'bed_number' => $admission->bed_number ?? $admission->bed?->bed_number,
+                    'room_number' => $admission->room_number,
+                    'location' => $admission->location,
+                    'diagnosis' => $admission->diagnosis,
+                ] : null,
+
+                // دریافت کننده
+                'collector' => $fee->collector ? [
+                    'id' => $fee->collector->id,
+                    'name' => $fee->collector->name,
+                ] : null,
+
+                'print_date' => now()->format('Y/m/d H:i'),
             ];
 
             return response()->json([
@@ -728,6 +822,31 @@ class AdmissionFeeController extends Controller
     }
 
     /**
+     * افزایش شمارنده پرینت (اختیاری)
+     */
+    public function incrementPrint($id)
+    {
+        try {
+            $fee = AdmissionFee::findOrFail($id);
+            $fee->increment('print_count');
+            $fee->update(['last_printed_at' => now()]);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'print_count' => $fee->print_count,
+                    'last_printed_at' => $fee->last_printed_at,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در به‌روزرسانی شمارنده پرینت',
+            ], 500);
+        }
+    }
+
+    /**
      * دریافت آمار فیس‌ها
      */
     public function getFeeStatistics(Request $request)
@@ -735,15 +854,12 @@ class AdmissionFeeController extends Controller
         try {
             $query = AdmissionFee::query();
 
-            // فیلتر بر اساس تاریخ
             if ($request->has('from_date')) {
                 $query->whereDate('fee_date', '>=', $request->from_date);
             }
             if ($request->has('to_date')) {
                 $query->whereDate('fee_date', '<=', $request->to_date);
             }
-
-            // فیلتر بر اساس پزشک
             if ($request->has('doctor_id')) {
                 $query->where('doctor_id', $request->doctor_id);
             }
@@ -753,6 +869,7 @@ class AdmissionFeeController extends Controller
                 'total_amount' => $query->sum('amount'),
                 'paid_amount' => (clone $query)->where('status', 'paid')->sum('amount'),
                 'pending_amount' => (clone $query)->where('status', 'pending')->sum('amount'),
+                'remaining_amount' => $query->sum('remaining_amount'),
                 'total_paid' => (clone $query)->where('status', 'paid')->count(),
                 'total_pending' => (clone $query)->where('status', 'pending')->count(),
                 'by_payment_method' => [
@@ -768,7 +885,6 @@ class AdmissionFeeController extends Controller
                     'monthly' => (clone $query)->where('fee_type', 'monthly')->count(),
                     'custom' => (clone $query)->where('fee_type', 'custom')->count()
                 ],
-                'daily_average' => $query->count() > 0 ? round($query->sum('amount') / $query->count(), 2) : 0,
                 'today' => (clone $query)->whereDate('fee_date', today())->count(),
                 'today_amount' => (clone $query)->whereDate('fee_date', today())->sum('amount')
             ];
@@ -794,22 +910,19 @@ class AdmissionFeeController extends Controller
     public function storeForRegistration(Request $request, $regId)
     {
         try {
-            // پیدا کردن admission بر اساس reg_id
             $admission = AdmissionRequest::where('reg_id', $regId)
-                ->where('status', 'admitted')
+                ->orderBy('created_at', 'desc')
                 ->first();
 
             if (!$admission) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'درخواست بستری فعال برای این مراجعه یافت نشد'
+                    'message' => 'درخواست بستری برای این مراجعه یافت نشد'
                 ], 404);
             }
 
-            // اضافه کردن admission_request_id به request
             $request->merge(['admission_request_id' => $admission->id]);
 
-            // استفاده از متد store
             return $this->store($request);
 
         } catch (\Exception $e) {
@@ -819,27 +932,6 @@ class AdmissionFeeController extends Controller
                 'message' => 'خطا در ثبت فیس',
                 'error' => $e->getMessage()
             ], 500);
-        }
-    }
-
-    /**
-     * به‌روزرسانی وضعیت فیس در admission_request
-     */
-    private function updateAdmissionFeeStatus($admission)
-    {
-        if (!$admission) return;
-
-        // محاسبه مجموع فیس‌های پرداخت شده
-        $totalFees = $admission->fees()->sum('amount');
-        $totalPaid = $admission->fees()->where('status', 'paid')->sum('amount');
-        $remaining = $totalFees - $totalPaid;
-
-        if ($remaining <= 0 && $totalFees > 0) {
-            $admission->update(['payment_status' => 'paid']);
-        } elseif ($totalPaid > 0) {
-            $admission->update(['payment_status' => 'partial']);
-        } else {
-            $admission->update(['payment_status' => 'pending']);
         }
     }
 }

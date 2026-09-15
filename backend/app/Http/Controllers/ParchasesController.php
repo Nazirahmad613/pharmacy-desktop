@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/ParchasesController.php
 
 namespace App\Http\Controllers;
 
@@ -15,6 +14,9 @@ use App\Services\StockService;
 
 class ParchasesController extends Controller
 {
+    // ============================================================
+    // لیست خریدها
+    // ============================================================
     public function index()
     {
         $parchases = Parchase::with([
@@ -27,6 +29,10 @@ class ParchasesController extends Controller
         return response()->json($parchases);
     }
 
+
+    // ============================================================
+    // ثبت خرید جدید
+    // ============================================================
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -37,10 +43,7 @@ class ParchasesController extends Controller
             'items.*.med_id'      => 'required|exists:medications,med_id',
             'items.*.category_id' => 'required|exists:categories,category_id',
             'items.*.type'        => 'nullable|string',
-
-            // ✅ Batch دوا
             'items.*.batch_no'    => 'nullable|string|max:255',
-
             'items.*.quantity'    => 'required|integer|min:1',
             'items.*.unit_price'  => 'required|numeric|min:0',
             'items.*.exp_date'    => 'required|date',
@@ -66,32 +69,27 @@ class ParchasesController extends Controller
             foreach ($validated['items'] as $item) {
 
                 // ثبت آیتم خرید
-                $parchaseItem = $parchase->items()->create([
+                $parchase->items()->create([
                     'med_id'         => $item['med_id'],
                     'category_id'    => $item['category_id'],
                     'type'           => $item['type'] ?? null,
-
-                    // ✅ شماره Batch
                     'batch_no'       => $item['batch_no'] ?? null,
-
                     'quantity'       => $item['quantity'],
-
-                    // ✅ موجودی اولیه این Batch برابر تعداد خریداری‌شده
                     'remaining_qty'  => $item['quantity'],
-
                     'unit_price'     => $item['unit_price'],
                     'total_price'    => $item['quantity'] * $item['unit_price'],
                     'exp_date'       => $item['exp_date'],
                     'supplier_id'    => $validated['supplier_id'],
                 ]);
 
-                // ✅ افزایش موجودی (استاک) با type
+                // افزایش موجودی (استاک) با type و batch_number
                 StockService::increase(
                     $item['med_id'],
                     $validated['supplier_id'],
                     $item['exp_date'],
                     $item['quantity'],
-                    $item['type'] ?? null
+                    $item['type'] ?? null,
+                    $item['batch_no'] ?? null
                 );
             }
 
@@ -136,7 +134,10 @@ class ParchasesController extends Controller
         }
     }
 
-    // متد update نیز مشابه اصلاح شود
+
+    // ============================================================
+    // بروزرسانی خرید
+    // ============================================================
     public function update(Request $request, $id)
     {
         $validated = $request->validate([
@@ -147,10 +148,7 @@ class ParchasesController extends Controller
             'items.*.med_id'      => 'required|exists:medications,med_id',
             'items.*.category_id' => 'required|exists:categories,category_id',
             'items.*.type'        => 'nullable|string',
-
-            // ✅ Batch دوا
             'items.*.batch_no'    => 'nullable|string|max:255',
-
             'items.*.quantity'    => 'required|integer|min:1',
             'items.*.unit_price'  => 'required|numeric|min:0',
             'items.*.exp_date'    => 'required|date',
@@ -163,15 +161,19 @@ class ParchasesController extends Controller
 
             $oldData = $parchase->load('items')->toArray();
 
-            // برگرداندن موجودی آیتم‌های قبلی
+            // ✅ برگرداندن موجودی آیتم‌های قبلی
+            // - از remaining_qty استفاده می‌کنیم نه quantity
+            //   چون ممکن است بخشی از batch فروخته شده باشد
+            // - batch_no را هم پاس می‌دهیم
             foreach ($parchase->items as $oldItem) {
 
                 StockService::reverseDecrease(
                     $oldItem->med_id,
                     $parchase->supplier_id,
                     $oldItem->exp_date,
-                    $oldItem->quantity,
-                    $oldItem->type
+                    $oldItem->remaining_qty,      // ← مهم
+                    $oldItem->type,
+                    $oldItem->batch_no            // ← مهم
                 );
             }
 
@@ -202,34 +204,39 @@ class ParchasesController extends Controller
                     'med_id'         => $item['med_id'],
                     'category_id'    => $item['category_id'],
                     'type'           => $item['type'] ?? null,
-
-                    // ✅ شماره Batch
                     'batch_no'       => $item['batch_no'] ?? null,
-
                     'quantity'       => $item['quantity'],
-
-                    // ✅ موجودی اولیه Batch جدید
                     'remaining_qty'  => $item['quantity'],
-
                     'unit_price'     => $item['unit_price'],
                     'total_price'    => $item['quantity'] * $item['unit_price'],
                     'exp_date'       => $item['exp_date'],
                     'supplier_id'    => $validated['supplier_id'],
                 ]);
 
-                // افزایش موجودی برای آیتم جدید با type
                 StockService::increase(
                     $item['med_id'],
                     $validated['supplier_id'],
                     $item['exp_date'],
                     $item['quantity'],
-                    $item['type'] ?? null
+                    $item['type'] ?? null,
+                    $item['batch_no'] ?? null
                 );
             }
 
             $this->syncJournal($parchase);
 
             DB::commit();
+
+            LogService::create(
+                'update',
+                'parchases',
+                $parchase->parchase_id,
+                'Parchase updated',
+                [
+                    'old' => $oldData,
+                    'new' => $parchase->load('items')->toArray(),
+                ]
+            );
 
             return response()->json([
                 'success' => true,
@@ -258,6 +265,10 @@ class ParchasesController extends Controller
         }
     }
 
+
+    // ============================================================
+    // حذف خرید
+    // ============================================================
     public function destroy($id)
     {
         DB::beginTransaction();
@@ -267,15 +278,16 @@ class ParchasesController extends Controller
 
             $data = $parchase->load('items')->toArray();
 
-            // برگرداندن موجودی آیتم‌ها قبل از حذف
+            // ✅ برگرداندن موجودی آیتم‌ها قبل از حذف
             foreach ($parchase->items as $item) {
 
                 StockService::reverseDecrease(
                     $item->med_id,
                     $parchase->supplier_id,
                     $item->exp_date,
-                    $item->quantity,
-                    $item->type
+                    $item->remaining_qty,      // ← مهم
+                    $item->type,
+                    $item->batch_no            // ← مهم
                 );
             }
 
@@ -288,6 +300,14 @@ class ParchasesController extends Controller
             $parchase->delete();
 
             DB::commit();
+
+            LogService::create(
+                'delete',
+                'parchases',
+                $id,
+                'Parchase deleted',
+                $data
+            );
 
             return response()->json([
                 'success' => true,
@@ -310,10 +330,17 @@ class ParchasesController extends Controller
         }
     }
 
-    // سایر متدها...
 
+    // ============================================================
+    // ژورنال
+    // ============================================================
     private function syncJournal($parchase)
     {
+        // جلوگیری از ژورنال تکراری
+        Journal::where('ref_type', 'parchase')
+            ->where('ref_id', $parchase->parchase_id)
+            ->delete();
+
         Journal::create([
             'journal_date' => $parchase->parchase_date,
             'description'  => "خرید دوا شماره {$parchase->parchase_id} از تأمین‌کننده",
