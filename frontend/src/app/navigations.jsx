@@ -29,8 +29,12 @@ import PsychologyIcon from "@mui/icons-material/Psychology";
 import ImageIcon from "@mui/icons-material/Image";
 import RadioIcon from "@mui/icons-material/Radio";
 import ScannerIcon from "@mui/icons-material/Scanner";
-// ✅ آیکون جدید برای ماژول حساب‌ها
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import LocalPharmacyIcon from "@mui/icons-material/LocalPharmacy";
+import MedicationIcon from "@mui/icons-material/Medication";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import WarehouseIcon from "@mui/icons-material/Warehouse";
+import HistoryIcon from "@mui/icons-material/History";
 
 const navigations = [
   {
@@ -95,9 +99,6 @@ const navigations = [
     ],
   },
 
-  // ============================================================
-  // ✅ بخش لابراتوار (فقط یک آیتم - همه چیز در یک صفحه)
-  // ============================================================
   {
     label: "لابراتوار",
     type: "label",
@@ -107,12 +108,8 @@ const navigations = [
     name: "🧪 لابراتوار",
     icon: <ScienceIcon />,
     path: "/material/lab-hematology",
-    // ❌ بدون children - همه بخش‌ها در صفحه اصلی نمایش داده می‌شوند
   },
 
-  // ============================================================
-  // ✅ بخش رادیولوژی (فقط یک آیتم - همه چیز در یک صفحه)
-  // ============================================================
   {
     label: "رادیولوژی",
     type: "label",
@@ -122,12 +119,57 @@ const navigations = [
     name: "📷 رادیولوژی",
     icon: <RadioIcon />,
     path: "/material/radiology",
-    // ❌ بدون children - همه بخش‌ها در صفحه اصلی نمایش داده می‌شوند
   },
 
   // ============================================================
-  // ادامه سایر بخش‌ها
+  // ✅ ماژول دواخانه (Pharmacy)
   // ============================================================
+  {
+    label: "دواخانه",
+    type: "label",
+  },
+
+  {
+    name: "💊 دواخانه",
+    icon: <LocalPharmacyIcon />,
+    children: [
+      {
+        name: "داشبورد دواخانه",
+        path: "/material/pharmacy",
+        icon: <DashboardIcon />,
+      },
+      {
+        name: "اجراآت نسخه‌جات",
+        path: "/material/pharmacy/executions",
+        icon: <FactCheckIcon />,
+      },
+      {
+        name: "فروش دوا (نسخه)",
+        path: "/material/pharmacy/sales",
+        icon: <PointOfSaleIcon />,
+      },
+      {
+        name: "لیست نسخه‌ها",
+        path: "/material/pharmacy/prescriptions",
+        icon: <ReceiptLongIcon />,
+      },
+      {
+        name: "موجودی دوا",
+        path: "/material/pharmacy/inventory",
+        icon: <WarehouseIcon />,
+      },
+      {
+        name: "مدیریت دواها",
+        path: "/material/pharmacy/medications",
+        icon: <MedicationIcon />,
+      },
+      {
+        name: "تاریخچه فروش",
+        path: "/material/pharmacy/history",
+        icon: <HistoryIcon />,
+      },
+    ],
+  },
 
   {
     label: "مدیریت مالی",
@@ -209,9 +251,6 @@ const navigations = [
         ],
       },
 
-      // ============================================================
-      // ✅ ماژول جدید: مدیریت حساب‌ها (Accounts)
-      // ============================================================
       {
         name: "مدیریت حساب‌ها",
         icon: <AccountBalanceWalletIcon />,
