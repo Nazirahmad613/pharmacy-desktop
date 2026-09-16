@@ -30,11 +30,8 @@ import ImageIcon from "@mui/icons-material/Image";
 import RadioIcon from "@mui/icons-material/Radio";
 import ScannerIcon from "@mui/icons-material/Scanner";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+// ✅ آیکون دواخانه
 import LocalPharmacyIcon from "@mui/icons-material/LocalPharmacy";
-import MedicationIcon from "@mui/icons-material/Medication";
-import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
-import WarehouseIcon from "@mui/icons-material/Warehouse";
-import HistoryIcon from "@mui/icons-material/History";
 
 const navigations = [
   {
@@ -99,6 +96,9 @@ const navigations = [
     ],
   },
 
+  // ============================================================
+  // ✅ بخش لابراتوار
+  // ============================================================
   {
     label: "لابراتوار",
     type: "label",
@@ -110,6 +110,9 @@ const navigations = [
     path: "/material/lab-hematology",
   },
 
+  // ============================================================
+  // ✅ بخش رادیولوژی
+  // ============================================================
   {
     label: "رادیولوژی",
     type: "label",
@@ -123,6 +126,9 @@ const navigations = [
 
   // ============================================================
   // ✅ ماژول دواخانه (Pharmacy)
+  // ⭐ فقط یک آیتم ساده - بدون children
+  // ⭐ کلیک روی آن → داشبورد دواخانه
+  // ⭐ داشبورد خودش شامل کارت‌های دسترسی سریع به صفحات فرعی
   // ============================================================
   {
     label: "دواخانه",
@@ -132,44 +138,13 @@ const navigations = [
   {
     name: "💊 دواخانه",
     icon: <LocalPharmacyIcon />,
-    children: [
-      {
-        name: "داشبورد دواخانه",
-        path: "/material/pharmacy",
-        icon: <DashboardIcon />,
-      },
-      {
-        name: "اجراآت نسخه‌جات",
-        path: "/material/pharmacy/executions",
-        icon: <FactCheckIcon />,
-      },
-      {
-        name: "فروش دوا (نسخه)",
-        path: "/material/pharmacy/sales",
-        icon: <PointOfSaleIcon />,
-      },
-      {
-        name: "لیست نسخه‌ها",
-        path: "/material/pharmacy/prescriptions",
-        icon: <ReceiptLongIcon />,
-      },
-      {
-        name: "موجودی دوا",
-        path: "/material/pharmacy/inventory",
-        icon: <WarehouseIcon />,
-      },
-      {
-        name: "مدیریت دواها",
-        path: "/material/pharmacy/medications",
-        icon: <MedicationIcon />,
-      },
-      {
-        name: "تاریخچه فروش",
-        path: "/material/pharmacy/history",
-        icon: <HistoryIcon />,
-      },
-    ],
+    path: "/material/pharmacy",
+    // ❌ بدون children - دقیقاً مثل لابراتوار و رادیولوژی
   },
+
+  // ============================================================
+  // ادامه سایر بخش‌ها
+  // ============================================================
 
   {
     label: "مدیریت مالی",

@@ -65,31 +65,135 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ تابع کمکی: قالب‌بندی خروجی نسخه — با همه فیلدها
+    // ✅ تابع کمکی: قالب‌بندی خروجی نسخه
     // ============================================================
     private function formatPrescription(Prescription $prescription): array
     {
+        $patient = $prescription->patient;
+        $registration = $prescription->registration;
+        $doctor = $prescription->doctor;
+
+        // ⭐ نام کامل بیمار
+        $patientFullName =
+            $prescription->patient_name
+            ?: ($patient?->full_name
+                ?? (($patient?->first_name ?? '') . ' ' . ($patient?->last_name ?? '')))
+            ?: ($registration?->patient_name
+                ?? ($registration?->patient?->full_name));
+
+        // ⭐ شماره تذکره
+        $tazkiraNumber =
+            $prescription->tazkira_number
+            ?: ($patient?->national_id
+                ?? $patient?->tazkira_number
+                ?? $registration?->tazkira_number
+                ?? $registration?->patient?->national_id);
+
+        // ⭐ سن بیمار
+        $patientAge =
+            $prescription->patient_age
+            ?: ($patient?->age
+                ?? $registration?->patient_age
+                ?? $registration?->patient?->age);
+
+        // ⭐ جنسیت بیمار
+        $patientGender =
+            $prescription->patient_gender
+            ?: ($patient?->gender
+                ?? $registration?->patient_gender
+                ?? $registration?->patient?->gender);
+
+        // ⭐ شماره تماس
+        $patientPhone =
+            $prescription->patient_phone
+            ?: ($patient?->mobile
+                ?? $patient?->phone
+                ?? $registration?->patient_phone
+                ?? $registration?->patient?->mobile
+                ?? $registration?->patient?->phone);
+
+        // ⭐ گروه خون
+        $patientBloodGroup =
+            $prescription->patient_blood_group
+            ?: ($patient?->blood_group
+                ?? $registration?->patient_blood_group
+                ?? $registration?->patient?->blood_group);
+
+        // ⭐ آدرس
+        $patientAddress =
+            $patient?->address
+            ?? $registration?->patient?->address
+            ?? $registration?->address;
+
+        // ⭐ نام داکتر
+        $doctorName =
+            $prescription->doc_name
+            ?: ($doctor?->name
+                ?? $doctor?->full_name
+                ?? $doctor?->username);
+
         return [
             'pres_id'         => $prescription->pres_id,
             'pres_num'        => $prescription->pres_num,
             'pres_date'       => $prescription->pres_date,
             'patient_id'      => $prescription->patient_id,
-            'patient_name'    => $prescription->patient_name,
+            'patient_name'    => $patientFullName,
             'reg_id'          => $prescription->reg_id,
             'doc_id'          => $prescription->doc_id,
-            'doc_name'        => $prescription->doc_name,
+            'doc_name'        => $doctorName,
             'diagnosis'       => $prescription->diagnosis,
             'weight'          => $prescription->weight,
             'blood_pressure'  => $prescription->blood_pressure,
             'temperature'     => $prescription->temperature,
             'oxygen'          => $prescription->oxygen,
 
-            // ✅ فیلدهای اضافی مریض که توی فرم ویرایش و چاپ لازمه
-            'tazkira_number'      => $prescription->tazkira_number,
-            'patient_age'         => $prescription->patient_age,
-            'patient_gender'      => $prescription->patient_gender,
-            'patient_phone'       => $prescription->patient_phone,
-            'patient_blood_group' => $prescription->patient_blood_group,
+            // ✅ فیلدهای مریض
+            'tazkira_number'      => $tazkiraNumber,
+            'patient_age'         => $patientAge,
+            'patient_gender'      => $patientGender,
+            'patient_phone'       => $patientPhone,
+            'patient_blood_group' => $patientBloodGroup,
+            'patient_address'     => $patientAddress,
+
+            // ⭐ معلومات کامل بیمار (nested)
+            'patient' => $patient ? [
+                'id'           => $patient->id,
+                'full_name'    => $patient->full_name
+                                  ?? (($patient->first_name ?? '') . ' ' . ($patient->last_name ?? '')),
+                'first_name'   => $patient->first_name,
+                'last_name'    => $patient->last_name,
+                'age'          => $patient->age,
+                'gender'       => $patient->gender,
+                'national_id'  => $patient->national_id,
+                'mobile'       => $patient->mobile ?? $patient->phone,
+                'phone'        => $patient->phone ?? $patient->mobile,
+                'blood_group'  => $patient->blood_group,
+                'address'      => $patient->address,
+            ] : null,
+
+            // ⭐ معلومات داکتر (بدون department چون در User وجود ندارد)
+            'doctor' => $doctor ? [
+                'id'         => $doctor->id,
+                'name'       => $doctor->name ?? $doctor->full_name ?? $doctor->username,
+                'full_name'  => $doctor->full_name ?? null,
+                'username'   => $doctor->username ?? null,
+                'email'      => $doctor->email ?? null,
+                'phone'      => $doctor->phone ?? $doctor->mobile ?? null,
+                'specialty'  => $doctor->specialty ?? $doctor->specialization ?? null,
+            ] : null,
+
+            // ⭐ معلومات registration
+            'registration' => $registration ? [
+                'reg_id'         => $registration->reg_id,
+                'patient_id'     => $registration->patient_id,
+                'patient_name'   => $registration->patient_name,
+                'tazkira_number' => $registration->tazkira_number,
+                'patient_age'    => $registration->patient_age,
+                'patient_gender' => $registration->patient_gender,
+                'patient_phone'  => $registration->patient_phone,
+                'visit_status'   => $registration->visit_status,
+                'created_at'     => $registration->created_at,
+            ] : null,
 
             // ✅ وضعیت
             'status'                 => $prescription->status,
@@ -102,26 +206,33 @@ class PrescriptionController extends Controller
                                         ?? optional($prescription->pharmacy)->full_name
                                         ?? null,
             'status_note'            => $prescription->status_note,
+            'created_at'             => $prescription->created_at,
+            'updated_at'             => $prescription->updated_at,
 
             // ============================================================
-            // ✅ اقلام نسخه — با همه فیلدها + fallback
+            // ✅ اقلام نسخه
             // ============================================================
             'items' => $prescription->items->map(function ($item) {
 
-                // نام حمایت‌کننده
                 $supplierName = $item->is_custom
                     ? ($item->supplier_name ?? 'نامشخص')
                     : ($item->supplier->account_name ?? $item->supplier_name ?? 'نامشخص');
 
-                // نام دارو
                 $medName = $item->is_custom
                     ? ($item->med_name ?? 'نامشخص')
                     : ($item->medication->gen_name ?? $item->med_name ?? 'نامشخص');
 
-                // نام کتگوری — با fallback از هر دو منبع
                 $categoryName = $item->category->category_name
                     ?? $item->category_name
                     ?? 'نامشخص';
+
+                // ⭐ نوعیت دوا
+                $medicationType =
+                    $item->type
+                    ?: ($item->medication->med_type
+                        ?? $item->medication->type
+                        ?? $item->medication->dosage_form
+                        ?? null);
 
                 return [
                     'pres_it_id'      => $item->pres_it_id,
@@ -129,16 +240,22 @@ class PrescriptionController extends Controller
                     'category_name'   => $categoryName,
                     'med_id'          => $item->med_id,
                     'med_name'        => $medName,
+                    'medication_name' => $medName,
+                    'medication_type' => $medicationType,
                     'supplier_id'     => $item->supplier_id,
                     'supplier_name'   => $supplierName,
                     'is_custom'       => (bool) $item->is_custom,
                     'type'            => $item->type,
+                    'dosage_form'     => $medicationType,
                     'stock_id'        => $item->stock_id,
                     'barcode'         => $item->barcode,
                     'batch_number'    => $item->batch_number,
                     'dosage'          => $item->dosage,
                     'quantity'        => $item->quantity,
                     'remarks'         => $item->remarks,
+                    'notes'           => $item->remarks,
+                    'unit_price'      => $item->unit_price ?? null,
+                    'total_price'     => $item->total_price ?? null,
                 ];
             })->values()->toArray(),
         ];
@@ -155,8 +272,8 @@ class PrescriptionController extends Controller
             'items.category',
             'items.stock',
             'patient',
-            'registration',
-            'doctor',
+            'registration.patient',
+            'doctor',                // ⭐ فقط doctor بدون department
             'pharmacy',
         ]);
 
@@ -195,7 +312,8 @@ class PrescriptionController extends Controller
             'items.category',
             'items.stock',
             'patient',
-            'registration',
+            'registration.patient',
+            'doctor',                // ⭐ فقط doctor بدون department
             'pharmacy',
         ])->where('doc_id', $doctorId);
 
@@ -283,12 +401,12 @@ class PrescriptionController extends Controller
             return response()->json([
                 'success' => true,
                 'data'    => [
-                    'stock_id'     => $stock->stock_id,
-                    'barcode'      => $medication->barcode ?? null,
-                    'batch_number' => $stock->batch_number,
-                    'exp_date'     => $stock->exp_date,
-                    'quantity'     => $stock->quantity,
-                    'selling_price'=> $stock->selling_price,
+                    'stock_id'      => $stock->stock_id,
+                    'barcode'       => $medication->barcode ?? null,
+                    'batch_number'  => $stock->batch_number,
+                    'exp_date'      => $stock->exp_date,
+                    'quantity'      => $stock->quantity,
+                    'selling_price' => $stock->selling_price,
                 ],
             ]);
 
@@ -432,7 +550,10 @@ class PrescriptionController extends Controller
                         'items.supplier',
                         'items.category',
                         'items.stock',
-                        'pharmacy'
+                        'patient',
+                        'registration.patient',
+                        'doctor',                // ⭐ فقط doctor
+                        'pharmacy',
                     ])
                 )
             ], 201);
@@ -507,7 +628,6 @@ class PrescriptionController extends Controller
                 }
             }
 
-            // ✅ برگرداندن موجودی آیتم‌های قبلی
             foreach ($prescription->items as $oldItem) {
                 if (!$oldItem->is_custom && $oldItem->med_id && $oldItem->stock_id) {
                     StockService::reverseDecreaseByStockId(
@@ -517,7 +637,6 @@ class PrescriptionController extends Controller
                 }
             }
 
-            // ✅ بروزرسانی نسخه
             $prescription->update([
                 'patient_id'          => $validated['patient_id'],
                 'reg_id'              => $validated['reg_id'],
@@ -537,10 +656,8 @@ class PrescriptionController extends Controller
                 'status_note'         => $validated['status_note'] ?? $prescription->status_note,
             ]);
 
-            // ✅ حذف آیتم‌های قدیمی
             PrescriptionItem::where('pres_id', $prescription->pres_id)->delete();
 
-            // ✅ ثبت آیتم‌های جدید
             foreach ($validated['items'] as $item) {
                 $isCustom = !empty($item['is_custom']);
 
@@ -594,7 +711,10 @@ class PrescriptionController extends Controller
                         'items.supplier',
                         'items.category',
                         'items.stock',
-                        'pharmacy'
+                        'patient',
+                        'registration.patient',
+                        'doctor',                // ⭐ فقط doctor
+                        'pharmacy',
                     ])
                 )
             ], 200);
@@ -770,7 +890,10 @@ class PrescriptionController extends Controller
                         'items.supplier',
                         'items.category',
                         'items.stock',
-                        'pharmacy'
+                        'patient',
+                        'registration.patient',
+                        'doctor',                // ⭐ فقط doctor
+                        'pharmacy',
                     ])
                 ),
             ]);
@@ -920,8 +1043,8 @@ class PrescriptionController extends Controller
                 'items.category',
                 'items.stock',
                 'patient',
-                'registration',
-                'doctor',
+                'registration.patient',
+                'doctor',                // ⭐ فقط doctor
                 'pharmacy',
             ])->findOrFail($id);
 

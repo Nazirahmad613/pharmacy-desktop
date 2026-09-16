@@ -1,4 +1,6 @@
-// src/app/pages/pharmacy/Pharmacy.jsx
+// src/app/views/material-kit/pharmacy/pharmacy.jsx
+// نسخه کامل و اصلاح‌شده — وضعیت‌ها دقیقاً مطابق صفحه اجراآت نسخه
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../../../api';
@@ -11,61 +13,144 @@ const Pharmacy = () => {
     total_prescriptions: 0,
     pending_prescriptions: 0,
     paid_prescriptions: 0,
-    today_sales: 0,
+    executions_pending: 0,
+    sent_to_registration: 0,
     total_medications: 0,
     low_stock_medications: 0,
-    expiring_medications: 0,
   });
   const [recentPrescriptions, setRecentPrescriptions] = useState([]);
+  const [executionsMap, setExecutionsMap] = useState({});
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
+  // ============ Fetch ============
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // دریافت آمار
-      const [prescriptionsRes, stockRes] = await Promise.allSettled([
+      const [prescriptionsRes, executionsRes, stockRes] = await Promise.allSettled([
         api.get('/prescriptions'),
+        api.get('/pharmacy-executions'),
         api.get('/stock/summary'),
       ]);
 
+      // ---- نسخه‌ها ----
+      let list = [];
       if (prescriptionsRes.status === 'fulfilled') {
         const prescriptions = prescriptionsRes.value?.data?.data || [];
-        
-        setStatistics(prev => ({
-          ...prev,
-          total_prescriptions: prescriptions.length,
-          pending_prescriptions: prescriptions.filter(p => p.status === 'pending').length,
-          paid_prescriptions: prescriptions.filter(p => p.status === 'paid').length,
-        }));
-
-        // آخرین 5 نسخه
-        setRecentPrescriptions(prescriptions.slice(0, 5));
+        list = Array.isArray(prescriptions) ? prescriptions : [];
       }
 
+      // ---- اجراآت (نقشه‌ی pres_id → آخرین اجراآت) ----
+      const map = {};
+      if (executionsRes.status === 'fulfilled') {
+        const executions = executionsRes.value?.data?.data || [];
+        executions.forEach((ex) => {
+          if (
+            !map[ex.pres_id] ||
+            new Date(ex.created_at) > new Date(map[ex.pres_id].created_at)
+          ) {
+            map[ex.pres_id] = ex;
+          }
+        });
+      }
+      setExecutionsMap(map);
+
+      // ---- محاسبه آمار بر اساس وضعیت اجراآت (مطابق صفحه اجراآت) ----
+      const totalPrescriptions = list.length;
+
+      // ⏳ در انتظار پرداخت = اجراآت با status = pending
+      const executionsPending = list.filter((p) => {
+        const presId = p.pres_id || p.id;
+        const ex = map[presId];
+        return ex && ex.status === 'pending';
+      }).length;
+
+      // 📤 ارسال به رسپشن = اجراآت با status = sent_to_registration
+      const sentToRegistration = list.filter((p) => {
+        const presId = p.pres_id || p.id;
+        const ex = map[presId];
+        return ex && ex.status === 'sent_to_registration';
+      }).length;
+
+      // ✅ پرداخت شده = اجراآت با status = paid
+      const paidPrescriptions = list.filter((p) => {
+        const presId = p.pres_id || p.id;
+        const ex = map[presId];
+        return ex && ex.status === 'paid';
+      }).length;
+
+      // 📤 ارسال به دواخانه = نسخه‌هایی که هنوز اجراآت ندارند
+      const notExecuted = list.filter((p) => {
+        const presId = p.pres_id || p.id;
+        return !map[presId];
+      }).length;
+
+      setStatistics((prev) => ({
+        ...prev,
+        total_prescriptions: totalPrescriptions,
+        pending_prescriptions: executionsPending, // ⏳ در انتظار پرداخت (اجراآت pending)
+        paid_prescriptions: paidPrescriptions,     // ✅ پرداخت شده (اجراآت paid)
+        executions_pending: notExecuted,           // 📤 هنوز اجراآت نشده
+        sent_to_registration: sentToRegistration,  // 📤 ارسال به رسپشن
+      }));
+
+      // ---- آخرین نسخه‌ها ----
+      setRecentPrescriptions(list.slice(0, 5));
+
+      // ---- موجودی ----
       if (stockRes.status === 'fulfilled') {
         const stock = stockRes.value?.data?.data || {};
-        setStatistics(prev => ({
+        setStatistics((prev) => ({
           ...prev,
           total_medications: stock.total_medications || 0,
           low_stock_medications: stock.low_stock || 0,
-          expiring_medications: stock.expiring || 0,
         }));
       }
     } catch (error) {
       console.error('❌ خطا در دریافت داده‌ها:', error);
+      toast.error('خطا در دریافت اطلاعات داشبورد');
     } finally {
       setLoading(false);
     }
   };
 
+  // ============ Badge وضعیت نسخه (مطابق صفحه اجراآت) ============
+  const getPrescriptionDisplayBadge = (prescription) => {
+    const presId = prescription.pres_id || prescription.id;
+    const execution = executionsMap[presId];
+
+    // اگر اجراآت وجود دارد → وضعیت اجراآت را نشان بده
+    if (execution) {
+      const execBadges = {
+        pending: { bg: '#fef3c7', color: '#92400e', text: '⏳ در انتظار پرداخت' },
+        sent_to_registration: { bg: '#dbeafe', color: '#1e40af', text: '📤 ارسال به رسپشن' },
+        paid: { bg: '#d1fae5', color: '#065f46', text: '✅ پرداخت شده' },
+        cancelled: { bg: '#fee2e2', color: '#991b1b', text: '❌ لغو شده' },
+      };
+      if (execBadges[execution.status]) return execBadges[execution.status];
+    }
+
+    // در غیر این صورت → وضعیت خود نسخه
+    const presBadges = {
+      pending: { bg: '#fef3c7', color: '#92400e', text: '⏳ در انتظار' },
+      sent_to_pharmacy: { bg: '#dbeafe', color: '#1e40af', text: '📤 ارسال به دواخانه' },
+      pharmacy_registered: { bg: '#e0e7ff', color: '#3730a3', text: '📝 ثبت شده' },
+      priced: { bg: '#c7d2fe', color: '#3730a3', text: '💰 قیمت‌گذاری شده' },
+      paid: { bg: '#d1fae5', color: '#065f46', text: '✅ پرداخت شده' },
+      cancelled: { bg: '#fee2e2', color: '#991b1b', text: '❌ لغو شده' },
+    };
+    return presBadges[prescription.status] || { bg: '#f3f4f6', color: '#374151', text: prescription.status || '-' };
+  };
+
+  // ============ استایل‌ها ============
   const styles = {
     container: {
       padding: '24px',
       background: '#f0f2f5',
       minHeight: '100vh',
+      direction: 'rtl',
     },
     headerCard: {
       background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
@@ -77,7 +162,7 @@ const Pharmacy = () => {
     },
     statsGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
       gap: '16px',
       marginBottom: '24px',
     },
@@ -87,69 +172,53 @@ const Pharmacy = () => {
       padding: '20px',
       boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
       border: '1px solid #e5e7eb',
-      cursor: 'pointer',
-      transition: 'all 0.3s ease',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '6px',
     },
-    statIcon: {
-      fontSize: '32px',
-      marginBottom: '10px',
-    },
-    statValue: {
-      fontSize: '28px',
+    statIcon: { fontSize: '32px' },
+    statValue: { fontSize: '26px', fontWeight: 'bold', color: '#1f2937' },
+    statLabel: { fontSize: '13px', color: '#6b7280' },
+    sectionTitle: {
+      fontSize: '18px',
       fontWeight: 'bold',
       color: '#1f2937',
+      marginBottom: '16px',
     },
-    statLabel: {
-      fontSize: '13px',
-      color: '#6b7280',
-      marginTop: '4px',
-    },
-    quickActionsGrid: {
+    actionsGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
       gap: '16px',
       marginBottom: '24px',
     },
-    quickActionCard: {
+    actionCard: {
       background: 'white',
       borderRadius: '12px',
-      padding: '20px',
+      padding: '24px',
       textAlign: 'center',
       cursor: 'pointer',
       transition: 'all 0.3s ease',
       border: '2px solid transparent',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
     },
-    quickActionIcon: {
-      fontSize: '40px',
+    actionIcon: {
+      fontSize: '48px',
       marginBottom: '12px',
+      display: 'block',
     },
-    quickActionTitle: {
-      fontSize: '15px',
+    actionTitle: {
+      fontSize: '16px',
       fontWeight: 'bold',
       color: '#1f2937',
+      marginBottom: '6px',
     },
-    quickActionDesc: {
-      fontSize: '12px',
-      color: '#6b7280',
-      marginTop: '4px',
-    },
+    actionDesc: { fontSize: '12px', color: '#6b7280' },
     section: {
       background: 'white',
       borderRadius: '12px',
       padding: '20px',
       marginBottom: '20px',
       boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-    },
-    sectionTitle: {
-      fontSize: '16px',
-      fontWeight: 'bold',
-      color: '#1f2937',
-      marginBottom: '16px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      paddingBottom: '10px',
-      borderBottom: '2px solid #f3f4f6',
     },
     prescriptionItem: {
       display: 'flex',
@@ -160,6 +229,8 @@ const Pharmacy = () => {
       borderRadius: '8px',
       marginBottom: '8px',
       border: '1px solid #e5e7eb',
+      flexWrap: 'wrap',
+      gap: '10px',
     },
     statusBadge: {
       padding: '4px 12px',
@@ -169,16 +240,52 @@ const Pharmacy = () => {
     },
   };
 
-  const getStatusBadge = (status) => {
-    const badges = {
-      pending: { bg: '#fef3c7', color: '#92400e', text: 'در انتظار' },
-      sent_to_pharmacy: { bg: '#dbeafe', color: '#1e40af', text: 'ارسال به دواخانه' },
-      pharmacy_registered: { bg: '#e0e7ff', color: '#3730a3', text: 'ثبت شده' },
-      paid: { bg: '#d1fae5', color: '#065f46', text: 'پرداخت شده' },
-      cancelled: { bg: '#fee2e2', color: '#991b1b', text: 'لغو شده' },
-    };
-    return badges[status] || { bg: '#f3f4f6', color: '#374151', text: status };
-  };
+  // ============ کارت‌های دسترسی سریع ============
+  const quickActions = [
+    {
+      title: 'اجراآت نسخه‌جات',
+      desc: 'دریافت و قیمت‌گذاری نسخه‌های داکتر',
+      icon: '✅',
+      color: '#10b981',
+      path: '/material/pharmacy/executions',
+      badge: statistics.executions_pending > 0 ? statistics.executions_pending : null,
+    },
+    {
+      title: 'فروش دوا (نسخه)',
+      desc: 'ثبت فروش و پرداخت',
+      icon: '💰',
+      color: '#059669',
+      path: '/material/pharmacy/sales',
+    },
+    {
+      title: 'لیست نسخه‌ها',
+      desc: 'مشاهده تمام نسخه‌ها',
+      icon: '📋',
+      color: '#3b82f6',
+      path: '/material/pharmacy/prescriptions',
+    },
+    {
+      title: 'موجودی دوا',
+      desc: 'بررسی موجودی انبار',
+      icon: '📦',
+      color: '#f59e0b',
+      path: '/material/pharmacy/inventory',
+    },
+    {
+      title: 'مدیریت دواها',
+      desc: 'افزودن، ویرایش، حذف',
+      icon: '💊',
+      color: '#8b5cf6',
+      path: '/material/pharmacy/medications',
+    },
+    {
+      title: 'تاریخچه فروش',
+      desc: 'گزارش فروشات',
+      icon: '📊',
+      color: '#ec4899',
+      path: '/material/pharmacy/history',
+    },
+  ];
 
   return (
     <div style={styles.container}>
@@ -202,9 +309,10 @@ const Pharmacy = () => {
               color: 'white',
               border: 'none',
               borderRadius: '8px',
-              cursor: 'pointer',
+              cursor: loading ? 'not-allowed' : 'pointer',
               fontSize: '14px',
               fontWeight: 'bold',
+              opacity: loading ? 0.6 : 1,
             }}
           >
             🔄 {loading ? 'در حال بارگذاری...' : 'بروزرسانی'}
@@ -212,12 +320,18 @@ const Pharmacy = () => {
         </div>
       </div>
 
-      {/* آمار */}
+      {/* آمار — وضعیت‌ها دقیقاً مطابق صفحه اجراآت */}
       <div style={styles.statsGrid}>
         <div style={styles.statCard}>
           <div style={{ ...styles.statIcon, color: '#3b82f6' }}>📋</div>
           <div style={styles.statValue}>{statistics.total_prescriptions}</div>
           <div style={styles.statLabel}>کل نسخه‌ها</div>
+        </div>
+
+        <div style={styles.statCard}>
+          <div style={{ ...styles.statIcon, color: '#10b981' }}>📤</div>
+          <div style={{ ...styles.statValue, color: '#10b981' }}>{statistics.executions_pending}</div>
+          <div style={styles.statLabel}>در انتظار اجراآت</div>
         </div>
 
         <div style={styles.statCard}>
@@ -227,8 +341,14 @@ const Pharmacy = () => {
         </div>
 
         <div style={styles.statCard}>
-          <div style={{ ...styles.statIcon, color: '#10b981' }}>✅</div>
-          <div style={{ ...styles.statValue, color: '#10b981' }}>{statistics.paid_prescriptions}</div>
+          <div style={{ ...styles.statIcon, color: '#3b82f6' }}>📨</div>
+          <div style={{ ...styles.statValue, color: '#3b82f6' }}>{statistics.sent_to_registration}</div>
+          <div style={styles.statLabel}>ارسال به رسپشن</div>
+        </div>
+
+        <div style={styles.statCard}>
+          <div style={{ ...styles.statIcon, color: '#059669' }}>💰</div>
+          <div style={{ ...styles.statValue, color: '#059669' }}>{statistics.paid_prescriptions}</div>
           <div style={styles.statLabel}>پرداخت شده</div>
         </div>
 
@@ -243,126 +363,80 @@ const Pharmacy = () => {
           <div style={{ ...styles.statValue, color: '#ef4444' }}>{statistics.low_stock_medications}</div>
           <div style={styles.statLabel}>موجودی کم</div>
         </div>
-
-        <div style={styles.statCard}>
-          <div style={{ ...styles.statIcon, color: '#dc2626' }}>📅</div>
-          <div style={{ ...styles.statValue, color: '#dc2626' }}>{statistics.expiring_medications}</div>
-          <div style={styles.statLabel}>نزدیک انقضا</div>
-        </div>
       </div>
 
       {/* دسترسی سریع */}
       <div style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '18px', color: '#1f2937', marginBottom: '16px' }}>
-          🚀 دسترسی سریع
-        </h2>
-        <div style={styles.quickActionsGrid}>
-          <div
-            style={styles.quickActionCard}
-            onClick={() => navigate('/material/pharmacy/sales')}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#10b981';
-              e.currentTarget.style.transform = 'translateY(-4px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'transparent';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <div style={{ ...styles.quickActionIcon, color: '#10b981' }}>💰</div>
-            <div style={styles.quickActionTitle}>فروش دوا (نسخه)</div>
-            <div style={styles.quickActionDesc}>ثبت فروش جدید</div>
-          </div>
-
-          <div
-            style={styles.quickActionCard}
-            onClick={() => navigate('/material/pharmacy/prescriptions')}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#3b82f6';
-              e.currentTarget.style.transform = 'translateY(-4px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'transparent';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <div style={{ ...styles.quickActionIcon, color: '#3b82f6' }}>📋</div>
-            <div style={styles.quickActionTitle}>لیست نسخه‌ها</div>
-            <div style={styles.quickActionDesc}>مشاهده و مدیریت</div>
-          </div>
-
-          <div
-            style={styles.quickActionCard}
-            onClick={() => navigate('/material/pharmacy/inventory')}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#f59e0b';
-              e.currentTarget.style.transform = 'translateY(-4px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'transparent';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <div style={{ ...styles.quickActionIcon, color: '#f59e0b' }}>📦</div>
-            <div style={styles.quickActionTitle}>موجودی دوا</div>
-            <div style={styles.quickActionDesc}>بررسی و مدیریت موجودی</div>
-          </div>
-
-          <div
-            style={styles.quickActionCard}
-            onClick={() => navigate('/material/pharmacy/medications')}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#8b5cf6';
-              e.currentTarget.style.transform = 'translateY(-4px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'transparent';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <div style={{ ...styles.quickActionIcon, color: '#8b5cf6' }}>💊</div>
-            <div style={styles.quickActionTitle}>مدیریت دواها</div>
-            <div style={styles.quickActionDesc}>افزودن، ویرایش، حذف</div>
-          </div>
-
-          <div
-            style={styles.quickActionCard}
-            onClick={() => navigate('/material/pharmacy/history')}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#ec4899';
-              e.currentTarget.style.transform = 'translateY(-4px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'transparent';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <div style={{ ...styles.quickActionIcon, color: '#ec4899' }}>📊</div>
-            <div style={styles.quickActionTitle}>تاریخچه فروش</div>
-            <div style={styles.quickActionDesc}>گزارش فروشات</div>
-          </div>
+        <h2 style={styles.sectionTitle}>🚀 دسترسی سریع</h2>
+        <div style={styles.actionsGrid}>
+          {quickActions.map((action, idx) => (
+            <div
+              key={idx}
+              style={styles.actionCard}
+              onClick={() => navigate(action.path)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = action.color;
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = `0 8px 20px ${action.color}30`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'transparent';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
+              }}
+            >
+              <span style={{ ...styles.actionIcon, color: action.color }}>
+                {action.icon}
+              </span>
+              <div style={styles.actionTitle}>
+                {action.title}
+                {action.badge && (
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      marginLeft: '8px',
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      background: '#ef4444',
+                      color: 'white',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    {action.badge}
+                  </span>
+                )}
+              </div>
+              <div style={styles.actionDesc}>{action.desc}</div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* آخرین نسخه‌ها */}
+      {/* آخرین نسخه‌ها — وضعیت مطابق صفحه اجراآت */}
       <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>
-          🕐 آخرین نسخه‌ها
-        </h2>
+        <h2 style={styles.sectionTitle}>🕐 آخرین نسخه‌ها</h2>
         {recentPrescriptions.length > 0 ? (
-          recentPrescriptions.map((prescription) => {
-            const badge = getStatusBadge(prescription.status);
+          recentPrescriptions.map((prescription, idx) => {
+            const badge = getPrescriptionDisplayBadge(prescription);
+            const presId = prescription.pres_id || prescription.id;
+            const patientName =
+              prescription.patient?.full_name ||
+              prescription.patient_name ||
+              'نامشخص';
+
             return (
-              <div key={prescription.pres_id || prescription.id} style={styles.prescriptionItem}>
+              <div key={presId || idx} style={styles.prescriptionItem}>
                 <div>
                   <div style={{ fontWeight: 'bold', color: '#1f2937' }}>
-                    👤 {prescription.patient?.full_name || prescription.patient_name || 'نامشخص'}
+                    👤 {patientName}
                   </div>
                   <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
                     📅 {new Date(prescription.created_at).toLocaleDateString('fa-IR')}
+                    {presId && ` • نسخه #${presId}`}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <span
                     style={{
                       ...styles.statusBadge,
@@ -373,18 +447,19 @@ const Pharmacy = () => {
                     {badge.text}
                   </span>
                   <button
-                    onClick={() => navigate(`/material/pharmacy/prescriptions`)}
+                    onClick={() => navigate('/material/pharmacy/executions')}
                     style={{
                       padding: '6px 14px',
-                      background: '#3b82f6',
+                      background: '#10b981',
                       color: 'white',
                       border: 'none',
                       borderRadius: '6px',
                       cursor: 'pointer',
                       fontSize: '12px',
+                      fontWeight: 'bold',
                     }}
                   >
-                    مشاهده
+                    اجراآت
                   </button>
                 </div>
               </div>

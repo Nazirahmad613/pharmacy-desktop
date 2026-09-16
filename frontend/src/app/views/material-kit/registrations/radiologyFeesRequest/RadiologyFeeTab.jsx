@@ -1,11 +1,10 @@
 // src/app/pages/radiologyFeesRequest/RadiologyFeeTab.jsx
+// استایل کاملاً هماهنگ با PharmacyFeeTab (صفحه اخذ فیس نسخه)
 
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 
 export default function RadiologyFeeTab(props) {
-  console.log("🔥 تمام Props دریافتی RadiologyFeeTab:", props);
-
   const { api, regId } = props;
   const [loading, setLoading] = useState(false);
   const [allRequests, setAllRequests] = useState([]);
@@ -19,7 +18,8 @@ export default function RadiologyFeeTab(props) {
   const [debugInfo, setDebugInfo] = useState(null);
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [fetchError, setFetchError] = useState(null);
-  const [filterMode, setFilterMode] = useState('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState("all");
 
   // فرم اخذ فیس
   const [feeFormData, setFeeFormData] = useState({
@@ -28,47 +28,37 @@ export default function RadiologyFeeTab(props) {
     discount: "",
     payment_method: "cash",
     description: "",
-    note: ""
+    note: "",
   });
 
   // ============ بارگذاری اولیه ============
   useEffect(() => {
-    console.log("🔍 ====== بارگذاری اولیه RadiologyFeeTab ======");
     fetchAllRequests();
+    fetchFeeRecords();
   }, []);
 
   // ============ دریافت تمام درخواست‌های رادیولوژی ============
   const fetchAllRequests = async () => {
-    console.log("📡 دریافت تمام درخواست‌های رادیولوژی...");
     setLoading(true);
     setFetchError(null);
-    
     try {
-      // ✅ مسیر صحیح
-      const response = await api.get('/radiology-fees/all-requests');
-      console.log("✅ پاسخ دریافت تمام درخواست‌ها:", response.data);
-
+      const response = await api.get("/radiology-fees/all-requests");
       if (response.data?.success && response.data?.data) {
         const data = response.data.data;
-        
         setAllRequests(data.all_requests || []);
         setUnpaidRequests(data.unpaid_requests || []);
         setPaidRequests(data.paid_requests || []);
         setGroupedRequests(data.grouped_by_reg_id || []);
-        
         setDebugInfo({
           totalRequests: data.total_requests || 0,
           totalUnpaid: data.total_unpaid || 0,
           totalPaid: data.total_paid || 0,
           totalRegistrations: data.total_registrations || 0,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
-
-        toast.success(`✅ ${data.total_requests || 0} درخواست رادیولوژی دریافت شد`);
       } else {
         toast.warning("داده‌ای دریافت نشد");
       }
-
     } catch (err) {
       console.error("❌ خطا در دریافت درخواست‌ها:", err);
       setFetchError(err.message);
@@ -81,10 +71,7 @@ export default function RadiologyFeeTab(props) {
   // ============ دریافت فیس‌های ثبت شده رادیولوژی ============
   const fetchFeeRecords = async () => {
     try {
-      console.log("💳 دریافت فیس‌های ثبت شده رادیولوژی...");
-      const response = await api.get('/radiology-fees');
-      console.log("💳 پاسخ فیس‌ها:", response.data);
-
+      const response = await api.get("/radiology-fees");
       let fees = [];
       if (response.data?.success && Array.isArray(response.data?.data?.data)) {
         fees = response.data.data.data;
@@ -95,7 +82,6 @@ export default function RadiologyFeeTab(props) {
       } else if (Array.isArray(response.data)) {
         fees = response.data;
       }
-
       setFeeRecords(fees);
     } catch (err) {
       console.error("❌ خطا در دریافت فیس‌ها:", err);
@@ -104,36 +90,31 @@ export default function RadiologyFeeTab(props) {
 
   // ============ باز کردن فرم اخذ فیس ============
   const handleOpenFeeForm = (request) => {
-    console.log("💰 باز کردن فرم اخذ فیس برای:", request);
     setSelectedRequest(request);
     setEditingFee(null);
-    
     const defaultAmount = request.amount || 0;
-    
     setFeeFormData({
       amount: defaultAmount.toString(),
       paid_amount: "",
       discount: "",
       payment_method: "cash",
-      description: `رادیولوژی: ${request.radiology_type_label || request.radiology_type || ''} - ${request.body_part || ''}`,
-      note: `درخواست بارکد: ${request.barcode || ''}`
+      description: `رادیولوژی: ${request.radiology_type_label || request.radiology_type || ""} - ${request.body_part || ""}`,
+      note: `درخواست بارکد: ${request.barcode || ""}`,
     });
     setShowFeeForm(true);
   };
 
   // ============ باز کردن فرم ویرایش فیس ============
   const handleOpenEditFeeForm = (fee) => {
-    console.log("✏️ باز کردن فرم ویرایش فیس:", fee);
     setEditingFee(fee);
     setSelectedRequest(null);
-    
     setFeeFormData({
       amount: fee.amount?.toString() || "",
       paid_amount: fee.paid_amount?.toString() || "",
       discount: fee.discount?.toString() || "",
       payment_method: fee.payment_method || "cash",
       description: fee.description || "",
-      note: fee.note || ""
+      note: fee.note || "",
     });
     setShowFeeForm(true);
   };
@@ -141,19 +122,15 @@ export default function RadiologyFeeTab(props) {
   // ============ ثبت فیس ============
   const handleSubmitFee = async (e) => {
     e.preventDefault();
-
     if (!feeFormData.amount || parseFloat(feeFormData.amount) <= 0) {
       toast.warning("⚠️ لطفاً مبلغ کل را وارد کنید");
       return;
     }
-
     if (!selectedRequest && !editingFee) {
       toast.error("❌ هیچ درخواستی انتخاب نشده است");
       return;
     }
-
     setLoading(true);
-
     try {
       const payload = {
         radiology_request_id: selectedRequest ? selectedRequest.id : null,
@@ -164,9 +141,6 @@ export default function RadiologyFeeTab(props) {
         description: feeFormData.description,
         note: feeFormData.note,
       };
-
-      console.log("📤 ارسال payload:", payload);
-
       let response;
       if (editingFee) {
         response = await api.put(`/radiology-fees/${editingFee.id}`, payload);
@@ -175,16 +149,11 @@ export default function RadiologyFeeTab(props) {
         response = await api.post(`/radiology-fees/registration/${selectedRequest.reg_id}`, payload);
         toast.success("✅ فیس رادیولوژی با موفقیت ثبت شد");
       }
-
-      console.log("✅ پاسخ ثبت فیس:", response.data);
-
       await fetchAllRequests();
       await fetchFeeRecords();
       handleCloseForm();
-
     } catch (err) {
       console.error("❌ خطا در ثبت فیس:", err);
-      
       if (err.response?.data?.errors) {
         Object.entries(err.response.data.errors).forEach(([field, messages]) => {
           toast.error(`❌ ${field}: ${messages[0]}`);
@@ -192,6 +161,27 @@ export default function RadiologyFeeTab(props) {
       } else {
         toast.error(`❌ خطا: ${err.response?.data?.message || "خطا در ثبت فیس"}`);
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============ حذف فیس ============
+  const handleDeleteFee = async (feeId) => {
+    if (!feeId) {
+      toast.error("❌ شناسه فیس معتبر نیست");
+      return;
+    }
+    if (!window.confirm("⚠️ آیا مطمئن هستید که می‌خواهید این فیس را حذف کنید؟")) return;
+    setLoading(true);
+    try {
+      await api.delete(`/radiology-fees/${feeId}`);
+      toast.success("✅ فیس رادیولوژی با موفقیت حذف شد");
+      await fetchAllRequests();
+      await fetchFeeRecords();
+    } catch (err) {
+      console.error("❌ خطا در حذف فیس:", err);
+      toast.error(`❌ خطا: ${err.response?.data?.message || "خطا در حذف فیس"}`);
     } finally {
       setLoading(false);
     }
@@ -208,37 +198,24 @@ export default function RadiologyFeeTab(props) {
       discount: "",
       payment_method: "cash",
       description: "",
-      note: ""
+      note: "",
     });
   };
 
   // ============ Helper Functions ============
   const getMethodLabel = (method) => {
-    const methods = {
-      cash: 'نقدی',
-      card: 'کارت بانکی',
-      online: 'آنلاین',
-      insurance: 'بیمه'
-    };
-    return methods[method] || method || '-';
+    const methods = { cash: "نقدی", card: "کارت بانکی", online: "آنلاین", insurance: "بیمه" };
+    return methods[method] || method || "-";
   };
 
   const formatDate = (date) => {
-    if (!date) return '-';
-    try {
-      return new Date(date).toLocaleDateString('fa-IR');
-    } catch {
-      return '-';
-    }
+    if (!date) return "-";
+    try { return new Date(date).toLocaleDateString("fa-IR"); } catch { return "-"; }
   };
 
   const formatDateTime = (date) => {
-    if (!date) return '-';
-    try {
-      return new Date(date).toLocaleString('fa-IR');
-    } catch {
-      return '-';
-    }
+    if (!date) return "-";
+    try { return new Date(date).toLocaleString("fa-IR"); } catch { return "-"; }
   };
 
   const calculateRemaining = (amount, paid, discount) => {
@@ -248,9 +225,9 @@ export default function RadiologyFeeTab(props) {
 
   const getPaymentStatus = (amount, paid, discount) => {
     const remaining = calculateRemaining(amount, paid, discount);
-    if (remaining <= 0) return { label: 'پرداخت کامل', color: '#22c55e' };
-    if (paid > 0) return { label: 'پرداخت ناقص', color: '#f97316' };
-    return { label: 'در انتظار پرداخت', color: '#f59e0b' };
+    if (remaining <= 0) return { label: "پرداخت کامل", color: "#22c55e", bg: "#d1fae5", textColor: "#065f46" };
+    if (paid > 0) return { label: "پرداخت ناقص", color: "#f97316", bg: "#ffedd5", textColor: "#9a3412" };
+    return { label: "در انتظار پرداخت", color: "#f59e0b", bg: "#fef3c7", textColor: "#92400e" };
   };
 
   const toNumber = (value) => {
@@ -259,728 +236,526 @@ export default function RadiologyFeeTab(props) {
   };
 
   const hasFee = (request) => {
-    if (request.has_fee !== undefined) {
-      return request.has_fee === true;
-    }
+    if (request.has_fee !== undefined) return request.has_fee === true;
     return request.fee_id !== null && request.fee_id !== undefined && request.fee_id !== 0;
   };
 
   const getFeeForRequest = (requestId) => {
-    return feeRecords.find(fee => fee.radiology_request_id === requestId);
+    return feeRecords.find((fee) => fee.radiology_request_id === requestId);
   };
 
   const getPatientFullName = (request) => {
-    if (request.patient?.full_name) {
-      return request.patient.full_name;
-    }
+    if (request.patient?.full_name) return request.patient.full_name;
     if (request.patient?.first_name) {
-      return `${request.patient.first_name || ''} ${request.patient.last_name || ''}`.trim() || 'نامشخص';
+      return `${request.patient.first_name || ""} ${request.patient.last_name || ""}`.trim() || "نامشخص";
     }
-    return 'نامشخص';
+    return request.patient_name || "نامشخص";
   };
 
   const getPatientAge = (request) => {
-    if (request.patient?.age) {
-      return `${request.patient.age} سال`;
-    }
-    return '-';
+    if (request.patient?.age) return `${request.patient.age} سال`;
+    return "-";
   };
 
   const getPatientGender = (request) => {
     let gender = request.patient?.gender;
     if (gender) {
-      const genderMap = {
-        'Male': 'مرد',
-        'male': 'مرد',
-        'Female': 'زن',
-        'female': 'زن',
-        'other': 'دیگر'
-      };
+      const genderMap = { Male: "مرد", male: "مرد", Female: "زن", female: "زن", other: "دیگر" };
       return genderMap[gender] || gender;
     }
-    return '-';
+    return "-";
   };
 
-  const getRegIdLabel = (regId) => {
-    if (!regId) return 'نامشخص';
-    return `مراجعه #${regId}`;
+  // ============ فیلترها ============
+  const pendingFeeRequests = paidRequests.filter((r) => {
+    const fee = getFeeForRequest(r.id);
+    if (!fee) return false;
+    const status = getPaymentStatus(toNumber(fee.amount), toNumber(fee.paid_amount), toNumber(fee.discount));
+    return status.label === "در انتظار پرداخت";
+  });
+
+  const partialFeeRequests = paidRequests.filter((r) => {
+    const fee = getFeeForRequest(r.id);
+    if (!fee) return false;
+    const status = getPaymentStatus(toNumber(fee.amount), toNumber(fee.paid_amount), toNumber(fee.discount));
+    return status.label === "پرداخت ناقص";
+  });
+
+  const fullPaidRequests = paidRequests.filter((r) => {
+    const fee = getFeeForRequest(r.id);
+    if (!fee) return false;
+    const status = getPaymentStatus(toNumber(fee.amount), toNumber(fee.paid_amount), toNumber(fee.discount));
+    return status.label === "پرداخت کامل";
+  });
+
+  const filterBySearch = (requests) => {
+    if (!searchTerm.trim()) return requests;
+    const term = searchTerm.trim().toLowerCase();
+    return requests.filter((r) => {
+      const patientName = getPatientFullName(r).toLowerCase();
+      return (
+        patientName.includes(term) ||
+        (r.radiology_type_label || r.radiology_type || "").toLowerCase().includes(term) ||
+        (r.body_part || "").toLowerCase().includes(term) ||
+        (r.barcode || "").toLowerCase().includes(term) ||
+        String(r.reg_id || "").includes(term)
+      );
+    });
   };
 
-  // ============ فیلتر کردن درخواست‌ها ============
-  const getFilteredRequests = () => {
-    if (filterMode === 'unpaid') {
-      return unpaidRequests;
-    } else if (filterMode === 'paid') {
-      return paidRequests;
+  const getActiveList = () => {
+    switch (activeTab) {
+      case "unpaid": return filterBySearch(unpaidRequests);
+      case "pending": return filterBySearch(pendingFeeRequests);
+      case "partial": return filterBySearch(partialFeeRequests);
+      case "paid": return filterBySearch(fullPaidRequests);
+      case "all": return filterBySearch(allRequests);
+      default: return filterBySearch(allRequests);
     }
-    return allRequests;
   };
 
-  const displayRequests = getFilteredRequests();
+  const activeList = getActiveList();
 
+  // ============ استایل‌ها (دقیقاً مثل PharmacyFeeTab) ============
+  const styles = {
+    container: { padding: "8px" },
+    statsGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+      gap: "10px",
+      marginBottom: "20px",
+      padding: "15px",
+      background: "linear-gradient(135deg, #1f2937 0%, #111827 100%)",
+      borderRadius: "10px",
+    },
+    statBox: { textAlign: "center" },
+    statValue: { fontSize: "20px", fontWeight: "bold" },
+    statLabel: { fontSize: "11px", color: "#9ca3af", marginTop: "2px" },
+    filters: {
+      display: "flex",
+      gap: "10px",
+      marginBottom: "15px",
+      flexWrap: "wrap",
+      alignItems: "center",
+      flexDirection: "row-reverse",
+    },
+    filterBtn: {
+      padding: "8px 16px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      cursor: "pointer",
+      fontSize: "13px",
+      background: "white",
+      transition: "all 0.2s",
+    },
+    filterBtnActive: {
+      background: "#10b981",
+      color: "white",
+      borderColor: "#10b981",
+    },
+    searchInput: {
+      padding: "8px 16px",
+      border: "1px solid #374151",
+      borderRadius: "8px",
+      fontSize: "14px",
+      minWidth: "250px",
+      flex: 1,
+      background: "#1a1a2e",
+      color: "white",
+    },
+    table: {
+      width: "100%",
+      borderCollapse: "collapse",
+      fontSize: "13px",
+      background: "white",
+      borderRadius: "10px",
+      overflow: "hidden",
+    },
+    th: {
+      padding: "12px",
+      textAlign: "right",
+      background: "#f9fafb",
+      color: "#374151",
+      fontSize: "13px",
+      fontWeight: "bold",
+      borderBottom: "2px solid #e5e7eb",
+    },
+    td: {
+      padding: "12px",
+      borderBottom: "1px solid #f3f4f6",
+      color: "#1f2937",
+    },
+    btn: {
+      padding: "6px 12px",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "12px",
+      fontWeight: "bold",
+      marginRight: "4px",
+    },
+    modal: {
+      position: "fixed",
+      top: 0, left: 0, right: 0, bottom: 0,
+      background: "rgba(0,0,0,0.5)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 2000,
+      padding: "16px",
+    },
+    modalContent: {
+      background: "white",
+      borderRadius: "12px",
+      padding: "24px",
+      maxWidth: "600px",
+      width: "100%",
+      maxHeight: "90vh",
+      overflowY: "auto",
+    },
+    input: {
+      padding: "10px 12px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      fontSize: "14px",
+      width: "100%",
+      boxSizing: "border-box",
+    },
+    label: {
+      display: "block",
+      fontSize: "12px",
+      color: "#374151",
+      fontWeight: "bold",
+      marginBottom: "6px",
+      marginTop: "12px",
+    },
+  };
+
+  // ============ تب‌ها ============
+  const tabs = [
+    { key: "all", label: "📋 همه", count: allRequests.length },
+    { key: "unpaid", label: "⏳ بدون فیس", count: unpaidRequests.length },
+    { key: "pending", label: "🟠 در انتظار پرداخت", count: pendingFeeRequests.length },
+    { key: "partial", label: "🔵 پرداخت ناقص", count: partialFeeRequests.length },
+    { key: "paid", label: "✅ پرداخت کامل", count: fullPaidRequests.length },
+  ];
+
+  // ============ Badge ============
+  const getStatusBadge = (request) => {
+    if (!hasFee(request)) {
+      return { bg: "#fef3c7", color: "#92400e", text: "⏳ بدون فیس" };
+    }
+    const fee = getFeeForRequest(request.id);
+    if (!fee) return { bg: "#f3f4f6", color: "#374151", text: "دارای فیس" };
+    const status = getPaymentStatus(toNumber(fee.amount), toNumber(fee.paid_amount), toNumber(fee.discount));
+    return { bg: status.bg, color: status.textColor, text: status.label };
+  };
+
+  // ============ رندر ============
   return (
-    <div>
-      {/* ============ هدر ============ */}
-      <div style={{
-        backgroundColor: '#1a2a3a',
-        padding: '20px',
-        borderRadius: '10px',
-        marginBottom: '20px',
-        borderBottom: '3px solid #ec4899'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-          <div>
-            <h3 style={{ color: '#ec4899', margin: 0 }}>
-              📷 مدیریت فیس‌های رادیولوژی
-            </h3>
-            <div style={{ color: '#9ca3af', fontSize: '13px', marginTop: '5px' }}>
-              تمام درخواست‌های رادیولوژی تمام مراجعه‌کنندگان
-            </div>
-          </div>
-          
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setFilterMode('all')}
-              style={{
-                backgroundColor: filterMode === 'all' ? '#ec4899' : '#374151',
-                color: 'white',
-                padding: '6px 15px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px'
-              }}
-            >
-              📋 همه ({allRequests.length})
-            </button>
-            <button
-              onClick={() => setFilterMode('unpaid')}
-              style={{
-                backgroundColor: filterMode === 'unpaid' ? '#f59e0b' : '#374151',
-                color: 'white',
-                padding: '6px 15px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px'
-              }}
-            >
-              🟡 بدون فیس ({unpaidRequests.length})
-            </button>
-            <button
-              onClick={() => setFilterMode('paid')}
-              style={{
-                backgroundColor: filterMode === 'paid' ? '#22c55e' : '#374151',
-                color: 'white',
-                padding: '6px 15px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px'
-              }}
-            >
-              🟢 دارای فیس ({paidRequests.length})
-            </button>
-            <button
-              onClick={() => { fetchAllRequests(); fetchFeeRecords(); }}
-              style={{
-                backgroundColor: '#374151',
-                color: '#ec4899',
-                padding: '6px 15px',
-                borderRadius: '6px',
-                border: '1px solid #ec4899',
-                cursor: 'pointer',
-                fontSize: '12px'
-              }}
-            >
-              🔄 بارگذاری مجدد
-            </button>
-          </div>
+    <div style={styles.container}>
+      {/* آمار */}
+      <div style={styles.statsGrid}>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#3b82f6" }}>{allRequests.length}</div>
+          <div style={styles.statLabel}>کل درخواست‌ها</div>
         </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#f59e0b" }}>{unpaidRequests.length}</div>
+          <div style={styles.statLabel}>بدون فیس</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#f97316" }}>{pendingFeeRequests.length}</div>
+          <div style={styles.statLabel}>در انتظار</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#3b82f6" }}>{partialFeeRequests.length}</div>
+          <div style={styles.statLabel}>ناقص</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#22c55e" }}>{fullPaidRequests.length}</div>
+          <div style={styles.statLabel}>پرداخت کامل</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#10b981", fontSize: "16px" }}>
+            {feeRecords.reduce((s, f) => s + toNumber(f.amount), 0).toLocaleString()}
+          </div>
+          <div style={styles.statLabel}>مبلغ کل</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#16a34a", fontSize: "16px" }}>
+            {feeRecords.reduce((s, f) => s + toNumber(f.paid_amount), 0).toLocaleString()}
+          </div>
+          <div style={styles.statLabel}>دریافت شده</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#ef4444", fontSize: "16px" }}>
+            {feeRecords
+              .reduce(
+                (s, f) =>
+                  s +
+                  calculateRemaining(toNumber(f.amount), toNumber(f.paid_amount), toNumber(f.discount)),
+                0
+              )
+              .toLocaleString()}
+          </div>
+          <div style={styles.statLabel}>باقیمانده</div>
+        </div>
+      </div>
 
-        {/* اطلاعات آماری */}
+      {/* فیلترها (راست‌چین) */}
+      <div style={styles.filters}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            style={{
+              ...styles.filterBtn,
+              ...(activeTab === tab.key ? styles.filterBtnActive : {}),
+            }}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            {tab.label} ({tab.count})
+          </button>
+        ))}
+        <input
+          type="text"
+          placeholder="🔍 جستجوی نام، نوع رادیولوژی، بارکد، شماره مراجعه..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={styles.searchInput}
+        />
+        <button
+          style={{ ...styles.btn, background: "#3b82f6", color: "white", padding: "8px 16px" }}
+          onClick={() => { fetchAllRequests(); fetchFeeRecords(); }}
+          disabled={loading}
+        >
+          🔄 بروزرسانی
+        </button>
+      </div>
+
+      {fetchError && (
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-          gap: '10px',
-          marginTop: '15px',
-          paddingTop: '15px',
-          borderTop: '1px solid #2a3a4a'
+          marginBottom: "15px",
+          padding: "10px",
+          backgroundColor: "#fee2e2",
+          borderRadius: "6px",
+          color: "#991b1b",
+          fontSize: "12px",
+          border: "1px solid #fca5a5",
         }}>
-          <div>
-            <span style={{ color: '#9ca3af', fontSize: '11px' }}>📊 کل درخواست‌ها</span>
-            <div style={{ color: 'white', fontWeight: 'bold' }}>{allRequests.length}</div>
-          </div>
-          <div>
-            <span style={{ color: '#f59e0b', fontSize: '11px' }}>🟡 بدون فیس</span>
-            <div style={{ color: '#f59e0b', fontWeight: 'bold' }}>{unpaidRequests.length}</div>
-          </div>
-          <div>
-            <span style={{ color: '#22c55e', fontSize: '11px' }}>🟢 دارای فیس</span>
-            <div style={{ color: '#22c55e', fontWeight: 'bold' }}>{paidRequests.length}</div>
-          </div>
-          <div>
-            <span style={{ color: '#ec4899', fontSize: '11px' }}>👥 مراجعه‌کنندگان</span>
-            <div style={{ color: '#ec4899', fontWeight: 'bold' }}>{groupedRequests.length}</div>
-          </div>
+          ⚠️ خطا: {fetchError}
         </div>
+      )}
 
-        {debugInfo && (
-          <div style={{
-            marginTop: '10px',
-            padding: '8px 12px',
-            backgroundColor: '#0f1a2a',
-            borderRadius: '6px',
-            fontSize: '11px',
-            color: '#6b7280',
-            fontFamily: 'monospace'
-          }}>
-            آخرین بروزرسانی: {debugInfo.timestamp ? new Date(debugInfo.timestamp).toLocaleString('fa-IR') : '-'}
-          </div>
-        )}
-
-        {fetchError && (
-          <div style={{
-            marginTop: '10px',
-            padding: '10px',
-            backgroundColor: '#7f1d1d',
-            borderRadius: '6px',
-            color: '#fca5a5',
-            fontSize: '12px'
-          }}>
-            ⚠️ خطا: {fetchError}
-          </div>
-        )}
-      </div>
-
-      {/* ============ نمایش تعداد درخواست‌ها ============ */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-        <h4 style={{ color: '#ec4899', margin: 0 }}>
-          📋 لیست درخواست‌های رادیولوژی
-          {filterMode === 'unpaid' && <span style={{ color: '#f59e0b', fontSize: '14px', marginRight: '10px' }}>(بدون فیس)</span>}
-          {filterMode === 'paid' && <span style={{ color: '#22c55e', fontSize: '14px', marginRight: '10px' }}>(دارای فیس)</span>}
-        </h4>
-        <span style={{ fontSize: '13px', color: '#9ca3af' }}>
-          نمایش {displayRequests.length} از {allRequests.length} درخواست
-        </span>
-      </div>
-
-      {/* ============ لیست تمام درخواست‌ها ============ */}
+      {/* لیست (جدول) */}
       {loading || loadingRequests ? (
-        <div style={{
-          backgroundColor: '#1a2a3a',
-          padding: '30px',
-          borderRadius: '8px',
-          textAlign: 'center',
-          color: '#9ca3af'
-        }}>
-          <div style={{ fontSize: '30px', marginBottom: '10px' }}>⏳</div>
-          <div>در حال بارگذاری...</div>
+        <div style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
+          ⏳ در حال بارگذاری...
         </div>
-      ) : displayRequests.length === 0 ? (
-        <div style={{
-          backgroundColor: '#1a2a3a',
-          padding: '30px',
-          borderRadius: '8px',
-          textAlign: 'center',
-          color: '#9ca3af'
-        }}>
-          <div style={{ fontSize: '40px', marginBottom: '10px' }}>📭</div>
+      ) : activeList.length === 0 ? (
+        <div style={{ padding: "40px", textAlign: "center", color: "#6b7280", background: "white", borderRadius: "10px" }}>
+          <div style={{ fontSize: "48px", marginBottom: "12px" }}>📭</div>
           <div>
-            {filterMode === 'unpaid' && 'هیچ درخواست بدون فیس وجود ندارد'}
-            {filterMode === 'paid' && 'هیچ درخواست دارای فیس وجود ندارد'}
-            {filterMode === 'all' && 'هیچ درخواست رادیولوژی ثبت نشده است'}
-          </div>
-          <div style={{ fontSize: '12px', marginTop: '10px', color: '#6b7280' }}>
-            💡 برای بارگذاری مجدد، دکمه "بارگذاری مجدد" را کلیک کنید
+            {activeTab === "unpaid" && "هیچ درخواست بدون فیس یافت نشد"}
+            {activeTab === "pending" && "هیچ درخواست در انتظار پرداخت یافت نشد"}
+            {activeTab === "partial" && "هیچ درخواست با پرداخت ناقص یافت نشد"}
+            {activeTab === "paid" && "هیچ درخواست با پرداخت کامل یافت نشد"}
+            {activeTab === "all" && "هیچ درخواست رادیولوژی یافت نشد"}
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '30px' }}>
-          {displayRequests.map((request, index) => {
-            const hasFeeRecord = hasFee(request);
-            const feeInfo = getFeeForRequest(request.id);
-            
-            const statusText = hasFeeRecord ? '✅ دارای فیس' : '❌ بدون فیس';
-            const statusColor = hasFeeRecord ? '#22c55e' : '#ef4444';
-            const borderColor = hasFeeRecord ? '#22c55e' : '#f59e0b';
-            
-            return (
-              <div
-                key={request.id || index}
-                style={{
-                  backgroundColor: '#1a2a3a',
-                  padding: '15px 20px',
-                  borderRadius: '8px',
-                  borderRight: `4px solid ${borderColor}`,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '10px'
-                }}
-              >
-                <div style={{ flex: 1, minWidth: '250px' }}>
-                  {/* اطلاعات اصلی درخواست */}
-                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>#{index + 1}</span>
-                    <span style={{ 
-                      backgroundColor: '#0f1a2a',
-                      color: '#ec4899',
-                      padding: '2px 10px',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      fontWeight: 'bold'
-                    }}>
-                      {getRegIdLabel(request.reg_id)}
-                    </span>
-                    <span style={{ color: '#34d399', fontWeight: 'bold', fontSize: '13px' }}>
-                      {getPatientFullName(request)}
-                    </span>
-                    <span style={{ color: '#ec4899', fontWeight: 'bold' }}>
-                      {request.radiology_type_label || request.radiology_type || 'رادیولوژی'}
-                    </span>
-                    {request.body_part && (
-                      <span style={{ color: 'white' }}>بخش: {request.body_part}</span>
-                    )}
-                    {request.barcode && (
-                      <span style={{ 
-                        color: '#fcd34d', 
-                        fontSize: '12px',
-                        fontFamily: 'monospace',
-                        backgroundColor: '#0f1a2a',
-                        padding: '2px 10px',
-                        borderRadius: '4px'
-                      }}>
-                        🏷️ {request.barcode}
-                      </span>
-                    )}
-                    <span style={{
-                      backgroundColor: statusColor,
-                      color: 'white',
-                      padding: '2px 10px',
-                      borderRadius: '12px',
-                      fontSize: '10px',
-                      fontWeight: 'bold'
-                    }}>
-                      {statusText}
-                    </span>
-                  </div>
-                  
-                  {/* اطلاعات مریض */}
-                  <div style={{
-                    display: 'flex',
-                    gap: '15px',
-                    flexWrap: 'wrap',
-                    marginTop: '5px',
-                    padding: '5px 10px',
-                    backgroundColor: '#0f1a2a',
-                    borderRadius: '4px',
-                    border: '1px solid #1a3a4a'
-                  }}>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>👤 مریض:</span>
-                    <span style={{ color: '#34d399', fontSize: '12px' }}>
-                      {getPatientFullName(request)}
-                    </span>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>
-                      🎂 {getPatientAge(request)}
-                    </span>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>
-                      ⚤ {getPatientGender(request)}
-                    </span>
-                    {request.patient?.mobile && (
-                      <span style={{ color: '#9ca3af', fontSize: '11px' }}>
-                        📞 {request.patient.mobile}
-                      </span>
-                    )}
-                  </div>
-                  
-                  {/* تاریخ و اطلاعات دیگر */}
-                  <div style={{ color: '#9ca3af', fontSize: '11px', marginTop: '3px' }}>
-                    📅 تاریخ درخواست: {formatDateTime(request.request_date || request.created_at)}
-                    {request.status && (
-                      <span style={{ marginRight: '15px' }}>
-                        | وضعیت: {request.status_label || request.status}
-                      </span>
-                    )}
-                    {request.priority && (
-                      <span style={{ marginRight: '15px' }}>
-                        | اولویت: {request.priority_label || request.priority}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ color: '#6b7280', fontSize: '10px', marginTop: '2px' }}>
-                    ID: {request.id} | fee_id: {request.fee_id !== undefined && request.fee_id !== 0 && request.fee_id !== null ? request.fee_id : 'ندارد'}
-                  </div>
-                  
-                  {/* اطلاعات فیس اگر موجود باشد */}
-                  {hasFeeRecord && feeInfo && (
-                    <div style={{
-                      marginTop: '5px',
-                      padding: '5px 10px',
-                      backgroundColor: '#0f1a2a',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      color: '#9ca3af'
-                    }}>
-                      <span style={{ color: '#10b981' }}>✅ فیس ثبت شده: </span>
-                      💰 {toNumber(feeInfo.amount || 0).toFixed(2)} | 
-                      پرداخت: {toNumber(feeInfo.paid_amount || 0).toFixed(2)} | 
-                      روش: {getMethodLabel(feeInfo.payment_method)}
-                      {feeInfo.remaining_amount !== undefined && (
-                        <> | باقیمانده: {toNumber(feeInfo.remaining_amount).toFixed(2)}</>
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>#</th>
+                <th style={styles.th}>شماره مراجعه</th>
+                <th style={styles.th}>معلومات بیمار</th>
+                <th style={styles.th}>نوع رادیولوژی</th>
+                <th style={styles.th}>بارکد</th>
+                <th style={styles.th}>مبلغ کل</th>
+                <th style={styles.th}>پرداخت شده</th>
+                <th style={styles.th}>باقیمانده</th>
+                <th style={styles.th}>وضعیت</th>
+                <th style={styles.th}>عملیات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeList.map((request, idx) => {
+                const hasFeeRecord = hasFee(request);
+                const feeInfo = getFeeForRequest(request.id);
+                const badge = getStatusBadge(request);
+                const amount = toNumber(feeInfo?.amount);
+                const paidAmt = toNumber(feeInfo?.paid_amount);
+                const discount = toNumber(feeInfo?.discount);
+                const remaining = calculateRemaining(amount, paidAmt, discount);
+                const isFullPaid = feeInfo && remaining <= 0;
+
+                return (
+                  <tr key={request.id || idx}>
+                    <td style={styles.td}>{idx + 1}</td>
+                    <td style={styles.td}>
+                      <code style={{ background: "#f3f4f6", padding: "3px 8px", borderRadius: "4px", fontSize: "12px" }}>
+                        #{request.reg_id || "-"}
+                      </code>
+                    </td>
+                    <td style={styles.td}>
+                      <div style={{ fontWeight: "bold" }}>👤 {getPatientFullName(request)}</div>
+                      <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px" }}>
+                        🎂 {getPatientAge(request)} | ⚤ {getPatientGender(request)}
+                      </div>
+                      {request.patient?.mobile && (
+                        <div style={{ fontSize: "11px", color: "#6b7280" }}>📞 {request.patient.mobile}</div>
                       )}
-                      <button
-                        onClick={() => handleOpenEditFeeForm(feeInfo)}
-                        style={{
-                          backgroundColor: '#f59e0b',
-                          color: 'white',
-                          padding: '2px 12px',
-                          borderRadius: '4px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: '11px',
-                          marginRight: '10px'
-                        }}
-                      >
-                        ✏️ ویرایش
-                      </button>
-                    </div>
-                  )}
-                </div>
-                
-                {!hasFeeRecord ? (
-                  <button
-                    onClick={() => handleOpenFeeForm(request)}
-                    style={{
-                      backgroundColor: '#ec4899',
-                      color: 'white',
-                      padding: '8px 20px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                      fontSize: '13px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    💰 اخذ فیس
-                  </button>
-                ) : (
-                  <span style={{
-                    backgroundColor: '#1a3a2a',
-                    color: '#22c55e',
-                    padding: '8px 15px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    border: '1px solid #22c55e'
-                  }}>
-                    ✅ فیس اخذ شده
-                  </span>
-                )}
-              </div>
-            );
-          })}
+                    </td>
+                    <td style={styles.td}>
+                      <div style={{ fontWeight: "bold", color: "#ec4899" }}>
+                        📷 {request.radiology_type_label || request.radiology_type || "-"}
+                      </div>
+                      {request.body_part && (
+                        <div style={{ fontSize: "11px", color: "#6b7280" }}>بخش: {request.body_part}</div>
+                      )}
+                    </td>
+                    <td style={styles.td}>
+                      {request.barcode ? (
+                        <code style={{ background: "#fef3c7", color: "#92400e", padding: "3px 8px", borderRadius: "4px", fontSize: "11px", fontFamily: "monospace" }}>
+                          🏷️ {request.barcode}
+                        </code>
+                      ) : (
+                        <span style={{ color: "#9ca3af" }}>-</span>
+                      )}
+                    </td>
+                    <td style={{ ...styles.td, color: "#d48806", fontWeight: "bold" }}>
+                      {amount > 0 ? `${amount.toLocaleString()} AFN` : "-"}
+                    </td>
+                    <td style={{ ...styles.td, color: "#16a34a" }}>
+                      {paidAmt > 0 ? `${paidAmt.toLocaleString()} AFN` : "-"}
+                    </td>
+                    <td style={{ ...styles.td, color: remaining <= 0 ? "#16a34a" : "#dc2626", fontWeight: "bold" }}>
+                      {amount > 0 ? `${remaining.toLocaleString()} AFN` : "-"}
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ background: badge.bg, color: badge.color, padding: "4px 10px", borderRadius: "12px", fontSize: "12px", fontWeight: "bold" }}>
+                        {badge.text}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      {!hasFeeRecord ? (
+                        <button
+                          style={{ ...styles.btn, background: "#10b981", color: "white" }}
+                          onClick={() => handleOpenFeeForm(request)}
+                        >
+                          💰 اخذ فیس
+                        </button>
+                      ) : (
+                        <>
+                          {feeInfo && feeInfo.id && (
+                            <button
+                              style={{ ...styles.btn, background: "#f59e0b", color: "white" }}
+                              onClick={() => handleOpenEditFeeForm(feeInfo)}
+                            >
+                              ✏️ تصحیح
+                            </button>
+                          )}
+                          {feeInfo && feeInfo.id && !isFullPaid && (
+                            <button
+                              style={{ ...styles.btn, background: "#ef4444", color: "white" }}
+                              onClick={() => handleDeleteFee(feeInfo.id)}
+                            >
+                              🗑️ حذف
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* ============ فیس‌های ثبت شده ============ */}
-      {feeRecords.length > 0 && (
-        <>
-          <h4 style={{ color: '#10b981', marginTop: '20px', marginBottom: '10px' }}>
-            ✅ خلاصه فیس‌های ثبت شده رادیولوژی
-            <span style={{ fontSize: '12px', color: '#9ca3af', marginRight: '10px' }}>
-              ({feeRecords.length} فیس)
-            </span>
-          </h4>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {feeRecords.map((fee) => {
-              const amount = toNumber(fee.amount);
-              const paidAmount = toNumber(fee.paid_amount);
-              const discount = toNumber(fee.discount);
-              
-              const status = getPaymentStatus(amount, paidAmount, discount);
-              return (
-                <div
-                  key={fee.id}
-                  style={{
-                    backgroundColor: '#1a2a3a',
-                    padding: '15px 20px',
-                    borderRadius: '8px',
-                    borderRight: `4px solid ${status.color}`,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '10px'
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: '200px' }}>
-                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ فیس ثبت شده</span>
-                      <span style={{ color: '#ec4899', fontSize: '12px' }}>
-                        {getRegIdLabel(fee.reg_id)}
-                      </span>
-                      {fee.barcode && (
-                        <span style={{ 
-                          color: '#fcd34d', 
-                          fontSize: '12px',
-                          fontFamily: 'monospace',
-                          backgroundColor: '#0f1a2a',
-                          padding: '2px 10px',
-                          borderRadius: '4px'
-                        }}>
-                          🏷️ {fee.barcode}
-                        </span>
-                      )}
-                      <span style={{
-                        backgroundColor: status.color,
-                        color: 'white',
-                        padding: '2px 12px',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        fontWeight: 'bold'
-                      }}>
-                        {status.label}
-                      </span>
-                      <span style={{ color: '#9ca3af', fontSize: '11px' }}>
-                        {getMethodLabel(fee.payment_method)}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '20px', marginTop: '5px', flexWrap: 'wrap' }}>
-                      <span style={{ color: '#fcd34d' }}>💰 {amount.toFixed(2)}</span>
-                      <span style={{ color: '#22c55e' }}>پرداخت: {paidAmount.toFixed(2)}</span>
-                      {discount > 0 && (
-                        <span style={{ color: '#f59e0b' }}>تخفیف: {discount}%</span>
-                      )}
-                      <span style={{ color: '#ef4444' }}>
-                        باقیمانده: {calculateRemaining(amount, paidAmount, discount).toFixed(2)}
-                      </span>
-                    </div>
-                    {fee.description && (
-                      <div style={{ color: '#9ca3af', fontSize: '12px', marginTop: '3px' }}>
-                        {fee.description}
-                      </div>
-                    )}
-                    <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>
-                      📅 {formatDateTime(fee.created_at)}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleOpenEditFeeForm(fee)}
-                    style={{
-                      backgroundColor: '#f59e0b',
-                      color: 'white',
-                      padding: '6px 15px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '12px',
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    ✏️ ویرایش
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {/* ============ مودال فرم اخذ فیس ============ */}
-      {(showFeeForm && (selectedRequest || editingFee)) && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1000,
-          padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#1a1a2e',
-            padding: '30px',
-            borderRadius: '12px',
-            maxWidth: '700px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto'
-          }}>
-            <h4 style={{ color: '#ec4899', marginBottom: '20px' }}>
-              {editingFee ? '✏️ تصحیح فیس رادیولوژی' : '💰 اخذ فیس رادیولوژی'}
-            </h4>
+      {/* مودال فرم فیس (سفید مثل PharmacyFeeTab) */}
+      {showFeeForm && (selectedRequest || editingFee) && (
+        <div style={styles.modal} onClick={handleCloseForm}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0, color: "#10b981" }}>
+              {editingFee ? "✏️ تصحیح فیس رادیولوژی" : "💰 اخذ فیس رادیولوژی"}
+            </h2>
 
             {selectedRequest && (
-              <div style={{
-                backgroundColor: '#0f1a2a',
-                padding: '15px',
-                borderRadius: '6px',
-                marginBottom: '20px',
-                border: '1px solid #374151'
-              }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
-                  <div>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>👤 نام مریض</span>
-                    <div style={{ color: 'white', fontWeight: 'bold' }}>
-                      {getPatientFullName(selectedRequest)}
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>🆔 شماره مراجعه</span>
-                    <div style={{ color: 'white', fontWeight: 'bold' }}>{selectedRequest.reg_id || '-'}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>🎂 سن</span>
-                    <div style={{ color: 'white' }}>{getPatientAge(selectedRequest)}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>⚤ جنسیت</span>
-                    <div style={{ color: 'white' }}>{getPatientGender(selectedRequest)}</div>
-                  </div>
+              <div style={{ padding: "12px", background: "#f0fdf4", borderRadius: "8px", border: "1px solid #10b981", marginBottom: "16px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "13px" }}>
+                  <div><b>نام مریض:</b> {getPatientFullName(selectedRequest)}</div>
+                  <div><b>شماره مراجعه:</b> {selectedRequest.reg_id || "-"}</div>
+                  <div><b>سن:</b> {getPatientAge(selectedRequest)}</div>
+                  <div><b>جنسیت:</b> {getPatientGender(selectedRequest)}</div>
                   {selectedRequest.patient?.mobile && (
-                    <div>
-                      <span style={{ color: '#9ca3af', fontSize: '11px' }}>📞 تماس</span>
-                      <div style={{ color: 'white' }}>{selectedRequest.patient.mobile}</div>
-                    </div>
+                    <div><b>تماس:</b> {selectedRequest.patient.mobile}</div>
                   )}
-                </div>
-                
-                <div style={{
-                  borderTop: '1px solid #2a3a4a',
-                  paddingTop: '10px',
-                  marginTop: '5px'
-                }}>
-                  <div style={{ color: '#9ca3af', fontSize: '11px', marginBottom: '5px' }}>
-                    📋 اطلاعات درخواست
-                  </div>
-                  <div style={{ 
-                    color: 'white', 
-                    fontSize: '13px',
-                    padding: '4px 0'
-                  }}>
-                    {selectedRequest.radiology_type_label || selectedRequest.radiology_type || 'رادیولوژی'}
-                    {selectedRequest.body_part && ` - بخش: ${selectedRequest.body_part}`}
-                    {selectedRequest.barcode && ` (🏷️ ${selectedRequest.barcode})`}
-                  </div>
+                  <div><b>نوع رادیولوژی:</b> {selectedRequest.radiology_type_label || selectedRequest.radiology_type || "-"}</div>
+                  {selectedRequest.body_part && (
+                    <div><b>بخش:</b> {selectedRequest.body_part}</div>
+                  )}
+                  {selectedRequest.barcode && (
+                    <div><b>بارکد:</b> {selectedRequest.barcode}</div>
+                  )}
                 </div>
               </div>
             )}
 
             {editingFee && (
-              <div style={{
-                backgroundColor: '#0f1a2a',
-                padding: '15px',
-                borderRadius: '6px',
-                marginBottom: '20px',
-                border: '1px solid #374151'
-              }}>
-                <div style={{ color: '#9ca3af', fontSize: '12px' }}>
-                  ✏️ در حال ویرایش فیس شماره: {editingFee.id}
-                </div>
-                <div style={{ color: '#9ca3af', fontSize: '11px', marginTop: '5px' }}>
-                  بارکد: {editingFee.barcode}
-                </div>
-                <div style={{ color: '#9ca3af', fontSize: '11px', marginTop: '5px' }}>
-                  مراجعه: {getRegIdLabel(editingFee.reg_id)}
-                </div>
+              <div style={{ padding: "12px", background: "#f0fdf4", borderRadius: "8px", border: "1px solid #10b981", marginBottom: "16px", fontSize: "13px" }}>
+                <div>✏️ در حال تصحیح فیس شماره: <b>{editingFee.id}</b></div>
+                {editingFee.barcode && <div>بارکد: {editingFee.barcode}</div>}
+                <div>مراجعه: #{editingFee.reg_id || "-"}</div>
               </div>
             )}
 
             <form onSubmit={handleSubmitFee}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div>
-                  <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                    مبلغ کل (افغانی) *
-                  </label>
+                  <label style={styles.label}>مبلغ کل (افغانی) *</label>
                   <input
                     type="number"
                     step="0.01"
                     value={feeFormData.amount}
                     onChange={(e) => setFeeFormData({ ...feeFormData, amount: e.target.value })}
-                    style={{
-                      backgroundColor: '#1a1a2e',
-                      color: 'white',
-                      borderColor: '#374151',
-                      width: '100%',
-                      padding: '10px',
-                      borderRadius: '4px',
-                      border: '1px solid #374151'
-                    }}
+                    style={styles.input}
                     required
                     min="0"
                   />
                 </div>
-
                 <div>
-                  <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                    مبلغ پرداخت شده
-                  </label>
+                  <label style={styles.label}>مبلغ پرداخت شده</label>
                   <input
                     type="number"
                     step="0.01"
                     value={feeFormData.paid_amount}
                     onChange={(e) => setFeeFormData({ ...feeFormData, paid_amount: e.target.value })}
-                    style={{
-                      backgroundColor: '#1a1a2e',
-                      color: 'white',
-                      borderColor: '#374151',
-                      width: '100%',
-                      padding: '10px',
-                      borderRadius: '4px',
-                      border: '1px solid #374151'
-                    }}
+                    style={styles.input}
                     min="0"
                   />
                 </div>
-
                 <div>
-                  <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                    تخفیف (%)
-                  </label>
+                  <label style={styles.label}>تخفیف (%)</label>
                   <input
                     type="number"
                     step="0.1"
                     value={feeFormData.discount}
                     onChange={(e) => setFeeFormData({ ...feeFormData, discount: e.target.value })}
-                    style={{
-                      backgroundColor: '#1a1a2e',
-                      color: 'white',
-                      borderColor: '#374151',
-                      width: '100%',
-                      padding: '10px',
-                      borderRadius: '4px',
-                      border: '1px solid #374151'
-                    }}
+                    style={styles.input}
                     min="0"
                     max="100"
                   />
                 </div>
-
                 <div>
-                  <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                    روش پرداخت
-                  </label>
+                  <label style={styles.label}>روش پرداخت</label>
                   <select
                     value={feeFormData.payment_method}
                     onChange={(e) => setFeeFormData({ ...feeFormData, payment_method: e.target.value })}
-                    style={{
-                      backgroundColor: '#1a1a2e',
-                      color: 'white',
-                      borderColor: '#374151',
-                      width: '100%',
-                      padding: '10px',
-                      borderRadius: '4px',
-                      border: '1px solid #374151'
-                    }}
+                    style={styles.input}
                   >
                     <option value="cash">نقدی</option>
                     <option value="card">کارت بانکی</option>
@@ -988,106 +763,62 @@ export default function RadiologyFeeTab(props) {
                     <option value="insurance">بیمه</option>
                   </select>
                 </div>
-
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                    توضیحات
-                  </label>
-                  <textarea
-                    value={feeFormData.description}
-                    onChange={(e) => setFeeFormData({ ...feeFormData, description: e.target.value })}
-                    rows="2"
-                    style={{
-                      backgroundColor: '#1a1a2e',
-                      color: 'white',
-                      borderColor: '#374151',
-                      width: '100%',
-                      padding: '10px',
-                      borderRadius: '4px',
-                      border: '1px solid #374151'
-                    }}
-                    placeholder="توضیحات اضافی..."
-                  />
-                </div>
-
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                    یادداشت
-                  </label>
-                  <textarea
-                    value={feeFormData.note}
-                    onChange={(e) => setFeeFormData({ ...feeFormData, note: e.target.value })}
-                    rows="2"
-                    style={{
-                      backgroundColor: '#1a1a2e',
-                      color: 'white',
-                      borderColor: '#374151',
-                      width: '100%',
-                      padding: '10px',
-                      borderRadius: '4px',
-                      border: '1px solid #374151'
-                    }}
-                    placeholder="یادداشت..."
-                  />
-                </div>
               </div>
+
+              <label style={styles.label}>توضیحات</label>
+              <textarea
+                value={feeFormData.description}
+                onChange={(e) => setFeeFormData({ ...feeFormData, description: e.target.value })}
+                rows="2"
+                style={styles.input}
+                placeholder="توضیحات اضافی..."
+              />
+
+              <label style={styles.label}>یادداشت</label>
+              <textarea
+                value={feeFormData.note}
+                onChange={(e) => setFeeFormData({ ...feeFormData, note: e.target.value })}
+                rows="2"
+                style={styles.input}
+                placeholder="یادداشت..."
+              />
 
               {feeFormData.amount && (
                 <div style={{
-                  marginTop: '15px',
-                  padding: '10px 15px',
-                  backgroundColor: '#0f1a2a',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
+                  marginTop: "16px",
+                  padding: "16px",
+                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  color: "white",
+                  borderRadius: "10px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                 }}>
-                  <span style={{ color: '#9ca3af' }}>مبلغ باقیمانده:</span>
-                  <span style={{
-                    color: '#ef4444',
-                    fontWeight: 'bold',
-                    fontSize: '18px'
-                  }}>
+                  <span style={{ fontSize: "14px" }}>💰 مبلغ باقیمانده:</span>
+                  <span style={{ fontSize: "24px", fontWeight: "bold" }}>
                     {calculateRemaining(
                       parseFloat(feeFormData.amount) || 0,
                       parseFloat(feeFormData.paid_amount) || 0,
                       parseFloat(feeFormData.discount) || 0
-                    ).toFixed(2)}
+                    ).toFixed(2)} AFN
                   </span>
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'center' }}>
+              <div style={{ marginTop: "20px", display: "flex", gap: "10px", justifyContent: "flex-end" }}>
                 <button
                   type="button"
+                  style={{ ...styles.btn, background: "#6b7280", color: "white", padding: "10px 24px" }}
                   onClick={handleCloseForm}
-                  style={{
-                    backgroundColor: '#6b7280',
-                    color: 'white',
-                    padding: '10px 30px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: '14px'
-                  }}
                 >
                   انصراف
                 </button>
                 <button
                   type="submit"
+                  style={{ ...styles.btn, background: "#10b981", color: "white", padding: "10px 24px" }}
                   disabled={loading}
-                  style={{
-                    backgroundColor: loading ? '#6b7280' : '#ec4899',
-                    color: 'white',
-                    padding: '10px 30px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    fontSize: '14px',
-                    fontWeight: 'bold'
-                  }}
                 >
-                  {loading ? '⏳ در حال ثبت...' : (editingFee ? '✅ ذخیره تغییرات' : '💰 ثبت فیس')}
+                  {loading ? "⏳ در حال ثبت..." : editingFee ? "✅ ذخیره تغییرات" : "💰 ثبت فیس"}
                 </button>
               </div>
             </form>

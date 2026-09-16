@@ -1,3 +1,6 @@
+// src/app/pages/treatment/history/HistoryList.jsx
+// استایل کاملاً مطابق PharmacyFeeTab
+
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 
@@ -8,20 +11,18 @@ export default function HistoryList({ api, onSelectHistory }) {
   const [filterDate, setFilterDate] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [activeTab, setActiveTab] = useState("all");
 
-  // دریافت تاریخچه معالجات
   const fetchHistory = async () => {
     setLoading(true);
     try {
       const response = await api.get("/doctor/treatment-history");
-      
       let data = [];
       if (response.data?.data && Array.isArray(response.data.data)) {
         data = response.data.data;
       } else if (Array.isArray(response.data)) {
         data = response.data;
       }
-
       setHistory(data);
     } catch (err) {
       console.error("خطا در دریافت تاریخچه:", err);
@@ -35,102 +36,72 @@ export default function HistoryList({ api, onSelectHistory }) {
     fetchHistory();
   }, []);
 
-  // فیلتر کردن بر اساس جستجو و تاریخ
   const filteredHistory = history.filter((item) => {
-    const matchesSearch = 
+    const matchesSearch =
       (item.patient?.first_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.patient?.last_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.patient?.mobile || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.visit_number || "").toLowerCase().includes(searchTerm.toLowerCase());
-    
     const matchesDate = filterDate ? item.visit_date === filterDate : true;
-    
     return matchesSearch && matchesDate;
   });
 
-  // فرمت تاریخ
   const formatDate = (date) => {
     if (!date) return "-";
-    return new Date(date).toLocaleDateString("fa-IR");
+    try {
+      return new Date(date).toLocaleDateString("fa-IR");
+    } catch {
+      return "-";
+    }
   };
 
-  // فرمت زمان
   const formatTime = (date) => {
     if (!date) return "-";
-    return new Date(date).toLocaleTimeString("fa-IR", {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    try {
+      return new Date(date).toLocaleTimeString("fa-IR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "-";
+    }
   };
 
-  // محاسبه مدت زمان معالجه
   const calculateDuration = (startedAt, completedAt) => {
     if (!startedAt || !completedAt) return "-";
-    
     const start = new Date(startedAt);
     const end = new Date(completedAt);
     const diffMinutes = Math.floor((end - start) / (1000 * 60));
-    
-    if (diffMinutes < 60) {
-      return `${diffMinutes} دقیقه`;
-    } else {
-      const hours = Math.floor(diffMinutes / 60);
-      const minutes = diffMinutes % 60;
-      return `${hours} ساعت و ${minutes} دقیقه`;
-    }
+    if (diffMinutes < 60) return `${diffMinutes} دقیقه`;
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+    return `${hours} ساعت و ${minutes} دقیقه`;
   };
 
-  // وضعیت معالجه
   const getStatusBadge = (status) => {
-    const statusMap = {
-      'Doctor': { text: "در حال معالجه", color: "#3b82f6", icon: "🔄" },
-      'Completed': { text: "تکمیل شده", color: "#10b981", icon: "✅" },
-      'Laboratory': { text: "در لابراتوار", color: "#f59e0b", icon: "🔬" },
-      'Pending': { text: "در انتظار", color: "#6b7280", icon: "⏳" },
-      'Cancelled': { text: "لغو شده", color: "#ef4444", icon: "❌" }
+    const map = {
+      Doctor: { bg: "#dbeafe", color: "#1e40af", text: "🔄 در حال معالجه" },
+      Completed: { bg: "#d1fae5", color: "#065f46", text: "✅ تکمیل شده" },
+      Laboratory: { bg: "#fef3c7", color: "#92400e", text: "🔬 در لابراتوار" },
+      Pending: { bg: "#f3f4f6", color: "#374151", text: "⏳ در انتظار" },
+      Cancelled: { bg: "#fee2e2", color: "#991b1b", text: "❌ لغو شده" },
     };
-    const statusInfo = statusMap[status] || statusMap.Pending;
-    return (
-      <span style={{
-        backgroundColor: statusInfo.color,
-        color: "white",
-        padding: "4px 12px",
-        borderRadius: "20px",
-        fontSize: "12px",
-        fontWeight: "bold",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "4px"
-      }}>
-        {statusInfo.icon} {statusInfo.text}
-      </span>
-    );
+    return map[status] || map.Pending;
   };
 
-  // مشاهده جزئیات
   const viewDetails = (item) => {
     setSelectedItem(item);
     setShowModal(true);
-    if (onSelectHistory) {
-      onSelectHistory(item);
-    }
+    if (onSelectHistory) onSelectHistory(item);
   };
 
-  // برگشت به معاینه
   const returnToTreatment = async (historyId) => {
-    if (!window.confirm("آیا مطمئن هستید که می‌خواهید این مریض را به معاینه برگردانید؟")) {
-      return;
-    }
-
+    if (!window.confirm("آیا مطمئن هستید که می‌خواهید این مریض را به معاینه برگردانید؟")) return;
     try {
-      const response = await api.post(`/doctor/return-to-treatment/${historyId}`);
+      await api.post(`/doctor/return-to-treatment/${historyId}`);
       toast.success("✅ مریض به معاینه برگشت داده شد");
-      
-      // حذف از لیست
-      setHistory(prev => prev.filter(item => item.id !== historyId));
+      setHistory((prev) => prev.filter((item) => item.id !== historyId));
       setShowModal(false);
-      
-      // رفرش کردن لیست
       fetchHistory();
     } catch (err) {
       console.error("خطا در برگشت به معاینه:", err);
@@ -138,473 +109,572 @@ export default function HistoryList({ api, onSelectHistory }) {
     }
   };
 
-  // بستن مودال
   const closeModal = () => {
     setShowModal(false);
     setSelectedItem(null);
   };
 
+  // ============ Styles (مطابق PharmacyFeeTab) ============
+  const styles = {
+    container: { padding: "8px" },
+    statsGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+      gap: "10px",
+      marginBottom: "20px",
+      padding: "15px",
+      background: "linear-gradient(135deg, #1f2937 0%, #111827 100%)",
+      borderRadius: "10px",
+    },
+    statBox: { textAlign: "center" },
+    statValue: { fontSize: "20px", fontWeight: "bold" },
+    statLabel: { fontSize: "11px", color: "#9ca3af", marginTop: "2px" },
+    filters: {
+      display: "flex",
+      gap: "10px",
+      marginBottom: "15px",
+      flexWrap: "wrap",
+      alignItems: "center",
+      flexDirection: "row-reverse",
+    },
+    filterBtn: {
+      padding: "8px 16px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      cursor: "pointer",
+      fontSize: "13px",
+      background: "white",
+      transition: "all 0.2s",
+    },
+    filterBtnActive: {
+      background: "#10b981",
+      color: "white",
+      borderColor: "#10b981",
+    },
+    searchInput: {
+      padding: "8px 16px",
+      border: "1px solid #374151",
+      borderRadius: "8px",
+      fontSize: "14px",
+      minWidth: "250px",
+      flex: 1,
+      background: "#1a1a2e",
+      color: "white",
+    },
+    table: {
+      width: "100%",
+      borderCollapse: "collapse",
+      fontSize: "13px",
+      background: "white",
+      borderRadius: "10px",
+      overflow: "hidden",
+    },
+    th: {
+      padding: "12px",
+      textAlign: "right",
+      background: "#f9fafb",
+      color: "#374151",
+      fontSize: "13px",
+      fontWeight: "bold",
+      borderBottom: "2px solid #e5e7eb",
+    },
+    td: {
+      padding: "12px",
+      borderBottom: "1px solid #f3f4f6",
+      color: "#1f2937",
+    },
+    btn: {
+      padding: "6px 12px",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "12px",
+      fontWeight: "bold",
+      marginRight: "4px",
+    },
+    modal: {
+      position: "fixed",
+      top: 0, left: 0, right: 0, bottom: 0,
+      background: "rgba(0,0,0,0.5)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 2000,
+      padding: "16px",
+    },
+    modalContent: {
+      background: "white",
+      borderRadius: "12px",
+      padding: "24px",
+      maxWidth: "800px",
+      width: "100%",
+      maxHeight: "90vh",
+      overflowY: "auto",
+    },
+    patientInfoCard: {
+      padding: "16px",
+      background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+      borderRadius: "10px",
+      border: "2px solid #10b981",
+      marginBottom: "16px",
+    },
+    patientInfoGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+      gap: "12px",
+    },
+    infoItem: {
+      background: "white",
+      padding: "10px 12px",
+      borderRadius: "8px",
+      border: "1px solid #d1fae5",
+    },
+    infoLabel: {
+      fontSize: "11px",
+      color: "#059669",
+      fontWeight: "bold",
+      display: "block",
+      marginBottom: "4px",
+    },
+    infoValue: { fontSize: "14px", color: "#1f2937", fontWeight: "bold" },
+    sectionCard: {
+      background: "white",
+      borderRadius: "12px",
+      padding: "20px",
+      marginBottom: "16px",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+    },
+    input: {
+      padding: "8px 16px",
+      border: "1px solid #374151",
+      borderRadius: "8px",
+      fontSize: "14px",
+      background: "#1a1a2e",
+      color: "white",
+    },
+    label: {
+      display: "block",
+      fontSize: "12px",
+      color: "#374151",
+      fontWeight: "bold",
+      marginBottom: "6px",
+    },
+  };
+
   if (loading) {
     return (
-      <div style={{ textAlign: "center", padding: "50px 0", color: "#9ca3af" }}>
-        <div style={{ fontSize: "30px", marginBottom: "10px" }}>⏳</div>
-        <p>در حال بارگذاری تاریخچه...</p>
+      <div style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
+        ⏳ در حال بارگذاری...
       </div>
     );
   }
 
-  return (
-    <div>
-      {/* هدر و فیلترها */}
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: "20px",
-        flexWrap: "wrap",
-        gap: "10px"
-      }}>
-        <h3 style={{ color: "#60a5fa", margin: 0 }}>
-          📜 تاریخچه معالجات ({filteredHistory.length})
-        </h3>
-        
-        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-          <input
-            type="text"
-            placeholder="🔍 جستجوی مریض..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              padding: "8px 15px",
-              borderRadius: "6px",
-              border: "1px solid #374151",
-              backgroundColor: "#1f2937",
-              color: "white",
-              outline: "none",
-              minWidth: "200px"
-            }}
-          />
-          
-          <input
-            type="date"
-            value={filterDate}
-            onChange={(e) => setFilterDate(e.target.value)}
-            style={{
-              padding: "8px 15px",
-              borderRadius: "6px",
-              border: "1px solid #374151",
-              backgroundColor: "#1f2937",
-              color: "white",
-              outline: "none"
-            }}
-          />
-          
-          <button
-            onClick={() => {
-              setSearchTerm("");
-              setFilterDate("");
-            }}
-            style={{
-              padding: "8px 15px",
-              borderRadius: "6px",
-              border: "none",
-              backgroundColor: "#6b7280",
-              color: "white",
-              cursor: "pointer"
-            }}
-          >
-            ↺ پاک کردن
-          </button>
+  const tabs = [
+    { key: "all", label: "📋 همه", count: history.length },
+    {
+      key: "completed",
+      label: "✅ تکمیل شده",
+      count: history.filter((h) => h.visit_status === "Completed").length,
+    },
+    {
+      key: "doctor",
+      label: "🔄 در حال معالجه",
+      count: history.filter((h) => h.visit_status === "Doctor").length,
+    },
+    {
+      key: "cancelled",
+      label: "❌ لغو شده",
+      count: history.filter((h) => h.visit_status === "Cancelled").length,
+    },
+  ];
 
-          <button
-            onClick={fetchHistory}
-            style={{
-              padding: "8px 15px",
-              borderRadius: "6px",
-              border: "none",
-              backgroundColor: "#3b82f6",
-              color: "white",
-              cursor: "pointer"
-            }}
-          >
-            🔄 بروزرسانی
-          </button>
+  const getActiveList = () => {
+    let list = filteredHistory;
+    if (activeTab === "completed") list = list.filter((h) => h.visit_status === "Completed");
+    else if (activeTab === "doctor") list = list.filter((h) => h.visit_status === "Doctor");
+    else if (activeTab === "cancelled") list = list.filter((h) => h.visit_status === "Cancelled");
+    return list;
+  };
+
+  const activeList = getActiveList();
+
+  return (
+    <div style={styles.container}>
+      {/* ====== آمار ====== */}
+      <div style={styles.statsGrid}>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#3b82f6" }}>{history.length}</div>
+          <div style={styles.statLabel}>کل معالجات</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#22c55e" }}>
+            {history.filter((h) => h.visit_status === "Completed").length}
+          </div>
+          <div style={styles.statLabel}>تکمیل شده</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#f59e0b" }}>
+            {history.filter((h) => h.visit_status === "Doctor").length}
+          </div>
+          <div style={styles.statLabel}>در حال معالجه</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#ef4444" }}>
+            {history.filter((h) => h.visit_status === "Cancelled").length}
+          </div>
+          <div style={styles.statLabel}>لغو شده</div>
         </div>
       </div>
 
-      {/* جدول تاریخچه */}
-      {filteredHistory.length === 0 ? (
-        <div style={{
-          textAlign: "center",
-          padding: "60px 0",
-          color: "#6b7280"
-        }}>
-          <div style={{ fontSize: "50px", marginBottom: "15px" }}>📭</div>
-          <p>هیچ تاریخچه معالجه‌ای یافت نشد</p>
+      {/* ====== نوار فیلترها (تب‌های راست‌چین) ====== */}
+      <div style={styles.filters}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            style={{
+              ...styles.filterBtn,
+              ...(activeTab === tab.key ? styles.filterBtnActive : {}),
+            }}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            {tab.label} ({tab.count})
+          </button>
+        ))}
+        <input
+          type="text"
+          placeholder="🔍 جستجوی مریض، شماره ویزیت..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={styles.searchInput}
+        />
+        <input
+          type="date"
+          value={filterDate}
+          onChange={(e) => setFilterDate(e.target.value)}
+          style={styles.input}
+        />
+        <button
+          onClick={() => {
+            setSearchTerm("");
+            setFilterDate("");
+          }}
+          style={{ ...styles.btn, background: "#6b7280", color: "white", padding: "8px 16px" }}
+        >
+          ↺ پاک کردن
+        </button>
+        <button
+          onClick={fetchHistory}
+          style={{ ...styles.btn, background: "#3b82f6", color: "white", padding: "8px 16px" }}
+        >
+          🔄 بروزرسانی
+        </button>
+      </div>
+
+      {/* ====== جدول ====== */}
+      {activeList.length === 0 ? (
+        <div
+          style={{
+            padding: "40px",
+            textAlign: "center",
+            color: "#6b7280",
+            background: "white",
+            borderRadius: "10px",
+          }}
+        >
+          <div style={{ fontSize: "48px", marginBottom: "12px" }}>📭</div>
+          <div>هیچ تاریخچه‌ای با این فیلتر یافت نشد</div>
         </div>
       ) : (
         <div style={{ overflowX: "auto" }}>
-          <table style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "14px"
-          }}>
+          <table style={styles.table}>
             <thead>
-              <tr style={{
-                backgroundColor: "#374151",
-                borderBottom: "2px solid #4b5563"
-              }}>
-                <th style={{ padding: "12px 15px", textAlign: "right" }}>#</th>
-                <th style={{ padding: "12px 15px", textAlign: "right" }}>نام مریض</th>
-                <th style={{ padding: "12px 15px", textAlign: "right" }}>شماره ویزیت</th>
-                <th style={{ padding: "12px 15px", textAlign: "right" }}>تاریخ معالجه</th>
-                <th style={{ padding: "12px 15px", textAlign: "right" }}>تشخیص</th>
-                <th style={{ padding: "12px 15px", textAlign: "right" }}>مدت زمان</th>
-                <th style={{ padding: "12px 15px", textAlign: "right" }}>وضعیت</th>
-                <th style={{ padding: "12px 15px", textAlign: "center" }}>عملیات</th>
+              <tr>
+                <th style={styles.th}>#</th>
+                <th style={styles.th}>نام مریض</th>
+                <th style={styles.th}>شماره ویزیت</th>
+                <th style={styles.th}>تاریخ</th>
+                <th style={styles.th}>تشخیص</th>
+                <th style={styles.th}>مدت زمان</th>
+                <th style={styles.th}>وضعیت</th>
+                <th style={styles.th}>عملیات</th>
               </tr>
             </thead>
             <tbody>
-              {filteredHistory.map((item, index) => (
-                <tr
-                  key={item.id || index}
-                  style={{
-                    borderBottom: "1px solid #374151",
-                    transition: "background 0.2s"
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#374151"}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                >
-                  <td style={{ padding: "12px 15px", color: "#9ca3af" }}>
-                    {index + 1}
-                  </td>
-                  <td style={{ padding: "12px 15px" }}>
-                    <strong>
-                      {item.patient?.first_name || ""} {item.patient?.last_name || ""}
-                    </strong>
-                    <div style={{ fontSize: "11px", color: "#6b7280" }}>
-                      📱 {item.patient?.mobile || "---"}
-                    </div>
-                    <div style={{ fontSize: "11px", color: "#6b7280" }}>
-                      🆔 {item.patient?.national_id || "---"}
-                    </div>
-                  </td>
-                  <td style={{ padding: "12px 15px", color: "#d1d5db" }}>
-                    <strong>{item.visit_number || "---"}</strong>
-                    <div style={{ fontSize: "11px", color: "#6b7280" }}>
-                      🎫 {item.queue_number || "---"}
-                    </div>
-                  </td>
-                  <td style={{ padding: "12px 15px", color: "#d1d5db" }}>
-                    {formatDate(item.visit_date)}
-                    <div style={{ fontSize: "11px", color: "#6b7280" }}>
-                      🕐 {formatTime(item.treatment_started_at)}
-                    </div>
-                  </td>
-                  <td style={{ padding: "12px 15px", maxWidth: "150px" }}>
-                    <span style={{ 
-                      display: "block",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap"
-                    }}>
-                      {item.diagnosis || "تشخیص داده نشده"}
-                    </span>
-                    {item.note && (
-                      <div style={{ 
-                        fontSize: "11px", 
-                        color: "#6b7280",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap"
-                      }}>
-                        📝 {item.note}
+              {activeList.map((item, index) => {
+                const badge = getStatusBadge(item.visit_status);
+                return (
+                  <tr key={item.id || index}>
+                    <td style={styles.td}>{index + 1}</td>
+                    <td style={styles.td}>
+                      <div style={{ fontWeight: "bold" }}>
+                        {item.patient?.first_name || ""} {item.patient?.last_name || ""}
                       </div>
-                    )}
-                  </td>
-                  <td style={{ padding: "12px 15px", color: "#d1d5db" }}>
-                    {calculateDuration(item.treatment_started_at, item.treatment_completed_at)}
-                  </td>
-                  <td style={{ padding: "12px 15px" }}>
-                    {getStatusBadge(item.visit_status)}
-                  </td>
-                  <td style={{ padding: "12px 15px", textAlign: "center" }}>
-                    <button
-                      onClick={() => viewDetails(item)}
-                      style={{
-                        backgroundColor: "#3b82f6",
-                        color: "white",
-                        padding: "6px 12px",
-                        borderRadius: "5px",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "12px",
-                        marginRight: "5px"
-                      }}
-                    >
-                      👁 مشاهده
-                    </button>
-                    <button
-                      onClick={() => returnToTreatment(item.id)}
-                      style={{
-                        backgroundColor: "#f59e0b",
-                        color: "white",
-                        padding: "6px 12px",
-                        borderRadius: "5px",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "12px"
-                      }}
-                      title="برگشت به معاینه"
-                    >
-                      ↩️ برگشت
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      <div style={{ fontSize: "11px", color: "#6b7280" }}>
+                        📱 {item.patient?.mobile || "---"}
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#6b7280" }}>
+                        🆔 {item.patient?.national_id || "---"}
+                      </div>
+                    </td>
+                    <td style={styles.td}>
+                      <div style={{ fontWeight: "bold" }}>{item.visit_number || "---"}</div>
+                      <div style={{ fontSize: "11px", color: "#6b7280" }}>
+                        🎫 {item.queue_number || "---"}
+                      </div>
+                    </td>
+                    <td style={styles.td}>
+                      <div>{formatDate(item.visit_date)}</div>
+                      <div style={{ fontSize: "11px", color: "#6b7280" }}>
+                        🕐 {formatTime(item.treatment_started_at)}
+                      </div>
+                    </td>
+                    <td style={styles.td}>
+                      <div style={{ maxWidth: "200px", fontSize: "12px" }}>
+                        {item.diagnosis || "تشخیص داده نشده"}
+                      </div>
+                    </td>
+                    <td style={styles.td}>
+                      {calculateDuration(item.treatment_started_at, item.treatment_completed_at)}
+                    </td>
+                    <td style={styles.td}>
+                      <span
+                        style={{
+                          background: badge.bg,
+                          color: badge.color,
+                          padding: "4px 10px",
+                          borderRadius: "12px",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {badge.text}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      <button
+                        style={{ ...styles.btn, background: "#3b82f6", color: "white" }}
+                        onClick={() => viewDetails(item)}
+                      >
+                        👁 مشاهده
+                      </button>
+                      <button
+                        style={{ ...styles.btn, background: "#f59e0b", color: "white" }}
+                        onClick={() => returnToTreatment(item.id)}
+                      >
+                        ↩️ برگشت
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Modal نمایش جزئیات */}
+      {/* ====== مودال جزئیات (سفید مثل PharmacyFeeTab) ====== */}
       {showModal && selectedItem && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0,0,0,0.8)",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          zIndex: 999999,
-          padding: "20px"
-        }} onClick={closeModal}>
-          <div style={{
-            backgroundColor: "#1f2937",
-            borderRadius: "12px",
-            padding: "30px",
-            maxWidth: "700px",
-            width: "100%",
-            maxHeight: "80vh",
-            overflowY: "auto",
-            border: "2px solid #8b5cf6",
-            position: "relative"
-          }} onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={closeModal}
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "15px",
-                backgroundColor: "transparent",
-                border: "none",
-                color: "#9ca3af",
-                fontSize: "24px",
-                cursor: "pointer"
-              }}
-            >
-              ✕
-            </button>
+        <div style={styles.modal} onClick={closeModal}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0, color: "#10b981" }}>
+              📋 جزئیات تاریخچه معالجه
+            </h2>
 
-            <h3 style={{ color: "#60a5fa", marginBottom: "20px" }}>
-              📋 جزئیات کامل تاریخچه معالجه
-            </h3>
-
-            <div style={{ display: "grid", gap: "12px" }}>
-              {/* اطلاعات مریض */}
-              <div style={{ 
-                backgroundColor: "#374151", 
-                padding: "15px", 
-                borderRadius: "8px",
-                marginBottom: "10px"
-              }}>
-                <h4 style={{ color: "#60a5fa", marginBottom: "10px" }}>👤 اطلاعات مریض</h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>نام:</span>
-                    <span style={{ color: "white", marginRight: "8px", fontWeight: "bold" }}>
-                      {selectedItem.patient?.first_name} {selectedItem.patient?.last_name}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>نام پدر:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.patient?.father_name || "---"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>شماره تماس:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.patient?.mobile || "---"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>کد ملی:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.patient?.national_id || "---"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>جنسیت:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.patient?.gender === "male" ? "مرد" : 
-                       selectedItem.patient?.gender === "female" ? "زن" : "---"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>گروه خونی:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.patient?.blood_group || "---"}
-                    </span>
+            {/* کارت معلومات بیمار */}
+            <div style={styles.patientInfoCard}>
+              <h3 style={{ margin: "0 0 12px 0", color: "#059669", fontSize: "15px" }}>
+                👤 معلومات بیمار
+              </h3>
+              <div style={styles.patientInfoGrid}>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>نام کامل</span>
+                  <div style={styles.infoValue}>
+                    {selectedItem.patient?.first_name} {selectedItem.patient?.last_name}
                   </div>
                 </div>
-              </div>
-
-              {/* اطلاعات معالجه */}
-              <div style={{ 
-                backgroundColor: "#374151", 
-                padding: "15px", 
-                borderRadius: "8px",
-                marginBottom: "10px"
-              }}>
-                <h4 style={{ color: "#60a5fa", marginBottom: "10px" }}>🩺 اطلاعات معالجه</h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>شماره ویزیت:</span>
-                    <span style={{ color: "white", marginRight: "8px", fontWeight: "bold" }}>
-                      {selectedItem.visit_number || "---"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>شماره صف:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.queue_number || "---"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>تاریخ ویزیت:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {formatDate(selectedItem.visit_date)}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>هزینه ویزیت:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.registration_fee ? `${selectedItem.registration_fee} افغانی` : "---"}
-                    </span>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>نام پدر</span>
+                  <div style={styles.infoValue}>
+                    {selectedItem.patient?.father_name || "---"}
                   </div>
                 </div>
-              </div>
-
-              {/* علائم حیاتی */}
-              <div style={{ 
-                backgroundColor: "#374151", 
-                padding: "15px", 
-                borderRadius: "8px",
-                marginBottom: "10px"
-              }}>
-                <h4 style={{ color: "#60a5fa", marginBottom: "10px" }}>📊 علائم حیاتی</h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px" }}>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>وزن:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.weight ? `${selectedItem.weight} کیلو` : "---"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>فشار خون:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.blood_pressure || "---"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>درجه حرارت:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.temperature ? `${selectedItem.temperature}°C` : "---"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>اکسیژن:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {selectedItem.oxygen ? `${selectedItem.oxygen}%` : "---"}
-                    </span>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>شماره تماس</span>
+                  <div style={styles.infoValue}>{selectedItem.patient?.mobile || "---"}</div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>کد ملی</span>
+                  <div style={styles.infoValue}>
+                    {selectedItem.patient?.national_id || "---"}
                   </div>
                 </div>
-              </div>
-
-              {/* تشخیص و یادداشت */}
-              <div style={{ 
-                backgroundColor: "#374151", 
-                padding: "15px", 
-                borderRadius: "8px",
-                marginBottom: "10px"
-              }}>
-                <h4 style={{ color: "#60a5fa", marginBottom: "10px" }}>📝 تشخیص و یادداشت‌ها</h4>
-                <div>
-                  <span style={{ color: "#9ca3af" }}>تشخیص:</span>
-                  <div style={{ color: "white", marginTop: "5px", padding: "10px", backgroundColor: "#1f2937", borderRadius: "4px" }}>
-                    {selectedItem.diagnosis || "تشخیص داده نشده"}
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>جنسیت</span>
+                  <div style={styles.infoValue}>
+                    {selectedItem.patient?.gender === "male"
+                      ? "مرد"
+                      : selectedItem.patient?.gender === "female"
+                      ? "زن"
+                      : "---"}
                   </div>
                 </div>
-                {selectedItem.note && (
-                  <div style={{ marginTop: "10px" }}>
-                    <span style={{ color: "#9ca3af" }}>یادداشت:</span>
-                    <div style={{ color: "white", marginTop: "5px", padding: "10px", backgroundColor: "#1f2937", borderRadius: "4px" }}>
-                      {selectedItem.note}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* زمان‌ها */}
-              <div style={{ 
-                backgroundColor: "#374151", 
-                padding: "15px", 
-                borderRadius: "8px"
-              }}>
-                <h4 style={{ color: "#60a5fa", marginBottom: "10px" }}>⏱ زمان‌ها</h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>شروع معالجه:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {formatTime(selectedItem.treatment_started_at)}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>ختم معالجه:</span>
-                    <span style={{ color: "white", marginRight: "8px" }}>
-                      {formatTime(selectedItem.treatment_completed_at)}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>مدت زمان:</span>
-                    <span style={{ color: "white", marginRight: "8px", fontWeight: "bold" }}>
-                      {calculateDuration(selectedItem.treatment_started_at, selectedItem.treatment_completed_at)}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "#9ca3af" }}>وضعیت:</span>
-                    <span style={{ marginRight: "8px" }}>
-                      {getStatusBadge(selectedItem.visit_status)}
-                    </span>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>گروه خونی</span>
+                  <div style={styles.infoValue}>
+                    {selectedItem.patient?.blood_group || "---"}
                   </div>
                 </div>
               </div>
             </div>
 
-            <div style={{ marginTop: "20px", display: "flex", justifyContent: "center", gap: "10px" }}>
+            {/* اطلاعات معالجه */}
+            <div style={styles.sectionCard}>
+              <h3 style={{ margin: "0 0 12px 0", color: "#059669", fontSize: "15px" }}>
+                🩺 اطلاعات معالجه
+              </h3>
+              <div style={styles.patientInfoGrid}>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>شماره ویزیت</span>
+                  <div style={styles.infoValue}>{selectedItem.visit_number || "---"}</div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>شماره صف</span>
+                  <div style={styles.infoValue}>{selectedItem.queue_number || "---"}</div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>تاریخ ویزیت</span>
+                  <div style={styles.infoValue}>{formatDate(selectedItem.visit_date)}</div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>هزینه ویزیت</span>
+                  <div style={styles.infoValue}>
+                    {selectedItem.registration_fee
+                      ? `${selectedItem.registration_fee} افغانی`
+                      : "---"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* علائم حیاتی */}
+            <div style={styles.sectionCard}>
+              <h3 style={{ margin: "0 0 12px 0", color: "#059669", fontSize: "15px" }}>
+                📊 علائم حیاتی
+              </h3>
+              <div style={styles.patientInfoGrid}>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>وزن</span>
+                  <div style={styles.infoValue}>
+                    {selectedItem.weight ? `${selectedItem.weight} کیلو` : "---"}
+                  </div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>فشار خون</span>
+                  <div style={styles.infoValue}>{selectedItem.blood_pressure || "---"}</div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>درجه حرارت</span>
+                  <div style={styles.infoValue}>
+                    {selectedItem.temperature ? `${selectedItem.temperature}°C` : "---"}
+                  </div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>اکسیژن</span>
+                  <div style={styles.infoValue}>
+                    {selectedItem.oxygen ? `${selectedItem.oxygen}%` : "---"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* تشخیص و یادداشت */}
+            <div style={styles.sectionCard}>
+              <h3 style={{ margin: "0 0 12px 0", color: "#059669", fontSize: "15px" }}>
+                📝 تشخیص و یادداشت‌ها
+              </h3>
+              <div style={{ ...styles.infoItem, marginBottom: "10px" }}>
+                <span style={styles.infoLabel}>تشخیص</span>
+                <div style={{ color: "#1f2937", marginTop: "5px" }}>
+                  {selectedItem.diagnosis || "تشخیص داده نشده"}
+                </div>
+              </div>
+              {selectedItem.note && (
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>یادداشت</span>
+                  <div style={{ color: "#1f2937", marginTop: "5px" }}>
+                    {selectedItem.note}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* زمان‌ها */}
+            <div style={styles.sectionCard}>
+              <h3 style={{ margin: "0 0 12px 0", color: "#059669", fontSize: "15px" }}>
+                ⏱ زمان‌ها
+              </h3>
+              <div style={styles.patientInfoGrid}>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>شروع معالجه</span>
+                  <div style={styles.infoValue}>
+                    {formatTime(selectedItem.treatment_started_at)}
+                  </div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>ختم معالجه</span>
+                  <div style={styles.infoValue}>
+                    {formatTime(selectedItem.treatment_completed_at)}
+                  </div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>مدت زمان</span>
+                  <div style={styles.infoValue}>
+                    {calculateDuration(
+                      selectedItem.treatment_started_at,
+                      selectedItem.treatment_completed_at
+                    )}
+                  </div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>وضعیت</span>
+                  <div style={{ marginTop: "4px" }}>
+                    {(() => {
+                      const b = getStatusBadge(selectedItem.visit_status);
+                      return (
+                        <span
+                          style={{
+                            background: b.bg,
+                            color: b.color,
+                            padding: "4px 10px",
+                            borderRadius: "12px",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {b.text}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: "20px",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
               <button
                 onClick={() => returnToTreatment(selectedItem.id)}
                 style={{
-                  padding: "10px 30px",
-                  borderRadius: "6px",
-                  border: "none",
-                  backgroundColor: "#f59e0b",
+                  ...styles.btn,
+                  background: "#f59e0b",
                   color: "white",
-                  cursor: "pointer"
+                  padding: "10px 24px",
                 }}
               >
                 ↩️ برگشت به معاینه
@@ -612,12 +682,10 @@ export default function HistoryList({ api, onSelectHistory }) {
               <button
                 onClick={closeModal}
                 style={{
-                  padding: "10px 30px",
-                  borderRadius: "6px",
-                  border: "none",
-                  backgroundColor: "#6b7280",
+                  ...styles.btn,
+                  background: "#6b7280",
                   color: "white",
-                  cursor: "pointer"
+                  padding: "10px 24px",
                 }}
               >
                 بستن
