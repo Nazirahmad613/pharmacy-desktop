@@ -6,7 +6,7 @@ import { toast } from 'react-toastify';
 import {
   Button, Form, Input, Select, DatePicker, TimePicker,
   Modal, Space, Tag, Row, Col, Tabs, Badge, Tooltip,
-  Empty, Spin, InputNumber, Alert, Table
+  Empty, Spin, InputNumber, Alert, Table, Descriptions
 } from 'antd';
 import {
   PlusOutlined, CheckCircleOutlined, ClockCircleOutlined,
@@ -67,6 +67,23 @@ const extractPatientInfo = (source) => {
   };
 };
 
+const isRequestDischarged = (request) => {
+  if (!request) return false;
+  const status = String(
+    request.status || 
+    request.visit_status || 
+    request.admission_status || 
+    ''
+  ).toLowerCase();
+  
+  if (status === 'discharged' || status === 'completed' || status === 'closed') return true;
+  if (request.discharge_date) return true;
+  if (request.is_discharged === true || request.is_discharged === 1) return true;
+  if (request.discharged === true || request.discharged === 1) return true;
+  
+  return false;
+};
+
 // ============ استایل‌ها ============
 const styles = {
   container: { padding: '24px', background: '#f0f2f5', minHeight: '100vh' },
@@ -84,7 +101,6 @@ const styles = {
   statBox: { textAlign: 'right' },
   statLabel: { color: '#9ca3af', fontSize: '12px' },
   statValue: { fontWeight: 'bold', fontSize: '18px', marginTop: '4px' },
-  // فیلتر
   filters: {
     background: 'white', borderRadius: '12px', padding: '16px',
     marginBottom: '20px', display: 'flex', gap: '12px',
@@ -95,18 +111,15 @@ const styles = {
     padding: '8px 16px', border: '1px solid #e5e7eb', borderRadius: '8px',
     fontSize: '14px', minWidth: '250px', flex: 1
   },
-  // کارت درخواست
   requestCard: {
     background: 'white', borderRadius: '12px', padding: '16px',
     marginBottom: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
     borderRight: '4px solid #3b82f6', transition: 'all 0.3s ease'
   },
-  // بج‌ها
   badge: {
     padding: '4px 12px', borderRadius: '12px', fontSize: '12px',
     fontWeight: 'bold', display: 'inline-block'
   },
-  // کارت بیمار در مودال
   patientInfoCard: {
     padding: '16px',
     background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
@@ -164,6 +177,11 @@ const AdmissionFeePage = () => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [dischargeModalVisible, setDischargeModalVisible] = useState(false);
   const [transferModalVisible, setTransferModalVisible] = useState(false);
+
+  // ✅ مودال مشاهده فقط-خواندنی
+  const [viewModalVisible, setViewModalVisible] = useState(false);
+  const [viewingFee, setViewingFee] = useState(null);
+
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [editingFee, setEditingFee] = useState(null);
   const [receiptData, setReceiptData] = useState(null);
@@ -459,6 +477,17 @@ const AdmissionFeePage = () => {
     } catch (error) {
       toast.error('خطا در دریافت اطلاعات پرینت');
     }
+  };
+
+  // ============================================================
+  // ✅ باز کردن مودال مشاهده (فقط-خواندنی)
+  // ============================================================
+  const handleOpenViewModal = (record) => {
+    // اگر record یک fee است، اطلاعات admission_request را از آن بگیر
+    const requestData = record.admission_request || record.admission || record;
+    setViewingFee(record);
+    setSelectedRequest(requestData);
+    setViewModalVisible(true);
   };
 
   // ============ پرینت جزییات ترخیص ============
@@ -898,10 +927,15 @@ const AdmissionFeePage = () => {
     );
   };
 
-  // ============ کارت بیمار (لیست) ============
+  // ============================================================
+  // ✅ کارت بیمار
+  // ============================================================
   const renderPatientCard = (request, index, options = {}) => {
-    const { isDischarged = false, isAlert = false } = options;
-    const hasFeeRecord = request.has_fee === true || (request.fee_id !== null && request.fee_id !== undefined && request.fee_id !== 0);
+    const { isDischarged: propIsDischarged = false, isAlert = false } = options;
+    const discharged = propIsDischarged || isRequestDischarged(request);
+
+    const hasFeeRecord = request.has_fee === true || 
+      (request.fee_id !== null && request.fee_id !== undefined && request.fee_id !== 0);
     const feeInfo = fees.find(f => f.admission_request_id === request.id);
     
     const remainingAmount = feeInfo ? calculateRemaining(
@@ -914,33 +948,37 @@ const AdmissionFeePage = () => {
         key={request.id || index}
         style={{
           ...styles.requestCard,
-          borderRightColor: isDischarged ? '#6b7280' : (isAlert ? '#ef4444' : (hasFeeRecord ? '#22c55e' : '#f59e0b'))
+          borderRightColor: discharged ? '#6b7280' : (isAlert ? '#ef4444' : (hasFeeRecord ? '#22c55e' : '#f59e0b')),
+          opacity: discharged ? 0.92 : 1,
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ flex: 1, minWidth: '280px' }}>
-            {/* هدر کارت */}
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
-              <Badge count={index + 1} style={{ backgroundColor: isDischarged ? '#6b7280' : '#ef4444' }} />
+              <Badge count={index + 1} style={{ backgroundColor: discharged ? '#6b7280' : '#ef4444' }} />
               <span style={{ color: '#1f2937', fontWeight: 'bold', fontSize: '15px' }}>
                 👤 {getPatientFullName(request)}
               </span>
               {request.barcode && <Tag color="gold">🏷️ {request.barcode}</Tag>}
-              <Tag color={hasFeeRecord ? 'green' : 'orange'}>
-                {hasFeeRecord ? '✅ دارای فیس' : '❌ بدون فیس'}
-              </Tag>
-              {isAlert && (
+              
+              {!discharged && (
+                <Tag color={hasFeeRecord ? 'green' : 'orange'}>
+                  {hasFeeRecord ? '✅ دارای فیس' : '❌ بدون فیس'}
+                </Tag>
+              )}
+              
+              {isAlert && !discharged && (
                 <Tag color="red" icon={<BellOutlined />}>⏰ نیاز به هشدار</Tag>
               )}
-              {isDischarged && (
+              
+              {discharged && (
                 <Tag color="default" icon={<LogoutOutlined />}>🚪 ترخیص شده</Tag>
               )}
-              {isDischarged && request.discharge_type && (
+              {discharged && request.discharge_type && (
                 <Tag color="blue">{getDischargeTypeLabel(request.discharge_type)}</Tag>
               )}
             </div>
 
-            {/* اطلاعات بیمار */}
             <div style={{
               display: 'flex', gap: '12px', flexWrap: 'wrap',
               padding: '8px 12px',
@@ -963,7 +1001,6 @@ const AdmissionFeePage = () => {
               </span>
             </div>
 
-            {/* اطلاعات تکمیلی */}
             <div style={{ color: '#9ca3af', fontSize: '11px', marginTop: '6px' }}>
               📅 {formatDateTime(request.request_date || request.created_at)}
               {request.admission_date && (
@@ -978,7 +1015,6 @@ const AdmissionFeePage = () => {
               )}
             </div>
 
-            {/* تشخیص */}
             {request.diagnosis && (
               <div style={{
                 marginTop: '8px', padding: '6px 10px',
@@ -990,8 +1026,7 @@ const AdmissionFeePage = () => {
               </div>
             )}
 
-            {/* دلیل ترخیص */}
-            {isDischarged && request.discharge_reason && (
+            {discharged && request.discharge_reason && (
               <div style={{
                 marginTop: '6px', padding: '6px 10px',
                 backgroundColor: 'rgba(239, 68, 68, 0.08)',
@@ -1002,8 +1037,7 @@ const AdmissionFeePage = () => {
               </div>
             )}
 
-            {/* اطلاعات فیس */}
-            {hasFeeRecord && feeInfo && (
+            {!discharged && hasFeeRecord && feeInfo && (
               <div style={{
                 marginTop: '8px', padding: '8px 12px',
                 backgroundColor: 'rgba(16, 185, 129, 0.08)',
@@ -1027,10 +1061,8 @@ const AdmissionFeePage = () => {
             )}
           </div>
 
-          {/* دکمه‌های عملیات */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', flexDirection: 'column' }}>
-            {/* اگر ترخیص شده */}
-            {isDischarged ? (
+            {discharged ? (
               <>
                 <Button
                   type="primary"
@@ -1052,7 +1084,6 @@ const AdmissionFeePage = () => {
               </>
             ) : (
               <>
-                {/* اگر فیس ندارد */}
                 {!hasFeeRecord ? (
                   <Button
                     type="primary"
@@ -1064,13 +1095,11 @@ const AdmissionFeePage = () => {
                   </Button>
                 ) : (
                   <>
+                    {/* ✅ مشاهده فقط-خواندنی */}
                     <Button
                       type="default"
                       icon={<EyeOutlined />}
-                      onClick={() => {
-                        setSelectedRequest(request);
-                        setModalVisible(true);
-                      }}
+                      onClick={() => handleOpenViewModal(request)}
                     >
                       👁️ مشاهده
                     </Button>
@@ -1103,7 +1132,6 @@ const AdmissionFeePage = () => {
                   </>
                 )}
 
-                {/* ترخیص و انتقال */}
                 <Button
                   type="primary"
                   danger
@@ -1194,9 +1222,10 @@ const AdmissionFeePage = () => {
         const remaining = calculateRemaining(record.amount, record.paid_amount, record.discount_percent || record.discount || 0);
         return (
           <Space>
+            {/* ✅ مشاهده فقط-خواندنی */}
             <Tooltip title="مشاهده">
               <Button type="default" size="small" icon={<EyeOutlined />}
-                onClick={() => { setSelectedRequest(record.admission_request || record); setModalVisible(true); }} />
+                onClick={() => handleOpenViewModal(record)} />
             </Tooltip>
             {record.status !== 'paid' && (
               <Tooltip title="ویرایش">
@@ -1523,6 +1552,223 @@ const AdmissionFeePage = () => {
             </div>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* ============================================================ */}
+      {/* ✅ مودال مشاهده (فقط-خواندنی) — همه فیلدها disabled            */}
+      {/* ============================================================ */}
+      <Modal
+        title={
+          <span style={{ color: '#2563eb', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <EyeOutlined /> مشاهده فیس بستری
+          </span>
+        }
+        open={viewModalVisible}
+        onCancel={() => {
+          setViewModalVisible(false);
+          setViewingFee(null);
+          setSelectedRequest(null);
+        }}
+        footer={[
+          <Button key="print" icon={<PrinterOutlined />}
+            onClick={() => { setViewModalVisible(false); handlePrintReceipt(viewingFee?.id); }}
+            disabled={!viewingFee?.id}>
+            🖨️ پرینت
+          </Button>,
+          <Button key="close" type="primary" onClick={() => {
+            setViewModalVisible(false);
+            setViewingFee(null);
+            setSelectedRequest(null);
+          }}>
+            بستن
+          </Button>
+        ]}
+        width={750}
+        destroyOnHidden
+      >
+        {viewingFee && (
+          <>
+            {/* کارت بیمار */}
+            <div style={{
+              padding: '16px',
+              background: 'linear-gradient(135deg, #e6f4ff 0%, #dbeafe 100%)',
+              borderRadius: '10px', border: '2px solid #3b82f6', marginBottom: '16px'
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                <div style={styles.infoItem}>
+                  <span style={{ ...styles.infoLabel, color: '#2563eb' }}>👤 نام بیمار</span>
+                  <div style={styles.infoValue}>{getPatientFullName(viewingFee)}</div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={{ ...styles.infoLabel, color: '#2563eb' }}>🆔 شماره مراجعه</span>
+                  <div style={styles.infoValue}>{viewingFee.reg_id || '-'}</div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={{ ...styles.infoLabel, color: '#2563eb' }}>🏥 بخش</span>
+                  <div style={styles.infoValueNormal}>{getWardName(viewingFee)}</div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={{ ...styles.infoLabel, color: '#2563eb' }}>📍 موقعیت</span>
+                  <div style={styles.infoValueNormal}>{getLocationDisplay(viewingFee)}</div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={{ ...styles.infoLabel, color: '#2563eb' }}>🎂 سن / ⚤ جنسیت</span>
+                  <div style={styles.infoValueNormal}>
+                    {getPatientAge(viewingFee)} / {getPatientGender(viewingFee)}
+                  </div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={{ ...styles.infoLabel, color: '#2563eb' }}>📞 تماس</span>
+                  <div style={styles.infoValueNormal}>{getPatientMobile(viewingFee)}</div>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={{ ...styles.infoLabel, color: '#2563eb' }}>🆔 تذکره</span>
+                  <div style={styles.infoValueNormal}>{getPatientNationalId(viewingFee)}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* اطلاعات فیس — همه فقط-خواندنی */}
+            <Form layout="vertical" disabled>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label="📄 شماره رسید">
+                    <Input value={viewingFee.receipt_number || '-'} readOnly />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label="📅 تاریخ فیس">
+                    <Input value={formatDate(viewingFee.fee_date)} readOnly />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item label="💰 مبلغ کل (AFN)">
+                    <InputNumber
+                      value={toNumber(viewingFee.amount)}
+                      style={{ width: '100%', color: '#d48806' }}
+                      readOnly
+                      controls={false}
+                      formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                      parser={v => v.replace(/,/g, '')}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item label="✅ پرداخت شده (AFN)">
+                    <InputNumber
+                      value={toNumber(viewingFee.paid_amount)}
+                      style={{ width: '100%', color: '#16a34a' }}
+                      readOnly
+                      controls={false}
+                      formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                      parser={v => v.replace(/,/g, '')}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item label="📊 باقی‌مانده (AFN)">
+                    <InputNumber
+                      value={calculateRemaining(
+                        viewingFee.amount,
+                        viewingFee.paid_amount,
+                        viewingFee.discount_percent || viewingFee.discount || 0
+                      )}
+                      style={{
+                        width: '100%',
+                        color: calculateRemaining(
+                          viewingFee.amount,
+                          viewingFee.paid_amount,
+                          viewingFee.discount_percent || viewingFee.discount || 0
+                        ) <= 0 ? '#16a34a' : '#dc2626'
+                      }}
+                      readOnly
+                      controls={false}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item label="🎁 تخفیف (%)">
+                    <Input
+                      value={`${toNumber(viewingFee.discount_percent || viewingFee.discount || 0)}%`}
+                      readOnly
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item label="💳 روش پرداخت">
+                    <Input value={getMethodLabel(viewingFee.payment_method)} readOnly />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item label="📌 وضعیت">
+                    <Input
+                      value={getStatusLabel(viewingFee.status)?.label || '-'}
+                      readOnly
+                      style={{
+                        color: getStatusLabel(viewingFee.status)?.color,
+                        fontWeight: 'bold'
+                      }}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label="📆 نوع فیس">
+                    <Input
+                      value={
+                        viewingFee.fee_type === 'daily' ? 'روزانه'
+                        : viewingFee.fee_type === 'weekly' ? 'هفتگی'
+                        : viewingFee.fee_type === 'monthly' ? 'ماهانه'
+                        : viewingFee.fee_type === 'custom' ? 'سفارشی'
+                        : viewingFee.fee_type || '-'
+                      }
+                      readOnly
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label="⏰ دوره">
+                    <Input
+                      value={
+                        viewingFee.period === 'morning' ? 'صبح'
+                        : viewingFee.period === 'evening' ? 'عصر'
+                        : viewingFee.period === 'night' ? 'شب'
+                        : viewingFee.period === 'full_day' ? 'کامل'
+                        : viewingFee.period || '-'
+                      }
+                      readOnly
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item label="📝 توضیحات">
+                <TextArea
+                  value={viewingFee.description || viewingFee.notes || 'ندارد'}
+                  readOnly
+                  rows={2}
+                />
+              </Form.Item>
+            </Form>
+
+            {/* هشدار فقط-خواندنی */}
+            <Alert
+              message="حالت مشاهده"
+              description="این پنجره فقط برای نمایش اطلاعات است. برای تغییر، از دکمه «✏️ ویرایش فیس» استفاده کنید."
+              type="info"
+              showIcon
+              style={{ marginTop: '16px' }}
+            />
+          </>
+        )}
       </Modal>
 
       {/* ============ مودال ترخیص ============ */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment, useCallback } from "react";
 import MainLayoutjur from "../../../../../components/Mainlayoutjur";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -15,6 +15,43 @@ const STATUS_MAP = {
   pharmacy_registered: { label: "ثبت شده در دواخانه",  color: "#6d28d9", bg: "#ede9fe" },
   paid:                { label: "پول اخذ شده",         color: "#047857", bg: "#d1fae5" },
   cancelled:           { label: "لغو شده",             color: "#b91c1c", bg: "#fee2e2" },
+};
+
+const FEE_STATUS_MAP = {
+  pending:   { label: "پرداخت نشده",  color: "#b45309", bg: "#fef3c7" },
+  partial:   { label: "پرداخت جزئی",  color: "#0369a1", bg: "#e0f2fe" },
+  paid:      { label: "پرداخت شده",   color: "#047857", bg: "#d1fae5" },
+  refunded:  { label: "برگشت داده",   color: "#6d28d9", bg: "#ede9fe" },
+  cancelled: { label: "لغو شده",      color: "#b91c1c", bg: "#fee2e2" },
+};
+
+const normalizeStatus = (raw) => {
+  if (raw === null || raw === undefined || raw === "") return "pending";
+  if (typeof raw === "number") {
+    const map = ["pending", "sent_to_pharmacy", "pharmacy_registered", "paid", "cancelled"];
+    return map[raw] || "pending";
+  }
+  const s = String(raw).trim().toLowerCase();
+  if (STATUS_MAP[s]) return s;
+  if (s === "sent" || s === "sent-to-pharmacy") return "sent_to_pharmacy";
+  if (s === "registered" || s === "pharmacy-registered") return "pharmacy_registered";
+  if (s === "completed" || s === "done") return "paid";
+  if (s === "canceled" || s === "cancell") return "cancelled";
+  if (s === "waiting") return "pending";
+  return "pending";
+};
+
+const normalizeFeeStatus = (raw) => {
+  if (!raw) return null;
+  const s = String(raw).trim().toLowerCase();
+  return FEE_STATUS_MAP[s] ? s : null;
+};
+
+const pick = (...vals) => {
+  for (const v of vals) {
+    if (v !== undefined && v !== null && v !== "" && v !== "-" && v !== 0 && v !== "0") return v;
+  }
+  return "-";
 };
 
 export default function PrescriptionForm({
@@ -57,10 +94,8 @@ export default function PrescriptionForm({
   const [prescriptions, setPrescriptions] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
   const [expandedRows, setExpandedRows] = useState({});
-
-  // ✅ حالت ویرایش inline هر قلم
+  const [syncingId, setSyncingId] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
-  // { presId, presItId, quantity, dosage, remarks }
 
   const [stockAvailability, setStockAvailability] = useState({
     available: false, totalStock: 0, message: "",
@@ -69,6 +104,10 @@ export default function PrescriptionForm({
   const [prescriptionPrintData, setPrescriptionPrintData] = useState(null);
   const [isPrintReady, setIsPrintReady] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // ✅ جلوگیری از فراخوانی همزمان
+  const isLoadingRef = useRef(false);
+  const abortRef = useRef(null);
 
   // ========== patient_id از سرور ==========
   const fetchPatientIdFromServer = async (regIdValue) => {
@@ -90,38 +129,52 @@ export default function PrescriptionForm({
   };
 
   // ============================================================
-  // ✅ ساخت اطلاعات چاپ — با همه فیلدها
+  // ✅ ساخت اطلاعات چاپ
   // ============================================================
   const buildPrintData = ({ prescription, items }) => {
     const pd = patientData || {};
     const p = prescription || {};
 
-    const pick = (...vals) => {
-      for (const v of vals) {
-        if (v !== undefined && v !== null && v !== "" && v !== "-") return v;
-      }
-      return "-";
-    };
+    const patient_name = pick(
+      p.patient_name, p.patient?.full_name,
+      p.registration?.patient_name, pd.full_name
+    );
+    const patient_age = pick(
+      p.patient_age, p.patient?.age,
+      p.registration?.patient_age, pd.age
+    );
+    const patient_gender = pick(
+      p.patient_gender, p.patient?.gender,
+      p.registration?.patient_gender, pd.gender
+    );
+    const patient_phone = pick(
+      p.patient_phone, p.patient?.mobile, p.patient?.phone,
+      p.registration?.patient_phone, pd.phone
+    );
+    const tazkira_number = pick(
+      p.tazkira_number, p.patient?.national_id, p.patient?.tazkira_number,
+      p.registration?.tazkira_number, pd.tazkira_number
+    );
+    const blood_group = pick(
+      p.patient_blood_group, p.patient?.blood_group,
+      p.registration?.patient_blood_group, pd.blood_group
+    );
 
     return {
-      pres_num: p.pres_num || p.pres_id || prescriptionNumber || "-",
-      date: p.pres_date || prescriptionDate || "-",
-
-      patient_name: pick(p.patient_name, pd.full_name),
-      patient_age: pick(p.patient_age, pd.age),
-      patient_gender: pick(p.patient_gender, pd.gender),
-      patient_phone: pick(p.patient_phone, pd.phone),
-      tazkira_number: pick(p.tazkira_number, pd.tazkira_number),
-      blood_group: pick(p.patient_blood_group, pd.blood_group),
-
+      pres_num: pick(p.pres_num, p.pres_id, prescriptionNumber),
+      date: pick(p.pres_date, prescriptionDate),
+      patient_name,
+      patient_age,
+      patient_gender,
+      patient_phone,
+      tazkira_number,
+      blood_group,
       diagnosis: pick(p.diagnosis, pd.diagnosis),
       weight: pick(p.weight, pd.weight),
       blood_pressure: pick(p.blood_pressure, pd.blood_pressure),
       temperature: pick(p.temperature, pd.temperature),
       oxygen: pick(p.oxygen, pd.oxygen),
-
-      doctor_name: pick(p.doc_name, user?.name, user?.full_name, "-"),
-
+      doctor_name: pick(p.doc_name, p.doctor?.name, p.doctor?.full_name, user?.name, user?.full_name, "-"),
       items: (items || []).map(it => ({
         med_name: it.med_name || "-",
         med_type: it.med_type || it.type || "-",
@@ -137,8 +190,69 @@ export default function PrescriptionForm({
     };
   };
 
+  // ============================================================
+  // ✅ بارگذاری لیست نسخه‌ها (بدون درخواست اضافی فیس)
+  // ============================================================
+  const loadPrescriptions = useCallback(async () => {
+    if (isLoadingRef.current) return;
+
+    isLoadingRef.current = true;
+    setLoadingList(true);
+    try {
+      const res = await api.get("/prescriptions");
+      const all = res.data?.data ?? res.data ?? [];
+      const effectiveRegId = regId || registration?.reg_id;
+      const filtered = effectiveRegId
+        ? all.filter(p => Number(p.reg_id) === Number(effectiveRegId))
+        : all;
+
+      // ✅ سرور خودش fee را برگردانده — دیگر نیازی به درخواست جدا نیست
+      const normalized = filtered.map(p => {
+        const feeStatus = normalizeFeeStatus(
+          p.fee_status ?? p.fee?.payment_status ?? null
+        );
+
+        let status = normalizeStatus(p.status);
+
+        // اگر فیس paid است و نسخه هنوز paid نشده، وضعیت نمایشی را paid نشان بده
+        if (feeStatus === "paid" && status !== "paid" && status !== "cancelled") {
+          status = "paid";
+        }
+        if ((feeStatus === "cancelled" || feeStatus === "refunded")
+            && status !== "cancelled") {
+          status = "cancelled";
+        }
+
+        return {
+          ...p,
+          status,
+          status_label: p.status_label || STATUS_MAP[status]?.label,
+          fee_status: feeStatus,
+          fee_paid: p.fee_paid ?? p.fee?.paid_amount ?? 0,
+          fee_remaining: p.fee_remaining ?? p.fee?.remaining_amount ?? 0,
+          fee_total: p.fee_total ?? p.fee?.total_amount ?? 0,
+        };
+      });
+
+      setPrescriptions(normalized);
+    } catch (error) {
+      // ✅ خطای 500 را نگیر (تا polling را متوقف نکند)
+      console.warn("loadPrescriptions failed:", error?.response?.status);
+      if (error?.response?.status !== 500) {
+        // اگر خطا از نوع دیگر بود، لاگ کن
+        console.error("Error loading prescriptions:", error);
+      }
+    } finally {
+      setLoadingList(false);
+      isLoadingRef.current = false;
+    }
+  }, [api, regId, registration]);
+
   // ========== مقداردهی اولیه ==========
   useEffect(() => {
+    let pollTimer = null;
+    let cancelled = false;
+
     const initialize = async () => {
       setLoading(true);
       const effectiveRegId = regId || registration?.reg_id;
@@ -160,6 +274,8 @@ export default function PrescriptionForm({
         if (!resolvedPatientId && effectiveRegId) {
           resolvedPatientId = await fetchPatientIdFromServer(effectiveRegId);
         }
+
+        if (cancelled) return;
 
         setPatientData({
           reg_id: effectiveRegId,
@@ -194,6 +310,7 @@ export default function PrescriptionForm({
         if (!resolvedPatientId && regIdForFetch) {
           resolvedPatientId = await fetchPatientIdFromServer(regIdForFetch);
         }
+        if (cancelled) return;
         setPatientData({
           ...storedPatient,
           reg_id: regIdForFetch,
@@ -207,13 +324,28 @@ export default function PrescriptionForm({
         });
       }
 
+      if (cancelled) return;
+
       setPrescriptionDate(new Date().toISOString().slice(0, 10));
       await Promise.all([loadMedications(), loadCategories()]);
+
+      if (cancelled) return;
+
       await loadPrescriptions();
       setLoading(false);
+
+      // ✅ Polling خودکار هر 30 ثانیه (به‌جای 15)
+      pollTimer = setInterval(() => {
+        if (!cancelled) loadPrescriptions();
+      }, 30000);
     };
 
     initialize();
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearInterval(pollTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registration, regId]);
 
@@ -233,24 +365,6 @@ export default function PrescriptionForm({
       setCategories(res.data.data ?? res.data ?? []);
     } catch (error) {
       console.error("Error loading categories:", error);
-    }
-  };
-
-  const loadPrescriptions = async () => {
-    setLoadingList(true);
-    try {
-      const res = await api.get("/prescriptions");
-      const all = res.data?.data ?? res.data ?? [];
-      const effectiveRegId = regId || registration?.reg_id;
-      const filtered = effectiveRegId
-        ? all.filter(p => Number(p.reg_id) === Number(effectiveRegId))
-        : all;
-      setPrescriptions(filtered);
-    } catch (error) {
-      console.error("Error loading prescriptions:", error);
-      setPrescriptions([]);
-    } finally {
-      setLoadingList(false);
     }
   };
 
@@ -434,12 +548,12 @@ export default function PrescriptionForm({
 
       setPatientData(prev => ({
         ...prev,
-        full_name: data.patient_name ?? prev?.full_name,
-        age: data.patient_age ?? prev?.age,
-        gender: data.patient_gender ?? prev?.gender,
-        phone: data.patient_phone ?? prev?.phone,
-        tazkira_number: data.tazkira_number ?? prev?.tazkira_number,
-        blood_group: data.patient_blood_group ?? prev?.blood_group,
+        full_name: data.patient_name ?? data.patient?.full_name ?? prev?.full_name,
+        age: data.patient_age ?? data.patient?.age ?? prev?.age,
+        gender: data.patient_gender ?? data.patient?.gender ?? prev?.gender,
+        phone: data.patient_phone ?? data.patient?.mobile ?? prev?.phone,
+        tazkira_number: data.tazkira_number ?? data.patient?.national_id ?? prev?.tazkira_number,
+        blood_group: data.patient_blood_group ?? data.patient?.blood_group ?? prev?.blood_group,
         diagnosis: data.diagnosis ?? prev?.diagnosis,
         weight: data.weight ?? prev?.weight,
         blood_pressure: data.blood_pressure ?? prev?.blood_pressure,
@@ -495,6 +609,29 @@ export default function PrescriptionForm({
   };
 
   // ============================================================
+  // ✅ همگام‌سازی دستی وضعیت از فیس
+  // ============================================================
+  const handleSyncFromFee = async (presId) => {
+    setSyncingId(presId);
+    try {
+      const res = await api.post(`/prescriptions/${presId}/sync-status`);
+      const syncResult = res.data?.sync_result;
+      if (syncResult?.synced) {
+        toast.success(`✅ وضعیت همگام شد: ${syncResult.old_status} → ${syncResult.new_status}`);
+      } else {
+        toast.info(`ℹ️ ${res.data?.message || "تغییری لازم نبود"}`);
+      }
+      await loadPrescriptions();
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      const msg = error?.response?.data?.message || "خطا در همگام‌سازی";
+      toast.error(`❌ ${msg}`);
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
+  // ============================================================
   // ✅ شروع ویرایش inline یک قلم
   // ============================================================
   const handleStartEditItem = (presId, item) => {
@@ -523,12 +660,10 @@ export default function PrescriptionForm({
     try {
       const { presId, presItId } = editingItem;
 
-      // نسخه رو بگیر
       const res = await api.get(`/prescriptions/${presId}`);
       const data = res.data?.data ?? res.data;
       if (!data) { toast.error("❌ نسخه یافت نشد"); return; }
 
-      // همه اقلام رو با تغییر این یکی بفرست
       const updatedItems = (data.items ?? []).map((it) => {
         if (it.pres_it_id === presItId) {
           return {
@@ -655,6 +790,24 @@ export default function PrescriptionForm({
     try {
       const res = await api.get(`/prescriptions/${pres.pres_id}`);
       const data = res.data?.data ?? res.data;
+
+      if (data) {
+        setPatientData(prev => ({
+          ...(prev || {}),
+          full_name: pick(data.patient_name, data.patient?.full_name, prev?.full_name, "نامشخص"),
+          age: pick(data.patient_age, data.patient?.age, prev?.age, "-"),
+          gender: pick(data.patient_gender, data.patient?.gender, prev?.gender, "-"),
+          phone: pick(data.patient_phone, data.patient?.mobile, prev?.phone, "-"),
+          tazkira_number: pick(data.tazkira_number, data.patient?.national_id, prev?.tazkira_number, "-"),
+          blood_group: pick(data.patient_blood_group, data.patient?.blood_group, prev?.blood_group, "-"),
+          diagnosis: pick(data.diagnosis, prev?.diagnosis, "-"),
+          weight: data.weight ?? prev?.weight,
+          blood_pressure: pick(data.blood_pressure, prev?.blood_pressure, "-"),
+          temperature: data.temperature ?? prev?.temperature,
+          oxygen: data.oxygen ?? prev?.oxygen,
+        }));
+      }
+
       const printData = buildPrintData({
         prescription: data || pres,
         items: data?.items ?? pres.items ?? []
@@ -686,7 +839,6 @@ export default function PrescriptionForm({
 
   const toggleRowExpand = (presId) => {
     setExpandedRows(prev => ({ ...prev, [presId]: !prev[presId] }));
-    // اگه داشتیم ویرایش می‌کردیم، لغو کن
     if (editingItem?.presId === presId) setEditingItem(null);
   };
 
@@ -952,9 +1104,6 @@ export default function PrescriptionForm({
         </div>
       </div>
 
-      {/* ============================================================
-          ✅ لیست نسخه‌ها با ویرایش/حذف inline
-      ============================================================ */}
       <div className="prescriptions-list-container">
         <div className="list-header">
           <h3 style={{ color: "#1e40af", margin: 0 }}>📚 نسخه‌ها ({prescriptions.length})</h3>
@@ -973,14 +1122,16 @@ export default function PrescriptionForm({
               <thead>
                 <tr>
                   <th style={{ width: "36px" }}></th><th>#</th><th>شماره</th><th>تاریخ</th>
-                  <th>داکتر</th><th>تشخیص</th><th>اقلام</th><th>وضعیت</th><th>عملیات</th>
+                  <th>داکتر</th><th>تشخیص</th><th>اقلام</th><th>وضعیت</th><th>فیس</th><th>عملیات</th>
                 </tr>
               </thead>
               <tbody>
                 {prescriptions.map((pres, idx) => {
                   const st = STATUS_MAP[pres.status] || STATUS_MAP.pending;
+                  const fs = pres.fee_status ? FEE_STATUS_MAP[pres.fee_status] : null;
                   const isOpen = !!expandedRows[pres.pres_id];
                   const items = pres.items ?? [];
+                  const isSyncing = syncingId === pres.pres_id;
 
                   return (
                     <Fragment key={pres.pres_id}>
@@ -995,14 +1146,32 @@ export default function PrescriptionForm({
                         <td>{idx + 1}</td>
                         <td><span className="pres-num-inline">#{pres.pres_num || pres.pres_id}</span></td>
                         <td>{pres.pres_date ? new Date(pres.pres_date).toLocaleDateString("fa-IR") : "-"}</td>
-                        <td>{pres.doc_name || "-"}</td>
+                        <td>{pres.doc_name || pres.doctor?.name || "-"}</td>
                         <td className="td-ellipsis">{pres.diagnosis || "-"}</td>
                         <td><span className="items-count">{items.length}</span></td>
                         <td><span className="status-badge" style={{ backgroundColor: st.bg, color: st.color }}>● {st.label}</span></td>
                         <td>
+                          {fs ? (
+                            <span className="status-badge" style={{ backgroundColor: fs.bg, color: fs.color }} title={`پرداخت: ${pres.fee_paid} / باقیمانده: ${pres.fee_remaining}`}>
+                              {fs.label}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#9ca3af", fontSize: "11px" }}>—</span>
+                          )}
+                        </td>
+                        <td>
                           <div className="row-actions">
                             <button type="button" className="btn-action btn-edit" onClick={() => handleEditPrescription(pres)} title="ویرایش کل">✏️</button>
                             <button type="button" className="btn-action btn-print-sm" onClick={() => handlePrintExisting(pres)} title="چاپ">🖨️</button>
+                            <button
+                              type="button"
+                              className="btn-action btn-sync"
+                              onClick={() => handleSyncFromFee(pres.pres_id)}
+                              disabled={isSyncing}
+                              title="همگام‌سازی وضعیت از فیس"
+                            >
+                              {isSyncing ? "⏳" : "🔄"}
+                            </button>
                             <button type="button" className="btn-action btn-delete-sm" onClick={() => handleDeletePrescription(pres.pres_id)} title="حذف کل">🗑️</button>
                             <select value={pres.status} onChange={(e) => handleChangeStatus(pres.pres_id, e.target.value)} className="status-select-inline">
                               <option value="pending">در انتظار</option>
@@ -1017,7 +1186,7 @@ export default function PrescriptionForm({
 
                       {isOpen && items.length > 0 && (
                         <tr className="pres-detail-row">
-                          <td colSpan="9">
+                          <td colSpan="10">
                             <div className="detail-wrapper">
                               <div className="detail-items-title">💊 داروها ({items.length})</div>
                               <table className="detail-items-table">
@@ -1042,7 +1211,6 @@ export default function PrescriptionForm({
                                         <td>{it.barcode ? <span className="badge-barcode">{it.barcode}</span> : "-"}</td>
                                         <td>{it.batch_number ? <span className="badge-batch">{it.batch_number}</span> : "-"}</td>
 
-                                        {/* ✅ ویرایش inline */}
                                         <td>
                                           {isEditing ? (
                                             <input
@@ -1162,8 +1330,10 @@ export default function PrescriptionForm({
         .btn-toggle-row { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; margin: 0 auto; }
         .row-actions { display: flex; gap: 4px; align-items: center; justify-content: center; flex-wrap: wrap; }
         .btn-action { padding: 5px 8px; border-radius: 5px; border: 1px solid; cursor: pointer; font-size: 12px; background: #fff; }
+        .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-edit { color: #2563eb; border-color: #bfdbfe; }
         .btn-print-sm { color: #7c3aed; border-color: #ddd6fe; }
+        .btn-sync { color: #047857; border-color: #a7f3d0; }
         .btn-delete-sm { color: #dc2626; border-color: #fecaca; }
         .status-select-inline { padding: 5px 6px; border-radius: 5px; border: 1px solid #d1d5db; font-size: 11px; cursor: pointer; }
         .pres-detail-row td { padding: 0; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; }

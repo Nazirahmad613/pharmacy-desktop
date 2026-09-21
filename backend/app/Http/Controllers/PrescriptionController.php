@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Account;
 use App\Models\Prescription;
 use App\Models\PrescriptionItem;
+use App\Models\PrescriptionFee;
 use App\Models\Registrations;
 use App\Models\User;
 use App\Models\Patient;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use App\Services\LogService;
 use App\Services\StockService;
 use App\Services\PrescriptionService;
@@ -47,17 +49,22 @@ class PrescriptionController extends Controller
         $allowed = [
             Prescription::STATUS_PENDING             => [
                 Prescription::STATUS_SENT_TO_PHARMACY,
+                Prescription::STATUS_PHARMACY_REGISTERED,
+                Prescription::STATUS_PAID,
                 Prescription::STATUS_CANCELLED,
             ],
             Prescription::STATUS_SENT_TO_PHARMACY    => [
                 Prescription::STATUS_PHARMACY_REGISTERED,
+                Prescription::STATUS_PAID,
                 Prescription::STATUS_CANCELLED,
             ],
             Prescription::STATUS_PHARMACY_REGISTERED => [
                 Prescription::STATUS_PAID,
                 Prescription::STATUS_CANCELLED,
             ],
-            Prescription::STATUS_PAID                => [],
+            Prescription::STATUS_PAID                => [
+                Prescription::STATUS_CANCELLED,
+            ],
             Prescription::STATUS_CANCELLED           => [],
         ];
 
@@ -65,21 +72,174 @@ class PrescriptionController extends Controller
     }
 
     // ============================================================
-    // ✅ تابع کمکی: قالب‌بندی خروجی نسخه
+    // ✅ تابع کمکی: بررسی وجود ستون
     // ============================================================
-    private function formatPrescription(Prescription $prescription): array
+    private function columnExists(string $table, string $column): bool
     {
-        $patient = $prescription->patient;
+        static $cache = [];
+        $key = "{$table}.{$column}";
+        if (array_key_exists($key, $cache)) return $cache[$key];
+
+        try {
+            $cache[$key] = Schema::hasColumn($table, $column);
+        } catch (\Exception $e) {
+            $cache[$key] = false;
+        }
+        return $cache[$key];
+    }
+
+    // ============================================================
+    // ✅ یافتن آخرین فیس مرتبط با نسخه
+    // ============================================================
+    private function getLatestFeeForPrescription(Prescription $prescription): ?PrescriptionFee
+    {
+        try {
+            return PrescriptionFee::where('registration_id', $prescription->reg_id)
+                ->where('patient_id', $prescription->patient_id)
+                ->latest('id')
+                ->first();
+        } catch (\Exception $e) {
+            Log::warning('getLatestFeeForPrescription failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    // ============================================================
+    // ✅ نگاشت وضعیت فیس → وضعیت نسخه
+    // ============================================================
+    private function mapFeeToPrescriptionStatus(?string $feeStatus): ?string
+    {
+        return match ($feeStatus) {
+            'paid'      => Prescription::STATUS_PAID,
+            'cancelled' => Prescription::STATUS_CANCELLED,
+            'refunded'  => Prescription::STATUS_CANCELLED,
+            'partial'   => Prescription::STATUS_PHARMACY_REGISTERED,
+            default     => null,
+        };
+    }
+
+    // ============================================================
+    // ✅ همگام‌سازی خودکار وضعیت نسخه با فیس (silent)
+    // ============================================================
+    private function syncPrescriptionWithFee(Prescription $prescription, bool $persist = true): array
+    {
+        $result = [
+            'synced'      => false,
+            'old_status'  => $prescription->status,
+            'new_status'  => $prescription->status,
+            'fee_status'  => null,
+            'fee_id'      => null,
+            'message'     => null,
+        ];
+
+        try {
+            $fee = $this->getLatestFeeForPrescription($prescription);
+
+            if (!$fee) {
+                $result['message'] = 'no fee found';
+                return $result;
+            }
+
+            $result['fee_id']     = $fee->id;
+            $result['fee_status'] = $fee->payment_status;
+
+            $targetStatus = $this->mapFeeToPrescriptionStatus($fee->payment_status);
+
+            if (!$targetStatus) {
+                $result['message'] = 'no status change needed';
+                return $result;
+            }
+
+            $currentStatus = $prescription->status;
+
+            // اگر وضعیت فعلی همان است
+            if ($currentStatus === $targetStatus) {
+                $result['message'] = 'already in target status';
+                return $result;
+            }
+
+            // ✅ اگر وضعیت فعلی paid است و target هم paid نیست، برنگردان (مگر cancelled)
+            if ($currentStatus === Prescription::STATUS_PAID
+                && $targetStatus !== Prescription::STATUS_CANCELLED) {
+                $result['message'] = 'current is paid, skip';
+                return $result;
+            }
+
+            // ✅ اگر گذار مجاز نیست، رد کن
+            if (!$this->canTransition($currentStatus, $targetStatus)) {
+                $result['message'] = "transition not allowed: {$currentStatus} → {$targetStatus}";
+                return $result;
+            }
+
+            // ✅ اعمال
+            $prescription->status      = $targetStatus;
+            $prescription->status_note = "وضعیت به‌طور خودکار از فیس #{$fee->id} همگام شد (fee_status: {$fee->payment_status})";
+
+            if ($targetStatus === Prescription::STATUS_PAID
+                && $this->columnExists('prescriptions', 'paid_at')) {
+                $prescription->paid_at = $fee->payment_date ?? now();
+            }
+
+            if ($targetStatus === Prescription::STATUS_CANCELLED
+                && $this->columnExists('prescriptions', 'cancelled_at')) {
+                $prescription->cancelled_at = now();
+            }
+
+            if ($persist) {
+                $prescription->save();
+                $prescription->refresh();
+            }
+
+            $result['synced']     = true;
+            $result['new_status'] = $targetStatus;
+            $result['message']    = "synced {$currentStatus} → {$targetStatus}";
+
+            Log::info('Prescription status synced with fee', [
+                'pres_id'    => $prescription->pres_id,
+                'fee_id'     => $fee->id,
+                'fee_status' => $fee->payment_status,
+                'old_status' => $currentStatus,
+                'new_status' => $targetStatus,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('syncPrescriptionWithFee failed: ' . $e->getMessage(), [
+                'pres_id' => $prescription->pres_id ?? null,
+            ]);
+            $result['message'] = 'exception: ' . $e->getMessage();
+        }
+
+        return $result;
+    }
+
+    // ============================================================
+    // ✅ تابع کمکی: قالب‌بندی خروجی نسخه (کامل)
+    // ============================================================
+    private function formatPrescription(Prescription $prescription, bool $syncWithFee = true): array
+    {
+        // ✅ همگام‌سازی خودکار قبل از فرمت
+        if ($syncWithFee) {
+            $this->syncPrescriptionWithFee($prescription, true);
+        }
+
+        $patient      = $prescription->patient;
         $registration = $prescription->registration;
-        $doctor = $prescription->doctor;
+        $doctor       = $prescription->doctor;
+
+        // ✅ آخرین فیس مرتبط
+        $fee = $this->getLatestFeeForPrescription($prescription);
 
         // ⭐ نام کامل بیمار
         $patientFullName =
             $prescription->patient_name
             ?: ($patient?->full_name
-                ?? (($patient?->first_name ?? '') . ' ' . ($patient?->last_name ?? '')))
+                ?? trim(($patient?->first_name ?? '') . ' ' . ($patient?->last_name ?? '')))
             ?: ($registration?->patient_name
-                ?? ($registration?->patient?->full_name));
+                ?? $registration?->patient?->full_name);
+
+        if (empty(trim((string) $patientFullName))) {
+            $patientFullName = 'نامشخص';
+        }
 
         // ⭐ شماره تذکره
         $tazkiraNumber =
@@ -89,21 +249,21 @@ class PrescriptionController extends Controller
                 ?? $registration?->tazkira_number
                 ?? $registration?->patient?->national_id);
 
-        // ⭐ سن بیمار
+        // ⭐ سن
         $patientAge =
             $prescription->patient_age
             ?: ($patient?->age
                 ?? $registration?->patient_age
                 ?? $registration?->patient?->age);
 
-        // ⭐ جنسیت بیمار
+        // ⭐ جنسیت
         $patientGender =
             $prescription->patient_gender
             ?: ($patient?->gender
                 ?? $registration?->patient_gender
                 ?? $registration?->patient?->gender);
 
-        // ⭐ شماره تماس
+        // ⭐ تماس
         $patientPhone =
             $prescription->patient_phone
             ?: ($patient?->mobile
@@ -155,23 +315,29 @@ class PrescriptionController extends Controller
             'patient_blood_group' => $patientBloodGroup,
             'patient_address'     => $patientAddress,
 
-            // ⭐ معلومات کامل بیمار (nested)
-            'patient' => $patient ? [
-                'id'           => $patient->id,
-                'full_name'    => $patient->full_name
-                                  ?? (($patient->first_name ?? '') . ' ' . ($patient->last_name ?? '')),
-                'first_name'   => $patient->first_name,
-                'last_name'    => $patient->last_name,
-                'age'          => $patient->age,
-                'gender'       => $patient->gender,
-                'national_id'  => $patient->national_id,
-                'mobile'       => $patient->mobile ?? $patient->phone,
-                'phone'        => $patient->phone ?? $patient->mobile,
-                'blood_group'  => $patient->blood_group,
-                'address'      => $patient->address,
-            ] : null,
+            // ✅ اطلاعات کامل بیمار
+            'patient' => [
+                'id'           => $patient?->id,
+                'full_name'    => $patient?->full_name
+                                  ?? trim(($patient?->first_name ?? '') . ' ' . ($patient?->last_name ?? '')),
+                'first_name'   => $patient?->first_name,
+                'last_name'    => $patient?->last_name,
+                'age'          => $patientAge,
+                'gender'       => $patientGender,
+                'national_id'  => $patient?->national_id,
+                'tazkira_number' => $tazkiraNumber,
+                'mobile'       => $patientPhone,
+                'phone'        => $patientPhone,
+                'blood_group'  => $patientBloodGroup,
+                'address'      => $patientAddress,
+                'diagnosis'    => $prescription->diagnosis ?? $registration?->diagnosis,
+                'weight'       => $prescription->weight ?? $registration?->weight,
+                'blood_pressure' => $prescription->blood_pressure ?? $registration?->blood_pressure,
+                'temperature'  => $prescription->temperature ?? $registration?->temperature,
+                'oxygen'       => $prescription->oxygen ?? $registration?->oxygen,
+            ],
 
-            // ⭐ معلومات داکتر (بدون department چون در User وجود ندارد)
+            // ✅ اطلاعات داکتر
             'doctor' => $doctor ? [
                 'id'         => $doctor->id,
                 'name'       => $doctor->name ?? $doctor->full_name ?? $doctor->username,
@@ -182,15 +348,20 @@ class PrescriptionController extends Controller
                 'specialty'  => $doctor->specialty ?? $doctor->specialization ?? null,
             ] : null,
 
-            // ⭐ معلومات registration
+            // ✅ اطلاعات registration
             'registration' => $registration ? [
                 'reg_id'         => $registration->reg_id,
                 'patient_id'     => $registration->patient_id,
-                'patient_name'   => $registration->patient_name,
-                'tazkira_number' => $registration->tazkira_number,
-                'patient_age'    => $registration->patient_age,
-                'patient_gender' => $registration->patient_gender,
-                'patient_phone'  => $registration->patient_phone,
+                'patient_name'   => $registration->patient_name ?? $patientFullName,
+                'tazkira_number' => $registration->tazkira_number ?? $tazkiraNumber,
+                'patient_age'    => $registration->patient_age ?? $patientAge,
+                'patient_gender' => $registration->patient_gender ?? $patientGender,
+                'patient_phone'  => $registration->patient_phone ?? $patientPhone,
+                'diagnosis'      => $registration->diagnosis ?? $prescription->diagnosis,
+                'weight'         => $registration->weight ?? $prescription->weight,
+                'blood_pressure' => $registration->blood_pressure ?? $prescription->blood_pressure,
+                'temperature'    => $registration->temperature ?? $prescription->temperature,
+                'oxygen'         => $registration->oxygen ?? $prescription->oxygen,
                 'visit_status'   => $registration->visit_status,
                 'created_at'     => $registration->created_at,
             ] : null,
@@ -198,16 +369,39 @@ class PrescriptionController extends Controller
             // ✅ وضعیت
             'status'                 => $prescription->status,
             'status_label'           => Prescription::STATUSES[$prescription->status] ?? $prescription->status,
-            'sent_to_pharmacy_at'    => $prescription->sent_to_pharmacy_at,
-            'pharmacy_registered_at' => $prescription->pharmacy_registered_at,
-            'paid_at'                => $prescription->paid_at,
-            'pharmacy_id'            => $prescription->pharmacy_id,
+            'sent_to_pharmacy_at'    => $prescription->sent_to_pharmacy_at ?? null,
+            'pharmacy_registered_at' => $prescription->pharmacy_registered_at ?? null,
+            'paid_at'                => $prescription->paid_at ?? null,
+            'pharmacy_id'            => $prescription->pharmacy_id ?? null,
             'pharmacy_name'          => optional($prescription->pharmacy)->name
                                         ?? optional($prescription->pharmacy)->full_name
                                         ?? null,
             'status_note'            => $prescription->status_note,
             'created_at'             => $prescription->created_at,
             'updated_at'             => $prescription->updated_at,
+
+            // ✅ اطلاعات فیس مرتبط
+            'fee' => $fee ? [
+                'id'               => $fee->id,
+                'total_amount'     => $fee->total_amount,
+                'paid_amount'      => $fee->paid_amount,
+                'discount'         => $fee->discount,
+                'remaining_amount' => $fee->remaining_amount,
+                'payment_status'   => $fee->payment_status,
+                'payment_method'   => $fee->payment_method,
+                'payment_date'     => $fee->payment_date,
+                'description'      => $fee->description,
+                'note'             => $fee->note,
+                'created_at'       => $fee->created_at,
+            ] : null,
+
+            // ✅ خلاصه فیس (برای جدول)
+            'fee_id'         => $fee?->id,
+            'fee_status'     => $fee?->payment_status,
+            'fee_total'      => $fee?->total_amount,
+            'fee_paid'       => $fee?->paid_amount,
+            'fee_remaining'  => $fee?->remaining_amount,
+            'fee_paid_at'    => $fee?->payment_date,
 
             // ============================================================
             // ✅ اقلام نسخه
@@ -226,7 +420,6 @@ class PrescriptionController extends Controller
                     ?? $item->category_name
                     ?? 'نامشخص';
 
-                // ⭐ نوعیت دوا
                 $medicationType =
                     $item->type
                     ?: ($item->medication->med_type
@@ -273,7 +466,7 @@ class PrescriptionController extends Controller
             'items.stock',
             'patient',
             'registration.patient',
-            'doctor',                // ⭐ فقط doctor بدون department
+            'doctor',
             'pharmacy',
         ]);
 
@@ -291,7 +484,7 @@ class PrescriptionController extends Controller
 
         $prescriptions = $query->latest()
             ->get()
-            ->map(fn ($p) => $this->formatPrescription($p));
+            ->map(fn ($p) => $this->formatPrescription($p, true));  // ✅ sync خودکار
 
         return response()->json([
             'success' => true,
@@ -313,7 +506,7 @@ class PrescriptionController extends Controller
             'items.stock',
             'patient',
             'registration.patient',
-            'doctor',                // ⭐ فقط doctor بدون department
+            'doctor',
             'pharmacy',
         ])->where('doc_id', $doctorId);
 
@@ -323,12 +516,54 @@ class PrescriptionController extends Controller
 
         $prescriptions = $query->latest()
             ->get()
-            ->map(fn ($p) => $this->formatPrescription($p));
+            ->map(fn ($p) => $this->formatPrescription($p, true));  // ✅ sync خودکار
 
         return response()->json([
             'success' => true,
             'data'    => $prescriptions
         ]);
+    }
+
+    // ============================================================
+    // ✅ همگام‌سازی دستی وضعیت از فیس
+    // ============================================================
+    public function syncStatusFromFee($id)
+    {
+        try {
+            $prescription = Prescription::with([
+                'items.medication',
+                'items.supplier',
+                'items.category',
+                'items.stock',
+                'patient',
+                'registration.patient',
+                'doctor',
+                'pharmacy',
+            ])->findOrFail($id);
+
+            $result = $this->syncPrescriptionWithFee($prescription, true);
+
+            return response()->json([
+                'success' => true,
+                'message' => $result['synced']
+                    ? "وضعیت نسخه از فیس همگام شد: {$result['old_status']} → {$result['new_status']}"
+                    : "تغییری لازم نبود ({$result['message']})",
+                'sync_result' => $result,
+                'data' => $this->formatPrescription($prescription->fresh(), false),
+            ]);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'نسخه یافت نشد',
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('syncStatusFromFee error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در همگام‌سازی: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     // ============================================================
@@ -552,9 +787,10 @@ class PrescriptionController extends Controller
                         'items.stock',
                         'patient',
                         'registration.patient',
-                        'doctor',                // ⭐ فقط doctor
+                        'doctor',
                         'pharmacy',
-                    ])
+                    ]),
+                    true  // ✅ sync با فیس
                 )
             ], 201);
 
@@ -713,9 +949,10 @@ class PrescriptionController extends Controller
                         'items.stock',
                         'patient',
                         'registration.patient',
-                        'doctor',                // ⭐ فقط doctor
+                        'doctor',
                         'pharmacy',
-                    ])
+                    ]),
+                    true  // ✅ sync با فیس
                 )
             ], 200);
 
@@ -850,7 +1087,7 @@ class PrescriptionController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => 'وضعیت قبلاً در همین حالت بود',
-                    'data'    => $this->formatPrescription($prescription->load('pharmacy')),
+                    'data'    => $this->formatPrescription($prescription->load('pharmacy'), true),
                 ]);
             }
 
@@ -892,9 +1129,10 @@ class PrescriptionController extends Controller
                         'items.stock',
                         'patient',
                         'registration.patient',
-                        'doctor',                // ⭐ فقط doctor
+                        'doctor',
                         'pharmacy',
-                    ])
+                    ]),
+                    true  // ✅ sync با فیس
                 ),
             ]);
 
@@ -1044,13 +1282,13 @@ class PrescriptionController extends Controller
                 'items.stock',
                 'patient',
                 'registration.patient',
-                'doctor',                // ⭐ فقط doctor
+                'doctor',
                 'pharmacy',
             ])->findOrFail($id);
 
             return response()->json([
                 'success' => true,
-                'data'    => $this->formatPrescription($prescription),
+                'data'    => $this->formatPrescription($prescription, true),  // ✅ sync
             ]);
 
         } catch (\Exception $e) {

@@ -398,37 +398,54 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ============================================================
-    // مسیرهای فیس نسخه
+    // ✅ مسیرهای فیس نسخه
+    // ⭐ routes خاص قبل از /{id}
+    // ⭐ متدهای getAllRequests / getRequestsByRegId / getUnpaidRequests
+    //    در کنترلر وجود ندارند، به index متصل شدند.
     // ============================================================
     Route::prefix('prescription-fees')->group(function () {
-        Route::get('/', [PrescriptionFeeController::class, 'index']);
-        Route::get('/all-requests', [PrescriptionFeeController::class, 'getAllRequests']);
-        Route::get('/reg-id/{regId}', [PrescriptionFeeController::class, 'getRequestsByRegId']);
-        Route::get('/unpaid/{regId}', [PrescriptionFeeController::class, 'getUnpaidRequests']);
+        // ⭐ routes خاص اول
+        Route::get('/all-requests', [PrescriptionFeeController::class, 'index']);
+        Route::get('/statistics',   [PrescriptionFeeController::class, 'statistics']);
+        Route::get('/reg-id/{regId}',   [PrescriptionFeeController::class, 'index']);
+        Route::get('/unpaid/{regId}',   [PrescriptionFeeController::class, 'index']);
+        Route::get('/registration/{regId}', [PrescriptionFeeController::class, 'index']);
+
+        // ⭐ CRUD
+        Route::get('/',  [PrescriptionFeeController::class, 'index']);
+        Route::post('/', [PrescriptionFeeController::class, 'store']);
         Route::post('/registration/{regId}', [PrescriptionFeeController::class, 'store']);
-        Route::put('/{id}', [PrescriptionFeeController::class, 'update']);
+        Route::get('/{id}',    [PrescriptionFeeController::class, 'show']);
+        Route::put('/{id}',    [PrescriptionFeeController::class, 'update']);
         Route::delete('/{id}', [PrescriptionFeeController::class, 'destroy']);
-        Route::get('/{id}', [PrescriptionFeeController::class, 'show']);
+
+        // ✅ روت جدید: همگام‌سازی دستی وضعیت نسخه از فیس
+        Route::post('/{id}/sync', [PrescriptionFeeController::class, 'syncStatus']);
     });
 
     // ============================================================
     // ✅ Prescriptions
+    // ⭐ routes خاص قبل از /{pres_id}
+    // ⭐ روت sync-status اضافه شد
     // ============================================================
     Route::prefix('prescriptions')->group(function () {
-        // روت‌های خاص (باید قبل از {pres_id} باشن)
+        // ⭐ روت‌های خاص اول
         Route::get('/next-batch', [PrescriptionController::class, 'getNextBatch']);
         Route::get('/my/list', [PrescriptionController::class, 'myPrescriptions']);
         Route::post('/check-stock', [PrescriptionController::class, 'checkStockBeforePrescription']);
         Route::get('/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);
 
-        // چرخه وضعیت نسخه
+        // ✅ روت جدید: همگام‌سازی وضعیت از فیس (دستی)
+        Route::post('/{pres_id}/sync-status', [PrescriptionController::class, 'syncStatusFromFee']);
+
+        // ⭐ چرخه وضعیت نسخه
         Route::post('/{pres_id}/send-to-pharmacy', [PrescriptionController::class, 'sendToPharmacy']);
         Route::post('/{pres_id}/pharmacy-registered', [PrescriptionController::class, 'markPharmacyRegistered']);
         Route::post('/{pres_id}/mark-paid', [PrescriptionController::class, 'markPaid']);
         Route::post('/{pres_id}/cancel', [PrescriptionController::class, 'cancel']);
         Route::patch('/{pres_id}/status', [PrescriptionController::class, 'updateStatus']);
 
-        // CRUD اصلی
+        // ⭐ CRUD اصلی
         Route::get('/', [PrescriptionController::class, 'index']);
         Route::post('/', [PrescriptionController::class, 'store']);
         Route::get('/{pres_id}', [PrescriptionController::class, 'show']);
