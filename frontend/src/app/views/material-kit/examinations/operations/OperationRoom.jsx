@@ -9,7 +9,6 @@ export default function OperationFeeTab({ api, regId, registration }) {
   const [feeRecords, setFeeRecords] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [showFeeForm, setShowFeeForm] = useState(false);
-  const [editingFee, setEditingFee] = useState(null);
   const [isEditingRequest, setIsEditingRequest] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
@@ -27,23 +26,8 @@ export default function OperationFeeTab({ api, regId, registration }) {
   const [activeTab, setActiveTab] = useState('unpaid');
   const [doctorSignature, setDoctorSignature] = useState("دکتر علی محمدی");
 
-  // ✅ استفاده از regId یا registration?.reg_id
   const effectiveRegId = regId || registration?.reg_id;
-  
-  console.log("🔪 OperationFeeTab - regId از props:", regId);
-  console.log("🔪 OperationFeeTab - registration:", registration);
-  console.log("🔪 OperationFeeTab - effectiveRegId:", effectiveRegId);
 
-  const [feeFormData, setFeeFormData] = useState({
-    total_amount: "",
-    paid_amount: "",
-    discount: "0",
-    payment_method: "cash",
-    description: "",
-    note: ""
-  });
-
-  // داده‌های ویرایش درخواست
   const [editRequestData, setEditRequestData] = useState({
     surgery_type: "",
     surgeon: "",
@@ -59,7 +43,6 @@ export default function OperationFeeTab({ api, regId, registration }) {
     if (effectiveRegId) {
       fetchAllData();
     } else {
-      console.warn("⚠️ regId موجود نیست، درخواست‌ها بارگذاری نمی‌شوند");
       setOperationRequests([]);
       setFeeRecords([]);
     }
@@ -78,24 +61,14 @@ export default function OperationFeeTab({ api, regId, registration }) {
     }
   };
 
-  // ============ دریافت درخواست‌های عملیات ============
   const fetchOperationRequests = async () => {
     try {
       let url = '/operation/requests?per_page=100';
-      
-      // ✅ استفاده از effectiveRegId
       if (effectiveRegId) {
         url = `/operation/requests/registration/${effectiveRegId}`;
-        console.log(`📋 دریافت درخواست‌های عملیات برای مراجعه ${effectiveRegId}:`, url);
-      } else {
-        console.log("📋 دریافت همه درخواست‌های عملیات:", url);
       }
-
       const response = await api.get(url);
-      console.log("📥 پاسخ سرور:", response.data);
-
       let requests = [];
-
       if (response.data?.success) {
         if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
           requests = response.data.data.data;
@@ -106,19 +79,11 @@ export default function OperationFeeTab({ api, regId, registration }) {
         } else if (response.data?.data && typeof response.data.data === 'object') {
           requests = [response.data.data];
         }
-        
-        console.log(`✅ ${requests.length} درخواست عملیات دریافت شد`);
-      } else {
-        console.log("⚠️ خطا در دریافت درخواست‌ها:", response.data?.message);
       }
-
       setOperationRequests(requests);
-
     } catch (err) {
       console.error("❌ خطا در دریافت درخواست‌های عملیات:", err);
-      if (err.response?.status === 404) {
-        console.log("ℹ️ هیچ درخواست عملیاتی برای این مراجعه یافت نشد");
-      } else {
+      if (err.response?.status !== 404) {
         toast.error(`❌ خطا در دریافت درخواست‌ها: ${err.response?.data?.message || err.message}`);
       }
       setOperationRequests([]);
@@ -130,10 +95,7 @@ export default function OperationFeeTab({ api, regId, registration }) {
       const url = effectiveRegId
         ? `/operation/fees?per_page=100&reg_id=${effectiveRegId}`
         : '/operation/fees?per_page=100';
-
       const response = await api.get(url);
-      console.log("💳 فیس‌های عملیات:", response.data);
-
       let fees = [];
       if (response.data?.success) {
         if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
@@ -143,13 +105,10 @@ export default function OperationFeeTab({ api, regId, registration }) {
         } else if (Array.isArray(response.data)) {
           fees = response.data;
         }
-        
         if (effectiveRegId) {
           fees = fees.filter(f => f.reg_id == effectiveRegId);
         }
       }
-      
-      console.log(`✅ ${fees.length} فیس عملیات دریافت شد`);
       setFeeRecords(fees);
     } catch (err) {
       console.error("❌ خطا در دریافت فیس‌ها:", err);
@@ -160,8 +119,6 @@ export default function OperationFeeTab({ api, regId, registration }) {
   const fetchStatistics = async () => {
     try {
       const response = await api.get('/operation/fees/statistics');
-      console.log("📊 آمار فیس‌ها:", response.data);
-
       if (response.data?.success && response.data?.data) {
         setStats(response.data.data);
       }
@@ -170,25 +127,20 @@ export default function OperationFeeTab({ api, regId, registration }) {
     }
   };
 
-  // ============ ثبت درخواست عملیات جدید ============
   const handleCreateRequest = async (e) => {
     e.preventDefault();
-    
     if (!effectiveRegId) {
       toast.error("❌ شناسه مراجعه یافت نشد");
       return;
     }
-
     if (!editRequestData.surgery_type.trim()) {
       toast.warning("⚠️ لطفاً نوع جراحی را وارد کنید");
       return;
     }
-
     if (!editRequestData.surgeon.trim()) {
       toast.warning("⚠️ لطفاً نام جراح را وارد کنید");
       return;
     }
-
     setLoading(true);
     try {
       const payload = {
@@ -201,11 +153,7 @@ export default function OperationFeeTab({ api, regId, registration }) {
         notes: editRequestData.notes?.trim() || null,
         priority: editRequestData.priority || "normal"
       };
-      
-      console.log("📤 ارسال payload ثبت درخواست جدید:", payload);
-      
       const response = await api.post(`/operation/requests/registration/${effectiveRegId}`, payload);
-      
       if (response.data?.success) {
         toast.success("✅ درخواست عملیات با موفقیت ثبت شد");
         setShowFeeForm(false);
@@ -217,7 +165,6 @@ export default function OperationFeeTab({ api, regId, registration }) {
       }
     } catch (err) {
       console.error("❌ خطا در ثبت درخواست:", err);
-      
       if (err.response?.status === 422) {
         const errorData = err.response.data;
         if (errorData.errors) {
@@ -250,21 +197,14 @@ export default function OperationFeeTab({ api, regId, registration }) {
     }
   };
 
-  // ============ باز کردن فرم ثبت درخواست جدید ============
   const handleOpenNewRequestForm = () => {
-    console.log("🔪 handleOpenNewRequestForm - effectiveRegId:", effectiveRegId);
-    
     if (!effectiveRegId) {
       toast.error("❌ شناسه مراجعه یافت نشد. لطفاً یک مریض را انتخاب کنید.");
       return;
     }
-    
     setIsEditingRequest(true);
     setSelectedRequest(null);
-    setEditingFee(null);
     setDebugErrors(null);
-    
-    // تنظیم داده‌های پیش‌فرض
     setEditRequestData({
       surgery_type: "",
       surgeon: "",
@@ -275,76 +215,17 @@ export default function OperationFeeTab({ api, regId, registration }) {
       notes: "",
       priority: "normal"
     });
-    
     setShowFeeForm(true);
   };
 
-  const handleOpenFeeForm = (request) => {
-    console.log("💰 باز کردن فرم اخذ فیس برای:", request);
-    
-    if (request.fee_id) {
-      toast.warning("⚠️ این درخواست قبلاً فیس دارد");
-      return;
-    }
-    
-    setSelectedRequest(request);
-    setEditingFee(null);
-    setIsEditingRequest(false);
-    setDebugErrors(null);
-    
-    setFeeFormData({
-      total_amount: "",
-      paid_amount: "",
-      discount: "0",
-      payment_method: "cash",
-      description: `عملیات: ${request.surgery_type || 'عملیات عمومی'} - جراح: ${request.surgeon || ''}`,
-      note: `مراجعه #${request.reg_id || request.registration_id} - درخواست #${request.id}`
-    });
-    setShowFeeForm(true);
-  };
-
-  const handleOpenEditFeeForm = (fee) => {
-    console.log("✏️ باز کردن فرم ویرایش فیس:", fee);
-    if (!fee || !fee.id) {
-      toast.error("❌ اطلاعات فیس معتبر نیست");
-      return;
-    }
-    
-    const status = fee.payment_status || fee.status || '';
-    if (status.toLowerCase() === 'paid') {
-      toast.warning("⚠️ این فیس قبلاً پرداخت کامل شده است و قابل ویرایش نمی‌باشد");
-      return;
-    }
-    
-    setEditingFee(fee);
-    setSelectedRequest(null);
-    setIsEditingRequest(false);
-    setDebugErrors(null);
-    
-    setFeeFormData({
-      total_amount: fee.total_amount?.toString() || "",
-      paid_amount: fee.paid_amount?.toString() || "",
-      discount: fee.discount_percent?.toString() || "0",
-      payment_method: fee.payment_method || "cash",
-      description: fee.description || "",
-      note: fee.note || ""
-    });
-    setShowFeeForm(true);
-  };
-
-  // باز کردن فرم ویرایش درخواست
   const handleEditRequest = (request) => {
-    console.log("✏️ ویرایش درخواست:", request);
     if (!request || !request.id) {
       toast.error("❌ اطلاعات درخواست معتبر نیست");
       return;
     }
-    
     setIsEditingRequest(true);
     setSelectedRequest(request);
-    setEditingFee(null);
     setDebugErrors(null);
-    
     setEditRequestData({
       surgery_type: request.surgery_type || "",
       surgeon: request.surgeon || "",
@@ -355,19 +236,15 @@ export default function OperationFeeTab({ api, regId, registration }) {
       notes: request.notes || "",
       priority: request.priority || "normal"
     });
-    
     setShowFeeForm(true);
   };
 
-  // ذخیره تغییرات درخواست (ویرایش)
   const handleSaveRequest = async (e) => {
     e.preventDefault();
-    
     if (!selectedRequest || !selectedRequest.id) {
       toast.error("❌ درخواست معتبر نیست");
       return;
     }
-    
     setLoading(true);
     try {
       const payload = {
@@ -380,10 +257,7 @@ export default function OperationFeeTab({ api, regId, registration }) {
         notes: editRequestData.notes?.trim() || null,
         priority: editRequestData.priority || "normal"
       };
-      
-      console.log("📤 ارسال payload ویرایش درخواست:", payload);
       const response = await api.put(`/operation/requests/${selectedRequest.id}`, payload);
-      
       if (response.data?.success) {
         toast.success("✅ درخواست عملیات با موفقیت ویرایش شد");
         setShowFeeForm(false);
@@ -395,7 +269,6 @@ export default function OperationFeeTab({ api, regId, registration }) {
       }
     } catch (err) {
       console.error("❌ خطا در ویرایش درخواست:", err);
-      
       if (err.response?.status === 422) {
         const errorData = err.response.data;
         if (errorData.errors) {
@@ -428,146 +301,11 @@ export default function OperationFeeTab({ api, regId, registration }) {
     }
   };
 
-  const handleSubmitFee = async (e) => {
-    e.preventDefault();
-
-    if (!feeFormData.total_amount || parseFloat(feeFormData.total_amount) <= 0) {
-      toast.warning("⚠️ لطفاً مبلغ کل را وارد کنید");
-      return;
-    }
-
-    if (!selectedRequest && !editingFee) {
-      toast.error("❌ هیچ درخواستی انتخاب نشده است");
-      return;
-    }
-
-    setLoading(true);
-    setDebugErrors(null);
-
-    try {
-      let payload;
-      let response;
-      
-      if (editingFee) {
-        const status = editingFee.payment_status || editingFee.status || '';
-        if (status.toLowerCase() === 'paid') {
-          toast.warning("⚠️ این فیس قبلاً پرداخت کامل شده است و قابل ویرایش نمی‌باشد");
-          setLoading(false);
-          return;
-        }
-        
-        payload = {
-          total_amount: parseFloat(feeFormData.total_amount),
-          paid_amount: parseFloat(feeFormData.paid_amount) || 0,
-          discount_percent: parseFloat(feeFormData.discount) || 0,
-          payment_method: feeFormData.payment_method,
-          description: feeFormData.description,
-          note: feeFormData.note
-        };
-        
-        console.log("📤 ارسال payload ویرایش:", payload);
-        response = await api.put(`/operation/fees/${editingFee.id}`, payload);
-        toast.success("✅ فیس عملیات با موفقیت ویرایش شد");
-        
-      } else {
-        payload = {
-          operation_request_id: selectedRequest.id,
-          reg_id: selectedRequest.reg_id || selectedRequest.registration_id || effectiveRegId,
-          patient_id: selectedRequest.patient_id,
-          total_amount: parseFloat(feeFormData.total_amount),
-          paid_amount: parseFloat(feeFormData.paid_amount) || 0,
-          discount: parseFloat(feeFormData.discount) || 0,
-          payment_method: feeFormData.payment_method,
-          description: feeFormData.description,
-          note: feeFormData.note
-        };
-        
-        console.log("📤 ارسال payload ثبت:", payload);
-        response = await api.post('/operation/fees', payload);
-        toast.success("✅ فیس عملیات با موفقیت ثبت شد");
-      }
-
-      console.log("✅ پاسخ ثبت فیس:", response.data);
-
-      await fetchAllData();
-      handleCloseForm();
-
-    } catch (err) {
-      console.error("❌ خطا در ثبت فیس:", err);
-      
-      if (err.response?.status === 422) {
-        const errorData = err.response.data;
-        setDebugErrors(errorData);
-        console.log("📋 خطاهای اعتبارسنجی:", errorData);
-        
-        if (errorData.errors) {
-          Object.entries(errorData.errors).forEach(([field, messages]) => {
-            const fieldLabels = {
-              'operation_request_id': 'شناسه درخواست عملیات',
-              'reg_id': 'شناسه مراجعه',
-              'patient_id': 'شناسه مریض',
-              'total_amount': 'مبلغ کل',
-              'paid_amount': 'مبلغ پرداخت شده',
-              'discount': 'تخفیف',
-              'discount_percent': 'درصد تخفیف',
-              'payment_method': 'روش پرداخت',
-              'description': 'توضیحات',
-              'note': 'یادداشت'
-            };
-            const label = fieldLabels[field] || field;
-            const message = Array.isArray(messages) ? messages.join(', ') : messages;
-            toast.error(`❌ ${label}: ${message}`);
-          });
-        } else if (errorData.message) {
-          toast.error(`❌ ${errorData.message}`);
-        } else {
-          toast.error("❌ داده‌های ارسالی معتبر نیستند. لطفاً همه فیلدها را بررسی کنید.");
-        }
-      } else if (err.response?.data?.message) {
-        toast.error(`❌ ${err.response.data.message}`);
-      } else {
-        toast.error(`❌ خطا: ${err.message || "خطا در ثبت فیس"}`);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteFee = async (feeId) => {
-    console.log("🗑️ درخواست حذف فیس با ID:", feeId);
-    if (!feeId) {
-      toast.error("❌ شناسه فیس معتبر نیست");
-      return;
-    }
-    if (!window.confirm("⚠️ آیا مطمئن هستید که می‌خواهید این فیس را حذف کنید؟")) return;
-    
-    setLoading(true);
-    try {
-      await api.delete(`/operation/fees/${feeId}`);
-      toast.success("✅ فیس عملیات با موفقیت حذف شد");
-      await fetchAllData();
-    } catch (err) {
-      console.error("❌ خطا در حذف فیس:", err);
-      toast.error(`❌ خطا: ${err.response?.data?.message || "خطا در حذف فیس"}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCloseForm = () => {
     setShowFeeForm(false);
     setSelectedRequest(null);
-    setEditingFee(null);
     setIsEditingRequest(false);
     setDebugErrors(null);
-    setFeeFormData({
-      total_amount: "",
-      paid_amount: "",
-      discount: "0",
-      payment_method: "cash",
-      description: "",
-      note: ""
-    });
     setEditRequestData({
       surgery_type: "",
       surgeon: "",
@@ -580,9 +318,7 @@ export default function OperationFeeTab({ api, regId, registration }) {
     });
   };
 
-  // تابع پرینت برای درخواست‌های بدون فیس با امضا
   const handlePrintRequest = (request) => {
-    console.log("🖨️ پرینت درخواست:", request);
     if (!request) {
       toast.error("❌ اطلاعات درخواست معتبر نیست");
       return;
@@ -632,10 +368,6 @@ export default function OperationFeeTab({ api, regId, registration }) {
               <th style="text-align: right; padding: 8px; background: #e9ecef;">اولویت</th>
               <td style="padding: 8px;">${request.priority === 'high' ? 'بالا' : request.priority === 'medium' ? 'متوسط' : request.priority === 'normal' ? 'عادی' : 'پایین'}</td>
             </tr>
-            <tr>
-              <th style="text-align: right; padding: 8px; background: #e9ecef;">وضعیت فیس</th>
-              <td style="padding: 8px; color: #f59e0b; font-weight: bold;">❌ فیس اخذ نگردیده است</td>
-            </tr>
             ${request.notes ? `<tr>
               <th style="text-align: right; padding: 8px; background: #e9ecef;">یادداشت</th>
               <td style="padding: 8px;">${request.notes}</td>
@@ -663,7 +395,6 @@ export default function OperationFeeTab({ api, regId, registration }) {
         </div>
       </div>
     `;
-
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (printWindow) {
       printWindow.document.write(`
@@ -687,128 +418,6 @@ export default function OperationFeeTab({ api, regId, registration }) {
     } else {
       toast.error("❌ خطا در باز کردن پنجره پرینت");
     }
-  };
-
-  // تابع پرینت برای فیس با امضا
-  const handlePrintFee = (fee, request) => {
-    console.log("🖨️ پرینت فیس:", fee, "درخواست:", request);
-    if (!fee) {
-      toast.error("❌ اطلاعات فیس معتبر نیست");
-      return;
-    }
-    const amount = parseFloat(fee.total_amount) || 0;
-    const paid = parseFloat(fee.paid_amount) || 0;
-    const remaining = amount - paid - (amount * (parseFloat(fee.discount_percent) || 0) / 100);
-
-    const printContent = `
-      <div style="font-family: 'IRANSans', Arial, sans-serif; direction: rtl; padding: 20px; max-width: 800px; margin: 0 auto;">
-        <h2 style="text-align: center; color: #1a1a2e; border-bottom: 3px solid #dc2626; padding-bottom: 10px;">💰 گزارش فیس عملیات</h2>
-        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-            <tr style="border-bottom: 1px solid #ddd;">
-              <th style="text-align: right; padding: 8px; background: #e9ecef; width: 40%;">نام بیمار</th>
-              <td style="padding: 8px;">${request ? getPatientFullName(request) : fee.patient_name || 'نامشخص'}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ddd;">
-              <th style="text-align: right; padding: 8px; background: #e9ecef;">شماره مراجعه</th>
-              <td style="padding: 8px;">${fee.reg_id || fee.registration_id || '-'}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ddd;">
-              <th style="text-align: right; padding: 8px; background: #e9ecef;">نوع جراحی</th>
-              <td style="padding: 8px;">${request?.surgery_type || fee.surgery_type || '-'}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ddd;">
-              <th style="text-align: right; padding: 8px; background: #e9ecef;">جراح</th>
-              <td style="padding: 8px;">${request?.surgeon || fee.surgeon || '-'}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ddd; background: #fef3c7;">
-              <th style="text-align: right; padding: 8px; background: #fcd34d;">💰 مبلغ کل</th>
-              <td style="padding: 8px; font-weight: bold; color: #dc2626;">${amount.toFixed(2)} ؋</td>
-            </tr>
-            ${fee.discount_percent > 0 ? `<tr style="border-bottom: 1px solid #ddd; background: #fef3c7;">
-              <th style="text-align: right; padding: 8px; background: #fcd34d;">تخفیف</th>
-              <td style="padding: 8px; font-weight: bold; color: #f59e0b;">${fee.discount_percent}%</td>
-            </tr>` : ''}
-            <tr style="border-bottom: 1px solid #ddd; background: #d1fae5;">
-              <th style="text-align: right; padding: 8px; background: #34d399;">پرداخت شده</th>
-              <td style="padding: 8px; font-weight: bold; color: #22c55e;">${paid.toFixed(2)} ؋</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ddd; background: #fee2e2;">
-              <th style="text-align: right; padding: 8px; background: #fca5a5;">باقیمانده</th>
-              <td style="padding: 8px; font-weight: bold; color: #dc2626;">${remaining.toFixed(2)} ؋</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ddd;">
-              <th style="text-align: right; padding: 8px; background: #e9ecef;">روش پرداخت</th>
-              <td style="padding: 8px;">${getMethodLabel(fee.payment_method)}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ddd;">
-              <th style="text-align: right; padding: 8px; background: #e9ecef;">وضعیت پرداخت</th>
-              <td style="padding: 8px; color: ${getStatusColor(fee.payment_status)}; font-weight: bold;">${getStatusLabel(fee.payment_status)}</td>
-            </tr>
-            ${fee.description ? `<tr style="border-bottom: 1px solid #ddd;">
-              <th style="text-align: right; padding: 8px; background: #e9ecef;">توضیحات</th>
-              <td style="padding: 8px;">${fee.description}</td>
-            </tr>` : ''}
-            ${fee.note ? `<tr>
-              <th style="text-align: right; padding: 8px; background: #e9ecef;">یادداشت</th>
-              <td style="padding: 8px;">${fee.note}</td>
-            </tr>` : ''}
-          </table>
-        </div>
-        <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #ddd;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-            <div style="text-align: center; flex: 1;">
-              <div style="border-top: 1px solid #333; padding-top: 5px; width: 200px; margin: 0 auto;">
-                امضای پزشک معالج
-              </div>
-              <div style="font-size: 12px; color: #666; margin-top: 5px;">${doctorSignature}</div>
-            </div>
-            <div style="text-align: center; flex: 1;">
-              <div style="border-top: 1px solid #333; padding-top: 5px; width: 200px; margin: 0 auto;">
-                تاریخ
-              </div>
-              <div style="font-size: 12px; color: #666; margin-top: 5px;">${new Date().toLocaleDateString('fa-IR')}</div>
-            </div>
-          </div>
-        </div>
-        <div style="text-align: center; color: #6c757d; font-size: 12px; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px;">
-          تاریخ چاپ: ${new Date().toLocaleString('fa-IR')}
-        </div>
-      </div>
-    `;
-
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>پرینت گزارش فیس عملیات</title>
-            <style>
-              body { font-family: 'IRANSans', Arial, sans-serif; }
-              @media print {
-                body { margin: 0; padding: 20px; }
-              }
-            </style>
-          </head>
-          <body>${printContent}</body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
-    } else {
-      toast.error("❌ خطا در باز کردن پنجره پرینت");
-    }
-  };
-
-  const getMethodLabel = (method) => {
-    const methods = {
-      cash: 'نقدی',
-      card: 'کارت بانکی',
-      online: 'آنلاین',
-      insurance: 'بیمه'
-    };
-    return methods[method] || method || '-';
   };
 
   const getStatusLabel = (status) => {
@@ -854,7 +463,6 @@ export default function OperationFeeTab({ api, regId, registration }) {
     return isNaN(num) ? 0 : num;
   };
 
-  // تقسیم درخواست‌ها به دو دسته بر اساس fee_id
   const unpaidRequests = operationRequests.filter(r => !r.fee_id);
   const paidRequests = operationRequests.filter(r => r.fee_id);
 
@@ -874,13 +482,11 @@ export default function OperationFeeTab({ api, regId, registration }) {
   const filteredPaid = filterBySearch(paidRequests);
 
   const handleDeleteRequest = async (requestId) => {
-    console.log("🗑️ درخواست حذف عملیات با ID:", requestId);
     if (!requestId) {
       toast.error("❌ شناسه درخواست معتبر نیست");
       return;
     }
     if (!window.confirm("⚠️ آیا مطمئن هستید که می‌خواهید این درخواست عملیات را حذف کنید؟")) return;
-    
     setLoading(true);
     try {
       await api.delete(`/operation/requests/${requestId}`);
@@ -894,325 +500,306 @@ export default function OperationFeeTab({ api, regId, registration }) {
     }
   };
 
+  // ============ Styles ============
+  const styles = {
+    container: { padding: "8px" },
+    statsGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+      gap: "10px",
+      marginBottom: "20px",
+      padding: "15px",
+      background: "linear-gradient(135deg, #1f2937 0%, #111827 100%)",
+      borderRadius: "10px",
+    },
+    statBox: { textAlign: "center" },
+    statValue: { fontSize: "20px", fontWeight: "bold" },
+    statLabel: { fontSize: "11px", color: "#9ca3af", marginTop: "2px" },
+    filters: {
+      display: "flex",
+      gap: "10px",
+      marginBottom: "15px",
+      flexWrap: "wrap",
+      alignItems: "center",
+    },
+    filterBtn: {
+      padding: "8px 16px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      cursor: "pointer",
+      fontSize: "13px",
+      background: "white",
+      transition: "all 0.2s",
+    },
+    filterBtnActive: {
+      background: "#10b981",
+      color: "white",
+      borderColor: "#10b981",
+    },
+    searchInput: {
+      padding: "8px 16px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      fontSize: "14px",
+      minWidth: "250px",
+      flex: 1,
+      background: "white",
+      color: "#1f2937",
+    },
+    table: {
+      width: "100%",
+      borderCollapse: "collapse",
+      fontSize: "13px",
+      background: "white",
+      borderRadius: "10px",
+      overflow: "hidden",
+    },
+    th: {
+      padding: "12px",
+      textAlign: "right",
+      background: "#f9fafb",
+      color: "#374151",
+      fontSize: "13px",
+      fontWeight: "bold",
+      borderBottom: "2px solid #e5e7eb",
+    },
+    td: {
+      padding: "12px",
+      borderBottom: "1px solid #f3f4f6",
+      color: "#1f2937",
+    },
+    btn: {
+      padding: "6px 12px",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "12px",
+      fontWeight: "bold",
+      marginRight: "4px",
+    },
+    modal: {
+      position: "fixed",
+      top: 0, left: 0, right: 0, bottom: 0,
+      background: "rgba(0,0,0,0.5)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 2000,
+      padding: "16px",
+    },
+    modalContent: {
+      background: "white",
+      borderRadius: "12px",
+      padding: "24px",
+      maxWidth: "600px",
+      width: "100%",
+      maxHeight: "90vh",
+      overflowY: "auto",
+    },
+    input: {
+      padding: "10px 12px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      fontSize: "14px",
+      width: "100%",
+      boxSizing: "border-box",
+      background: "white",
+      color: "#1f2937",
+    },
+    label: {
+      display: "block",
+      fontSize: "12px",
+      color: "#374151",
+      fontWeight: "bold",
+      marginBottom: "6px",
+      marginTop: "12px",
+    },
+  };
+
+  // ============ Render ============
   return (
-    <div>
+    <div style={styles.container}>
       {/* آمار */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-        gap: '10px',
-        marginBottom: '20px',
-        padding: '15px',
-        backgroundColor: '#1f2937',
-        borderRadius: '8px'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#3b82f6' }}>{stats.total || 0}</div>
-          <div style={{ fontSize: '11px', color: '#9ca3af' }}>مجموع</div>
+      <div style={styles.statsGrid}>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#3b82f6" }}>{stats.total || 0}</div>
+          <div style={styles.statLabel}>مجموع</div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#f59e0b' }}>{stats.pending || 0}</div>
-          <div style={{ fontSize: '11px', color: '#9ca3af' }}>در انتظار</div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#f59e0b" }}>{stats.pending || 0}</div>
+          <div style={styles.statLabel}>در انتظار</div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#f97316' }}>{stats.partial || 0}</div>
-          <div style={{ fontSize: '11px', color: '#9ca3af' }}>ناقص</div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#f97316" }}>{stats.partial || 0}</div>
+          <div style={styles.statLabel}>ناقص</div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#22c55e' }}>{stats.paid || 0}</div>
-          <div style={{ fontSize: '11px', color: '#9ca3af' }}>پرداخت شده</div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#22c55e" }}>{stats.paid || 0}</div>
+          <div style={styles.statLabel}>پرداخت شده</div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#10b981' }}>{stats.total_paid?.toFixed(2) || 0}</div>
-          <div style={{ fontSize: '11px', color: '#9ca3af' }}>مبلغ پرداخت</div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#10b981", fontSize: "16px" }}>
+            {toNumber(stats.total_paid).toLocaleString()}
+          </div>
+          <div style={styles.statLabel}>مبلغ پرداخت</div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ef4444' }}>{stats.total_remaining?.toFixed(2) || 0}</div>
-          <div style={{ fontSize: '11px', color: '#9ca3af' }}>باقیمانده</div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#ef4444", fontSize: "16px" }}>
+            {toNumber(stats.total_remaining).toLocaleString()}
+          </div>
+          <div style={styles.statLabel}>باقیمانده</div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#60a5fa' }}>{stats.today || 0}</div>
-          <div style={{ fontSize: '11px', color: '#9ca3af' }}>امروز</div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#60a5fa" }}>{stats.today || 0}</div>
+          <div style={styles.statLabel}>امروز</div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#fcd34d' }}>{stats.today_amount?.toFixed(2) || 0}</div>
-          <div style={{ fontSize: '11px', color: '#9ca3af' }}>فیس امروز</div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#fcd34d", fontSize: "16px" }}>
+            {toNumber(stats.today_amount).toLocaleString()}
+          </div>
+          <div style={styles.statLabel}>فیس امروز</div>
         </div>
       </div>
 
-      {/* هدر */}
-      <div style={{
-        backgroundColor: '#1a2a3a',
-        padding: '15px 20px',
-        borderRadius: '10px',
-        marginBottom: '20px',
-        borderBottom: '3px solid #dc2626'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-          <div>
-            <h3 style={{ color: '#dc2626', margin: 0 }}>
-              🔪 مدیریت فیس‌های عملیات
-            </h3>
-            <div style={{ color: '#9ca3af', fontSize: '13px', marginTop: '5px' }}>
-              {effectiveRegId ? `مراجعه #${effectiveRegId}` : 'تمام درخواست‌های عملیات'}
-            </div>
-            <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>
-              {unpaidRequests.length} درخواست بدون فیس | {paidRequests.length} درخواست دارای فیس
-            </div>
-          </div>
-          
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setActiveTab('unpaid')}
-              style={{
-                backgroundColor: activeTab === 'unpaid' ? '#f59e0b' : '#374151',
-                color: 'white',
-                padding: '6px 15px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px'
-              }}
-            >
-              🟡 بدون فیس ({unpaidRequests.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('paid')}
-              style={{
-                backgroundColor: activeTab === 'paid' ? '#22c55e' : '#374151',
-                color: 'white',
-                padding: '6px 15px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px'
-              }}
-            >
-              🟢 دارای فیس ({paidRequests.length})
-            </button>
-            <button
-              onClick={fetchAllData}
-              disabled={loading}
-              style={{
-                backgroundColor: '#374151',
-                color: '#dc2626',
-                padding: '6px 15px',
-                borderRadius: '6px',
-                border: '1px solid #dc2626',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                fontSize: '12px',
-                opacity: loading ? 0.6 : 1
-              }}
-            >
-              {loading ? '⏳' : '🔄'} {loading ? 'در حال بارگذاری...' : 'بارگذاری مجدد'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* جستجو */}
-      <div style={{ marginBottom: '15px' }}>
+      {/* فیلترها و جستجو */}
+      <div style={styles.filters}>
+        <button
+          style={{
+            ...styles.filterBtn,
+            ...(activeTab === 'unpaid' ? { background: "#f59e0b", color: "white", borderColor: "#f59e0b" } : {}),
+          }}
+          onClick={() => setActiveTab('unpaid')}
+        >
+          🟡 بدون فیس ({unpaidRequests.length})
+        </button>
+        <button
+          style={{
+            ...styles.filterBtn,
+            ...(activeTab === 'paid' ? { background: "#22c55e", color: "white", borderColor: "#22c55e" } : {}),
+          }}
+          onClick={() => setActiveTab('paid')}
+        >
+          🟢 دارای فیس ({paidRequests.length})
+        </button>
         <input
           type="text"
           placeholder="🔍 جستجوی نام مریض، نوع جراحی، جراح، شماره مراجعه..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '8px 15px',
-            borderRadius: '5px',
-            border: '1px solid #374151',
-            backgroundColor: '#1f2937',
-            color: 'white',
-            fontSize: '14px',
-            outline: 'none'
-          }}
+          style={styles.searchInput}
         />
+        <button
+          style={{ ...styles.btn, background: "#3b82f6", color: "white", padding: "8px 16px" }}
+          onClick={fetchAllData}
+          disabled={loading}
+        >
+          {loading ? '⏳' : '🔄'} بروزرسانی
+        </button>
       </div>
 
       {/* ============ درخواست‌های بدون فیس ============ */}
       {activeTab === 'unpaid' && (
         <>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '10px',
-            padding: '8px 12px',
-            backgroundColor: '#f59e0b20',
-            borderRadius: '6px',
-            border: '1px solid #f59e0b'
-          }}>
-            <h4 style={{ color: '#f59e0b', margin: 0 }}>
-              🟡 درخواست‌های بدون فیس ({filteredUnpaid.length})
-            </h4>
-            <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-              ویرایش/حذف/پرینت درخواست‌های بدون فیس
-            </span>
-          </div>
-
           {loading ? (
-            <div style={{
-              backgroundColor: '#1a2a3a',
-              padding: '30px',
-              borderRadius: '8px',
-              textAlign: 'center',
-              color: '#9ca3af'
-            }}>
-              <div style={{ fontSize: '30px', marginBottom: '10px' }}>⏳</div>
-              <div>در حال بارگذاری...</div>
+            <div style={{ padding: "40px", textAlign: "center", color: "#6b7280", background: "white", borderRadius: "10px" }}>
+              ⏳ در حال بارگذاری...
             </div>
           ) : filteredUnpaid.length === 0 ? (
-            <div style={{
-              backgroundColor: '#1a2a3a',
-              padding: '30px',
-              borderRadius: '8px',
-              textAlign: 'center',
-              color: '#9ca3af'
-            }}>
-              <div style={{ fontSize: '40px', marginBottom: '10px' }}>✅</div>
+            <div style={{ padding: "40px", textAlign: "center", color: "#6b7280", background: "white", borderRadius: "10px" }}>
+              <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
               <div>همه درخواست‌ها فیس دارند</div>
-              <div style={{ fontSize: '12px', marginTop: '5px', color: '#6b7280' }}>
-                برای مشاهده درخواست‌های دارای فیس، تب "🟢 دارای فیس" را انتخاب کنید
-              </div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '30px' }}>
-              {filteredUnpaid.map((request, index) => (
-                <div
-                  key={request.id || index}
-                  style={{
-                    backgroundColor: '#1a2a3a',
-                    padding: '15px 20px',
-                    borderRadius: '8px',
-                    borderRight: '4px solid #f59e0b',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '10px'
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: '250px' }}>
-                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ color: '#9ca3af', fontSize: '11px' }}>#{index + 1}</span>
-                      <span style={{ 
-                        backgroundColor: '#0f1a2a',
-                        color: '#dc2626',
-                        padding: '2px 10px',
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        fontWeight: 'bold'
-                      }}>
-                        مراجعه #{request.reg_id || request.registration_id}
-                      </span>
-                      <span style={{ color: '#34d399', fontWeight: 'bold', fontSize: '13px' }}>
-                        {getPatientFullName(request)}
-                      </span>
-                      <span style={{ color: '#dc2626', fontWeight: 'bold' }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>#</th>
+                    <th style={styles.th}>شماره مراجعه</th>
+                    <th style={styles.th}>معلومات بیمار</th>
+                    <th style={styles.th}>نوع جراحی</th>
+                    <th style={styles.th}>جراح</th>
+                    <th style={styles.th}>بیهوشی</th>
+                    <th style={styles.th}>زمان</th>
+                    <th style={styles.th}>وضعیت</th>
+                    <th style={styles.th}>اولویت</th>
+                    <th style={styles.th}>عملیات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUnpaid.map((request, index) => (
+                    <tr key={request.id || index}>
+                      <td style={styles.td}>{index + 1}</td>
+                      <td style={styles.td}>
+                        <code style={{ background: "#f3f4f6", padding: "3px 8px", borderRadius: "4px", fontSize: "12px" }}>
+                          #{request.reg_id || request.registration_id || '-'}
+                        </code>
+                      </td>
+                      <td style={styles.td}>
+                        <div style={{ fontWeight: "bold" }}>👤 {getPatientFullName(request)}</div>
+                      </td>
+                      <td style={{ ...styles.td, color: "#dc2626", fontWeight: "bold" }}>
                         {request.surgery_type || 'عملیات'}
-                      </span>
-                      <span style={{
-                        backgroundColor: '#f59e0b',
-                        color: 'white',
-                        padding: '2px 10px',
-                        borderRadius: '12px',
-                        fontSize: '10px',
-                        fontWeight: 'bold'
-                      }}>
-                        ❌ بدون فیس
-                      </span>
-                    </div>
-                    
-                    <div style={{
-                      display: 'flex',
-                      gap: '15px',
-                      flexWrap: 'wrap',
-                      marginTop: '5px',
-                      padding: '5px 10px',
-                      backgroundColor: '#0f1a2a',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      color: '#9ca3af'
-                    }}>
-                      <span>👨‍⚕️ جراح: {request.surgeon || 'نامشخص'}</span>
-                      <span>💉 بیهوشی: {request.anesthesiologist || 'نامشخص'}</span>
-                      {request.scheduled_date && (
-                        <span>📅 {formatDateTime(request.scheduled_date)}</span>
-                      )}
-                      <span>وضعیت: {request.status_label || request.status || 'در انتظار'}</span>
-                    </div>
-                    
-                    {request.notes && (
-                      <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>
-                        📝 {request.notes}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* دکمه‌های ویرایش، حذف و پرینت برای درخواست‌های بدون فیس */}
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {request.id && !request.id.toString().startsWith('temp_') && (
-                      <>
+                      </td>
+                      <td style={styles.td}>👨‍⚕️ {request.surgeon || '-'}</td>
+                      <td style={styles.td}>💉 {request.anesthesiologist || '-'}</td>
+                      <td style={styles.td}>
+                        <div style={{ fontSize: "12px" }}>
+                          {request.scheduled_date ? formatDateTime(request.scheduled_date) : '-'}
+                        </div>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{
+                          background: "#fef3c7",
+                          color: "#92400e",
+                          padding: "4px 10px",
+                          borderRadius: "12px",
+                          fontSize: "12px",
+                          fontWeight: "bold"
+                        }}>
+                          {request.status_label || request.status || 'در انتظار'}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{
+                          background: request.priority === 'high' ? '#fee2e2' : request.priority === 'medium' ? '#fef3c7' : '#dbeafe',
+                          color: request.priority === 'high' ? '#991b1b' : request.priority === 'medium' ? '#92400e' : '#1e40af',
+                          padding: "3px 10px",
+                          borderRadius: "10px",
+                          fontSize: "11px",
+                          fontWeight: "bold"
+                        }}>
+                          {request.priority === 'high' ? '🔴 بالا' : request.priority === 'medium' ? '🟡 متوسط' : request.priority === 'normal' ? '🔵 عادی' : '⚪ پایین'}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        {request.id && !request.id.toString().startsWith('temp_') && (
+                          <>
+                            <button
+                              style={{ ...styles.btn, background: "#f59e0b", color: "white" }}
+                              onClick={() => handleEditRequest(request)}
+                            >
+                              ✏️ ویرایش
+                            </button>
+                            <button
+                              style={{ ...styles.btn, background: "#ef4444", color: "white" }}
+                              onClick={() => handleDeleteRequest(request.id)}
+                            >
+                              🗑️ حذف
+                            </button>
+                          </>
+                        )}
                         <button
-                          onClick={() => handleEditRequest(request)}
-                          style={{
-                            backgroundColor: '#f59e0b',
-                            color: 'white',
-                            padding: '6px 14px',
-                            borderRadius: '6px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                            transition: 'all 0.2s'
-                          }}
-                          onMouseEnter={(e) => e.target.style.backgroundColor = '#d97706'}
-                          onMouseLeave={(e) => e.target.style.backgroundColor = '#f59e0b'}
+                          style={{ ...styles.btn, background: "#8b5cf6", color: "white" }}
+                          onClick={() => handlePrintRequest(request)}
                         >
-                          ✏️ ویرایش
+                          🖨️ پرینت
                         </button>
-                        <button
-                          onClick={() => handleDeleteRequest(request.id)}
-                          style={{
-                            backgroundColor: '#ef4444',
-                            color: 'white',
-                            padding: '6px 14px',
-                            borderRadius: '6px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                            transition: 'all 0.2s'
-                          }}
-                          onMouseEnter={(e) => e.target.style.backgroundColor = '#dc2626'}
-                          onMouseLeave={(e) => e.target.style.backgroundColor = '#ef4444'}
-                        >
-                          🗑️ حذف
-                        </button>
-                      </>
-                    )}
-                    <button
-                      onClick={() => handlePrintRequest(request)}
-                      style={{
-                        backgroundColor: '#8b5cf6',
-                        color: 'white',
-                        padding: '6px 14px',
-                        borderRadius: '6px',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = '#7c3aed'}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = '#8b5cf6'}
-                    >
-                      🖨️ پرینت
-                    </button>
-                  </div>
-                </div>
-              ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </>
@@ -1221,209 +808,97 @@ export default function OperationFeeTab({ api, regId, registration }) {
       {/* ============ درخواست‌های دارای فیس ============ */}
       {activeTab === 'paid' && (
         <>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '10px',
-            padding: '8px 12px',
-            backgroundColor: '#22c55e20',
-            borderRadius: '6px',
-            border: '1px solid #22c55e'
-          }}>
-            <h4 style={{ color: '#22c55e', margin: 0 }}>
-              🟢 درخواست‌های دارای فیس ({filteredPaid.length})
-            </h4>
-            <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-              فقط پرینت فیس
-            </span>
-          </div>
-
           {loading ? (
-            <div style={{
-              backgroundColor: '#1a2a3a',
-              padding: '30px',
-              borderRadius: '8px',
-              textAlign: 'center',
-              color: '#9ca3af'
-            }}>
-              <div style={{ fontSize: '30px', marginBottom: '10px' }}>⏳</div>
-              <div>در حال بارگذاری...</div>
+            <div style={{ padding: "40px", textAlign: "center", color: "#6b7280", background: "white", borderRadius: "10px" }}>
+              ⏳ در حال بارگذاری...
             </div>
           ) : filteredPaid.length === 0 ? (
-            <div style={{
-              backgroundColor: '#1a2a3a',
-              padding: '30px',
-              borderRadius: '8px',
-              textAlign: 'center',
-              color: '#9ca3af'
-            }}>
-              <div style={{ fontSize: '40px', marginBottom: '10px' }}>📭</div>
+            <div style={{ padding: "40px", textAlign: "center", color: "#6b7280", background: "white", borderRadius: "10px" }}>
+              <div style={{ fontSize: "48px", marginBottom: "12px" }}>📭</div>
               <div>هیچ درخواست دارای فیس وجود ندارد</div>
-              <div style={{ fontSize: '12px', marginTop: '5px', color: '#6b7280' }}>
-                برای مشاهده درخواست‌های بدون فیس، تب "🟡 بدون فیس" را انتخاب کنید
-              </div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '30px' }}>
-              {filteredPaid.map((request, index) => {
-                const fee = feeRecords.find(f => f.operation_request_id === request.id);
-                const feeData = fee || {
-                  id: request.fee_id,
-                  total_amount: request.fee_amount || 0,
-                  paid_amount: request.fee_paid || 0,
-                  discount_percent: 0,
-                  payment_method: 'cash',
-                  payment_status: 'pending',
-                  description: '',
-                  note: '',
-                  reg_id: request.reg_id || request.registration_id,
-                  patient_name: request.patient_name
-                };
-                
-                return (
-                  <div
-                    key={request.id || index}
-                    style={{
-                      backgroundColor: '#1a2a3a',
-                      padding: '15px 20px',
-                      borderRadius: '8px',
-                      borderRight: '4px solid #22c55e',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexWrap: 'wrap',
-                      gap: '10px'
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: '250px' }}>
-                      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
-                        <span style={{ color: '#9ca3af', fontSize: '11px' }}>#{index + 1}</span>
-                        <span style={{ 
-                          backgroundColor: '#0f1a2a',
-                          color: '#dc2626',
-                          padding: '2px 10px',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          fontWeight: 'bold'
-                        }}>
-                          مراجعه #{request.reg_id || request.registration_id}
-                        </span>
-                        <span style={{ color: '#34d399', fontWeight: 'bold', fontSize: '13px' }}>
-                          {getPatientFullName(request)}
-                        </span>
-                        <span style={{ color: '#dc2626', fontWeight: 'bold' }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>#</th>
+                    <th style={styles.th}>شماره مراجعه</th>
+                    <th style={styles.th}>معلومات بیمار</th>
+                    <th style={styles.th}>نوع جراحی</th>
+                    <th style={styles.th}>جراح</th>
+                    <th style={styles.th}>مبلغ کل</th>
+                    <th style={styles.th}>پرداخت شده</th>
+                    <th style={styles.th}>باقیمانده</th>
+                    <th style={styles.th}>وضعیت</th>
+                    <th style={styles.th}>عملیات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPaid.map((request, index) => {
+                    const fee = feeRecords.find(f => f.operation_request_id === request.id);
+                    const feeData = fee || {
+                      id: request.fee_id,
+                      total_amount: request.fee_amount || 0,
+                      paid_amount: request.fee_paid || 0,
+                      discount_percent: 0,
+                      payment_method: 'cash',
+                      payment_status: 'pending',
+                      description: '',
+                      note: '',
+                      reg_id: request.reg_id || request.registration_id,
+                      patient_name: request.patient_name
+                    };
+                    const remaining = toNumber(feeData.total_amount) - toNumber(feeData.paid_amount) - (toNumber(feeData.total_amount) * (toNumber(feeData.discount_percent) || 0) / 100);
+                    return (
+                      <tr key={request.id || index}>
+                        <td style={styles.td}>{index + 1}</td>
+                        <td style={styles.td}>
+                          <code style={{ background: "#f3f4f6", padding: "3px 8px", borderRadius: "4px", fontSize: "12px" }}>
+                            #{request.reg_id || request.registration_id || '-'}
+                          </code>
+                        </td>
+                        <td style={styles.td}>
+                          <div style={{ fontWeight: "bold" }}>👤 {getPatientFullName(request)}</div>
+                        </td>
+                        <td style={{ ...styles.td, color: "#dc2626", fontWeight: "bold" }}>
                           {request.surgery_type || 'عملیات'}
-                        </span>
-                        <span style={{
-                          backgroundColor: '#22c55e',
-                          color: 'white',
-                          padding: '2px 10px',
-                          borderRadius: '12px',
-                          fontSize: '10px',
-                          fontWeight: 'bold'
-                        }}>
-                          ✅ دارای فیس
-                        </span>
-                        {feeData && (
+                        </td>
+                        <td style={styles.td}>👨‍⚕️ {request.surgeon || '-'}</td>
+                        <td style={{ ...styles.td, color: "#d48806", fontWeight: "bold" }}>
+                          {toNumber(feeData.total_amount).toLocaleString()} AFN
+                        </td>
+                        <td style={{ ...styles.td, color: "#16a34a" }}>
+                          {toNumber(feeData.paid_amount).toLocaleString()} AFN
+                        </td>
+                        <td style={{ ...styles.td, color: remaining <= 0 ? "#16a34a" : "#dc2626", fontWeight: "bold" }}>
+                          {remaining.toLocaleString()} AFN
+                        </td>
+                        <td style={styles.td}>
                           <span style={{
-                            backgroundColor: getStatusColor(feeData.payment_status),
-                            color: 'white',
-                            padding: '2px 10px',
-                            borderRadius: '12px',
-                            fontSize: '10px',
-                            fontWeight: 'bold'
+                            background: getStatusColor(feeData.payment_status) + "20",
+                            color: getStatusColor(feeData.payment_status),
+                            padding: "4px 10px",
+                            borderRadius: "12px",
+                            fontSize: "12px",
+                            fontWeight: "bold"
                           }}>
                             {getStatusLabel(feeData.payment_status)}
                           </span>
-                        )}
-                      </div>
-                      
-                      <div style={{
-                        display: 'flex',
-                        gap: '15px',
-                        flexWrap: 'wrap',
-                        marginTop: '5px',
-                        padding: '5px 10px',
-                        backgroundColor: '#0f1a2a',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        color: '#9ca3af'
-                      }}>
-                        <span>👨‍⚕️ جراح: {request.surgeon || 'نامشخص'}</span>
-                        <span>💉 بیهوشی: {request.anesthesiologist || 'نامشخص'}</span>
-                        {request.scheduled_date && (
-                          <span>📅 {formatDateTime(request.scheduled_date)}</span>
-                        )}
-                        <span>وضعیت: {request.status_label || request.status || 'در انتظار'}</span>
-                      </div>
-
-                      {feeData && (
-                        <div style={{
-                          marginTop: '5px',
-                          padding: '5px 10px',
-                          backgroundColor: '#0f1a2a',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          display: 'flex',
-                          gap: '15px',
-                          flexWrap: 'wrap',
-                          border: '1px solid #22c55e'
-                        }}>
-                          <span style={{ color: '#fcd34d' }}>
-                            💰 مبلغ کل: {toNumber(feeData.total_amount).toFixed(2)} ؋
-                          </span>
-                          <span style={{ color: '#22c55e' }}>
-                            پرداخت: {toNumber(feeData.paid_amount).toFixed(2)} ؋
-                          </span>
-                          {feeData.discount_percent > 0 && (
-                            <span style={{ color: '#f59e0b' }}>
-                              تخفیف: {feeData.discount_percent}%
-                            </span>
-                          )}
-                          <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
-                            باقیمانده: {(toNumber(feeData.total_amount) - toNumber(feeData.paid_amount) - (toNumber(feeData.total_amount) * (toNumber(feeData.discount_percent) || 0) / 100)).toFixed(2)} ؋
-                          </span>
-                          <span style={{ color: '#9ca3af' }}>
-                            روش: {getMethodLabel(feeData.payment_method)}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {request.notes && (
-                        <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>
-                          📝 {request.notes}
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* فقط دکمه پرینت برای درخواست‌های دارای فیس */}
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button
-                        onClick={() => {
-                          console.log("🟣 کلیک پرینت بر روی feeData:", feeData);
-                          handlePrintFee(feeData, request);
-                        }}
-                        style={{
-                          backgroundColor: '#8b5cf6',
-                          color: 'white',
-                          padding: '6px 14px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: '12px',
-                          fontWeight: 'bold',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = '#7c3aed'}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = '#8b5cf6'}
-                      >
-                        🖨️ پرینت
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                        </td>
+                        <td style={styles.td}>
+                          <button
+                            style={{ ...styles.btn, background: "#8b5cf6", color: "white" }}
+                            onClick={() => handlePrintRequest(request)}
+                          >
+                            🖨️ پرینت
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </>
@@ -1432,557 +907,183 @@ export default function OperationFeeTab({ api, regId, registration }) {
       {/* نمایش خطاهای دیباگ */}
       {debugErrors && (
         <div style={{
-          backgroundColor: '#1a1a2e',
-          border: '2px solid #ef4444',
-          borderRadius: '8px',
-          padding: '15px',
-          marginTop: '20px',
-          color: '#fca5a5',
-          fontSize: '12px',
-          maxHeight: '200px',
-          overflow: 'auto'
+          background: "#fef2f2",
+          border: "2px solid #ef4444",
+          borderRadius: "10px",
+          padding: "15px",
+          marginTop: "20px",
+          color: "#991b1b",
+          fontSize: "12px",
+          maxHeight: "200px",
+          overflow: "auto"
         }}>
-          <div style={{ 
-            fontWeight: 'bold', 
-            color: '#ef4444', 
-            marginBottom: '10px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
+          <div style={{
+            fontWeight: "bold",
+            color: "#ef4444",
+            marginBottom: "10px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center"
           }}>
             <span>⚠️ خطاهای اعتبارسنجی:</span>
             <button
               onClick={() => setDebugErrors(null)}
               style={{
-                backgroundColor: 'transparent',
-                border: 'none',
-                color: '#ef4444',
-                cursor: 'pointer',
-                fontSize: '16px'
+                background: "transparent",
+                border: "none",
+                color: "#ef4444",
+                cursor: "pointer",
+                fontSize: "16px"
               }}
             >
               ✕
             </button>
           </div>
-          <pre style={{ 
-            whiteSpace: 'pre-wrap', 
+          <pre style={{
+            whiteSpace: "pre-wrap",
             margin: 0,
-            fontFamily: 'monospace',
-            fontSize: '11px'
+            fontFamily: "monospace",
+            fontSize: "11px"
           }}>
             {JSON.stringify(debugErrors, null, 2)}
           </pre>
         </div>
       )}
 
-      {/* فرم ثبت/ویرایش فیس یا ویرایش درخواست */}
-      {(showFeeForm && (selectedRequest || isEditingRequest)) && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1000,
-          padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#1a1a2e',
-            padding: '30px',
-            borderRadius: '12px',
-            maxWidth: '700px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto'
-          }}>
-            <h4 style={{ color: '#dc2626', marginBottom: '20px' }}>
-              {isEditingRequest && !selectedRequest?.id 
-                ? '📝 ثبت درخواست عملیات جدید' 
-                : isEditingRequest 
-                  ? '✏️ ویرایش درخواست عملیات' 
-                  : (selectedRequest?.fee_id ? '✏️ ویرایش فیس' : '💰 اخذ فیس عملیات')}
-            </h4>
+      {/* فرم ثبت/ویرایش درخواست */}
+      {showFeeForm && (
+        <div style={styles.modal} onClick={handleCloseForm}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0, color: "#dc2626" }}>
+              {selectedRequest?.id ? '✏️ ویرایش درخواست عملیات' : '📝 ثبت درخواست عملیات جدید'}
+            </h2>
 
-            {selectedRequest && !isEditingRequest && (
-              <div style={{
-                backgroundColor: '#0f1a2a',
-                padding: '15px',
-                borderRadius: '6px',
-                marginBottom: '20px',
-                border: '1px solid #374151'
-              }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
-                  <div>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>👤 نام مریض</span>
-                    <div style={{ color: 'white', fontWeight: 'bold' }}>
-                      {getPatientFullName(selectedRequest)}
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>🆔 شماره مراجعه</span>
-                    <div style={{ color: 'white', fontWeight: 'bold' }}>{selectedRequest.reg_id || selectedRequest.registration_id}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>🔪 نوع جراحی</span>
-                    <div style={{ color: 'white' }}>{selectedRequest.surgery_type || '-'}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>👨‍⚕️ جراح</span>
-                    <div style={{ color: 'white' }}>{selectedRequest.surgeon || '-'}</div>
-                  </div>
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>📋 شناسه درخواست</span>
-                    <div style={{ color: 'white' }}>#{selectedRequest.id || 'جدید'}</div>
-                  </div>
+            <form onSubmit={selectedRequest?.id ? handleSaveRequest : handleCreateRequest}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+                <div style={{ gridColumn: "span 2" }}>
+                  <label style={styles.label}>نوع جراحی *</label>
+                  <input
+                    type="text"
+                    value={editRequestData.surgery_type}
+                    onChange={(e) => setEditRequestData({ ...editRequestData, surgery_type: e.target.value })}
+                    style={styles.input}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={styles.label}>جراح *</label>
+                  <input
+                    type="text"
+                    value={editRequestData.surgeon}
+                    onChange={(e) => setEditRequestData({ ...editRequestData, surgeon: e.target.value })}
+                    style={styles.input}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={styles.label}>متخصص بیهوشی</label>
+                  <input
+                    type="text"
+                    value={editRequestData.anesthesiologist}
+                    onChange={(e) => setEditRequestData({ ...editRequestData, anesthesiologist: e.target.value })}
+                    style={styles.input}
+                  />
+                </div>
+                <div>
+                  <label style={styles.label}>شماره اتاق عمل</label>
+                  <input
+                    type="text"
+                    value={editRequestData.room_number}
+                    onChange={(e) => setEditRequestData({ ...editRequestData, room_number: e.target.value })}
+                    style={styles.input}
+                  />
+                </div>
+                <div>
+                  <label style={styles.label}>زمان جراحی</label>
+                  <input
+                    type="datetime-local"
+                    value={editRequestData.scheduled_date}
+                    onChange={(e) => setEditRequestData({ ...editRequestData, scheduled_date: e.target.value })}
+                    style={styles.input}
+                  />
+                </div>
+                <div>
+                  <label style={styles.label}>مدت زمان تخمینی</label>
+                  <input
+                    type="text"
+                    value={editRequestData.estimated_duration}
+                    onChange={(e) => setEditRequestData({ ...editRequestData, estimated_duration: e.target.value })}
+                    style={styles.input}
+                    placeholder="مثلاً: 2 ساعت"
+                  />
+                </div>
+                <div>
+                  <label style={styles.label}>اولویت</label>
+                  <select
+                    value={editRequestData.priority}
+                    onChange={(e) => setEditRequestData({ ...editRequestData, priority: e.target.value })}
+                    style={styles.input}
+                  >
+                    <option value="high">🔴 بالا</option>
+                    <option value="medium">🟡 متوسط</option>
+                    <option value="normal">🔵 عادی</option>
+                    <option value="low">⚪ پایین</option>
+                  </select>
+                </div>
+                <div style={{ gridColumn: "span 2" }}>
+                  <label style={styles.label}>یادداشت</label>
+                  <textarea
+                    value={editRequestData.notes}
+                    onChange={(e) => setEditRequestData({ ...editRequestData, notes: e.target.value })}
+                    rows="3"
+                    style={{ ...styles.input, minHeight: "60px" }}
+                    placeholder="یادداشت‌های اضافی..."
+                  />
                 </div>
               </div>
-            )}
-
-            {/* فرم ویرایش/ثبت درخواست */}
-            {isEditingRequest ? (
-              <form onSubmit={selectedRequest?.id ? handleSaveRequest : handleCreateRequest}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      نوع جراحی *
-                    </label>
-                    <input
-                      type="text"
-                      value={editRequestData.surgery_type}
-                      onChange={(e) => setEditRequestData({ ...editRequestData, surgery_type: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                      required
-                    />
-                  </div>
-                  
-                  <div>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      جراح *
-                    </label>
-                    <input
-                      type="text"
-                      value={editRequestData.surgeon}
-                      onChange={(e) => setEditRequestData({ ...editRequestData, surgeon: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                      required
-                    />
-                  </div>
-                  
-                  <div>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      متخصص بیهوشی
-                    </label>
-                    <input
-                      type="text"
-                      value={editRequestData.anesthesiologist}
-                      onChange={(e) => setEditRequestData({ ...editRequestData, anesthesiologist: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                    />
-                  </div>
-                  
-                  <div>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      شماره اتاق عمل
-                    </label>
-                    <input
-                      type="text"
-                      value={editRequestData.room_number}
-                      onChange={(e) => setEditRequestData({ ...editRequestData, room_number: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                    />
-                  </div>
-                  
-                  <div>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      زمان جراحی
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={editRequestData.scheduled_date}
-                      onChange={(e) => setEditRequestData({ ...editRequestData, scheduled_date: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                    />
-                  </div>
-                  
-                  <div>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      مدت زمان تخمینی
-                    </label>
-                    <input
-                      type="text"
-                      value={editRequestData.estimated_duration}
-                      onChange={(e) => setEditRequestData({ ...editRequestData, estimated_duration: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                      placeholder="مثلاً: 2 ساعت"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      اولویت
-                    </label>
-                    <select
-                      value={editRequestData.priority}
-                      onChange={(e) => setEditRequestData({ ...editRequestData, priority: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                    >
-                      <option value="high">🔴 بالا</option>
-                      <option value="medium">🟡 متوسط</option>
-                      <option value="normal">🔵 عادی</option>
-                      <option value="low">⚪ پایین</option>
-                    </select>
-                  </div>
-                  
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      یادداشت
-                    </label>
-                    <textarea
-                      value={editRequestData.notes}
-                      onChange={(e) => setEditRequestData({ ...editRequestData, notes: e.target.value })}
-                      rows="3"
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                      placeholder="یادداشت‌های اضافی..."
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'center' }}>
-                  <button
-                    type="button"
-                    onClick={handleCloseForm}
-                    style={{
-                      backgroundColor: '#6b7280',
-                      color: 'white',
-                      padding: '10px 30px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '14px'
-                    }}
-                  >
-                    انصراف
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    style={{
-                      backgroundColor: loading ? '#6b7280' : '#dc2626',
-                      color: 'white',
-                      padding: '10px 30px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      fontSize: '14px',
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    {loading ? '⏳ در حال ذخیره...' : selectedRequest?.id ? '💾 ذخیره تغییرات' : '📝 ثبت درخواست'}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              /* فرم ثبت فیس */
-              <form onSubmit={handleSubmitFee}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      مبلغ کل (افغانی) *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={feeFormData.total_amount}
-                      onChange={(e) => setFeeFormData({ ...feeFormData, total_amount: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                      required
-                      min="0"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      مبلغ پرداخت شده
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={feeFormData.paid_amount}
-                      onChange={(e) => setFeeFormData({ ...feeFormData, paid_amount: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                      min="0"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      تخفیف (%)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={feeFormData.discount}
-                      onChange={(e) => setFeeFormData({ ...feeFormData, discount: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                      min="0"
-                      max="100"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      روش پرداخت
-                    </label>
-                    <select
-                      value={feeFormData.payment_method}
-                      onChange={(e) => setFeeFormData({ ...feeFormData, payment_method: e.target.value })}
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                    >
-                      <option value="cash">نقدی</option>
-                      <option value="card">کارت بانکی</option>
-                      <option value="online">آنلاین</option>
-                      <option value="insurance">بیمه</option>
-                    </select>
-                  </div>
-
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      توضیحات
-                    </label>
-                    <textarea
-                      value={feeFormData.description}
-                      onChange={(e) => setFeeFormData({ ...feeFormData, description: e.target.value })}
-                      rows="2"
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                      placeholder="توضیحات اضافی..."
-                    />
-                  </div>
-
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ fontSize: '13px', color: '#9ca3af', display: 'block', marginBottom: '5px' }}>
-                      یادداشت
-                    </label>
-                    <textarea
-                      value={feeFormData.note}
-                      onChange={(e) => setFeeFormData({ ...feeFormData, note: e.target.value })}
-                      rows="2"
-                      style={{
-                        backgroundColor: '#1a1a2e',
-                        color: 'white',
-                        borderColor: '#374151',
-                        width: '100%',
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: '1px solid #374151'
-                      }}
-                      placeholder="یادداشت..."
-                    />
-                  </div>
-                </div>
-
-                {feeFormData.total_amount && (
-                  <div style={{
-                    marginTop: '15px',
-                    padding: '10px 15px',
-                    backgroundColor: '#0f1a2a',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <span style={{ color: '#9ca3af' }}>مبلغ باقیمانده:</span>
-                    <span style={{
-                      color: '#ef4444',
-                      fontWeight: 'bold',
-                      fontSize: '18px'
-                    }}>
-                      {(
-                        parseFloat(feeFormData.total_amount || 0) - 
-                        parseFloat(feeFormData.paid_amount || 0) - 
-                        (parseFloat(feeFormData.total_amount || 0) * parseFloat(feeFormData.discount || 0) / 100)
-                      ).toFixed(2)}
-                    </span>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'center' }}>
-                  <button
-                    type="button"
-                    onClick={handleCloseForm}
-                    style={{
-                      backgroundColor: '#6b7280',
-                      color: 'white',
-                      padding: '10px 30px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '14px'
-                    }}
-                  >
-                    انصراف
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    style={{
-                      backgroundColor: loading ? '#6b7280' : '#dc2626',
-                      color: 'white',
-                      padding: '10px 30px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      fontSize: '14px',
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    {loading ? '⏳ در حال ثبت...' : '💰 ثبت فیس'}
-                  </button>
-                </div>
-              </form>
-            )}
+              <div style={{ marginTop: "20px", display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={handleCloseForm}
+                  style={{ ...styles.btn, background: "#6b7280", color: "white", padding: "10px 24px" }}
+                >
+                  انصراف
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{ ...styles.btn, background: "#dc2626", color: "white", padding: "10px 24px" }}
+                >
+                  {loading ? '⏳ در حال ذخیره...' : selectedRequest?.id ? '💾 ذخیره تغییرات' : '📝 ثبت درخواست'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
       {/* ============ دکمه ثبت درخواست جدید ============ */}
       <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        marginTop: '30px',
-        padding: '20px',
-        borderTop: '2px solid #374151'
+        display: "flex",
+        justifyContent: "center",
+        marginTop: "30px",
+        padding: "20px",
+        borderTop: "1px solid #e5e7eb"
       }}>
         <button
           onClick={handleOpenNewRequestForm}
           disabled={!effectiveRegId}
           style={{
-            backgroundColor: !effectiveRegId ? '#6b7280' : '#dc2626',
+            ...styles.btn,
+            background: !effectiveRegId ? '#6b7280' : '#dc2626',
             color: 'white',
             padding: '12px 30px',
-            borderRadius: '8px',
-            border: 'none',
-            cursor: !effectiveRegId ? 'not-allowed' : 'pointer',
             fontSize: '16px',
-            fontWeight: 'bold',
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            transition: 'all 0.2s',
-            opacity: !effectiveRegId ? 0.5 : 1
-          }}
-          onMouseEnter={(e) => {
-            if (effectiveRegId) e.target.style.backgroundColor = '#b91c1c';
-          }}
-          onMouseLeave={(e) => {
-            if (effectiveRegId) e.target.style.backgroundColor = '#dc2626';
+            opacity: !effectiveRegId ? 0.5 : 1,
+            cursor: !effectiveRegId ? 'not-allowed' : 'pointer'
           }}
         >
           <span style={{ fontSize: '20px' }}>➕</span>

@@ -49,6 +49,7 @@ use App\Http\Controllers\WardController;
 use App\Http\Controllers\BedController;
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\PharmacyExecutionController;
+use App\Http\Controllers\TreatmentHistoryController;
 
 /*
 |--------------------------------------------------------------------------
@@ -183,6 +184,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/examinations/{id}', [ExaminationController::class, 'deleteExamination']);
         Route::post('/treatment/{registrationId}/complete', [ExaminationController::class, 'complete']);
     });
+
+    Route::prefix('treatment-history')->group(function () {
+    Route::get('/', [TreatmentHistoryController::class, 'index']);
+    Route::get('/{id}', [TreatmentHistoryController::class, 'show']);
+    Route::get('/patient/{patientId}', [TreatmentHistoryController::class, 'byPatient']);
+    Route::post('/sync', [TreatmentHistoryController::class, 'sync']);
+});
 
     // ============================================================
     // ✅ ROUTES مدیریت درخواست‌های لابراتوار

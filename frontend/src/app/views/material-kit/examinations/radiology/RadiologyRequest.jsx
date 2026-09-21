@@ -45,6 +45,9 @@ export default function RadiologyRequest({
   const [loadingRadiology, setLoadingRadiology] = useState(false);
   const [hasResults, setHasResults] = useState(false);
   const [resultsData, setResultsData] = useState([]);
+  // ✅ فیلتر و جستجو برای لیست درخواست‌ها
+  const [listFilter, setListFilter] = useState('all');
+  const [listSearchTerm, setListSearchTerm] = useState("");
   const printRef = useRef(null);
   const isMounted = useRef(true);
   const loadedRegistrationRef = useRef(null);
@@ -114,7 +117,6 @@ export default function RadiologyRequest({
     sent_to_radiology: '#8b5cf6'
   };
 
-  // ✅ برچسب‌های وضعیت نتیجه
   const resultStatusLabels = {
     'Draft': 'پیش‌نویس',
     'Completed': 'تکمیل شده',
@@ -136,6 +138,167 @@ export default function RadiologyRequest({
     'کمر', 'ستون فقرات', 'دست چپ', 'دست راست', 'پای چپ', 'پای راست',
     'زانو', 'شانه', 'مچ پا', 'مچ دست', 'آرنج', 'لگن خاصره', 'مهره‌ها'
   ];
+
+  // ============ Styles ============
+  const styles = {
+    container: { padding: "8px" },
+    statsGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+      gap: "10px",
+      marginBottom: "20px",
+      padding: "15px",
+      background: "linear-gradient(135deg, #1f2937 0%, #111827 100%)",
+      borderRadius: "10px",
+    },
+    statBox: { textAlign: "center" },
+    statValue: { fontSize: "20px", fontWeight: "bold" },
+    statLabel: { fontSize: "11px", color: "#9ca3af", marginTop: "2px" },
+    infoCard: {
+      background: "white",
+      borderRadius: "10px",
+      padding: "15px 20px",
+      marginBottom: "15px",
+      border: "1px solid #e5e7eb",
+    },
+    infoGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+      gap: "10px 15px",
+    },
+    infoLabel: { color: "#6b7280", fontSize: "11px", display: "block", marginBottom: "3px" },
+    infoValue: { color: "#1f2937", fontWeight: "bold", fontSize: "14px" },
+    sectionTitle: {
+      color: "#1f2937",
+      marginBottom: "15px",
+      borderBottom: "2px solid #e5e7eb",
+      paddingBottom: "10px",
+      fontSize: "16px",
+      fontWeight: "bold",
+    },
+    card: {
+      background: "white",
+      borderRadius: "10px",
+      padding: "20px",
+      marginBottom: "20px",
+      border: "1px solid #e5e7eb",
+    },
+    formGrid: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "15px",
+    },
+    input: {
+      padding: "10px 12px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      fontSize: "14px",
+      width: "100%",
+      boxSizing: "border-box",
+      background: "white",
+      color: "#1f2937",
+    },
+    label: {
+      display: "block",
+      fontSize: "12px",
+      color: "#374151",
+      fontWeight: "bold",
+      marginBottom: "6px",
+      marginTop: "8px",
+    },
+    btn: {
+      padding: "6px 12px",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "12px",
+      fontWeight: "bold",
+      marginRight: "4px",
+    },
+    // ✅ فیلترها و جستجو (مطابق PharmacyFeeTab)
+    filters: {
+      display: "flex",
+      gap: "10px",
+      marginBottom: "15px",
+      flexWrap: "wrap",
+      alignItems: "center",
+    },
+    filterBtn: {
+      padding: "8px 16px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      cursor: "pointer",
+      fontSize: "13px",
+      background: "white",
+      transition: "all 0.2s",
+    },
+    searchInput: {
+      padding: "8px 16px",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      fontSize: "14px",
+      minWidth: "250px",
+      flex: 1,
+      background: "white",
+      color: "#1f2937",
+    },
+    table: {
+      width: "100%",
+      borderCollapse: "collapse",
+      fontSize: "13px",
+      background: "white",
+      borderRadius: "10px",
+      overflow: "hidden",
+    },
+    th: {
+      padding: "12px",
+      textAlign: "right",
+      background: "#f9fafb",
+      color: "#374151",
+      fontSize: "13px",
+      fontWeight: "bold",
+      borderBottom: "2px solid #e5e7eb",
+    },
+    td: {
+      padding: "12px",
+      borderBottom: "1px solid #f3f4f6",
+      color: "#1f2937",
+    },
+    modal: {
+      position: "fixed",
+      top: 0, left: 0, right: 0, bottom: 0,
+      background: "rgba(0,0,0,0.5)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 2000,
+      padding: "16px",
+    },
+    modalContent: {
+      background: "white",
+      borderRadius: "12px",
+      padding: "24px",
+      maxWidth: "700px",
+      width: "100%",
+      maxHeight: "90vh",
+      overflowY: "auto",
+    },
+    resultCard: {
+      background: "white",
+      border: "1px solid #e5e7eb",
+      borderRadius: "10px",
+      padding: "15px",
+      transition: "all 0.3s",
+    },
+    badge: {
+      padding: "3px 10px",
+      borderRadius: "12px",
+      fontSize: "11px",
+      fontWeight: "bold",
+      color: "white",
+      display: "inline-block",
+    },
+  };
 
   useEffect(() => {
     const regId = registration?.reg_id;
@@ -176,7 +339,6 @@ export default function RadiologyRequest({
     };
   }, [registration?.reg_id, api]);
 
-  // همگام‌سازی با Props
   useEffect(() => {
     if (!isMounted.current || !Array.isArray(allRadiology)) return;
     
@@ -187,7 +349,6 @@ export default function RadiologyRequest({
       setBarcode(firstWithBarcode.barcode);
     }
 
-    // ✅ استخراج نتایج از داده‌ها
     const resultItems = allRadiology.filter(
       item => item?.has_result === true && item?.result_details
     );
@@ -232,7 +393,6 @@ export default function RadiologyRequest({
       const data = response.data?.data;
 
       if (response.data?.success) {
-        // دریافت لیست رادیولوژی
         if (Array.isArray(data?.all_radiology)) {
           radiologyData = data.all_radiology;
         } else if (Array.isArray(data?.radiology)) {
@@ -241,15 +401,12 @@ export default function RadiologyRequest({
           radiologyData = data;
         }
 
-        // ✅ دریافت نتایج از پاسخ
         if (Array.isArray(data?.results)) {
           resultsFromResponse = data.results;
         }
       }
 
-      // ✅ پردازش داده‌ها برای استخراج نتیجه
       const processedData = radiologyData.map(item => {
-        // اگر نتیجه در خود آیتم وجود دارد
         if (item.result) {
           return {
             ...item,
@@ -257,7 +414,6 @@ export default function RadiologyRequest({
             result_details: item.result
           };
         }
-        // اگر نتیجه در result_details وجود دارد
         if (item.result_details) {
           return {
             ...item,
@@ -265,7 +421,6 @@ export default function RadiologyRequest({
             result_details: item.result_details
           };
         }
-        // اگر نتیجه در radiology_result وجود دارد
         if (item.radiology_result) {
           return {
             ...item,
@@ -287,12 +442,10 @@ export default function RadiologyRequest({
         setBarcode(data.barcode);
       }
 
-      // ✅ استخراج نتایج از داده‌های پردازش شده
       const resultItems = processedData.filter(
         item => item?.has_result === true && item?.result_details
       );
 
-      // ✅ اگر نتایج از پاسخ جداگانه آمده، از آنها استفاده کن
       const finalResults = resultsFromResponse.length > 0 ? resultsFromResponse : resultItems;
 
       setHasResults(finalResults.length > 0);
@@ -393,12 +546,10 @@ export default function RadiologyRequest({
     const radiologyData = extractRadiologyData(data);
     let resultsFromResponse = [];
 
-    // ✅ استخراج نتایج از پاسخ
     if (data?.results && Array.isArray(data.results)) {
       resultsFromResponse = data.results;
     }
 
-    // ✅ پردازش داده‌ها برای استخراج نتیجه
     const processedData = radiologyData.map(item => {
       if (item.result) {
         return {
@@ -431,12 +582,10 @@ export default function RadiologyRequest({
       setBarcode(firstWithBarcode.barcode);
     }
 
-    // ✅ استخراج نتایج
     const resultItems = processedData.filter(
       item => item?.has_result === true && item?.result_details
     );
 
-    // ✅ اگر نتایج از پاسخ جداگانه آمده، از آنها استفاده کن
     const finalResults = resultsFromResponse.length > 0 ? resultsFromResponse : resultItems;
 
     setHasResults(finalResults.length > 0);
@@ -891,9 +1040,61 @@ export default function RadiologyRequest({
     return genderMap[gender] || gender;
   };
 
+  // ✅ فیلتر و جستجوی لیست درخواست‌ها
+  const filterAndSearchList = (list) => {
+    let filtered = list;
+
+    // فیلتر بر اساس وضعیت
+    if (listFilter === 'with_result') {
+      filtered = filtered.filter(item => item.has_result && item.result_details);
+    } else if (listFilter === 'without_result') {
+      filtered = filtered.filter(item => !item.has_result || !item.result_details);
+    } else if (listFilter === 'pending') {
+      filtered = filtered.filter(item => item.status === 'pending');
+    } else if (listFilter === 'completed') {
+      filtered = filtered.filter(item => item.status === 'completed');
+    } else if (listFilter === 'sent_to_radiology') {
+      filtered = filtered.filter(item => item.status === 'sent_to_radiology');
+    } else if (listFilter === 'urgent') {
+      filtered = filtered.filter(item => item.priority === 'urgent' || item.priority === 'emergency');
+    }
+
+    // جستجو
+    if (listSearchTerm.trim()) {
+      const term = listSearchTerm.trim().toLowerCase();
+      filtered = filtered.filter(item => {
+        const typeLabel = (item.radiology_type_label || item.radiology_type || '').toLowerCase();
+        const bodyPart = (item.body_part || '').toLowerCase();
+        const reason = (item.reason || '').toLowerCase();
+        const barcode = (item.barcode || '').toLowerCase();
+        const reportNo = (item.result_details?.report_no || '').toLowerCase();
+        const result = (item.result_details?.result || '').toLowerCase();
+
+        return typeLabel.includes(term) ||
+          bodyPart.includes(term) ||
+          reason.includes(term) ||
+          barcode.includes(term) ||
+          reportNo.includes(term) ||
+          result.includes(term);
+      });
+    }
+
+    return filtered;
+  };
+
+  const filteredRadiologyList = filterAndSearchList(radiologyList);
+
+  // شمارش برای تب‌ها
+  const countWithResult = radiologyList.filter(item => item.has_result && item.result_details).length;
+  const countWithoutResult = radiologyList.filter(item => !item.has_result || !item.result_details).length;
+  const countPending = radiologyList.filter(item => item.status === 'pending').length;
+  const countCompleted = radiologyList.filter(item => item.status === 'completed').length;
+  const countSentToRadiology = radiologyList.filter(item => item.status === 'sent_to_radiology').length;
+  const countUrgent = radiologyList.filter(item => item.priority === 'urgent' || item.priority === 'emergency').length;
+
   if (!registration || !registration.reg_id) {
     return (
-      <div style={{ textAlign: 'center', padding: '50px', color: '#ef4444' }}>
+      <div style={{ textAlign: 'center', padding: '50px', color: '#ef4444', background: 'white', borderRadius: '10px' }}>
         <div style={{ fontSize: '60px', marginBottom: '20px' }}>⚠️</div>
         <div style={{ fontSize: '18px' }}>اطلاعات مریض معتبر نیست</div>
         <div style={{ fontSize: '14px', color: '#9ca3af', marginTop: '10px' }}>
@@ -905,7 +1106,7 @@ export default function RadiologyRequest({
 
   if (connectionError && !patientInfo) {
     return (
-      <div style={{ textAlign: 'center', padding: '50px', color: '#ef4444' }}>
+      <div style={{ textAlign: 'center', padding: '50px', color: '#ef4444', background: 'white', borderRadius: '10px' }}>
         <div style={{ fontSize: '60px', marginBottom: '20px' }}>🌐</div>
         <div style={{ fontSize: '18px' }}>خطای اتصال به سرور</div>
         <div style={{ fontSize: '14px', color: '#9ca3af', marginTop: '10px' }}>
@@ -934,7 +1135,7 @@ export default function RadiologyRequest({
   }
 
   return (
-    <div>
+    <div style={styles.container}>
       <div id="print-content" style={{ display: 'none' }}>
         <div className="print-header">
           <h2>📷 درخواست رادیولوژی</h2>
@@ -985,122 +1186,95 @@ export default function RadiologyRequest({
         ))}
       </div>
 
-      <h3 style={{ color: '#60a5fa', marginBottom: '20px', borderBottom: '2px solid #374151', paddingBottom: '10px' }}>
+      <h3 style={styles.sectionTitle}>
         📷 درخواست رادیولوژی
       </h3>
 
-      <div style={{
-        display: 'flex',
-        gap: '15px',
-        marginBottom: '20px',
-        padding: '10px 15px',
-        backgroundColor: '#1a2a3a',
-        borderRadius: '8px',
-        flexWrap: 'wrap'
-      }}>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px' }}>وضعیت درخواست:</span>
-          <span style={{
-            color: radiologyRequested ? '#22c55e' : '#f59e0b',
-            fontWeight: 'bold',
-            marginRight: '8px'
-          }}>
-            {radiologyRequested ? '✅ ثبت شده' : '⏳ ثبت نشده'}
-          </span>
-        </div>
-
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px' }}>تعداد درخواست‌ها:</span>
-          <span style={{ color: '#60a5fa', fontWeight: 'bold', marginRight: '8px' }}>
-            {radiologyList.length}
-          </span>
-        </div>
-
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px' }}>نتایج ثبت شده:</span>
-          <span style={{
-            color: hasResults ? '#22c55e' : '#9ca3af',
-            fontWeight: 'bold',
-            marginRight: '8px'
-          }}>
-            {hasResults ? `✅ ${resultsData.length} نتیجه` : '❌ بدون نتیجه'}
-          </span>
-        </div>
-
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px' }}>وضعیت معالجه:</span>
-          <span style={{
-            color: isCompleted ? '#22c55e' : '#f59e0b',
-            fontWeight: 'bold',
-            marginRight: '8px'
-          }}>
-            {isCompleted ? '✅ ختم شده' : '⏳ در حال 진행'}
-          </span>
-        </div>
-
-        {loadingRadiology && (
-          <span style={{ color: '#9ca3af', fontSize: '12px' }}>
-            ⏳ در حال بارگذاری...
-          </span>
-        )}
-      </div>
-
-      <div style={{
-        backgroundColor: '#1a2a3a',
-        padding: '15px 20px',
-        borderRadius: '8px',
-        marginBottom: '20px',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-        gap: '10px 15px'
-      }}>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>نام کامل</span>
-          <div style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>
-            {patient.first_name || ''} {patient.last_name || ''}
+      {/* نوار آمار */}
+      <div style={styles.statsGrid}>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: radiologyRequested ? "#22c55e" : "#f59e0b" }}>
+            {radiologyRequested ? '✅' : '⏳'}
+          </div>
+          <div style={styles.statLabel}>
+            {radiologyRequested ? 'ثبت شده' : 'ثبت نشده'}
           </div>
         </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>کد ملی</span>
-          <div style={{ color: 'white', fontWeight: 'bold' }}>{patient.national_id || '-'}</div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#3b82f6" }}>{radiologyList.length}</div>
+          <div style={styles.statLabel}>تعداد درخواست‌ها</div>
         </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>سن</span>
-          <div style={{ color: 'white', fontWeight: 'bold' }}>{patient.age ? `${patient.age} سال` : '-'}</div>
-        </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>جنسیت</span>
-          <div style={{ color: 'white', fontWeight: 'bold' }}>{getGenderText(patient.gender)}</div>
-        </div>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>شماره مراجعه</span>
-          <div style={{ color: '#fcd34d', fontWeight: 'bold' }}>{registration.visit_number || '-'}</div>
-        </div>
-        {barcode && (
-          <div>
-            <span style={{ color: '#9ca3af', fontSize: '11px', display: 'block' }}>بارکد</span>
-            <div style={{ color: '#fcd34d', fontWeight: 'bold', fontFamily: 'monospace' }}>{barcode}</div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: hasResults ? "#22c55e" : "#9ca3af", fontSize: "16px" }}>
+            {hasResults ? `✅ ${resultsData.length}` : '❌'}
           </div>
-        )}
+          <div style={styles.statLabel}>نتایج ثبت شده</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: isCompleted ? "#22c55e" : "#f59e0b" }}>
+            {isCompleted ? '✅' : '⏳'}
+          </div>
+          <div style={styles.statLabel}>
+            {isCompleted ? 'ختم شده' : 'در حال 진행'}
+          </div>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="no-print">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+      {/* کارت اطلاعات مریض */}
+      <div style={styles.infoCard}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #e5e7eb', paddingBottom: '8px' }}>
+          <h5 style={{ color: '#1f2937', margin: 0, fontSize: '14px' }}>👤 اطلاعات مریض</h5>
+          {loadingRadiology && (
+            <span style={{ color: '#6b7280', fontSize: '11px' }}>⏳ در حال بارگذاری...</span>
+          )}
+        </div>
+        <div style={styles.infoGrid}>
           <div>
-            <h4 style={{ color: '#60a5fa', marginBottom: '12px', fontSize: '14px' }}>📋 اطلاعات درخواست</h4>
+            <span style={styles.infoLabel}>نام کامل</span>
+            <div style={styles.infoValue}>
+              {patient.first_name || ''} {patient.last_name || ''}
+            </div>
+          </div>
+          <div>
+            <span style={styles.infoLabel}>کد ملی</span>
+            <div style={styles.infoValue}>{patient.national_id || '-'}</div>
+          </div>
+          <div>
+            <span style={styles.infoLabel}>سن</span>
+            <div style={styles.infoValue}>{patient.age ? `${patient.age} سال` : '-'}</div>
+          </div>
+          <div>
+            <span style={styles.infoLabel}>جنسیت</span>
+            <div style={styles.infoValue}>{getGenderText(patient.gender)}</div>
+          </div>
+          <div>
+            <span style={styles.infoLabel}>شماره مراجعه</span>
+            <div style={{ ...styles.infoValue, color: '#d48806' }}>{registration.visit_number || '-'}</div>
+          </div>
+          {barcode && (
+            <div>
+              <span style={styles.infoLabel}>بارکد</span>
+              <div style={{ ...styles.infoValue, color: '#d48806', fontFamily: 'monospace' }}>{barcode}</div>
+            </div>
+          )}
+        </div>
+      </div>
 
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>نوع رادیولوژی *</label>
+      {/* فرم درخواست */}
+      <form onSubmit={handleSubmit} className="no-print" style={styles.card}>
+        <h4 style={{ color: '#1f2937', marginBottom: '15px', fontSize: '15px', borderBottom: '1px solid #e5e7eb', paddingBottom: '10px' }}>
+          📋 ثبت درخواست جدید
+        </h4>
+
+        <div style={styles.formGrid}>
+          <div>
+            <div>
+              <label style={styles.label}>نوع رادیولوژی *</label>
               <select
                 name="radiology_type"
                 value={formData.radiology_type}
                 onChange={handleChange}
-                style={{
-                  backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                  width: '100%', padding: '6px 10px', borderRadius: '4px',
-                  border: '1px solid #374151',
-                  opacity: isDisabled || radiologyRequested ? 0.5 : 1
-                }}
+                style={{ ...styles.input, opacity: isDisabled || radiologyRequested ? 0.5 : 1 }}
                 disabled={isDisabled || radiologyRequested}
                 required
               >
@@ -1111,18 +1285,13 @@ export default function RadiologyRequest({
               </select>
             </div>
 
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>بخش مورد نظر *</label>
+            <div>
+              <label style={styles.label}>بخش مورد نظر *</label>
               <select
                 name="body_part"
                 value={formData.body_part}
                 onChange={handleChange}
-                style={{
-                  backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                  width: '100%', padding: '6px 10px', borderRadius: '4px',
-                  border: '1px solid #374151',
-                  opacity: isDisabled || radiologyRequested ? 0.5 : 1
-                }}
+                style={{ ...styles.input, opacity: isDisabled || radiologyRequested ? 0.5 : 1 }}
                 disabled={isDisabled || radiologyRequested}
                 required
               >
@@ -1133,18 +1302,13 @@ export default function RadiologyRequest({
               </select>
             </div>
 
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>اولویت</label>
+            <div>
+              <label style={styles.label}>اولویت</label>
               <select
                 name="priority"
                 value={formData.priority}
                 onChange={handleChange}
-                style={{
-                  backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                  width: '100%', padding: '6px 10px', borderRadius: '4px',
-                  border: '1px solid #374151',
-                  opacity: isDisabled || radiologyRequested ? 0.5 : 1
-                }}
+                style={{ ...styles.input, opacity: isDisabled || radiologyRequested ? 0.5 : 1 }}
                 disabled={isDisabled || radiologyRequested}
               >
                 <option value="normal">🟢 عادی</option>
@@ -1153,49 +1317,35 @@ export default function RadiologyRequest({
               </select>
             </div>
 
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>تاریخ درخواست</label>
+            <div>
+              <label style={styles.label}>تاریخ درخواست</label>
               <input
                 type="date"
                 name="request_date"
                 value={formData.request_date}
                 onChange={handleChange}
-                style={{
-                  backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                  width: '100%', padding: '6px 10px', borderRadius: '4px',
-                  border: '1px solid #374151',
-                  opacity: isDisabled || radiologyRequested ? 0.5 : 1
-                }}
+                style={{ ...styles.input, opacity: isDisabled || radiologyRequested ? 0.5 : 1 }}
                 disabled={isDisabled || radiologyRequested}
               />
             </div>
           </div>
 
           <div>
-            <h4 style={{ color: '#60a5fa', marginBottom: '12px', fontSize: '14px' }}>📝 توضیحات</h4>
-
             {[
               ['reason', 'دلیل درخواست *', 'دلیل درخواست رادیولوژی را وارد کنید...', true],
               ['clinical_indication', 'اندیکاسیون بالینی', 'دلایل بالینی برای انجام این رادیولوژی...', false],
               ['special_notes', 'نکات ویژه', 'نکات ویژه برای بخش رادیولوژی...', false],
               ['notes', 'یادداشت', 'یادداشت‌های اضافی...', false],
             ].map(([name, label, placeholder, required]) => (
-              <div key={name} style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  {label}
-                </label>
+              <div key={name}>
+                <label style={styles.label}>{label}</label>
                 <textarea
                   name={name}
                   value={formData[name]}
                   onChange={handleChange}
                   rows="2"
                   placeholder={placeholder}
-                  style={{
-                    backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                    width: '100%', padding: '6px 10px', borderRadius: '4px',
-                    border: '1px solid #374151',
-                    opacity: isDisabled || radiologyRequested ? 0.5 : 1
-                  }}
+                  style={{ ...styles.input, minHeight: "55px", opacity: isDisabled || radiologyRequested ? 0.5 : 1 }}
                   disabled={isDisabled || radiologyRequested}
                   required={required}
                 />
@@ -1204,53 +1354,31 @@ export default function RadiologyRequest({
           </div>
         </div>
 
-        <div style={{
-          display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '20px',
-          flexWrap: 'wrap', borderTop: '1px solid #374151', paddingTop: '15px'
-        }}>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap', borderTop: '1px solid #e5e7eb', paddingTop: '15px' }}>
           <button
             type="button"
             onClick={onPrevStep}
             disabled={isSubmitting}
-            style={{
-              backgroundColor: '#6b7280', color: 'white', padding: '8px 20px',
-              borderRadius: '6px', border: 'none',
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              opacity: isSubmitting ? 0.6 : 1, fontSize: '13px', fontWeight: 'bold',
-              display: 'flex', alignItems: 'center', gap: '6px'
-            }}
+            style={{ ...styles.btn, background: '#6b7280', color: 'white', padding: '10px 24px', opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
           >
-            <span>↩️</span> برگشت
+            ↩️ برگشت
           </button>
 
           <button
             type="submit"
             disabled={loading || isDisabled || radiologyRequested}
-            style={{
-              backgroundColor: (isDisabled || radiologyRequested) ? '#6b7280' : '#8b5cf6',
-              color: 'white', padding: '8px 20px', borderRadius: '6px', border: 'none',
-              cursor: (loading || isDisabled || radiologyRequested) ? 'not-allowed' : 'pointer',
-              opacity: (loading || isDisabled || radiologyRequested) ? 0.6 : 1,
-              fontSize: '13px', fontWeight: 'bold',
-              display: 'flex', alignItems: 'center', gap: '6px'
-            }}
+            style={{ ...styles.btn, background: (isDisabled || radiologyRequested) ? '#6b7280' : '#8b5cf6', color: 'white', padding: '10px 24px', opacity: (loading || isDisabled || radiologyRequested) ? 0.6 : 1, cursor: (loading || isDisabled || radiologyRequested) ? 'not-allowed' : 'pointer' }}
           >
-            <span>📤</span>
-            {loading ? 'در حال ارسال...' : isCompleted ? 'معالجه ختم شده' : radiologyRequested ? '✅ ثبت شده' : 'ثبت درخواست'}
+            📤 {loading ? 'در حال ارسال...' : isCompleted ? 'معالجه ختم شده' : radiologyRequested ? '✅ ثبت شده' : 'ثبت درخواست'}
           </button>
 
           {radiologyList.length > 0 && (
             <button
               type="button"
               onClick={handlePrint}
-              style={{
-                backgroundColor: '#10b981', color: 'white', padding: '8px 20px',
-                borderRadius: '6px', border: 'none', cursor: 'pointer',
-                fontSize: '13px', fontWeight: 'bold',
-                display: 'flex', alignItems: 'center', gap: '6px'
-              }}
+              style={{ ...styles.btn, background: '#10b981', color: 'white', padding: '10px 24px' }}
             >
-              <span>🖨️</span> پرینت همه
+              🖨️ پرینت همه
             </button>
           )}
 
@@ -1258,16 +1386,9 @@ export default function RadiologyRequest({
             type="button"
             onClick={onFinish}
             disabled={!radiologyRequested || isCompleted || isSubmitting}
-            style={{
-              backgroundColor: (!radiologyRequested || isCompleted) ? '#6b7280' : '#dc2626',
-              color: 'white', padding: '8px 20px', borderRadius: '6px', border: 'none',
-              cursor: (!radiologyRequested || isCompleted || isSubmitting) ? 'not-allowed' : 'pointer',
-              opacity: (!radiologyRequested || isCompleted || isSubmitting) ? 0.6 : 1,
-              fontSize: '13px', fontWeight: 'bold',
-              display: 'flex', alignItems: 'center', gap: '6px'
-            }}
+            style={{ ...styles.btn, background: (!radiologyRequested || isCompleted) ? '#6b7280' : '#dc2626', color: 'white', padding: '10px 24px', opacity: (!radiologyRequested || isCompleted || isSubmitting) ? 0.6 : 1, cursor: (!radiologyRequested || isCompleted || isSubmitting) ? 'not-allowed' : 'pointer' }}
           >
-            <span>🏁</span> {isCompleted ? '✅ ختم شده' : 'ختم معالجه'}
+            🏁 {isCompleted ? '✅ ختم شده' : 'ختم معالجه'}
           </button>
 
           {nextStep && (
@@ -1275,314 +1396,285 @@ export default function RadiologyRequest({
               type="button"
               onClick={onNextStep}
               disabled={isSubmitting}
-              style={{
-                backgroundColor: isSubmitting ? '#6b7280' : '#3b82f6',
-                color: 'white', padding: '8px 20px', borderRadius: '6px', border: 'none',
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                opacity: isSubmitting ? 0.6 : 1, fontSize: '13px', fontWeight: 'bold',
-                display: 'flex', alignItems: 'center', gap: '6px'
-              }}
+              style={{ ...styles.btn, background: isSubmitting ? '#6b7280' : '#3b82f6', color: 'white', padding: '10px 24px', opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
             >
-              <span>➡️</span> رفتن به {nextStep.label}
+              ➡️ رفتن به {nextStep.label}
             </button>
           )}
         </div>
       </form>
 
+      {/* لیست درخواست‌ها */}
       <div style={{ marginTop: '30px' }}>
-        <div style={{
-          backgroundColor: '#0f1a2a', padding: '15px 20px', borderRadius: '8px',
-          marginBottom: '15px', border: '1px solid #2a3a4a'
-        }}>
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginBottom: '10px', borderBottom: '1px solid #2a3a4a', paddingBottom: '8px'
-          }}>
-            <h5 style={{ color: '#60a5fa', margin: 0, fontSize: '14px' }}>👤 اطلاعات مریض</h5>
-            <span style={{ color: '#9ca3af', fontSize: '11px' }}>
-              شماره مراجعه: {registration?.visit_number || '-'}
-            </span>
-          </div>
-
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '8px 15px'
-          }}>
-            <div>
-              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>نام کامل</span>
-              <span style={{ color: 'white', fontSize: '13px', fontWeight: 'bold' }}>
-                {patient.first_name || ''} {patient.last_name || ''}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h4 style={{ color: '#1f2937', fontSize: '15px', margin: 0 }}>
+            📋 لیست درخواست‌های رادیولوژی ({filteredRadiologyList.length}
+            {listFilter !== 'all' || listSearchTerm ? ` از ${radiologyList.length}` : ''})
+            {loadingRadiology && (
+              <span style={{ marginLeft: '10px', fontSize: '13px', color: '#9ca3af' }}>
+                ⏳ در حال بارگذاری...
               </span>
-            </div>
-            <div>
-              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>کد ملی</span>
-              <span style={{ color: 'white', fontSize: '13px' }}>{patient.national_id || '-'}</span>
-            </div>
-            <div>
-              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>سن</span>
-              <span style={{ color: 'white', fontSize: '13px' }}>{patient.age ? `${patient.age} سال` : '-'}</span>
-            </div>
-            <div>
-              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>جنسیت</span>
-              <span style={{ color: 'white', fontSize: '13px' }}>{getGenderText(patient.gender)}</span>
-            </div>
-            <div>
-              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>شماره تماس</span>
-              <span style={{ color: 'white', fontSize: '13px' }}>{patient.mobile || '-'}</span>
-            </div>
-            <div>
-              <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>شماره مراجعه</span>
-              <span style={{ color: '#fcd34d', fontSize: '13px', fontWeight: 'bold' }}>{registration?.visit_number || '-'}</span>
-            </div>
-            {barcode && (
-              <div>
-                <span style={{ color: '#6b7280', fontSize: '10px', display: 'block' }}>بارکد</span>
-                <span style={{ color: '#fcd34d', fontSize: '13px', fontFamily: 'monospace' }}>{barcode}</span>
-              </div>
             )}
-          </div>
+          </h4>
         </div>
 
-        <div style={{ borderTop: '2px solid #374151', paddingTop: '20px' }}>
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginBottom: '12px'
-          }}>
-            <h4 style={{ color: '#60a5fa', fontSize: '15px', margin: 0 }}>
-              📋 لیست درخواست‌های رادیولوژی ({radiologyList.length})
-              {loadingRadiology && (
-                <span style={{ marginLeft: '10px', fontSize: '13px', color: '#9ca3af' }}>
-                  ⏳ در حال بارگذاری...
-                </span>
-              )}
-            </h4>
+        {/* ✅ فیلترها و جستجو */}
+        {radiologyList.length > 0 && (
+          <div style={styles.filters}>
+            <button
+              style={{
+                ...styles.filterBtn,
+                ...(listFilter === 'all' ? { background: "#3b82f6", color: "white", borderColor: "#3b82f6" } : {}),
+              }}
+              onClick={() => setListFilter('all')}
+            >
+              📋 همه ({radiologyList.length})
+            </button>
+            <button
+              style={{
+                ...styles.filterBtn,
+                ...(listFilter === 'with_result' ? { background: "#22c55e", color: "white", borderColor: "#22c55e" } : {}),
+              }}
+              onClick={() => setListFilter('with_result')}
+            >
+              ✅ دارای نتیجه ({countWithResult})
+            </button>
+            <button
+              style={{
+                ...styles.filterBtn,
+                ...(listFilter === 'without_result' ? { background: "#f59e0b", color: "white", borderColor: "#f59e0b" } : {}),
+              }}
+              onClick={() => setListFilter('without_result')}
+            >
+              ⏳ بدون نتیجه ({countWithoutResult})
+            </button>
+            <button
+              style={{
+                ...styles.filterBtn,
+                ...(listFilter === 'pending' ? { background: "#f59e0b", color: "white", borderColor: "#f59e0b" } : {}),
+              }}
+              onClick={() => setListFilter('pending')}
+            >
+              🕐 در انتظار ({countPending})
+            </button>
+            <button
+              style={{
+                ...styles.filterBtn,
+                ...(listFilter === 'sent_to_radiology' ? { background: "#8b5cf6", color: "white", borderColor: "#8b5cf6" } : {}),
+              }}
+              onClick={() => setListFilter('sent_to_radiology')}
+            >
+              📤 ارسال شده ({countSentToRadiology})
+            </button>
+            <button
+              style={{
+                ...styles.filterBtn,
+                ...(listFilter === 'completed' ? { background: "#10b981", color: "white", borderColor: "#10b981" } : {}),
+              }}
+              onClick={() => setListFilter('completed')}
+            >
+              ✅ تکمیل شده ({countCompleted})
+            </button>
+            <button
+              style={{
+                ...styles.filterBtn,
+                ...(listFilter === 'urgent' ? { background: "#ef4444", color: "white", borderColor: "#ef4444" } : {}),
+              }}
+              onClick={() => setListFilter('urgent')}
+            >
+              🔴 فوری/اورژانسی ({countUrgent})
+            </button>
 
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="text"
+              placeholder="🔍 جستجو در نوع، بخش، دلیل، بارکد، شماره گزارش..."
+              value={listSearchTerm}
+              onChange={(e) => setListSearchTerm(e.target.value)}
+              style={styles.searchInput}
+            />
+
+            <button
+              type="button"
+              onClick={() => loadRadiologyFromServer(true)}
+              disabled={loadingRadiology}
+              style={{ ...styles.btn, background: '#3b82f6', color: 'white', padding: '8px 16px', opacity: loadingRadiology ? 0.6 : 1, cursor: loadingRadiology ? 'not-allowed' : 'pointer' }}
+            >
+              🔄 بروزرسانی
+            </button>
+
+            {radiologyList.length > 0 && (
               <button
                 type="button"
-                onClick={() => loadRadiologyFromServer(true)}
-                disabled={loadingRadiology}
-                style={{
-                  backgroundColor: '#3b82f6', color: 'white', padding: '4px 12px',
-                  borderRadius: '4px', border: 'none',
-                  cursor: loadingRadiology ? 'not-allowed' : 'pointer',
-                  fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px',
-                  opacity: loadingRadiology ? 0.6 : 1
-                }}
+                onClick={handlePrint}
+                className="no-print"
+                style={{ ...styles.btn, background: '#10b981', color: 'white', padding: '8px 16px' }}
               >
-                🔄 بارگذاری مجدد
+                🖨️ پرینت
               </button>
+            )}
+          </div>
+        )}
 
-              {radiologyList.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="no-print"
-                  style={{
-                    backgroundColor: '#10b981', color: 'white', padding: '4px 12px',
-                    borderRadius: '4px', border: 'none', cursor: 'pointer',
-                    fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px'
-                  }}
-                >
-                  🖨️ پرینت
-                </button>
-              )}
+        {radiologyList.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280', background: 'white', borderRadius: '10px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>📷</div>
+            <div>هیچ درخواست رادیولوژی ثبت نشده است</div>
+            <div style={{ fontSize: '12px', marginTop: '5px' }}>
+              برای ثبت درخواست، فرم بالا را پر کنید
             </div>
           </div>
+        ) : filteredRadiologyList.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280', background: 'white', borderRadius: '10px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🔍</div>
+            <div>هیچ درخواستی با این فیلتر/جستجو یافت نشد</div>
+            <button
+              onClick={() => {
+                setListFilter('all');
+                setListSearchTerm('');
+              }}
+              style={{ ...styles.btn, background: '#3b82f6', color: 'white', marginTop: '10px', padding: '8px 16px' }}
+            >
+              🔄 حذف فیلترها
+            </button>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>#</th>
+                  <th style={styles.th}>🏷️ بارکد</th>
+                  <th style={styles.th}>📷 نوع</th>
+                  <th style={styles.th}>🦴 بخش</th>
+                  <th style={styles.th}>⚡ اولویت</th>
+                  <th style={styles.th}>📊 وضعیت</th>
+                  <th style={styles.th}>📄 نتیجه</th>
+                  <th style={styles.th}>عملیات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRadiologyList.map((item, index) => {
+                  const editDisabled = ['completed', 'cancelled', 'sent_to_radiology', 'in_progress', 'scheduled'].includes(item.status);
+                  const deleteDisabled = ['completed', 'in_progress', 'scheduled', 'sent_to_radiology'].includes(item.status) || item.has_result;
+                  const hasResult = !!(item.has_result && item.result_details);
+                  const resultData = item.result_details || {};
 
-          {radiologyList.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '25px', color: '#9ca3af' }}>
-              <div style={{ fontSize: '35px', marginBottom: '8px' }}>📷</div>
-              <div>هیچ درخواست رادیولوژی ثبت نشده است</div>
-              <div style={{ fontSize: '12px', marginTop: '5px' }}>
-                برای ثبت درخواست، فرم بالا را پر کنید
-              </div>
-            </div>
-          ) : (
-            <div style={{
-              overflowX: 'auto', borderRadius: '8px', border: '1px solid #374151'
-            }}>
-              <table style={{
-                width: '100%', borderCollapse: 'collapse', minWidth: '1100px', fontSize: '13px'
-              }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#0f1a2a', borderBottom: '2px solid #374151' }}>
-                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>#</th>
-                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>🏷️ بارکد</th>
-                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>📷 نوع</th>
-                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>🦴 بخش</th>
-                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>⚡ اولویت</th>
-                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>📊 وضعیت</th>
-                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', borderLeft: '1px solid #2a3a4a' }}>📄 نتیجه</th>
-                    <th style={{ padding: '10px 12px', color: '#60a5fa', textAlign: 'center', fontWeight: 'bold', fontSize: '12px' }}>عملیات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {radiologyList.map((item, index) => {
-                    const editDisabled = ['completed', 'cancelled', 'sent_to_radiology', 'in_progress', 'scheduled'].includes(item.status);
-                    const deleteDisabled = ['completed', 'in_progress', 'scheduled', 'sent_to_radiology'].includes(item.status) || item.has_result;
-                    const hasResult = !!(item.has_result && item.result_details);
-                    const resultData = item.result_details || {};
-
-                    return (
-                      <tr key={item.id || `row-${index}`} style={{ borderBottom: '1px solid #2a3a4a' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1a2a3a'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', color: '#9ca3af', fontWeight: 'bold', borderLeft: '1px solid #2a3a4a' }}>{index + 1}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', color: '#fcd34d', fontSize: '12px', fontFamily: 'monospace', borderLeft: '1px solid #2a3a4a' }}>{item.barcode || '-'}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', color: '#60a5fa', fontWeight: 'bold', borderLeft: '1px solid #2a3a4a' }}>{item.radiology_type_label || item.radiology_type || '-'}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', color: 'white', borderLeft: '1px solid #2a3a4a' }}>{item.body_part || '-'}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
-                          <span style={{ backgroundColor: priorityColors[item.priority] || '#6b7280', color: 'white', padding: '2px 10px', borderRadius: '12px', fontSize: '11px' }}>
-                            {priorityLabels[item.priority] || item.priority || 'عادی'}
+                  return (
+                    <tr key={item.id || `row-${index}`}>
+                      <td style={styles.td}>{index + 1}</td>
+                      <td style={styles.td}>
+                        <code style={{ background: "#f3f4f6", padding: "3px 8px", borderRadius: "4px", fontSize: "12px", fontFamily: 'monospace' }}>
+                          {item.barcode || '-'}
+                        </code>
+                      </td>
+                      <td style={{ ...styles.td, color: '#3b82f6', fontWeight: 'bold' }}>
+                        {item.radiology_type_label || item.radiology_type || '-'}
+                      </td>
+                      <td style={styles.td}>{item.body_part || '-'}</td>
+                      <td style={styles.td}>
+                        <span style={{ ...styles.badge, backgroundColor: priorityColors[item.priority] || '#6b7280' }}>
+                          {priorityLabels[item.priority] || item.priority || 'عادی'}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ ...styles.badge, backgroundColor: statusColors[item.status] || '#6b7280' }}>
+                          {statusLabels[item.status] || item.status || 'نامشخص'}
+                        </span>
+                        {item.has_result && (
+                          <span style={{ ...styles.badge, backgroundColor: '#10b981', marginLeft: '4px', fontSize: '9px', padding: '2px 6px' }}>
+                            ✅ نتیجه
                           </span>
-                        </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
-                          <span style={{ backgroundColor: statusColors[item.status] || '#6b7280', color: 'white', padding: '2px 10px', borderRadius: '12px', fontSize: '11px' }}>
-                            {statusLabels[item.status] || item.status || 'نامشخص'}
-                          </span>
-                          {item.has_result && (
-                            <span style={{ backgroundColor: '#10b981', color: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '9px', marginLeft: '4px' }}>
-                              ✅ نتیجه
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #2a3a4a' }}>
-                          {hasResult ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                              <div style={{ color: '#22c55e', fontSize: '12px', fontWeight: 'bold' }}>
-                                {resultData.result || 'ثبت شده'}
-                              </div>
-                              {resultData.report_no && (
-                                <div style={{ color: '#9ca3af', fontSize: '10px' }}>
-                                  شماره: {resultData.report_no}
-                                </div>
-                              )}
-                              {resultData.pdf_url && (
-                                <a 
-                                  href={resultData.pdf_url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  style={{ color: '#3b82f6', fontSize: '10px', textDecoration: 'none' }}
-                                >
-                                  📎 PDF
-                                </a>
-                              )}
+                        )}
+                      </td>
+                      <td style={styles.td}>
+                        {hasResult ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                            <div style={{ color: '#22c55e', fontSize: '12px', fontWeight: 'bold' }}>
+                              {resultData.result || 'ثبت شده'}
                             </div>
-                          ) : (
-                            <span style={{ color: '#6b7280', fontSize: '12px' }}>—</span>
-                          )}
-                        </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleEditRadiology(item)}
-                              disabled={editDisabled}
-                              style={{
-                                backgroundColor: editDisabled ? '#6b7280' : '#3b82f6',
-                                color: 'white', padding: '4px 8px', borderRadius: '4px',
-                                border: 'none', fontSize: '11px',
-                                cursor: editDisabled ? 'not-allowed' : 'pointer',
-                                opacity: editDisabled ? 0.5 : 1
-                              }}
-                              title="ویرایش"
-                            >
-                              ✏️
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteRadiology(item.id)}
-                              disabled={deleteDisabled}
-                              style={{
-                                backgroundColor: deleteDisabled ? '#6b7280' : '#dc2626',
-                                color: 'white', padding: '4px 8px', borderRadius: '4px',
-                                border: 'none', fontSize: '11px',
-                                cursor: deleteDisabled ? 'not-allowed' : 'pointer',
-                                opacity: deleteDisabled ? 0.5 : 1
-                              }}
-                              title="حذف"
-                            >
-                              🗑️
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handlePrintItem(item)}
-                              style={{
-                                backgroundColor: '#8b5cf6', color: 'white', padding: '4px 8px',
-                                borderRadius: '4px', border: 'none', fontSize: '11px', cursor: 'pointer'
-                              }}
-                              title="پرینت"
-                            >
-                              🖨️
-                            </button>
-
-                            {hasResult && resultData.pdf_url && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const resultId = resultData.id || item.id;
-                                  handleDownloadPdf(
-                                    resultId,
-                                    resultData.pdf_file_name || 'result.pdf'
-                                  );
-                                }}
-                                style={{
-                                  backgroundColor: '#22c55e', color: 'white', padding: '4px 8px',
-                                  borderRadius: '4px', border: 'none', fontSize: '11px', cursor: 'pointer'
-                                }}
-                                title="دانلود PDF"
-                              >
-                                ⬇️
-                              </button>
+                            {resultData.report_no && (
+                              <div style={{ color: '#6b7280', fontSize: '10px' }}>
+                                شماره: {resultData.report_no}
+                              </div>
                             )}
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                        ) : (
+                          <span style={{ color: '#6b7280', fontSize: '12px' }}>—</span>
+                        )}
+                      </td>
+                      <td style={styles.td}>
+                        <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleEditRadiology(item)}
+                            disabled={editDisabled}
+                            style={{ ...styles.btn, background: editDisabled ? '#6b7280' : '#3b82f6', color: 'white', opacity: editDisabled ? 0.5 : 1, cursor: editDisabled ? 'not-allowed' : 'pointer', marginRight: 0 }}
+                            title="ویرایش"
+                          >
+                            ✏️
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRadiology(item.id)}
+                            disabled={deleteDisabled}
+                            style={{ ...styles.btn, background: deleteDisabled ? '#6b7280' : '#dc2626', color: 'white', opacity: deleteDisabled ? 0.5 : 1, cursor: deleteDisabled ? 'not-allowed' : 'pointer', marginRight: 0 }}
+                            title="حذف"
+                          >
+                            🗑️
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handlePrintItem(item)}
+                            style={{ ...styles.btn, background: '#8b5cf6', color: 'white', marginRight: 0 }}
+                            title="پرینت"
+                          >
+                            🖨️
+                          </button>
+
+                          {hasResult && resultData.pdf_url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const resultId = resultData.id || item.id;
+                                handleDownloadPdf(
+                                  resultId,
+                                  resultData.pdf_file_name || 'result.pdf'
+                                );
+                              }}
+                              style={{ ...styles.btn, background: '#22c55e', color: 'white', marginRight: 0 }}
+                              title="دانلود PDF"
+                            >
+                              ⬇️
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* ============ کارت‌های نتایج ثبت شده ============ */}
+      {/* کارت‌های نتایج */}
       {(() => {
-        // ✅ استخراج نتایج از لیست رادیولوژی
         const resultsFromList = radiologyList.filter(item => item.has_result && item.result_details);
         
         if (resultsFromList.length === 0) {
           return (
-            <div style={{
-              textAlign: 'center',
-              padding: '20px',
-              color: '#9ca3af',
-              backgroundColor: '#0f1a2a',
-              borderRadius: '8px',
-              border: '1px dashed #374151',
-              marginTop: '25px'
-            }}>
-              <div style={{ fontSize: '30px' }}>📋</div>
+            <div style={{ textAlign: 'center', padding: '30px', color: '#6b7280', background: 'white', borderRadius: '10px', border: '1px dashed #e5e7eb', marginTop: '25px' }}>
+              <div style={{ fontSize: '40px' }}>📋</div>
               <div>هنوز نتیجه‌ای برای درخواست‌های رادیولوژی ثبت نشده است</div>
               <div style={{ fontSize: '12px', marginTop: '5px' }}>
                 نتایج پس از ثبت در بخش رادیولوژی در اینجا نمایش داده می‌شود
               </div>
               <button
                 onClick={() => loadRadiologyFromServer(true)}
-                style={{
-                  marginTop: '10px',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  padding: '4px 16px',
-                  borderRadius: '4px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '12px'
-                }}
+                style={{ ...styles.btn, background: '#3b82f6', color: 'white', marginTop: '10px', padding: '6px 16px' }}
               >
                 🔄 بررسی مجدد
               </button>
@@ -1591,78 +1683,42 @@ export default function RadiologyRequest({
         }
 
         return (
-          <div style={{ marginTop: '25px', borderTop: '2px solid #374151', paddingTop: '20px' }}>
-            <h4 style={{ color: '#22c55e', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ marginTop: '25px', borderTop: '2px solid #e5e7eb', paddingTop: '20px' }}>
+            <h4 style={{ color: '#22c55e', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '15px' }}>
               <span>✅</span>
               نتایج ثبت شده رادیولوژی
-              <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'normal' }}>
+              <span style={{ fontSize: '12px', color: '#6b7280', fontWeight: 'normal' }}>
                 ({resultsFromList.length} نتیجه)
               </span>
               <button
                 onClick={() => loadRadiologyFromServer(true)}
-                style={{
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  padding: '2px 10px',
-                  borderRadius: '4px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '11px',
-                  marginRight: '10px'
-                }}
+                style={{ ...styles.btn, background: '#3b82f6', color: 'white', padding: '4px 12px', fontSize: '11px', marginRight: '10px' }}
               >
                 🔄 بارگذاری مجدد
               </button>
             </h4>
             
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-              gap: '15px'
-            }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '15px' }}>
               {resultsFromList.map((item, index) => {
                 const resultData = item.result_details || {};
-                const patient = patientInfo?.patient || registration?.patient || {};
                 
                 const statusLabel = resultData.result_status_label || resultData.result_status || 'نامشخص';
                 const statusColor = resultStatusColors[resultData.result_status] || '#f59e0b';
 
                 return (
-                  <div
-                    key={item.id || `result-${index}`}
-                    style={{
-                      backgroundColor: '#0f1a2a',
-                      border: '1px solid #2a3a4a',
-                      borderRadius: '8px',
-                      padding: '15px',
-                      transition: 'all 0.3s'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      borderBottom: '1px solid #2a3a4a',
-                      paddingBottom: '10px',
-                      marginBottom: '10px'
-                    }}>
+                  <div key={item.id || `result-${index}`} style={styles.resultCard}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', paddingBottom: '10px', marginBottom: '10px' }}>
                       <div>
-                        <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '14px' }}>
+                        <span style={{ color: '#3b82f6', fontWeight: 'bold', fontSize: '14px' }}>
                           {item.radiology_type_label || item.radiology_type || 'رادیولوژی'}
                         </span>
                         {item.body_part && (
-                          <span style={{ color: '#9ca3af', fontSize: '12px', display: 'block' }}>
+                          <span style={{ color: '#6b7280', fontSize: '12px', display: 'block' }}>
                             بخش: {item.body_part}
                           </span>
                         )}
                       </div>
-                      <span style={{
-                        backgroundColor: statusColor,
-                        color: 'white',
-                        padding: '2px 10px',
-                        borderRadius: '12px',
-                        fontSize: '11px'
-                      }}>
+                      <span style={{ ...styles.badge, backgroundColor: statusColor }}>
                         {statusLabel}
                       </span>
                     </div>
@@ -1670,39 +1726,39 @@ export default function RadiologyRequest({
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                       <div>
                         <span style={{ color: '#6b7280', fontSize: '11px' }}>شماره گزارش:</span>
-                        <div style={{ color: '#fcd34d', fontSize: '13px', fontWeight: 'bold' }}>
+                        <div style={{ color: '#d48806', fontSize: '13px', fontWeight: 'bold' }}>
                           {resultData.report_no || '-'}
                         </div>
                       </div>
                       <div>
                         <span style={{ color: '#6b7280', fontSize: '11px' }}>نتیجه:</span>
-                        <div style={{ color: 'white', fontWeight: 'bold', fontSize: '15px' }}>
+                        <div style={{ color: '#1f2937', fontWeight: 'bold', fontSize: '15px' }}>
                           {resultData.result || '-'}
                         </div>
                       </div>
                       <div>
                         <span style={{ color: '#6b7280', fontSize: '11px' }}>یافته‌ها:</span>
-                        <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                        <div style={{ color: '#4b5563', fontSize: '13px' }}>
                           {resultData.findings || '-'}
                         </div>
                       </div>
                       <div>
                         <span style={{ color: '#6b7280', fontSize: '11px' }}>تفسیر:</span>
-                        <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                        <div style={{ color: '#4b5563', fontSize: '13px' }}>
                           {resultData.interpretation || '-'}
                         </div>
                       </div>
                       {resultData.remarks && (
                         <div style={{ gridColumn: 'span 2' }}>
                           <span style={{ color: '#6b7280', fontSize: '11px' }}>یادداشت:</span>
-                          <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                          <div style={{ color: '#4b5563', fontSize: '13px' }}>
                             {resultData.remarks}
                           </div>
                         </div>
                       )}
                       <div style={{ gridColumn: 'span 2' }}>
                         <span style={{ color: '#6b7280', fontSize: '11px' }}>تاریخ نتیجه:</span>
-                        <div style={{ color: '#9ca3af', fontSize: '13px' }}>
+                        <div style={{ color: '#4b5563', fontSize: '13px' }}>
                           {resultData.analysis_completed_at ? new Date(resultData.analysis_completed_at).toLocaleDateString('fa-IR') + ' ' + new Date(resultData.analysis_completed_at).toLocaleTimeString('fa-IR') : '-'}
                         </div>
                       </div>
@@ -1712,17 +1768,7 @@ export default function RadiologyRequest({
                             href={resultData.pdf_url || `/storage/${resultData.pdf_file}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{
-                              backgroundColor: '#3b82f6',
-                              color: 'white',
-                              padding: '6px 14px',
-                              borderRadius: '6px',
-                              textDecoration: 'none',
-                              fontSize: '12px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '5px'
-                            }}
+                            style={{ ...styles.btn, background: '#3b82f6', color: 'white', textDecoration: 'none', padding: '6px 14px' }}
                           >
                             👁️ مشاهده PDF
                           </a>
@@ -1731,18 +1777,7 @@ export default function RadiologyRequest({
                               const resultId = resultData.id || item.id;
                               handleDownloadPdf(resultId, resultData.pdf_file_name || 'result.pdf');
                             }}
-                            style={{
-                              backgroundColor: '#22c55e',
-                              color: 'white',
-                              padding: '6px 14px',
-                              borderRadius: '6px',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontSize: '12px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '5px'
-                            }}
+                            style={{ ...styles.btn, background: '#22c55e', color: 'white', padding: '6px 14px' }}
                           >
                             ⬇️ دانلود PDF
                           </button>
@@ -1757,45 +1792,33 @@ export default function RadiologyRequest({
         );
       })()}
 
+      {/* مودال ویرایش */}
       {showEditModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex',
-          justifyContent: 'center', alignItems: 'center',
-          zIndex: 1000, padding: '15px'
+        <div style={styles.modal} onClick={() => {
+          setShowEditModal(false);
+          setEditingRadiology(null);
+          resetForm();
         }}>
-          <div style={{
-            backgroundColor: '#1a1a2e', padding: '25px', borderRadius: '10px',
-            maxWidth: '650px', width: '100%', maxHeight: '90vh', overflowY: 'auto'
-          }}>
-            <h4 style={{ color: '#60a5fa', marginBottom: '15px' }}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0, color: '#3b82f6', marginBottom: '20px' }}>
               ✏️ ویرایش درخواست رادیولوژی
-            </h4>
+            </h2>
 
             {barcode && (
-              <div style={{
-                backgroundColor: '#1a2a3a', padding: '6px 12px', borderRadius: '4px',
-                marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px'
-              }}>
-                <span style={{ color: '#9ca3af', fontSize: '12px' }}>بارکد:</span>
-                <span style={{ color: '#fcd34d', fontFamily: 'monospace' }}>{barcode}</span>
+              <div style={{ background: '#f9fafb', padding: '10px 14px', borderRadius: '8px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #e5e7eb' }}>
+                <span style={{ color: '#6b7280', fontSize: '12px' }}>بارکد:</span>
+                <span style={{ color: '#d48806', fontFamily: 'monospace', fontWeight: 'bold' }}>{barcode}</span>
               </div>
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  نوع رادیولوژی *
-                </label>
+                <label style={styles.label}>نوع رادیولوژی *</label>
                 <select
                   name="radiology_type"
                   value={formData.radiology_type}
                   onChange={handleChange}
-                  style={{
-                    backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                    width: '100%', padding: '6px 10px', borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
+                  style={styles.input}
                 >
                   {radiologyTypes.map(type => (
                     <option key={type.value} value={type.value}>{type.label}</option>
@@ -1804,18 +1827,12 @@ export default function RadiologyRequest({
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  بخش مورد نظر *
-                </label>
+                <label style={styles.label}>بخش مورد نظر *</label>
                 <select
                   name="body_part"
                   value={formData.body_part}
                   onChange={handleChange}
-                  style={{
-                    backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                    width: '100%', padding: '6px 10px', borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
+                  style={styles.input}
                 >
                   {bodyParts.map(part => (
                     <option key={part} value={part}>{part}</option>
@@ -1824,18 +1841,12 @@ export default function RadiologyRequest({
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  اولویت
-                </label>
+                <label style={styles.label}>اولویت</label>
                 <select
                   name="priority"
                   value={formData.priority}
                   onChange={handleChange}
-                  style={{
-                    backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                    width: '100%', padding: '6px 10px', borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
+                  style={styles.input}
                 >
                   <option value="normal">🟢 عادی</option>
                   <option value="urgent">🟡 فوری</option>
@@ -1844,92 +1855,62 @@ export default function RadiologyRequest({
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  تاریخ درخواست
-                </label>
+                <label style={styles.label}>تاریخ درخواست</label>
                 <input
                   type="date"
                   name="request_date"
                   value={formData.request_date}
                   onChange={handleChange}
-                  style={{
-                    backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                    width: '100%', padding: '6px 10px', borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
+                  style={styles.input}
                 />
               </div>
 
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  دلیل درخواست *
-                </label>
+                <label style={styles.label}>دلیل درخواست *</label>
                 <textarea
                   name="reason"
                   value={formData.reason}
                   onChange={handleChange}
                   rows="2"
-                  style={{
-                    backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                    width: '100%', padding: '6px 10px', borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
+                  style={{ ...styles.input, minHeight: "55px" }}
                 />
               </div>
 
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  اندیکاسیون بالینی
-                </label>
+                <label style={styles.label}>اندیکاسیون بالینی</label>
                 <textarea
                   name="clinical_indication"
                   value={formData.clinical_indication}
                   onChange={handleChange}
                   rows="2"
-                  style={{
-                    backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                    width: '100%', padding: '6px 10px', borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
+                  style={{ ...styles.input, minHeight: "55px" }}
                 />
               </div>
 
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  نکات ویژه
-                </label>
+                <label style={styles.label}>نکات ویژه</label>
                 <textarea
                   name="special_notes"
                   value={formData.special_notes}
                   onChange={handleChange}
                   rows="2"
-                  style={{
-                    backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                    width: '100%', padding: '6px 10px', borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
+                  style={{ ...styles.input, minHeight: "55px" }}
                 />
               </div>
 
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '12px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
-                  یادداشت
-                </label>
+                <label style={styles.label}>یادداشت</label>
                 <textarea
                   name="notes"
                   value={formData.notes}
                   onChange={handleChange}
                   rows="2"
-                  style={{
-                    backgroundColor: '#1a1a2e', color: 'white', borderColor: '#374151',
-                    width: '100%', padding: '6px 10px', borderRadius: '4px',
-                    border: '1px solid #374151'
-                  }}
+                  style={{ ...styles.input, minHeight: "55px" }}
                 />
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', marginTop: '15px', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'center' }}>
               <button
                 type="button"
                 onClick={() => {
@@ -1937,10 +1918,7 @@ export default function RadiologyRequest({
                   setEditingRadiology(null);
                   resetForm();
                 }}
-                style={{
-                  backgroundColor: '#6b7280', color: 'white', padding: '6px 16px',
-                  borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '13px'
-                }}
+                style={{ ...styles.btn, background: '#6b7280', color: 'white', padding: '10px 24px' }}
               >
                 لغو
               </button>
@@ -1949,13 +1927,9 @@ export default function RadiologyRequest({
                 type="button"
                 onClick={handleUpdateRadiology}
                 disabled={loading}
-                style={{
-                  backgroundColor: loading ? '#6b7280' : '#3b82f6',
-                  color: 'white', padding: '6px 16px', borderRadius: '4px',
-                  border: 'none', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '13px'
-                }}
+                style={{ ...styles.btn, background: loading ? '#6b7280' : '#3b82f6', color: 'white', padding: '10px 24px', cursor: loading ? 'not-allowed' : 'pointer' }}
               >
-                {loading ? 'در حال ذخیره...' : 'ذخیره تغییرات'}
+                {loading ? 'در حال ذخیره...' : '💾 ذخیره تغییرات'}
               </button>
             </div>
           </div>

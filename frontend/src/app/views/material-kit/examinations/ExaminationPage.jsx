@@ -40,6 +40,40 @@ const ACTIVE_PATIENTS_KEY = 'treatment_active_patients';
 const SELECTED_PATIENT_KEY = 'treatment_selected_patient';
 const ACTIVE_TAB_KEY = 'treatment_active_tab';
 
+// 🎨 پالت رنگ ملایم برای چشم
+const C = {
+  pageBg: '#f1f5f9',
+  cardBg: '#ffffff',
+  softBg: '#f8fafc',
+  border: '#e2e8f0',
+  textPrimary: '#1e293b',
+  textSecondary: '#64748b',
+  textMuted: '#94a3b8',
+  accent: '#3b82f6',
+  accentSoft: '#eff6ff',
+  success: '#10b981',
+  successSoft: '#ecfdf5',
+  warning: '#f59e0b',
+  warningSoft: '#fffbeb',
+  danger: '#ef4444',
+  dangerSoft: '#fef2f2',
+  purple: '#8b5cf6',
+  purpleSoft: '#f5f3ff',
+  shadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
+  shadowMd: '0 2px 8px rgba(15, 23, 42, 0.08)',
+};
+
+// ✅ نقشه مرحله → جدول مرجع (برای ثبت تاریخچه)
+const STEP_REF_TABLE = {
+  'examination': 'examinations',
+  'laboratory': 'laboratory_requests',
+  'radiology': 'radiology_requests',
+  'operation': 'operation_requests',
+  'pres_insert': 'prescriptions',
+  'followup': 'followups',
+  'admission': 'admission_requests',
+};
+
 export default function TreatmentPage() {
   const { api } = useAuth();
   
@@ -53,9 +87,61 @@ export default function TreatmentPage() {
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState(null);
   const [selectedRegistration, setSelectedRegistration] = useState(null);
-  
-  // ============ State برای تمام درخواست‌های بستری ============
   const [allAdmissionRequests, setAllAdmissionRequests] = useState([]);
+
+  // ✅ مرجع برای پیگیری آخرین state (برای sync تاریخچه)
+  const activePatientsRef = useRef({});
+  const activeTabRef = useRef('queue');
+  const selectedPatientIdRef = useRef(null);
+
+  // ✅ به‌روزرسانی ref ها در هر تغییر
+  useEffect(() => { activePatientsRef.current = activePatients; }, [activePatients]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { selectedPatientIdRef.current = selectedPatientId; }, [selectedPatientId]);
+
+  // ============================================================
+  // ✅ تابع مرکزی همگام‌سازی تاریخچه
+  // ============================================================
+  const syncTreatmentHistory = async (regId, stepKey = null, stepData = null, refId = null) => {
+    if (!regId) return null;
+
+    try {
+      const patient = activePatientsRef.current?.[regId];
+      const progress = patient?.progress || {
+        currentStepIndex: 1,
+        completedSteps: ['queue'],
+      };
+
+      const payload = {
+        reg_id: regId,
+        progress: {
+          current_step: activeTabRef.current,
+          current_step_index: progress.currentStepIndex || 0,
+          completed_steps: progress.completedSteps || [],
+        },
+      };
+
+      // اگر مرحله مشخص شده، اطلاعات آن مرحله را هم بفرست
+      if (stepKey && stepData) {
+        payload.step_key = stepKey;
+        payload.step_data = stepData;
+        payload.ref_id = refId || stepData?.id || null;
+        payload.ref_table = STEP_REF_TABLE[stepKey] || null;
+      }
+
+      const response = await api.post('/treatment-history/sync', payload);
+
+      if (response.data?.success) {
+        console.log('✅ Treatment history synced:', regId, stepKey || 'main');
+        return response.data.data;
+      }
+    } catch (err) {
+      // خطای sync نباید کاربر را متوقف کند
+      console.warn('⚠️ Treatment history sync failed (non-blocking):', err?.response?.data?.message || err.message);
+    }
+
+    return null;
+  };
 
   const saveState = (patients, tab, patientId) => {
     try {
@@ -119,7 +205,6 @@ export default function TreatmentPage() {
     });
   };
 
-  // ✅ اصلاح شده: تغییر مسیر به /doctor/patient
   const fetchPatientRegistration = async (registrationId) => {
     try {
       const response = await api.get(`/doctor/patient/${registrationId}`);
@@ -155,12 +240,9 @@ export default function TreatmentPage() {
     return null;
   };
 
-  // ============ دریافت تمام درخواست‌های بستری ============
   const fetchAllAdmissions = async () => {
     try {
       const response = await api.get("/admissions");
-      console.log("📥 تمام درخواست‌های بستری:", response.data);
-      
       if (response.data?.data) {
         const requests = response.data.data.data || response.data.data;
         const data = Array.isArray(requests) ? requests : [];
@@ -174,14 +256,10 @@ export default function TreatmentPage() {
     }
   };
 
-  // ============ بارگذاری تمام اطلاعات یک مریض (اصلاح شده) ============
   const loadAllPatientData = async (registrationId) => {
-    console.log(`📥 Loading all data for patient ${registrationId}...`);
-    
     try {
       await fetchPatientRegistration(registrationId);
       
-      // بارگذاری معاینات
       try {
         const examResponse = await api.get(`/doctor/examination/${registrationId}`);
         if (examResponse.data?.success) {
@@ -193,128 +271,78 @@ export default function TreatmentPage() {
           });
         }
       } catch (err) {
-        console.log(`ℹ️ No examination for ${registrationId}`);
         updatePatientData(registrationId, 'examination', {
-          data: null,
-          allExaminations: [],
-          isExamined: false
+          data: null, allExaminations: [], isExamined: false
         });
       }
       
-      // ============ بارگذاری لابراتوار ============
       try {
         const labResponse = await api.get(`/laboratory-requests/registration/${registrationId}/full`);
-        console.log('📥 Lab Response:', labResponse.data);
         
         if (labResponse.data?.success) {
           const data = labResponse.data.data;
-          
-          // ✅ پردازش صحیح تست‌ها
           let tests = [];
-          if (data.tests && Array.isArray(data.tests)) {
-            tests = data.tests;
-          } else if (data.all_tests && Array.isArray(data.all_tests)) {
-            tests = data.all_tests;
-          }
+          if (data.tests && Array.isArray(data.tests)) tests = data.tests;
+          else if (data.all_tests && Array.isArray(data.all_tests)) tests = data.all_tests;
           
-          console.log(`✅ Found ${tests.length} laboratory tests`);
-          
-          // ✅ دریافت نتایج برای هر تست
           let hasAnyResult = false;
           const testsWithResults = await Promise.all(tests.map(async (test) => {
             try {
-              // ✅ استفاده از مسیر صحیح برای دریافت نتیجه
               const resultResponse = await api.get(`/laboratory-results/request/${test.id}`);
-              console.log(`📥 Result for test ${test.id}:`, resultResponse.data);
-              
               if (resultResponse.data?.success) {
                 test.result_details = resultResponse.data.data;
                 test.has_result = true;
                 hasAnyResult = true;
-                console.log(`✅ Result found for test ${test.id}`);
               } else {
                 test.result_details = null;
                 test.has_result = false;
               }
             } catch (resultErr) {
-              console.log(`ℹ️ No result for test ${test.id}`);
               test.result_details = null;
               test.has_result = false;
             }
             return test;
           }));
           
-          const labData = {
+          updatePatientData(registrationId, 'laboratory', {
             data: testsWithResults.length > 0 ? testsWithResults[0] : null,
             allTests: testsWithResults,
             isRequested: testsWithResults.length > 0,
             hasResult: hasAnyResult
-          };
-          
-          updatePatientData(registrationId, 'laboratory', labData);
-          
-          console.log(`✅ Laboratory data updated:`, {
-            allTestsCount: labData.allTests.length,
-            hasResult: labData.hasResult,
-            testsWithResultsCount: labData.allTests.filter(t => t.has_result).length
           });
-          
         } else {
-          console.log('⚠️ No laboratory data');
           updatePatientData(registrationId, 'laboratory', {
-            data: null,
-            allTests: [],
-            isRequested: false,
-            hasResult: false
+            data: null, allTests: [], isRequested: false, hasResult: false
           });
         }
       } catch (err) {
-        console.log(`ℹ️ No laboratory for ${registrationId}`, err);
         updatePatientData(registrationId, 'laboratory', {
-          data: null,
-          allTests: [],
-          isRequested: false,
-          hasResult: false
+          data: null, allTests: [], isRequested: false, hasResult: false
         });
       }
       
-      // ✅ اصلاح شده: تغییر مسیر رادیولوژی
       try {
         const radResponse = await api.get(`/radiology-requests/registration/${registrationId}`);
-        console.log('📥 Radiology Response:', radResponse.data);
-        
         if (radResponse.data?.success) {
           const data = radResponse.data.data;
           const radiologyData = Array.isArray(data) ? data : (data.radiology || data.all_radiology || []);
-          
           updatePatientData(registrationId, 'radiology', {
             data: radiologyData.length > 0 ? radiologyData[0] : null,
             allRadiology: radiologyData,
             isRequested: radiologyData.length > 0,
             hasResult: radiologyData.some(r => r.has_result === true)
           });
-          
-          console.log(`✅ Found ${radiologyData.length} radiology requests`);
         } else {
-          console.log('⚠️ No radiology data');
           updatePatientData(registrationId, 'radiology', {
-            data: null,
-            allRadiology: [],
-            isRequested: false,
-            hasResult: false
+            data: null, allRadiology: [], isRequested: false, hasResult: false
           });
         }
       } catch (err) {
-        console.log(`ℹ️ No radiology for ${registrationId}`, err);
         updatePatientData(registrationId, 'radiology', {
-          data: null,
-          allRadiology: [],
-          isRequested: false,
-          hasResult: false
+          data: null, allRadiology: [], isRequested: false, hasResult: false
         });
       }
       
-      // بارگذاری نسخه
       try {
         const presResponse = await api.get(`/doctor/prescription/${registrationId}`);
         if (presResponse.data?.success) {
@@ -326,15 +354,10 @@ export default function TreatmentPage() {
           });
         }
       } catch (err) {
-        console.log(`ℹ️ No prescription for ${registrationId}`);
         updatePatientData(registrationId, 'prescription', {
-          data: null,
-          allPrescriptions: [],
-          isPrescribed: false
+          data: null, allPrescriptions: [], isPrescribed: false
         });
       }
-      
-      console.log(`✅ All data loaded for patient ${registrationId}`);
     } catch (err) {
       console.error(`❌ Error loading data for ${registrationId}:`, err);
     }
@@ -345,11 +368,8 @@ export default function TreatmentPage() {
     try {
       const response = await api.get("/doctor/queue");
       let data = [];
-      if (Array.isArray(response.data)) {
-        data = response.data;
-      } else if (response.data?.data && Array.isArray(response.data.data)) {
-        data = response.data.data;
-      }
+      if (Array.isArray(response.data)) data = response.data;
+      else if (response.data?.data && Array.isArray(response.data.data)) data = response.data.data;
       setQueue(data);
     } catch (err) {
       console.error("خطا در دریافت صف:", err);
@@ -393,6 +413,11 @@ export default function TreatmentPage() {
       });
       
       await loadAllPatientData(regId);
+
+      // ✅ ثبت اولیه تاریخچه هنگام شروع معالجه
+      setTimeout(() => {
+        syncTreatmentHistory(regId);
+      }, 500);
     } else {
       setActivePatients(prev => {
         const updated = { ...prev };
@@ -425,7 +450,6 @@ export default function TreatmentPage() {
     toast.info(`👨‍⚕️ شروع معالجه برای ${registration.patient?.first_name || ''} ${registration.patient?.last_name || ''}`);
   };
   
-  // ============ اصلاح تابع getPatientsInStage ============
   const getPatientsInStage = (stage) => {
     if (stage === "queue") {
       return queue.filter(p => 
@@ -435,14 +459,10 @@ export default function TreatmentPage() {
       );
     }
     
-    if (stage === "history") {
-      return [];
-    }
+    if (stage === "history") return [];
     
-    // ============ اصلاح برای تب admission ============
     if (stage === "admission") {
       const admittedPatients = [];
-      
       const patientIds = Object.keys(activePatients);
       for (const id of patientIds) {
         const patient = activePatients[id];
@@ -494,7 +514,6 @@ export default function TreatmentPage() {
       return admittedPatients;
     }
     
-    // ============ بقیه مراحل ============
     const stageIndex = STEPS.findIndex(s => s.key === stage);
     if (stageIndex === -1) return [];
     
@@ -508,7 +527,6 @@ export default function TreatmentPage() {
       if (progress) {
         const currentIdx = progress.currentStepIndex || 0;
         
-        // ✅ اصلاح: برای تب لابراتوار، مریضانی که در این مرحله هستند را نمایش بده
         if (currentIdx === stageIndex) {
           const labData = patient.data?.laboratory || {};
           const radData = patient.data?.radiology || {};
@@ -529,7 +547,6 @@ export default function TreatmentPage() {
     return patients;
   };
 
-  // ============ اصلاح تابع saveCurrentStep برای بستری ============
   const saveCurrentStep = async (data) => {
     if (!selectedPatientId) {
       toast.error("❌ مریضی انتخاب نشده است");
@@ -608,6 +625,32 @@ export default function TreatmentPage() {
       
       toast.success(`✅ ${currentStep.label} با موفقیت ثبت شد`);
       
+      // ✅ ============================================================
+      // ✅ ثبت در تاریخچه (Non-blocking — خطا کاربر را متوقف نمی‌کند)
+      // ✅ ============================================================
+      try {
+        const returnedData = response.data?.data || payload;
+        const refId = returnedData?.id || returnedData?.examination?.id
+          || returnedData?.laboratory_request?.id
+          || returnedData?.radiology_request?.id
+          || returnedData?.prescription?.pres_id
+          || returnedData?.admission?.id
+          || null;
+
+        // ترکیب داده برگشتی با payload برای snapshot کامل‌تر
+        const historySnapshot = {
+          ...payload,
+          ...(typeof returnedData === 'object' ? returnedData : {}),
+          status: returnedData?.status || 'completed',
+          submitted_at: new Date().toISOString(),
+          step_label: currentStep.label,
+        };
+
+        await syncTreatmentHistory(regId, currentStep.key, historySnapshot, refId);
+      } catch (histErr) {
+        console.warn('⚠️ History sync failed but main step saved:', histErr);
+      }
+      
       await loadAllPatientData(regId);
       
       if (currentStep.key === 'admission') {
@@ -682,6 +725,11 @@ export default function TreatmentPage() {
     
     setActiveTab(STEPS[nextIndex].key);
     localStorage.setItem(ACTIVE_TAB_KEY, STEPS[nextIndex].key);
+
+    // ✅ همگام‌سازی تاریخچه با پیشرفت جدید
+    setTimeout(() => {
+      syncTreatmentHistory(selectedPatientId);
+    }, 300);
     
     toast.info(`➡️ رفتن به مرحله ${STEPS[nextIndex].label}`);
   };
@@ -725,6 +773,11 @@ export default function TreatmentPage() {
     
     setActiveTab(STEPS[prevIndex].key);
     localStorage.setItem(ACTIVE_TAB_KEY, STEPS[prevIndex].key);
+
+    // ✅ همگام‌سازی تاریخچه
+    setTimeout(() => {
+      syncTreatmentHistory(selectedPatientId);
+    }, 300);
     
     toast.info(`↩️ بازگشت به مرحله ${STEPS[prevIndex].label}`);
   };
@@ -761,6 +814,13 @@ export default function TreatmentPage() {
       await api.put(`/registrations/${selectedPatientId}/status`, {
         visit_status: 'Completed'
       });
+
+      // ✅ همگام‌سازی نهایی تاریخچه قبل از ختم
+      try {
+        await syncTreatmentHistory(selectedPatientId);
+      } catch (syncErr) {
+        console.warn('⚠️ Final history sync failed:', syncErr);
+      }
       
       toast.success("✅ معالجه با موفقیت به پایان رسید");
       
@@ -788,7 +848,6 @@ export default function TreatmentPage() {
   };
 
   const refreshData = async () => {
-    console.log("🔄 Refreshing data...");
     await fetchQueue();
     await fetchAllAdmissions();
     if (selectedPatientId) {
@@ -799,7 +858,6 @@ export default function TreatmentPage() {
 
   const restoreState = async () => {
     try {
-      console.log("🔄 Restoring state...");
       const saved = loadState();
       const patients = saved.patients || {};
       const savedTab = saved.activeTab || 'queue';
@@ -816,14 +874,12 @@ export default function TreatmentPage() {
           setSelectedRegistration(regData);
         }
         await loadAllPatientData(savedPatientId);
-        console.log(`✅ Restored patient ${savedPatientId} in tab ${savedTab}`);
       } else {
         setActiveTab('queue');
         localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
         localStorage.removeItem(SELECTED_PATIENT_KEY);
       }
       await fetchQueue();
-      console.log("✅ State restored successfully");
     } catch (err) {
       console.error("❌ Error restoring state:", err);
     } finally {
@@ -867,7 +923,7 @@ export default function TreatmentPage() {
     ? STEPS[currentProgress.currentStepIndex - 1] 
     : null;
 
-  // ============ هدر اطلاعات مریض برای نمایش در بالای فرم‌ها ============
+  // ============ هدر اطلاعات مریض ============
   const renderPatientInfoHeader = () => {
     if (!selectedRegistration) return null;
     
@@ -882,23 +938,24 @@ export default function TreatmentPage() {
     
     return (
       <div style={{
-        backgroundColor: '#0f1a2a',
+        backgroundColor: C.cardBg,
         padding: '15px 20px',
-        borderRadius: '8px',
+        borderRadius: '10px',
         marginBottom: '20px',
-        border: '1px solid #10b981',
-        borderRight: '4px solid #10b981'
+        border: `1px solid ${C.border}`,
+        borderRight: `4px solid ${C.success}`,
+        boxShadow: C.shadow
       }}>
         <div style={{ 
           display: 'flex', 
           alignItems: 'center', 
           gap: '10px', 
           marginBottom: '12px',
-          borderBottom: '1px solid #1f2937',
+          borderBottom: `1px solid ${C.border}`,
           paddingBottom: '10px'
         }}>
-          <span style={{ fontSize: '24px' }}>👤</span>
-          <h4 style={{ color: '#10b981', margin: 0, fontSize: '16px', fontWeight: 'bold' }}>
+          <span style={{ fontSize: '22px' }}>👤</span>
+          <h4 style={{ color: C.success, margin: 0, fontSize: '15px', fontWeight: 'bold' }}>
             معلومات مریض
           </h4>
         </div>
@@ -909,72 +966,72 @@ export default function TreatmentPage() {
           gap: '12px'
         }}>
           <div style={{
-            backgroundColor: '#1a2a3a',
-            padding: '8px 12px',
-            borderRadius: '6px',
-            border: '1px solid #374151'
+            backgroundColor: C.softBg,
+            padding: '10px 14px',
+            borderRadius: '8px',
+            border: `1px solid ${C.border}`
           }}>
-            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '3px' }}>
+            <div style={{ fontSize: '11px', color: C.textSecondary, marginBottom: '4px' }}>
               👤 نام و تخلص
             </div>
-            <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: 'bold' }}>
+            <div style={{ fontSize: '14px', color: C.textPrimary, fontWeight: 'bold' }}>
               {fullName}
             </div>
           </div>
           
           <div style={{
-            backgroundColor: '#1a2a3a',
-            padding: '8px 12px',
-            borderRadius: '6px',
-            border: '1px solid #374151'
+            backgroundColor: C.softBg,
+            padding: '10px 14px',
+            borderRadius: '8px',
+            border: `1px solid ${C.border}`
           }}>
-            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '3px' }}>
+            <div style={{ fontSize: '11px', color: C.textSecondary, marginBottom: '4px' }}>
               🆔 شماره تذکره
             </div>
-            <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: 'bold' }}>
+            <div style={{ fontSize: '14px', color: C.textPrimary, fontWeight: 'bold' }}>
               {nationalId}
             </div>
           </div>
           
           <div style={{
-            backgroundColor: '#1a2a3a',
-            padding: '8px 12px',
-            borderRadius: '6px',
-            border: '1px solid #374151'
+            backgroundColor: C.softBg,
+            padding: '10px 14px',
+            borderRadius: '8px',
+            border: `1px solid ${C.border}`
           }}>
-            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '3px' }}>
+            <div style={{ fontSize: '11px', color: C.textSecondary, marginBottom: '4px' }}>
               📋 شماره مراجعه
             </div>
-            <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: 'bold' }}>
+            <div style={{ fontSize: '14px', color: '#b45309', fontWeight: 'bold' }}>
               #{visitNumber}
             </div>
           </div>
           
           <div style={{
-            backgroundColor: '#1a2a3a',
-            padding: '8px 12px',
-            borderRadius: '6px',
-            border: '1px solid #374151'
+            backgroundColor: C.softBg,
+            padding: '10px 14px',
+            borderRadius: '8px',
+            border: `1px solid ${C.border}`
           }}>
-            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '3px' }}>
+            <div style={{ fontSize: '11px', color: C.textSecondary, marginBottom: '4px' }}>
               ⚧ جنسیت
             </div>
-            <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: 'bold' }}>
+            <div style={{ fontSize: '14px', color: C.textPrimary, fontWeight: 'bold' }}>
               {gender}
             </div>
           </div>
           
           {phone !== '-' && (
             <div style={{
-              backgroundColor: '#1a2a3a',
-              padding: '8px 12px',
-              borderRadius: '6px',
-              border: '1px solid #374151'
+              backgroundColor: C.softBg,
+              padding: '10px 14px',
+              borderRadius: '8px',
+              border: `1px solid ${C.border}`
             }}>
-              <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '3px' }}>
+              <div style={{ fontSize: '11px', color: C.textSecondary, marginBottom: '4px' }}>
                 📞 شماره تماس
               </div>
-              <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: 'bold' }}>
+              <div style={{ fontSize: '14px', color: C.textPrimary, fontWeight: 'bold' }}>
                 {phone}
               </div>
             </div>
@@ -1006,110 +1063,134 @@ export default function TreatmentPage() {
       );
     }
     
-    // ============ تب pres_insert: منطق مشابه تب‌های دیگر ============
     const stagePatients = getPatientsInStage(activeTab);
     
     return (
       <div>
         <div style={{ marginBottom: '20px' }}>
-          <h4 style={{ color: '#60a5fa', marginBottom: '10px' }}>
+          <h4 style={{ color: C.textPrimary, marginBottom: '12px', fontSize: '15px', borderBottom: `2px solid ${C.border}`, paddingBottom: '10px' }}>
             📋 مریضان در مرحله {STEPS.find(s => s.key === activeTab)?.label}
           </h4>
           {stagePatients.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
-              <div style={{ fontSize: '30px' }}>📭</div>
+            <div style={{ 
+              textAlign: 'center', 
+              padding: '30px', 
+              color: C.textSecondary,
+              background: C.softBg,
+              borderRadius: '10px',
+              border: `1px dashed ${C.border}`
+            }}>
+              <div style={{ fontSize: '40px', marginBottom: '8px' }}>📭</div>
               <div>هیچ مریضی در این مرحله وجود ندارد</div>
             </div>
           ) : (
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              {stagePatients.map(p => (
-                <div
-                  key={p.reg_id}
-                  onClick={() => {
-                    setSelectedPatientId(p.reg_id);
-                    setSelectedRegistration(p);
-                    setActiveTab(activeTab);
-                    localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
-                    localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
-                  }}
-                  style={{
-                    backgroundColor: selectedPatientId === p.reg_id ? '#3b82f6' : '#1a2a3a',
-                    padding: '10px 16px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    border: selectedPatientId === p.reg_id ? '2px solid #60a5fa' : '1px solid #374151',
-                    transition: 'all 0.3s',
-                    position: 'relative'
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 'bold', color: 'white' }}>
-                      {p.patient?.first_name || ''} {p.patient?.last_name || ''}
+              {stagePatients.map(p => {
+                const isSelected = selectedPatientId === p.reg_id;
+                return (
+                  <div
+                    key={p.reg_id}
+                    onClick={() => {
+                      setSelectedPatientId(p.reg_id);
+                      setSelectedRegistration(p);
+                      setActiveTab(activeTab);
+                      localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
+                      localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+                    }}
+                    style={{
+                      backgroundColor: isSelected ? C.accentSoft : C.cardBg,
+                      padding: '12px 18px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      border: isSelected ? `2px solid ${C.accent}` : `1px solid ${C.border}`,
+                      transition: 'all 0.3s',
+                      position: 'relative',
+                      minWidth: '220px',
+                      boxShadow: isSelected ? C.shadowMd : C.shadow
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 'bold', color: isSelected ? '#1e40af' : C.textPrimary, fontSize: '14px' }}>
+                        {p.patient?.first_name || ''} {p.patient?.last_name || ''}
+                      </div>
+                      <div style={{ fontSize: '11px', color: C.textSecondary, marginTop: '3px' }}>
+                        #{p.visit_number || p.id} | {p.patient?.national_id || '-'}
+                        {activeTab === 'admission' && p.status && (
+                          <span style={{ 
+                            marginLeft: '8px', 
+                            color: p.status === 'admitted' ? C.success : C.warning,
+                            fontWeight: 'bold'
+                          }}>
+                            [{p.status === 'admitted' ? 'بستری' : 'در انتظار'}]
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '11px', color: '#9ca3af' }}>
-                      #{p.visit_number || p.id} | {p.patient?.national_id || '-'}
-                      {activeTab === 'admission' && p.status && (
-                        <span style={{ marginLeft: '10px', color: p.status === 'admitted' ? '#22c55e' : '#f59e0b' }}>
-                          [{p.status === 'admitted' ? 'بستری' : 'در انتظار'}]
-                        </span>
-                      )}
-                    </div>
+                    {p.progress?.completedSteps?.includes(activeTab) && (
+                      <span style={{ color: C.success, fontSize: '16px', marginRight: 'auto' }}>✅</span>
+                    )}
+                    {activeTab === 'laboratory' && p.has_lab_result && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-5px',
+                        right: '-5px',
+                        backgroundColor: C.success,
+                        color: 'white',
+                        borderRadius: '50%',
+                        width: '22px',
+                        height: '22px',
+                        fontSize: '11px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '2px solid #ffffff'
+                      }}>
+                        📋
+                      </span>
+                    )}
+                    {activeTab === 'radiology' && p.has_rad_result && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-5px',
+                        right: '-5px',
+                        backgroundColor: C.success,
+                        color: 'white',
+                        borderRadius: '50%',
+                        width: '22px',
+                        height: '22px',
+                        fontSize: '11px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '2px solid #ffffff'
+                      }}>
+                        📷
+                      </span>
+                    )}
                   </div>
-                  {p.progress?.completedSteps?.includes(activeTab) && (
-                    <span style={{ color: '#10b981', fontSize: '14px' }}>✅</span>
-                  )}
-                  {activeTab === 'laboratory' && p.has_lab_result && (
-                    <span style={{
-                      position: 'absolute',
-                      top: '-5px',
-                      right: '-5px',
-                      backgroundColor: '#22c55e',
-                      color: 'white',
-                      borderRadius: '50%',
-                      width: '20px',
-                      height: '20px',
-                      fontSize: '10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      📋
-                    </span>
-                  )}
-                  {activeTab === 'radiology' && p.has_rad_result && (
-                    <span style={{
-                      position: 'absolute',
-                      top: '-5px',
-                      right: '-5px',
-                      backgroundColor: '#22c55e',
-                      color: 'white',
-                      borderRadius: '50%',
-                      width: '20px',
-                      height: '20px',
-                      fontSize: '10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      📷
-                    </span>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
         
         {selectedPatientId && selectedRegistration ? (
-          <div style={{ borderTop: '1px solid #374151', paddingTop: '20px' }}>
+          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '20px' }}>
             {renderSelectedPatientForm()}
           </div>
         ) : (
-          <div style={{ textAlign: 'center', padding: '30px', color: '#9ca3af' }}>
-            <div style={{ fontSize: '40px', marginBottom: '10px' }}>👤</div>
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '40px', 
+            color: C.textSecondary,
+            background: C.softBg,
+            borderRadius: '10px',
+            border: `1px dashed ${C.border}`
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>👤</div>
             <div>برای مشاهده فرم، یک مریض را از لیست بالا انتخاب کنید</div>
           </div>
         )}
@@ -1117,7 +1198,6 @@ export default function TreatmentPage() {
     );
   };
 
-  // ============ رندر فرم مریض انتخاب شده ============
   const renderSelectedPatientForm = () => {
     if (!selectedPatientId || !selectedRegistration) return null;
     
@@ -1172,10 +1252,7 @@ export default function TreatmentPage() {
         
       case "laboratory":
         const labData = patientData.laboratory || { 
-          data: null, 
-          allTests: [], 
-          isRequested: false,
-          hasResult: false
+          data: null, allTests: [], isRequested: false, hasResult: false
         };
         
         return (
@@ -1227,10 +1304,7 @@ export default function TreatmentPage() {
         
       case "radiology":
         const radData = patientData.radiology || { 
-          data: null, 
-          allRadiology: [], 
-          isRequested: false,
-          hasResult: false
+          data: null, allRadiology: [], isRequested: false, hasResult: false
         };
         
         return (
@@ -1282,12 +1356,10 @@ export default function TreatmentPage() {
         
       case "operation":
         const operationRegId = selectedPatientId || selectedRegistration?.reg_id;
-        console.log("🔪 Operation - regId:", operationRegId);
-        console.log("🔪 Operation - selectedRegistration:", selectedRegistration);
         
         if (!operationRegId) {
           return (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#ef4444' }}>
+            <div style={{ textAlign: 'center', padding: '40px', color: C.danger, background: C.cardBg, borderRadius: '10px' }}>
               <div style={{ fontSize: '48px', marginBottom: '10px' }}>⚠️</div>
               <p>شناسه مراجعه یافت نشد. لطفاً یک مریض را انتخاب کنید.</p>
               <button
@@ -1299,10 +1371,10 @@ export default function TreatmentPage() {
                 style={{
                   marginTop: '20px',
                   padding: '10px 20px',
-                  backgroundColor: '#3b82f6',
+                  backgroundColor: C.accent,
                   color: 'white',
                   border: 'none',
-                  borderRadius: '5px',
+                  borderRadius: '6px',
                   cursor: 'pointer'
                 }}
               >
@@ -1341,10 +1413,10 @@ export default function TreatmentPage() {
           <>
             {renderPatientInfoHeader()}
             <div style={{
-              backgroundColor: '#ffffff',
-              borderRadius: '8px',
+              backgroundColor: C.cardBg,
+              borderRadius: '10px',
               padding: '5px',
-              color: '#000000'
+              color: C.textPrimary
             }}>
               <PrescriptionRequest 
                 registration={selectedRegistration}
@@ -1401,18 +1473,6 @@ export default function TreatmentPage() {
         );
         
       case "admission":
-        const admissionPatient = selectedPatientId ? activePatients[selectedPatientId] : null;
-        
-        if (!selectedPatientId || !admissionPatient) {
-          const stagePatients = getPatientsInStage('admission');
-          if (stagePatients.length > 0 && !selectedPatientId) {
-            const firstPatient = stagePatients[0];
-            setSelectedPatientId(firstPatient.reg_id);
-            setSelectedRegistration(firstPatient);
-            localStorage.setItem(SELECTED_PATIENT_KEY, String(firstPatient.reg_id));
-          }
-        }
-        
         return (
           <>
             {renderPatientInfoHeader()}
@@ -1457,30 +1517,31 @@ export default function TreatmentPage() {
     
     return (
       <div style={{
-        backgroundColor: '#1f2937',
-        padding: '12px 20px',
-        borderRadius: '8px',
+        backgroundColor: C.cardBg,
+        padding: '15px 20px',
+        borderRadius: '10px',
         marginBottom: '20px',
-        border: '1px solid #374151'
+        border: `1px solid ${C.border}`,
+        boxShadow: C.shadow
       }}>
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '8px',
+          marginBottom: '10px',
           flexWrap: 'wrap',
           gap: '10px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '20px' }}>📊</span>
-            <span style={{ color: '#fff', fontSize: '14px' }}>
-              {selectedRegistration?.patient?.first_name || ''} {selectedRegistration?.patient?.last_name || ''} - 
+            <span style={{ color: C.textPrimary, fontSize: '14px', fontWeight: 'bold' }}>
+              {selectedRegistration?.patient?.first_name || ''} {selectedRegistration?.patient?.last_name || ''} — 
               پیشرفت: {completed} از {totalSteps} مرحله
             </span>
             <span style={{
-              backgroundColor: '#3b82f6',
+              backgroundColor: progress === 100 ? C.success : C.accent,
               color: 'white',
-              padding: '2px 12px',
+              padding: '3px 12px',
               borderRadius: '12px',
               fontSize: '12px',
               fontWeight: 'bold'
@@ -1488,7 +1549,7 @@ export default function TreatmentPage() {
               {progress}%
             </span>
           </div>
-          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
             {STEPS.slice(1).map((step) => {
               const isCompleted = currentProgress.completedSteps?.includes(step.key);
               const isActive = step.key === activeTab;
@@ -1499,12 +1560,13 @@ export default function TreatmentPage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '3px',
-                    padding: '2px 8px',
+                    padding: '3px 10px',
                     borderRadius: '10px',
-                    backgroundColor: isCompleted ? '#10b981' : isActive ? '#3b82f6' : '#374151',
-                    color: 'white',
+                    backgroundColor: isCompleted ? C.successSoft : isActive ? C.accentSoft : C.softBg,
+                    color: isCompleted ? '#065f46' : isActive ? '#1e40af' : C.textSecondary,
                     fontSize: '10px',
-                    fontWeight: isActive ? 'bold' : 'normal'
+                    fontWeight: isActive ? 'bold' : 'normal',
+                    border: isActive ? `1px solid ${C.accent}` : `1px solid ${C.border}`
                   }}
                 >
                   {isCompleted ? '✅' : isActive ? '🔄' : '⏳'}
@@ -1516,16 +1578,17 @@ export default function TreatmentPage() {
         </div>
         <div style={{
           width: '100%',
-          height: '6px',
-          backgroundColor: '#374151',
-          borderRadius: '3px',
+          height: '8px',
+          backgroundColor: C.border,
+          borderRadius: '4px',
           overflow: 'hidden'
         }}>
           <div style={{
             width: `${progress}%`,
             height: '100%',
-            backgroundColor: progress === 100 ? '#10b981' : '#3b82f6',
-            transition: 'width 0.5s ease'
+            backgroundColor: progress === 100 ? C.success : C.accent,
+            transition: 'width 0.5s ease',
+            borderRadius: '4px'
           }} />
         </div>
       </div>
@@ -1540,8 +1603,12 @@ export default function TreatmentPage() {
           justifyContent: 'center',
           alignItems: 'center',
           height: '400px',
-          color: 'white',
-          fontSize: '18px'
+          color: C.textSecondary,
+          fontSize: '18px',
+          background: C.cardBg,
+          borderRadius: '10px',
+          margin: '20px',
+          border: `1px solid ${C.border}`
         }}>
           ⏳ در حال بارگذاری اطلاعات درمان...
         </div>
@@ -1575,145 +1642,190 @@ export default function TreatmentPage() {
         }}
       />
 
-      <div className="form-container">
-        <h2 style={{ textAlign: "center", marginBottom: "25px", color: "#fff" }}>
-          🏥 معالجه داکتر
-        </h2>
+      <div style={{ 
+        background: C.pageBg,
+        minHeight: '100vh',
+        padding: '20px',
+        borderRadius: '10px'
+      }}>
+        <div className="form-container">
+          <h2 style={{ 
+            textAlign: "center", 
+            marginBottom: "20px", 
+            color: C.textPrimary,
+            fontSize: '20px',
+            fontWeight: 'bold',
+            background: C.cardBg,
+            padding: '15px 20px',
+            borderRadius: '10px',
+            border: `1px solid ${C.border}`,
+            boxShadow: C.shadow
+          }}>
+            🏥 معالجه داکتر
+          </h2>
 
-        {renderProgressBar()}
+          {renderProgressBar()}
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: "8px",
-            marginBottom: "25px",
-            flexWrap: "wrap",
-          }}
-        >
-          {STEPS.map((step) => {
-            const isActive = activeTab === step.key;
-            let patientCount = 0;
-            
-            if (step.key === 'queue') {
-              patientCount = queue.filter(p => 
-                !activePatients[p.reg_id] && 
-                p.visit_status !== "Completed" &&
-                p.visit_status !== "InProgress"
-              ).length;
-            } else if (step.key === 'admission') {
-              patientCount = allAdmissionRequests.length;
-            } else if (step.key !== 'history') {
-              const patients = getPatientsInStage(step.key);
-              patientCount = patients.length;
-            }
-            
-            let bgColor = '#374151';
-            if (isActive) bgColor = step.color;
-            
-            return (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: "8px",
+              marginBottom: "20px",
+              flexWrap: "wrap",
+              background: C.cardBg,
+              padding: '15px',
+              borderRadius: '10px',
+              border: `1px solid ${C.border}`,
+              boxShadow: C.shadow
+            }}
+          >
+            {STEPS.map((step) => {
+              const isActive = activeTab === step.key;
+              let patientCount = 0;
+              
+              if (step.key === 'queue') {
+                patientCount = queue.filter(p => 
+                  !activePatients[p.reg_id] && 
+                  p.visit_status !== "Completed" &&
+                  p.visit_status !== "InProgress"
+                ).length;
+              } else if (step.key === 'admission') {
+                patientCount = allAdmissionRequests.length;
+              } else if (step.key !== 'history') {
+                const patients = getPatientsInStage(step.key);
+                patientCount = patients.length;
+              }
+              
+              return (
+                <button
+                  key={step.key}
+                  onClick={() => {
+                    setActiveTab(step.key);
+                    setSelectedHistory(null);
+                    localStorage.setItem(ACTIVE_TAB_KEY, step.key);
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    background: isActive ? step.color : C.cardBg,
+                    color: isActive ? "#fff" : C.textPrimary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12px',
+                    position: 'relative',
+                    border: isActive ? `1px solid ${step.color}` : `1px solid ${C.border}`,
+                    transition: 'all 0.3s',
+                    boxShadow: isActive ? `0 2px 8px ${step.color}40` : C.shadow
+                  }}
+                >
+                  {step.icon}
+                  {step.label}
+                  {patientCount > 0 && (
+                    <span style={{
+                      backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : C.softBg,
+                      color: isActive ? '#fff' : C.textSecondary,
+                      padding: '1px 8px',
+                      borderRadius: '10px',
+                      fontSize: '10px',
+                      fontWeight: 'bold'
+                    }}>
+                      {patientCount}
+                    </span>
+                  )}
+                  {isActive && selectedPatientId && (
+                    <span style={{
+                      position: 'absolute',
+                      top: '-5px',
+                      right: '-5px',
+                      width: '10px',
+                      height: '10px',
+                      backgroundColor: C.success,
+                      borderRadius: '50%',
+                      animation: 'pulse 1.5s infinite',
+                      border: '2px solid #ffffff'
+                    }} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              background: C.cardBg,
+              borderRadius: "10px",
+              padding: "25px",
+              minHeight: "500px",
+              color: C.textPrimary,
+              border: `1px solid ${C.border}`,
+              boxShadow: C.shadow
+            }}
+          >
+            {renderTabContent()}
+          </div>
+
+          {selectedPatientId && activeTab !== 'queue' && activeTab !== 'history' && !currentProgress.isComplete && activeTab !== 'admission' && (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              marginTop: '20px',
+              gap: '10px',
+              background: C.cardBg,
+              padding: '15px 20px',
+              borderRadius: '10px',
+              border: `1px solid ${C.border}`,
+              boxShadow: C.shadow
+            }}>
               <button
-                key={step.key}
-                onClick={() => {
-                  setActiveTab(step.key);
-                  setSelectedHistory(null);
-                  localStorage.setItem(ACTIVE_TAB_KEY, step.key);
-                }}
+                onClick={goToPreviousStep}
                 style={{
-                  padding: "8px 16px",
-                  border: "none",
-                  borderRadius: "8px",
-                  cursor: "pointer",
-                  fontWeight: "bold",
-                  background: bgColor,
-                  color: "#fff",
+                  padding: '10px 24px',
+                  backgroundColor: C.cardBg,
+                  color: C.textPrimary,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  fontSize: '12px',
-                  position: 'relative',
-                  border: isActive ? '2px solid #60a5fa' : 'none',
-                  transition: 'all 0.3s'
+                  transition: 'all 0.2s'
                 }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = C.softBg}
+                onMouseLeave={(e) => e.target.style.backgroundColor = C.cardBg}
               >
-                {step.icon}
-                {step.label}
-                {patientCount > 0 && (
-                  <span style={{
-                    backgroundColor: 'rgba(255,255,255,0.2)',
-                    padding: '0 8px',
-                    borderRadius: '10px',
-                    fontSize: '10px'
-                  }}>
-                    {patientCount}
-                  </span>
-                )}
-                {isActive && selectedPatientId && (
-                  <span style={{
-                    position: 'absolute',
-                    top: '-5px',
-                    right: '-5px',
-                    width: '10px',
-                    height: '10px',
-                    backgroundColor: '#10b981',
-                    borderRadius: '50%',
-                    animation: 'pulse 1.5s infinite'
-                  }} />
-                )}
+                ↩️ مرحله قبل
               </button>
-            );
-          })}
+              <button
+                onClick={goToNextStep}
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: C.accent,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: `0 2px 8px ${C.accent}40`,
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = C.accent}
+              >
+                مرحله بعد ➡️
+              </button>
+            </div>
+          )}
         </div>
-
-        <div
-          style={{
-            background: "#1f2937",
-            borderRadius: "10px",
-            padding: "25px",
-            minHeight: "500px",
-            color: "#fff",
-          }}
-        >
-          {renderTabContent()}
-        </div>
-
-        {selectedPatientId && activeTab !== 'queue' && activeTab !== 'history' && !currentProgress.isComplete && activeTab !== 'admission' && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            marginTop: '20px',
-            gap: '10px'
-          }}>
-            <button
-              onClick={goToPreviousStep}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '5px',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              ↩️ مرحله قبل
-            </button>
-            <button
-              onClick={goToNextStep}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '5px',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              مرحله بعد ➡️
-            </button>
-          </div>
-        )}
       </div>
 
       <style jsx>{`
