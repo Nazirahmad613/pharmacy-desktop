@@ -50,7 +50,6 @@ use App\Http\Controllers\BedController;
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\PharmacyExecutionController;
 use App\Http\Controllers\TreatmentHistoryController;
-
 // ✅ کنترلرهای مورد نیاز برای JournalPage
 use App\Http\Controllers\PatientController;
 
@@ -534,24 +533,24 @@ Route::middleware('auth:sanctum')->group(function () {
     // ============================================================
     // ✅ Journals (ژورنال)
     // ⭐ ترتیب مهم: routes خاص قبل از /{id}
-    // ⭐ اضافه شد: ref-sources برای dropdown منابع
     // ============================================================
     Route::prefix('journals')->group(function () {
         // ✅ routes خاص اول (قبل از /{id})
-        Route::get('/ref-sources', [JournalController::class, 'getRefSources']);        // ✅ جدید
-        Route::get('/patient-summary/{regId}', [JournalController::class, 'getPatientJournalSummary']);
+        Route::get('/ref-sources', [JournalController::class, 'getRefSources']);
+        Route::get('/patient-summary/{regId}', [JournalController::class, 'getPatientJournalSummary'])
+            ->where('regId', '[0-9]+');
 
         // ⭐ CRUD
         Route::get('/', [JournalController::class, 'index']);
         Route::post('/', [JournalController::class, 'store']);
 
         // ⭐ upsert (ایجاد یا به‌روزرسانی)
-        Route::post('/upsert/{id?}', [JournalController::class, 'upsert']);
-        Route::put('/upsert/{id?}', [JournalController::class, 'upsert']);
+        Route::post('/upsert/{id?}', [JournalController::class, 'upsert'])->where('id', '[0-9]+');
+        Route::put('/upsert/{id?}',  [JournalController::class, 'upsert'])->where('id', '[0-9]+');
 
         // ⭐ show / update / destroy
-        Route::get('/{id}', [JournalController::class, 'show'])->where('id', '[0-9]+');
-        Route::put('/{id}', [JournalController::class, 'upsert'])->where('id', '[0-9]+');
+        Route::get('/{id}',    [JournalController::class, 'index'])->where('id', '[0-9]+'); // اگر show ندارید
+        Route::put('/{id}',    [JournalController::class, 'upsert'])->where('id', '[0-9]+');
         Route::delete('/{id}', [JournalController::class, 'destroy'])->where('id', '[0-9]+');
     });
 
@@ -566,7 +565,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/summary', [AccountController::class, 'summary']);
         Route::get('/types', [AccountController::class, 'types']);
         Route::get('/categories/{accountType}', [AccountController::class, 'categories']);
-        Route::get('/by-category', [AccountController::class, 'byCategory']); // ✅ جدید (برای JournalPage)
+        Route::get('/by-category', [AccountController::class, 'byCategory']);
         
         // ⭐ CRUD
         Route::get('/', [AccountController::class, 'index']);
@@ -586,7 +585,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('patients')->group(function () {
         // ⭐ routes خاص اول
         Route::get('/search', [RegistrationsController::class, 'searchPatients']);
-        Route::get('/{patient_id}/info', [RegistrationsController::class, 'getPatientInfo'])->where('patient_id', '[0-9]+');
+        Route::get('/{patient_id}/info', [RegistrationsController::class, 'getPatientInfo'])
+            ->where('patient_id', '[0-9]+');
 
         // ⭐ CRUD
         Route::get('/', [PatientController::class, 'index']);

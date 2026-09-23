@@ -9,6 +9,7 @@ use App\Models\Sales;
 use App\Models\Parchase;
 use App\Models\Prescription;
 use App\Models\Patient;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -35,7 +36,6 @@ class JournalController extends Controller
         $journals = $query->orderBy('journal_date', 'desc')->get();
 
         $journals->transform(function ($j) {
-            // -------- مقادیر پیش‌فرض --------
             $j->full_name    = null;
             $j->display_name = null;
             $j->total_amount = null;
@@ -43,9 +43,9 @@ class JournalController extends Controller
             $j->due_amount   = null;
             $j->source_name  = null;
 
-            // ============================================================
-            // 1) sale → اطلاعات مشتری + مبالغ
-            // ============================================================
+            /* ====================================================
+             * 1) sale
+             * ==================================================== */
             if ($j->ref_type === 'sale') {
                 $sale = Sales::with('customer')->find($j->ref_id);
                 if ($sale) {
@@ -53,12 +53,10 @@ class JournalController extends Controller
                         ?? $sale->customer->full_name
                         ?? $sale->customer->name
                         ?? "فروش شماره {$j->ref_id}";
-
                     $j->full_name      = $name;
                     $j->display_name   = $name;
                     $j->source_name    = $name;
-                    $j->tazkira_number = $sale->customer->tazkira_number
-                        ?? $j->tazkira_number;
+                    $j->tazkira_number = $sale->customer->tazkira_number ?? $j->tazkira_number;
                     $j->total_amount   = $sale->net_sales;
                     $j->paid_amount    = $sale->total_paid;
                     $j->due_amount     = $sale->remaining_amount;
@@ -68,9 +66,9 @@ class JournalController extends Controller
                 return $j;
             }
 
-            // ============================================================
-            // 2) parchase → اطلاعات تأمین‌کننده + مبالغ
-            // ============================================================
+            /* ====================================================
+             * 2) parchase
+             * ==================================================== */
             if ($j->ref_type === 'parchase') {
                 $p = Parchase::with('supplier')->find($j->ref_id);
                 if ($p) {
@@ -78,12 +76,10 @@ class JournalController extends Controller
                         ?? $p->supplier->full_name
                         ?? $p->supplier->name
                         ?? "خرید شماره {$j->ref_id}";
-
                     $j->full_name      = $name;
                     $j->display_name   = $name;
                     $j->source_name    = $name;
-                    $j->tazkira_number = $p->supplier->tazkira_number
-                        ?? $j->tazkira_number;
+                    $j->tazkira_number = $p->supplier->tazkira_number ?? $j->tazkira_number;
                     $j->total_amount   = $p->total_parchase;
                     $j->paid_amount    = $p->par_paid;
                     $j->due_amount     = $p->due_par;
@@ -93,9 +89,9 @@ class JournalController extends Controller
                 return $j;
             }
 
-            // ============================================================
-            // 3) patient → اطلاعات مریض (مهم‌ترین بخش)
-            // ============================================================
+            /* ====================================================
+             * 3) patient → نام کامل از patients
+             * ==================================================== */
             if ($j->ref_type === 'patient') {
                 $patient = $this->findPatientForJournal($j);
 
@@ -113,13 +109,12 @@ class JournalController extends Controller
                         $j->source_name = "مریض #{$patient->id}";
                     }
 
-                    // تذکره از patients (اولویت اول)
                     if (!empty($patient->national_id)) {
                         $j->tazkira_number = $patient->national_id;
                     }
                 }
 
-                // اگر نام مریض پیدا نشد، از reg_id اطلاعات مراجعه را بگیر
+                // Fallback: از registrations
                 if (empty($j->source_name)) {
                     $regIdToUse = $j->reg_id ?: $j->ref_id;
                     if ($regIdToUse) {
@@ -137,12 +132,11 @@ class JournalController extends Controller
                     }
                 }
 
-                // اطلاعات نسخه (اگر pres_id دارد)
+                // اطلاعات نسخه
                 if ($j->pres_id) {
                     $prescription = Prescription::find($j->pres_id);
                     if ($prescription) {
                         $j->display_name = "نسخه شماره {$prescription->pres_num}";
-                        // نام منبع را از بیمار حفظ کن، اگر خالی بود از نسخه بگیر
                         if (empty($j->source_name) && !empty($prescription->patient_name)) {
                             $j->source_name = $prescription->patient_name;
                         }
@@ -152,12 +146,11 @@ class JournalController extends Controller
                     }
                 }
 
-                // Fallback نهایی: استخراج از description
+                // Fallback: از description
                 if (empty($j->source_name) && !empty($j->description)) {
                     $j->source_name = $this->extractNameFromDescription($j->description);
                 }
 
-                // اگر هیچ‌کدام نشد
                 if (empty($j->source_name)) {
                     $j->source_name = $j->description ?: "مریض #{$j->ref_id}";
                 }
@@ -165,10 +158,9 @@ class JournalController extends Controller
                 return $j;
             }
 
-            // ============================================================
-            // 4) سایر انواع (doctor, nurse, supplier, customer, ...)
-            // ============================================================
-            // تلاش کن از مدل resolveSourceName را صدا بزنی
+            /* ====================================================
+             * 4) سایر انواع (doctor, nurse, supplier, ...)
+             * ==================================================== */
             if (method_exists($j, 'resolveSourceName')) {
                 try {
                     $name = $j->resolveSourceName();
@@ -180,7 +172,6 @@ class JournalController extends Controller
                 }
             }
 
-            // اگر reg_id دارد، اطلاعات مراجعه
             if ($j->reg_id) {
                 $reg = Registrations::where('reg_id', $j->reg_id)->first();
                 if ($reg) {
@@ -197,7 +188,6 @@ class JournalController extends Controller
                 }
             }
 
-            // Fallback نهایی
             if (empty($j->source_name)) {
                 $j->source_name = $j->description ?: "منبع #{$j->ref_id}";
             }
@@ -209,18 +199,18 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  ✅ پیدا کردن مریض از چند مسیر ممکن (بدون نیاز به تغییر جدول)
+     *  پیدا کردن مریض از چند مسیر
      * ============================================================ */
     private function findPatientForJournal(Journal $journal): ?Patient
     {
         try {
-            // 1) اگر patient_id در جدول journals وجود دارد و پر است
+            // 1) patient_id مستقیم
             if (!empty($journal->patient_id)) {
                 $p = Patient::find($journal->patient_id);
                 if ($p) return $p;
             }
 
-            // 2) اگر reg_id دارد → از registrations → patient_id
+            // 2) reg_id → registrations.patient_id
             if (!empty($journal->reg_id)) {
                 $reg = Registrations::where('reg_id', $journal->reg_id)->first();
                 if ($reg && !empty($reg->patient_id)) {
@@ -229,7 +219,7 @@ class JournalController extends Controller
                 }
             }
 
-            // 3) ref_id ممکن است در واقع reg_id باشد
+            // 3) ref_id به‌عنوان reg_id
             if (!empty($journal->ref_id)) {
                 $reg = Registrations::where('reg_id', $journal->ref_id)->first();
                 if ($reg && !empty($reg->patient_id)) {
@@ -238,13 +228,13 @@ class JournalController extends Controller
                 }
             }
 
-            // 4) ref_id ممکن است خود patient_id باشد
+            // 4) ref_id مستقیم به‌عنوان patient_id
             if (!empty($journal->ref_id)) {
                 $p = Patient::find($journal->ref_id);
                 if ($p) return $p;
             }
 
-            // 5) اگر parent_journal_id دارد، از والد استفاده کن
+            // 5) از parent_journal
             if (!empty($journal->parent_journal_id)) {
                 $parent = Journal::find($journal->parent_journal_id);
                 if ($parent) {
@@ -259,10 +249,6 @@ class JournalController extends Controller
                             if ($p) return $p;
                         }
                     }
-                    if (!empty($parent->ref_id)) {
-                        $p = Patient::find($parent->ref_id);
-                        if ($p) return $p;
-                    }
                 }
             }
         } catch (\Throwable $e) {
@@ -273,7 +259,7 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  ✅ استخراج نام از description (fallback)
+     *  استخراج نام از description
      * ============================================================ */
     private function extractNameFromDescription(?string $description): ?string
     {
@@ -298,9 +284,7 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  ✅ دریافت لیست منابع بر اساس نوع (برای dropdown)
-     *
-     *  GET /api/journals/ref-sources?type=doctor&search=علی
+     *  ✅ دریافت لیست منابع
      * ============================================================ */
     public function getRefSources(Request $request)
     {
@@ -310,28 +294,17 @@ class JournalController extends Controller
         ]);
 
         try {
-            // اگر متد استاتیک در مدل وجود دارد، استفاده کن
-            if (method_exists(Journal::class, 'getRefSources')) {
-                $sources = Journal::getRefSources(
-                    $request->type,
-                    $request->search,
-                    min((int) $request->get('limit', 100), 500)
-                );
-
-                return response()->json([
-                    'success' => true,
-                    'data'    => $sources,
-                    'count'   => count($sources),
-                    'type'    => $request->type,
-                ]);
-            }
+            $sources = Journal::getRefSources(
+                $request->type,
+                $request->search,
+                min((int) $request->get('limit', 100), 500)
+            );
 
             return response()->json([
                 'success' => true,
-                'data'    => [],
-                'count'   => 0,
+                'data'    => $sources,
+                'count'   => count($sources),
                 'type'    => $request->type,
-                'message' => 'متد getRefSources در مدل یافت نشد',
             ]);
         } catch (\Throwable $e) {
             return response()->json([
@@ -355,7 +328,8 @@ class JournalController extends Controller
             'ref_type'          => 'required|string',
             'ref_id'            => 'required|integer',
             'pres_id'           => 'nullable|integer',
-            'reg_id'            => 'nullable|exists:registrations,reg_id',
+            'reg_id'            => 'nullable|integer',
+            'tazkira_number'    => 'nullable|string|max:255',
             'parent_journal_id' => 'nullable|exists:journals,id',
         ]);
 
@@ -363,16 +337,6 @@ class JournalController extends Controller
 
         try {
             $reg = $this->resolveRegistration($validated);
-
-            if (
-                !$reg &&
-                !in_array($validated['ref_type'], ['sale', 'parchase', 'patient'])
-            ) {
-                DB::rollBack();
-                return response()->json(['message' => 'رویداد انتخاب‌شده معتبر نیست.'], 422);
-            }
-
-            // ✅ استخراج patient_id (بدون ذخیره در جدول اگر ستون نیست)
             $patientId = $this->resolvePatientIdFromValidated($validated);
 
             $data = [
@@ -385,11 +349,12 @@ class JournalController extends Controller
                 'pres_id'           => $validated['pres_id'] ?? null,
                 'reg_id'            => $validated['reg_id'] ?? null,
                 'parent_journal_id' => $validated['parent_journal_id'] ?? null,
-                'tazkira_number'    => $reg->tazkira_number ?? null,
+                'tazkira_number'    => $validated['tazkira_number']
+                    ?? $reg->tazkira_number
+                    ?? null,
                 'user_id'           => Auth::id(),
             ];
 
-            // اگر ستون patient_id در جدول وجود دارد، اضافه کن
             if ($patientId && $this->journalHasPatientIdColumn()) {
                 $data['patient_id'] = $patientId;
             }
@@ -492,7 +457,8 @@ class JournalController extends Controller
             'ref_type'          => 'required|string',
             'ref_id'            => 'required|integer',
             'pres_id'           => 'nullable|integer',
-            'reg_id'            => 'nullable|exists:registrations,reg_id',
+            'reg_id'            => 'nullable|integer',
+            'tazkira_number'    => 'nullable|string|max:255',
             'parent_journal_id' => 'nullable|exists:journals,id',
         ]);
 
@@ -500,15 +466,6 @@ class JournalController extends Controller
 
         try {
             $reg = $this->resolveRegistration($validated);
-
-            if (
-                !$reg &&
-                !in_array($validated['ref_type'], ['sale', 'parchase', 'patient'])
-            ) {
-                DB::rollBack();
-                return response()->json(['message' => 'رویداد انتخاب‌شده معتبر نیست.'], 422);
-            }
-
             $patientId = $this->resolvePatientIdFromValidated($validated);
             $hasPatientIdCol = $this->journalHasPatientIdColumn();
 
@@ -533,7 +490,9 @@ class JournalController extends Controller
                     'pres_id'           => $validated['pres_id'] ?? null,
                     'reg_id'            => $newRegId,
                     'parent_journal_id' => $validated['parent_journal_id'] ?? null,
-                    'tazkira_number'    => $reg->tazkira_number ?? $journal->tazkira_number,
+                    'tazkira_number'    => $validated['tazkira_number']
+                        ?? $reg->tazkira_number
+                        ?? $journal->tazkira_number,
                     'user_id'           => Auth::id(),
                 ];
 
@@ -559,7 +518,9 @@ class JournalController extends Controller
                     'pres_id'           => $validated['pres_id'] ?? null,
                     'reg_id'            => $validated['reg_id'] ?? null,
                     'parent_journal_id' => $validated['parent_journal_id'] ?? null,
-                    'tazkira_number'    => $reg->tazkira_number ?? null,
+                    'tazkira_number'    => $validated['tazkira_number']
+                        ?? $reg->tazkira_number
+                        ?? null,
                     'user_id'           => Auth::id(),
                 ];
 
@@ -628,12 +589,11 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  ✅ استخراج patient_id از داده‌های ارسالی
+     *  استخراج patient_id
      * ============================================================ */
     private function resolvePatientIdFromValidated(array $validated): ?int
     {
         try {
-            // 1) از reg_id
             if (!empty($validated['reg_id'])) {
                 $reg = Registrations::where('reg_id', $validated['reg_id'])->first();
                 if ($reg && !empty($reg->patient_id)) {
@@ -641,14 +601,12 @@ class JournalController extends Controller
                 }
             }
 
-            // 2) از ref_id به‌عنوان reg_id
             if (!empty($validated['ref_id'])) {
                 $reg = Registrations::where('reg_id', $validated['ref_id'])->first();
                 if ($reg && !empty($reg->patient_id)) {
                     return (int) $reg->patient_id;
                 }
 
-                // 3) ref_id به‌عنوان patient_id
                 $patient = Patient::find($validated['ref_id']);
                 if ($patient) {
                     return (int) $patient->id;
@@ -662,7 +620,7 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  ✅ بررسی وجود ستون patient_id در جدول journals
+     *  بررسی وجود ستون patient_id
      * ============================================================ */
     private function journalHasPatientIdColumn(): bool
     {
