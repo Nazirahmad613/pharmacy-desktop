@@ -40,7 +40,6 @@ const ACTIVE_PATIENTS_KEY = 'treatment_active_patients';
 const SELECTED_PATIENT_KEY = 'treatment_selected_patient';
 const ACTIVE_TAB_KEY = 'treatment_active_tab';
 
-// 🎨 پالت رنگ ملایم برای چشم
 const C = {
   pageBg: '#f1f5f9',
   cardBg: '#ffffff',
@@ -63,7 +62,6 @@ const C = {
   shadowMd: '0 2px 8px rgba(15, 23, 42, 0.08)',
 };
 
-// ✅ نقشه مرحله → جدول مرجع (برای ثبت تاریخچه)
 const STEP_REF_TABLE = {
   'examination': 'examinations',
   'laboratory': 'laboratory_requests',
@@ -89,20 +87,15 @@ export default function TreatmentPage() {
   const [selectedRegistration, setSelectedRegistration] = useState(null);
   const [allAdmissionRequests, setAllAdmissionRequests] = useState([]);
 
-  // ✅ مرجع برای پیگیری آخرین state (برای sync تاریخچه)
   const activePatientsRef = useRef({});
   const activeTabRef = useRef('queue');
   const selectedPatientIdRef = useRef(null);
 
-  // ✅ به‌روزرسانی ref ها در هر تغییر
   useEffect(() => { activePatientsRef.current = activePatients; }, [activePatients]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { selectedPatientIdRef.current = selectedPatientId; }, [selectedPatientId]);
 
-  // ============================================================
-  // ✅ تابع مرکزی همگام‌سازی تاریخچه
-  // ============================================================
-  const syncTreatmentHistory = async (regId, stepKey = null, stepData = null, refId = null) => {
+  const syncTreatmentHistory = async (regId, stepKey = null, stepData = null, refId = null, finalize = false) => {
     if (!regId) return null;
 
     try {
@@ -115,13 +108,17 @@ export default function TreatmentPage() {
       const payload = {
         reg_id: regId,
         progress: {
-          current_step: activeTabRef.current,
-          current_step_index: progress.currentStepIndex || 0,
+          current_step: finalize ? 'completed' : activeTabRef.current,
+          current_step_index: finalize ? 8 : (progress.currentStepIndex || 0),
           completed_steps: progress.completedSteps || [],
+          finalize: finalize,
         },
       };
 
-      // اگر مرحله مشخص شده، اطلاعات آن مرحله را هم بفرست
+      if (finalize) {
+        payload.finalize = true;
+      }
+
       if (stepKey && stepData) {
         payload.step_key = stepKey;
         payload.step_data = stepData;
@@ -132,11 +129,10 @@ export default function TreatmentPage() {
       const response = await api.post('/treatment-history/sync', payload);
 
       if (response.data?.success) {
-        console.log('✅ Treatment history synced:', regId, stepKey || 'main');
+        console.log('✅ Treatment history synced:', regId, finalize ? 'FINALIZED' : (stepKey || 'main'));
         return response.data.data;
       }
     } catch (err) {
-      // خطای sync نباید کاربر را متوقف کند
       console.warn('⚠️ Treatment history sync failed (non-blocking):', err?.response?.data?.message || err.message);
     }
 
@@ -414,7 +410,6 @@ export default function TreatmentPage() {
       
       await loadAllPatientData(regId);
 
-      // ✅ ثبت اولیه تاریخچه هنگام شروع معالجه
       setTimeout(() => {
         syncTreatmentHistory(regId);
       }, 500);
@@ -625,9 +620,6 @@ export default function TreatmentPage() {
       
       toast.success(`✅ ${currentStep.label} با موفقیت ثبت شد`);
       
-      // ✅ ============================================================
-      // ✅ ثبت در تاریخچه (Non-blocking — خطا کاربر را متوقف نمی‌کند)
-      // ✅ ============================================================
       try {
         const returnedData = response.data?.data || payload;
         const refId = returnedData?.id || returnedData?.examination?.id
@@ -637,7 +629,6 @@ export default function TreatmentPage() {
           || returnedData?.admission?.id
           || null;
 
-        // ترکیب داده برگشتی با payload برای snapshot کامل‌تر
         const historySnapshot = {
           ...payload,
           ...(typeof returnedData === 'object' ? returnedData : {}),
@@ -726,7 +717,6 @@ export default function TreatmentPage() {
     setActiveTab(STEPS[nextIndex].key);
     localStorage.setItem(ACTIVE_TAB_KEY, STEPS[nextIndex].key);
 
-    // ✅ همگام‌سازی تاریخچه با پیشرفت جدید
     setTimeout(() => {
       syncTreatmentHistory(selectedPatientId);
     }, 300);
@@ -774,7 +764,6 @@ export default function TreatmentPage() {
     setActiveTab(STEPS[prevIndex].key);
     localStorage.setItem(ACTIVE_TAB_KEY, STEPS[prevIndex].key);
 
-    // ✅ همگام‌سازی تاریخچه
     setTimeout(() => {
       syncTreatmentHistory(selectedPatientId);
     }, 300);
@@ -782,6 +771,9 @@ export default function TreatmentPage() {
     toast.info(`↩️ بازگشت به مرحله ${STEPS[prevIndex].label}`);
   };
  
+  // ============================================================
+  // ✅ ختم معالجه — endpoint صحیح: /doctor/complete/{reg_id}
+  // ============================================================
   const finishTreatment = async () => {
     if (!selectedPatientId) {
       toast.error("❌ مریضی انتخاب نشده است");
@@ -803,27 +795,66 @@ export default function TreatmentPage() {
     }
     
     setIsSubmitting(true);
-    try {
-      await api.post('/doctor/treatment/complete', {
-        registration_id: selectedPatientId,
-        completed_steps: progress.completedSteps,
-        start_time: progress.startTime,
-        end_time: new Date().toISOString()
-      });
-      
-      await api.put(`/registrations/${selectedPatientId}/status`, {
-        visit_status: 'Completed'
-      });
+    const errors = [];
 
-      // ✅ همگام‌سازی نهایی تاریخچه قبل از ختم
+    try {
+      // ============================================================
+      // ✅ 1. نهایی‌سازی تاریخچه (non-blocking)
+      // ============================================================
       try {
-        await syncTreatmentHistory(selectedPatientId);
-      } catch (syncErr) {
-        console.warn('⚠️ Final history sync failed:', syncErr);
+        await syncTreatmentHistory(selectedPatientId, null, null, null, true);
+        console.log('✅ Treatment history finalized');
+      } catch (finalizeErr) {
+        console.warn('⚠️ Finalize failed (non-blocking):', finalizeErr);
+        errors.push(`تاریخچه: ${finalizeErr?.response?.data?.message || finalizeErr?.message}`);
       }
-      
-      toast.success("✅ معالجه با موفقیت به پایان رسید");
-      
+
+      // ============================================================
+      // ✅ 2. ختم معالجه — endpoint صحیح
+      //    POST /doctor/complete/{reg_id}
+      // ============================================================
+      try {
+        await api.post(`/doctor/complete/${selectedPatientId}`, {
+          completed_steps: progress.completedSteps,
+          start_time: progress.startTime,
+          end_time: new Date().toISOString()
+        });
+        console.log('✅ Treatment completed');
+      } catch (completeErr) {
+        console.warn('⚠️ treatment/complete failed:', completeErr);
+        errors.push(`ختم معالجه: ${completeErr?.response?.data?.message || completeErr?.message}`);
+      }
+
+      // ============================================================
+      // ✅ 3. به‌روزرسانی وضعیت مراجعه
+      //    PUT /registrations/{reg_id}/status
+      // ============================================================
+      try {
+        await api.put(`/registrations/${selectedPatientId}/status`, {
+          visit_status: 'Completed'
+        });
+        console.log('✅ Registration status updated');
+      } catch (statusErr) {
+        console.warn('⚠️ update status failed:', statusErr);
+        errors.push(`وضعیت: ${statusErr?.response?.data?.message || statusErr?.message}`);
+      }
+
+      // ============================================================
+      // ✅ نمایش نتیجه
+      // ============================================================
+      if (errors.length > 0) {
+        console.error('❌ Errors during finalize:', errors);
+        toast.warning(
+          `⚠️ بعضی از عملیات ناقص بود: ${errors.join(' | ')}`,
+          { autoClose: 8000 }
+        );
+      } else {
+        toast.success("✅ معالجه با موفقیت خاتمه یافت و تمام معلومات در تاریخچه ثبت شد");
+      }
+
+      // ============================================================
+      // ✅ پاک‌سازی state
+      // ============================================================
       setActivePatients(prev => {
         const updated = { ...prev };
         delete updated[selectedPatientId];
@@ -923,7 +954,6 @@ export default function TreatmentPage() {
     ? STEPS[currentProgress.currentStepIndex - 1] 
     : null;
 
-  // ============ هدر اطلاعات مریض ============
   const renderPatientInfoHeader = () => {
     if (!selectedRegistration) return null;
     

@@ -51,6 +51,9 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\PharmacyExecutionController;
 use App\Http\Controllers\TreatmentHistoryController;
 
+// ✅ کنترلرهای مورد نیاز برای JournalPage
+use App\Http\Controllers\PatientController;
+
 /*
 |--------------------------------------------------------------------------
 | API Test
@@ -106,7 +109,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // ===== Logs =====
     Route::get('/logs', [LogController::class, 'index'])->middleware('can:view-logs');
 
-    // ===== Users Management =====
+    // ============================================================
+    // ✅ Users Management
+    // ⭐ اضافه شد: by-role برای dropdown منابع (داکتر، نرس، ...)
+    // ============================================================
+    Route::get('/users/by-role', [UserController::class, 'getByRole']); // ✅ جدید
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
     Route::get('/users/{user}', [UserController::class, 'show']);
@@ -130,7 +137,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/permissions', [PermissionController::class, 'store']);
     Route::delete('/permissions/{id}', [PermissionController::class, 'destroy']);
 
-    // ===== Departments =====
+    // ===== Departments (لیست ساده) =====
     Route::get('/departments', [DepartementController::class, 'index']);
 
     // ===== Dashboard =====
@@ -186,32 +193,34 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('treatment-history')->group(function () {
-    Route::get('/', [TreatmentHistoryController::class, 'index']);
-    Route::get('/{id}', [TreatmentHistoryController::class, 'show']);
-    Route::get('/patient/{patientId}', [TreatmentHistoryController::class, 'byPatient']);
-    Route::post('/sync', [TreatmentHistoryController::class, 'sync']);
-});
+        Route::get('/', [TreatmentHistoryController::class, 'index']);
+        Route::get('/{id}', [TreatmentHistoryController::class, 'show']);
+        Route::get('/patient/{patientId}', [TreatmentHistoryController::class, 'byPatient']);
+        Route::post('/sync', [TreatmentHistoryController::class, 'sync']);
+    });
 
     // ============================================================
-    // ✅ ROUTES مدیریت درخواست‌های لابراتوار
+    // ✅ مدیریت درخواست‌های لابراتوار
     // ============================================================
     Route::prefix('laboratory-requests')->group(function () {
         Route::get('/all', [LaboratoryRequestController::class, 'getAllRequests']);
-        Route::get('/', [LaboratoryRequestController::class, 'index']);
         Route::get('/registration/{registrationId}/full', [LaboratoryRequestController::class, 'getByRegistrationFull']);
         Route::get('/registration/{registrationId}', [LaboratoryRequestController::class, 'getByRegistration']);
+        Route::get('/doctor/{doctorId}/with-results', [LaboratoryResultController::class, 'getDoctorRequestsWithResults'])->where('doctorId', '[0-9]+');
+        Route::get('/patient/{patientId}/with-results', [LaboratoryResultController::class, 'getPatientRequestsWithResults'])->where('patientId', '[0-9]+');
+
+        Route::get('/', [LaboratoryRequestController::class, 'index']);
         Route::post('/registration/{registrationId}', [LaboratoryRequestController::class, 'store']);
         Route::get('/{id}', [LaboratoryRequestController::class, 'show']);
         Route::put('/{id}', [LaboratoryRequestController::class, 'update']);
         Route::delete('/{id}', [LaboratoryRequestController::class, 'destroy']);
+
         Route::post('/{id}/send-to-lab', [LaboratoryRequestController::class, 'sendToLab']);
-        Route::get('/doctor/{doctorId}/with-results', [LaboratoryResultController::class, 'getDoctorRequestsWithResults'])->where('doctorId', '[0-9]+');
-        Route::get('/patient/{patientId}/with-results', [LaboratoryResultController::class, 'getPatientRequestsWithResults'])->where('patientId', '[0-9]+');
         Route::post('/{id}/send-to-treatment', [LaboratoryResultController::class, 'sendToTreatment']);
     });
 
     // ============================================================
-    // ✅ ROUTES مدیریت نتایج لابراتوار
+    // ✅ مدیریت نتایج لابراتوار
     // ============================================================
     Route::prefix('laboratory-results')->group(function () {
         Route::post('upload-pdf', [LaboratoryResultController::class, 'uploadPdf']);
@@ -219,16 +228,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('patient/{patientId}', [LaboratoryResultController::class, 'getResultsByPatient'])->where('patientId', '[0-9]+');
         Route::get('registration/{registrationId}', [LaboratoryResultController::class, 'getByRegistration'])->where('registrationId', '[0-9]+');
         Route::get('all', [LaboratoryResultController::class, 'getRequestsWithResults']);
+        Route::get('download/{id}', [LaboratoryResultController::class, 'downloadPdf'])->where('id', '[0-9]+');
+
         Route::get('/', [LaboratoryResultController::class, 'index']);
         Route::post('/', [LaboratoryResultController::class, 'store']);
         Route::get('/{id}', [LaboratoryResultController::class, 'show'])->where('id', '[0-9]+');
         Route::put('/{id}', [LaboratoryResultController::class, 'update'])->where('id', '[0-9]+');
         Route::delete('/{id}', [LaboratoryResultController::class, 'destroy'])->where('id', '[0-9]+');
-        Route::get('download/{id}', [LaboratoryResultController::class, 'downloadPdf'])->where('id', '[0-9]+');
     });
 
     // ============================================================
-    // ✅ مسیرهای عملیات (Operation)
+    // ✅ مسیرهای عملیات
     // ============================================================
     Route::prefix('operation')->group(function () {
         Route::get('/requests', [OperationController::class, 'index']);
@@ -254,11 +264,9 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ============================================================
-    // ✅ مسیرهای بستری (Admissions)
-    // ⭐ اصلاح شد: routes خاص قبل از /{id}
+    // ✅ مسیرهای بستری
     // ============================================================
     Route::prefix('admissions')->name('admissions.')->group(function () {
-        // ⭐ routes خاص اول
         Route::get('/all', [AdmissionRequestController::class, 'getAllRequests'])->name('all');
         Route::get('/active', [AdmissionRequestController::class, 'getActiveAdmissions'])->name('active');
         Route::get('/statistics', [AdmissionRequestController::class, 'getStatistics'])->name('statistics');
@@ -266,14 +274,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/patient/{patientId}', [AdmissionRequestController::class, 'getPatientAdmissions'])->name('patient');
         Route::post('/complete-treatment/{regId}', [AdmissionRequestController::class, 'completeTreatment'])->name('complete-treatment');
 
-        // ⭐ CRUD
         Route::get('/', [AdmissionRequestController::class, 'index'])->name('index');
         Route::post('/', [AdmissionRequestController::class, 'store'])->name('store');
         Route::get('/{id}', [AdmissionRequestController::class, 'show'])->name('show');
         Route::put('/{id}', [AdmissionRequestController::class, 'update'])->name('update');
         Route::delete('/{id}', [AdmissionRequestController::class, 'destroy'])->name('destroy');
 
-        // ⭐ عملیات خاص
         Route::get('/{id}/print', [AdmissionRequestController::class, 'printReceipt'])->name('print');
         Route::post('/{id}/discharge', [AdmissionRequestController::class, 'discharge'])->name('discharge');
         Route::post('/{id}/cancel', [AdmissionRequestController::class, 'cancel'])->name('cancel');
@@ -281,65 +287,53 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ============================================================
-    // ✅ مسیرهای فیس بستری (Admission Fees)
-    // ⭐ اصلاح شد: routes خاص قبل از /{id}
+    // ✅ مسیرهای فیس بستری
     // ============================================================
     Route::prefix('admission-fees')->name('admission-fees.')->group(function () {
-        // ⭐ routes خاص اول
         Route::get('/pending/alerts', [AdmissionFeeController::class, 'getPendingFeesForAlert'])->name('pending-alerts');
         Route::get('/statistics', [AdmissionFeeController::class, 'getFeeStatistics'])->name('statistics');
         Route::get('/patient/{patientId}', [AdmissionFeeController::class, 'getPatientFees'])->name('patient');
         Route::get('/admission/{admissionId}', [AdmissionFeeController::class, 'getAdmissionFees'])->name('admission');
         Route::post('/registration/{regId}', [AdmissionFeeController::class, 'storeForRegistration'])->name('store-for-registration');
 
-        // ⭐ CRUD
         Route::get('/', [AdmissionFeeController::class, 'index'])->name('index');
         Route::post('/', [AdmissionFeeController::class, 'store'])->name('store');
         Route::get('/{id}', [AdmissionFeeController::class, 'show'])->name('show');
         Route::put('/{id}', [AdmissionFeeController::class, 'update'])->name('update');
         Route::delete('/{id}', [AdmissionFeeController::class, 'destroy'])->name('destroy');
 
-        // ⭐ عملیات خاص
         Route::get('/{id}/print', [AdmissionFeeController::class, 'printReceipt'])->name('print');
         Route::post('/{id}/collect', [AdmissionFeeController::class, 'collectFee'])->name('collect');
     });
 
     // ============================================================
-    // ✅ مسیرهای بخش‌ها (Wards)
-    // ⭐ اصلاح شد: routes خاص قبل از /{id}
+    // ✅ مسیرهای بخش‌ها
     // ============================================================
     Route::prefix('wards')->name('wards.')->group(function () {
-        // ⭐ routes خاص اول
         Route::get('/statistics', [WardController::class, 'getStatistics'])->name('statistics');
 
-        // ⭐ CRUD
         Route::get('/', [WardController::class, 'index'])->name('index');
         Route::post('/', [WardController::class, 'store'])->name('store');
         Route::get('/{id}', [WardController::class, 'show'])->name('show');
         Route::put('/{id}', [WardController::class, 'update'])->name('update');
         Route::delete('/{id}', [WardController::class, 'destroy'])->name('destroy');
 
-        // ⭐ op خاص
         Route::get('/{wardId}/beds', [WardController::class, 'getBeds'])->name('beds');
     });
 
     // ============================================================
-    // ✅ مسیرهای تخت‌ها (Beds)
-    // ⭐ اصلاح شد: routes خاص قبل از /{id}
+    // ✅ مسیرهای تخت‌ها
     // ============================================================
     Route::prefix('beds')->name('beds.')->group(function () {
-        // ⭐ routes خاص اول
         Route::get('/available', [BedController::class, 'getAvailableBeds'])->name('available');
         Route::get('/ward/{wardId}', [BedController::class, 'getBedsByWard'])->name('by-ward');
 
-        // ⭐ CRUD
         Route::get('/', [BedController::class, 'index'])->name('index');
         Route::post('/', [BedController::class, 'store'])->name('store');
         Route::get('/{id}', [BedController::class, 'show'])->name('show');
         Route::put('/{id}', [BedController::class, 'update'])->name('update');
         Route::delete('/{id}', [BedController::class, 'destroy'])->name('destroy');
 
-        // ⭐ op خاص
         Route::post('/{id}/change-status', [BedController::class, 'changeStatus'])->name('change-status');
     });
 
@@ -347,14 +341,15 @@ Route::middleware('auth:sanctum')->group(function () {
     // ✅ مسیرهای فیس لابراتوار
     // ============================================================
     Route::prefix('laboratory-fees')->group(function () {
-        Route::get('/', [LaboratoryFeeController::class, 'index']);
         Route::get('/all-requests', [LaboratoryFeeController::class, 'getAllRequests']);
         Route::get('/reg-id/{regId}', [LaboratoryFeeController::class, 'getRequestsByRegId']);
         Route::get('/unpaid/{regId}', [LaboratoryFeeController::class, 'getUnpaidRequests']);
+
+        Route::get('/', [LaboratoryFeeController::class, 'index']);
         Route::post('/registration/{regId}', [LaboratoryFeeController::class, 'store']);
+        Route::get('/{id}', [LaboratoryFeeController::class, 'show']);
         Route::put('/{id}', [LaboratoryFeeController::class, 'update']);
         Route::delete('/{id}', [LaboratoryFeeController::class, 'destroy']);
-        Route::get('/{id}', [LaboratoryFeeController::class, 'show']);
     });
 
     // ============================================================
@@ -375,9 +370,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // ✅ ROUTES فیس رادیولوژی
     // ============================================================
     Route::prefix('radiology-fees')->group(function () {
-        Route::get('/', [RadiologyFeeController::class, 'index']);
         Route::get('/all-requests', [RadiologyFeeController::class, 'getAllRequests']);
         Route::get('/registration/{regId}', [RadiologyFeeController::class, 'getByRegistration']);
+
+        Route::get('/', [RadiologyFeeController::class, 'index']);
         Route::post('/registration/{regId}', [RadiologyFeeController::class, 'store']);
         Route::get('/{id}', [RadiologyFeeController::class, 'show']);
         Route::put('/{id}', [RadiologyFeeController::class, 'update']);
@@ -397,29 +393,25 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('upload-pdf', [RadiologyResultController::class, 'uploadPdf']);
         Route::get('request/{requestId}', [RadiologyResultController::class, 'getResultByRequestId'])->where('requestId', '[0-9]+');
         Route::get('patient/{patientId}/results', [RadiologyResultController::class, 'getResultsByPatient'])->where('patientId', '[0-9]+');
+        Route::get('download/{id}', [RadiologyResultController::class, 'downloadPdf'])->where('id', '[0-9]+');
+
         Route::get('/', [RadiologyResultController::class, 'index']);
         Route::post('/', [RadiologyResultController::class, 'store']);
         Route::get('/{id}', [RadiologyResultController::class, 'show'])->where('id', '[0-9]+');
         Route::put('/{id}', [RadiologyResultController::class, 'update'])->where('id', '[0-9]+');
         Route::delete('/{id}', [RadiologyResultController::class, 'destroy'])->where('id', '[0-9]+');
-        Route::get('download/{id}', [RadiologyResultController::class, 'downloadPdf'])->where('id', '[0-9]+');
     });
 
     // ============================================================
     // ✅ مسیرهای فیس نسخه
-    // ⭐ routes خاص قبل از /{id}
-    // ⭐ متدهای getAllRequests / getRequestsByRegId / getUnpaidRequests
-    //    در کنترلر وجود ندارند، به index متصل شدند.
     // ============================================================
     Route::prefix('prescription-fees')->group(function () {
-        // ⭐ routes خاص اول
         Route::get('/all-requests', [PrescriptionFeeController::class, 'index']);
         Route::get('/statistics',   [PrescriptionFeeController::class, 'statistics']);
         Route::get('/reg-id/{regId}',   [PrescriptionFeeController::class, 'index']);
         Route::get('/unpaid/{regId}',   [PrescriptionFeeController::class, 'index']);
         Route::get('/registration/{regId}', [PrescriptionFeeController::class, 'index']);
 
-        // ⭐ CRUD
         Route::get('/',  [PrescriptionFeeController::class, 'index']);
         Route::post('/', [PrescriptionFeeController::class, 'store']);
         Route::post('/registration/{regId}', [PrescriptionFeeController::class, 'store']);
@@ -427,33 +419,25 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{id}',    [PrescriptionFeeController::class, 'update']);
         Route::delete('/{id}', [PrescriptionFeeController::class, 'destroy']);
 
-        // ✅ روت جدید: همگام‌سازی دستی وضعیت نسخه از فیس
         Route::post('/{id}/sync', [PrescriptionFeeController::class, 'syncStatus']);
     });
 
     // ============================================================
     // ✅ Prescriptions
-    // ⭐ routes خاص قبل از /{pres_id}
-    // ⭐ روت sync-status اضافه شد
     // ============================================================
     Route::prefix('prescriptions')->group(function () {
-        // ⭐ روت‌های خاص اول
         Route::get('/next-batch', [PrescriptionController::class, 'getNextBatch']);
         Route::get('/my/list', [PrescriptionController::class, 'myPrescriptions']);
         Route::post('/check-stock', [PrescriptionController::class, 'checkStockBeforePrescription']);
         Route::get('/medication/{med_id}/suppliers', [PrescriptionController::class, 'getMedicationSuppliers']);
 
-        // ✅ روت جدید: همگام‌سازی وضعیت از فیس (دستی)
         Route::post('/{pres_id}/sync-status', [PrescriptionController::class, 'syncStatusFromFee']);
-
-        // ⭐ چرخه وضعیت نسخه
         Route::post('/{pres_id}/send-to-pharmacy', [PrescriptionController::class, 'sendToPharmacy']);
         Route::post('/{pres_id}/pharmacy-registered', [PrescriptionController::class, 'markPharmacyRegistered']);
         Route::post('/{pres_id}/mark-paid', [PrescriptionController::class, 'markPaid']);
         Route::post('/{pres_id}/cancel', [PrescriptionController::class, 'cancel']);
         Route::patch('/{pres_id}/status', [PrescriptionController::class, 'updateStatus']);
 
-        // ⭐ CRUD اصلی
         Route::get('/', [PrescriptionController::class, 'index']);
         Route::post('/', [PrescriptionController::class, 'store']);
         Route::get('/{pres_id}', [PrescriptionController::class, 'show']);
@@ -462,22 +446,18 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ============================================================
-    // ⭐ اجراآت دواخانه (Pharmacy Executions)
+    // ⭐ اجراآت دواخانه
     // ============================================================
     Route::prefix('pharmacy-executions')->group(function () {
-        // ⚠️ routes خاص قبل از /{id}
         Route::get('/pending-for-registration', [PharmacyExecutionController::class, 'getPendingForRegistration']);
         Route::get('/reg/{regId}', [PharmacyExecutionController::class, 'getByRegId']);
-        Route::get('/by-reg/{regId}', [PharmacyExecutionController::class, 'getByRegId']); // alias
 
-        // CRUD
         Route::get('/', [PharmacyExecutionController::class, 'index']);
         Route::post('/', [PharmacyExecutionController::class, 'store']);
         Route::get('/{id}', [PharmacyExecutionController::class, 'show']);
         Route::put('/{id}', [PharmacyExecutionController::class, 'update']);
         Route::delete('/{id}', [PharmacyExecutionController::class, 'destroy']);
 
-        // عملیات
         Route::post('/{id}/send-to-registration', [PharmacyExecutionController::class, 'sendToRegistration']);
         Route::post('/{id}/collect-fee', [PharmacyExecutionController::class, 'collectFee']);
         Route::get('/{id}/print', [PharmacyExecutionController::class, 'printReceipt']);
@@ -511,43 +491,35 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 
     // ============================================================
-    // مسیرهای مدیریت مراجعات (RegistrationsController)
-    // ⭐ اصلاح شد: routes خاص قبل از /{reg_id}
+    // مسیرهای مدیریت مراجعات
     // ============================================================
     Route::prefix('registrations')->group(function () {
-        // ⭐ routes خاص اول
         Route::get('/statistics', [RegistrationsController::class, 'statistics']);
         Route::get('/today', [RegistrationsController::class, 'todayRegistrations']);
 
-        // ⭐ CRUD
         Route::get('/', [RegistrationsController::class, 'index']);
         Route::post('/', [RegistrationsController::class, 'store']);
         Route::get('/{reg_id}', [RegistrationsController::class, 'show']);
         Route::put('/{reg_id}', [RegistrationsController::class, 'update']);
         Route::delete('/{reg_id}', [RegistrationsController::class, 'destroy']);
 
-        // ⭐ op خاص
         Route::put('/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
     });
     
     // ============================================================
-    // مسیرهای مدیریت دیپارتمنت‌ها
-    // ⭐ اصلاح شد: routes خاص قبل از /{id}
+    // مسیرهای مدیریت دیپارتمنت‌ها (کامل با CRUD)
     // ============================================================
-    Route::prefix('departments')->group(function () {
-        // ⭐ routes خاص اول
+    Route::prefix('departments-management')->group(function () {
         Route::get('/active', [RegistrationsController::class, 'getActiveDepartments']);
         Route::get('/statistics', [RegistrationsController::class, 'departmentStatistics']);
         Route::get('/search', [RegistrationsController::class, 'searchDepartments']);
 
-        // ⭐ CRUD
         Route::get('/', [RegistrationsController::class, 'getDepartments']);
         Route::post('/', [RegistrationsController::class, 'createDepartment']);
         Route::get('/{id}', [RegistrationsController::class, 'getDepartment']);
         Route::put('/{id}', [RegistrationsController::class, 'updateDepartment']);
         Route::delete('/{id}', [RegistrationsController::class, 'deleteDepartment']);
 
-        // ⭐ op خاص
         Route::patch('/{id}/toggle-status', [RegistrationsController::class, 'toggleDepartmentStatus']);
     });
 
@@ -559,13 +531,69 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{sales_id}', [SalesController::class, 'destroy']);
     });
 
-    // ===== Journals =====
+    // ============================================================
+    // ✅ Journals (ژورنال)
+    // ⭐ ترتیب مهم: routes خاص قبل از /{id}
+    // ⭐ اضافه شد: ref-sources برای dropdown منابع
+    // ============================================================
     Route::prefix('journals')->group(function () {
+        // ✅ routes خاص اول (قبل از /{id})
+        Route::get('/ref-sources', [JournalController::class, 'getRefSources']);        // ✅ جدید
+        Route::get('/patient-summary/{regId}', [JournalController::class, 'getPatientJournalSummary']);
+
+        // ⭐ CRUD
         Route::get('/', [JournalController::class, 'index']);
-        Route::get('/{id}', [JournalController::class, 'show']);
         Route::post('/', [JournalController::class, 'store']);
-        Route::put('/{id}', [JournalController::class, 'update']);
+
+        // ⭐ upsert (ایجاد یا به‌روزرسانی)
         Route::post('/upsert/{id?}', [JournalController::class, 'upsert']);
+        Route::put('/upsert/{id?}', [JournalController::class, 'upsert']);
+
+        // ⭐ show / update / destroy
+        Route::get('/{id}', [JournalController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [JournalController::class, 'upsert'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [JournalController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Accounts (حساب‌ها - شرکت دوا، مشتری، ...)
+    // ⭐ routes خاص قبل از /{id}
+    // ============================================================
+    Route::prefix('accounts')->group(function () {
+        // ⭐ routes خاص اول
+        Route::get('/parents', [AccountController::class, 'parents']);
+        Route::get('/transaction-accounts', [AccountController::class, 'transactionAccounts']);
+        Route::get('/summary', [AccountController::class, 'summary']);
+        Route::get('/types', [AccountController::class, 'types']);
+        Route::get('/categories/{accountType}', [AccountController::class, 'categories']);
+        Route::get('/by-category', [AccountController::class, 'byCategory']); // ✅ جدید (برای JournalPage)
+        
+        // ⭐ CRUD
+        Route::get('/', [AccountController::class, 'index']);
+        Route::post('/', [AccountController::class, 'store']);
+        Route::get('/{id}', [AccountController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [AccountController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [AccountController::class, 'destroy'])->where('id', '[0-9]+');
+
+        // ⭐ toggle-status
+        Route::post('/{id}/toggle-status', [AccountController::class, 'toggleStatus'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Patients (مریضان)
+    // ⭐ routes خاص قبل از /{id}
+    // ============================================================
+    Route::prefix('patients')->group(function () {
+        // ⭐ routes خاص اول
+        Route::get('/search', [RegistrationsController::class, 'searchPatients']);
+        Route::get('/{patient_id}/info', [RegistrationsController::class, 'getPatientInfo'])->where('patient_id', '[0-9]+');
+
+        // ⭐ CRUD
+        Route::get('/', [PatientController::class, 'index']);
+        Route::post('/', [PatientController::class, 'store']);
+        Route::get('/{id}', [PatientController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [PatientController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [PatientController::class, 'destroy'])->where('id', '[0-9]+');
     });
 
     // ===== Reports / Views =====
@@ -579,8 +607,6 @@ Route::middleware('auth:sanctum')->group(function () {
         return DB::table('view_dashboard_daily')->get();
     });
     Route::get('/benefits', [BenefitController::class, 'index']);
-    Route::get('/patients/search', [RegistrationsController::class, 'searchPatients']);
-    Route::get('/patients/{patient_id}/info', [RegistrationsController::class, 'getPatientInfo']);
 });
 
 /*

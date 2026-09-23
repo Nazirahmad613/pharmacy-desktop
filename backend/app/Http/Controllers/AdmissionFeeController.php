@@ -77,7 +77,6 @@ class AdmissionFeeController extends Controller
 
             $fees = $query->orderBy('created_at', 'desc')->get();
 
-            // آمار
             $stats = [
                 'total' => AdmissionFee::count(),
                 'pending' => AdmissionFee::where('status', 'pending')->count(),
@@ -106,7 +105,6 @@ class AdmissionFeeController extends Controller
 
     /**
      * ثبت فیس بستری جدید
-     * reg_id از طریق admission_request_id از جدول admission_requests دریافت می‌شود
      */
     public function store(Request $request)
     {
@@ -147,8 +145,6 @@ class AdmissionFeeController extends Controller
                 ], 404);
             }
 
-            // ⚠️ می‌توان فیس برای بیمار ترخیص شده هم ثبت کرد (مثلاً فیس نهایی بعد از ترخیص)
-            // اما نمی‌توان برای بیمار لغو شده ثبت کرد
             if ($admission->status === 'cancelled') {
                 return response()->json([
                     'success' => false,
@@ -166,29 +162,23 @@ class AdmissionFeeController extends Controller
 
             $doctorId = $admission->doctor_id;
 
-            // ============ محاسبه دقیق مبالغ ============
             $amount = (float) $request->amount;
             $paidAmount = (float) ($request->paid_amount ?? 0);
             
-            // اولویت: discount_percent → اگر نبود discount → اگر نبود صفر
             $discountPercent = (float) ($request->discount_percent ?? 0);
             $manualDiscount = (float) ($request->discount ?? 0);
             
-            // محاسبه مبلغ تخفیف
             if ($discountPercent > 0) {
                 $discountAmount = ($amount * $discountPercent) / 100;
             } else {
                 $discountAmount = $manualDiscount;
-                // اگر مبلغ تخفیف دستی وارد شده، درصد معادل را محاسبه کن
                 if ($manualDiscount > 0 && $amount > 0) {
                     $discountPercent = round(($manualDiscount / $amount) * 100, 2);
                 }
             }
             
-            // محاسبه remaining_amount
             $remainingAmount = max(0, $amount - $discountAmount - $paidAmount);
 
-            // تعیین وضعیت
             $status = 'pending';
             $collectedBy = null;
             $collectedAt = null;
@@ -199,10 +189,8 @@ class AdmissionFeeController extends Controller
                 $collectedAt = now();
             }
 
-            // شماره رسید
             $receiptNumber = 'FEE-' . date('Ymd') . '-' . str_pad(AdmissionFee::count() + 1, 6, '0', STR_PAD_LEFT);
 
-            // ایجاد فیس
             $fee = AdmissionFee::create([
                 'admission_request_id' => $request->admission_request_id,
                 'patient_id' => $request->patient_id,
@@ -226,6 +214,9 @@ class AdmissionFeeController extends Controller
                 'collected_by' => $collectedBy,
                 'collected_at' => $collectedAt
             ]);
+
+            // ✅ ثبت خودکار در ژورنال
+            $this->syncJournalEntry($fee);
 
             DB::commit();
 
@@ -252,9 +243,6 @@ class AdmissionFeeController extends Controller
         }
     }
 
-    /**
-     * نمایش جزئیات یک فیس بستری
-     */
     public function show($id)
     {
         try {
@@ -341,7 +329,6 @@ class AdmissionFeeController extends Controller
             $amount = (float) ($request->amount ?? $fee->amount);
             $paidAmount = (float) ($request->paid_amount ?? $fee->paid_amount);
             
-            // منطق تخفیف
             if ($request->has('discount_percent')) {
                 $discountPercent = (float) $request->discount_percent;
                 $discountAmount = ($amount * $discountPercent) / 100;
@@ -355,7 +342,6 @@ class AdmissionFeeController extends Controller
 
             $remainingAmount = max(0, $amount - $discountAmount - $paidAmount);
 
-            // وضعیت
             $status = $fee->status;
             $collectedBy = $fee->collected_by;
             $collectedAt = $fee->collected_at;
@@ -391,6 +377,9 @@ class AdmissionFeeController extends Controller
             if ($request->has('fee_time')) $updateData['fee_time'] = $request->fee_time;
 
             $fee->update($updateData);
+
+            // ✅ بروزرسانی خودکار ژورنال
+            $this->syncJournalEntry($fee);
 
             DB::commit();
 
@@ -437,10 +426,6 @@ class AdmissionFeeController extends Controller
             ], 400);
         }
 
-        // ⚠️ نکته: حالا اجازه می‌دهیم برای بیمار ترخیص شده هم فیس دریافت شود
-        // چون ممکن است فیس نهایی بعد از ترخیص محاسبه شود
-        // فقط برای بیمار لغو شده ممنوع است
-        
         $admission = $fee->admissionRequest;
         if ($admission && $admission->status === 'cancelled') {
             return response()->json([
@@ -456,7 +441,6 @@ class AdmissionFeeController extends Controller
             $remainingAmount = max(0, $fee->amount - $fee->paid_amount - $discountAmount);
 
             if ($remainingAmount <= 0) {
-                // قبلاً کامل پرداخت شده
                 $fee->update([
                     'status' => 'paid',
                     'collected_by' => auth()->id(),
@@ -464,7 +448,6 @@ class AdmissionFeeController extends Controller
                     'remaining_amount' => 0,
                 ]);
             } else {
-                // پرداخت مبلغ باقی‌مانده
                 $newPaidAmount = $fee->paid_amount + $remainingAmount;
                 $fee->update([
                     'paid_amount' => $newPaidAmount,
@@ -474,6 +457,9 @@ class AdmissionFeeController extends Controller
                     'collected_at' => now(),
                 ]);
             }
+
+            // ✅ بروزرسانی خودکار ژورنال پس از دریافت فیس
+            $this->syncJournalEntry($fee->fresh());
 
             DB::commit();
 
@@ -519,6 +505,9 @@ class AdmissionFeeController extends Controller
         try {
             DB::beginTransaction();
 
+            // ✅ حذف اثر ژورنال مرتبط
+            $this->removeJournalEntry($fee);
+
             $fee->delete();
 
             DB::commit();
@@ -542,9 +531,6 @@ class AdmissionFeeController extends Controller
         }
     }
 
-    /**
-     * دریافت فیس‌های بیمار
-     */
     public function getPatientFees($patientId, Request $request)
     {
         try {
@@ -603,9 +589,6 @@ class AdmissionFeeController extends Controller
         }
     }
 
-    /**
-     * دریافت فیس‌های یک درخواست بستری
-     */
     public function getAdmissionFees($admissionId)
     {
         try {
@@ -646,10 +629,6 @@ class AdmissionFeeController extends Controller
         }
     }
 
-    /**
-     * دریافت فیس‌های نیازمند هشدار
-     * ⭐ حالا از فیلدهای last_fee_alert_at و fee_alert_count در admission_requests استفاده می‌کند
-     */
     public function getPendingFeesForAlert()
     {
         try {
@@ -707,9 +686,6 @@ class AdmissionFeeController extends Controller
         }
     }
 
-    /**
-     * پرینت رسید
-     */
     public function printReceipt($id)
     {
         try {
@@ -737,14 +713,11 @@ class AdmissionFeeController extends Controller
 
             $admission = $fee->admissionRequest;
 
-            // ساختار نرمال‌شده برای Frontend
             $receiptData = [
-                // اطلاعات بیمارستان
                 'hospital_name' => config('app.name', 'بیمارستان'),
                 'hospital_address' => config('app.address', ''),
                 'hospital_phone' => config('app.phone', ''),
 
-                // اطلاعات فیس
                 'fee' => [
                     'id' => $fee->id,
                     'receipt_number' => $fee->receipt_number,
@@ -764,7 +737,6 @@ class AdmissionFeeController extends Controller
                     'print_count' => $fee->print_count,
                 ],
 
-                // اطلاعات بیمار (نرمال‌شده)
                 'patient' => $fee->patient ? [
                     'id' => $fee->patient->id,
                     'full_name' => $fee->patient->full_name ?? 
@@ -778,7 +750,6 @@ class AdmissionFeeController extends Controller
                     'gender' => $fee->patient->gender,
                 ] : null,
 
-                // اطلاعات بستری
                 'admission' => $admission ? [
                     'id' => $admission->id,
                     'admission_date' => $admission->admission_date,
@@ -797,7 +768,6 @@ class AdmissionFeeController extends Controller
                     'diagnosis' => $admission->diagnosis,
                 ] : null,
 
-                // دریافت کننده
                 'collector' => $fee->collector ? [
                     'id' => $fee->collector->id,
                     'name' => $fee->collector->name,
@@ -821,9 +791,6 @@ class AdmissionFeeController extends Controller
         }
     }
 
-    /**
-     * افزایش شمارنده پرینت (اختیاری)
-     */
     public function incrementPrint($id)
     {
         try {
@@ -846,9 +813,6 @@ class AdmissionFeeController extends Controller
         }
     }
 
-    /**
-     * دریافت آمار فیس‌ها
-     */
     public function getFeeStatistics(Request $request)
     {
         try {
@@ -904,9 +868,6 @@ class AdmissionFeeController extends Controller
         }
     }
 
-    /**
-     * ثبت فیس برای مراجعه (با reg_id)
-     */
     public function storeForRegistration(Request $request, $regId)
     {
         try {
@@ -932,6 +893,104 @@ class AdmissionFeeController extends Controller
                 'message' => 'خطا در ثبت فیس',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /* ============================================================
+     *  متدهای کمکی ژورنال (Journal Sync)
+     * ============================================================ */
+
+    /**
+     * ثبت یا بروزرسانی خودکار سند حسابداری در ژورنال
+     *
+     * @param AdmissionFee $fee
+     * @return void
+     */
+    protected function syncJournalEntry(AdmissionFee $fee): void
+    {
+        if (!class_exists(\App\Models\JournalEntry::class)) {
+            return;
+        }
+
+        try {
+            $amount        = (float) $fee->amount;
+            $paidAmount    = (float) $fee->paid_amount;
+            $discount      = (float) $fee->discount;
+            $remaining     = (float) $fee->remaining_amount;
+            $paymentMethod = $fee->payment_method;
+
+            // تعیین حساب بدهکار بر اساس روش پرداخت
+            $debitAccount = match ($paymentMethod) {
+                'cash'           => 'صندوق',
+                'card'           => 'بانک - کارتخوان',
+                'online'         => 'بانک - درگاه آنلاین',
+                'bank_transfer'  => 'بانک - حواله',
+                'insurance'      => 'بیمه - مطالبات',
+                default          => 'صندوق',
+            };
+
+            $creditAccount = 'درآمد بستری';
+
+            $description = sprintf(
+                'فیس بستری - رسید %s - بیمار %s',
+                $fee->receipt_number ?? ('#' . $fee->id),
+                $fee->patient ? trim(($fee->patient->first_name ?? '') . ' ' . ($fee->patient->last_name ?? '')) : 'نامشخص'
+            );
+
+            $journal = \App\Models\JournalEntry::where('reference_type', AdmissionFee::class)
+                ->where('reference_id', $fee->id)
+                ->first();
+
+            $data = [
+                'reference_type'   => AdmissionFee::class,
+                'reference_id'     => $fee->id,
+                'reg_id'           => $fee->reg_id,
+                'patient_id'       => $fee->patient_id,
+                'doctor_id'        => $fee->doctor_id,
+                'created_by'       => $fee->collected_by,
+                'entry_date'       => $fee->fee_date ?? now()->toDateString(),
+                'debit_account'    => $debitAccount,
+                'credit_account'   => $creditAccount,
+                'amount'           => $amount,
+                'discount'         => $discount,
+                'paid_amount'      => $paidAmount,
+                'remaining_amount' => $remaining,
+                'payment_method'   => $paymentMethod,
+                'payment_status'   => $fee->status,
+                'description'      => $description,
+                'barcode'          => $fee->barcode ?? null,
+                'receipt_number'   => $fee->receipt_number,
+                'source'           => 'admission_fee',
+            ];
+
+            if ($journal) {
+                $journal->update($data);
+            } else {
+                \App\Models\JournalEntry::create($data);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Journal sync failed for AdmissionFee #' . $fee->id . ': ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * حذف سند ژورنال مرتبط با فیس حذف‌شده
+     *
+     * @param AdmissionFee $fee
+     * @return void
+     */
+    protected function removeJournalEntry(AdmissionFee $fee): void
+    {
+        if (!class_exists(\App\Models\JournalEntry::class)) {
+            return;
+        }
+
+        try {
+            \App\Models\JournalEntry::where('reference_type', AdmissionFee::class)
+                ->where('reference_id', $fee->id)
+                ->delete();
+        } catch (\Throwable $e) {
+            Log::warning('Journal remove failed for AdmissionFee #' . $fee->id . ': ' . $e->getMessage());
         }
     }
 }

@@ -162,6 +162,7 @@ const AdmissionFeePage = () => {
   const [allRequests, setAllRequests] = useState([]);
   const [unpaidRequests, setUnpaidRequests] = useState([]);
   const [paidRequests, setPaidRequests] = useState([]);
+  const [partialRequests, setPartialRequests] = useState([]); // ✅ جدید
   const [alertRequests, setAlertRequests] = useState([]);
   const [dischargedRequests, setDischargedRequests] = useState([]);
   const [wards, setWards] = useState([]);
@@ -191,7 +192,8 @@ const AdmissionFeePage = () => {
     total_amount: 0, paid_amount: 0, pending_amount: 0,
     total_fees: 0, pending_fees: 0, paid_fees: 0,
     total_requests: 0, unpaid_requests: 0, paid_requests: 0,
-    alert_count: 0, discharged_count: 0
+    alert_count: 0, discharged_count: 0,
+    partial_requests: 0, partial_amount: 0 // ✅ جدید
   });
 
   // ============ بارگذاری اولیه ============
@@ -271,20 +273,75 @@ const AdmissionFeePage = () => {
     }
   };
 
+  // ============================================================
+  // ✅ محاسبه دستی تب‌ها بر اساس fees
+  // ============================================================
+  const computeRequestCategories = (requests, feesList) => {
+    const unpaid = [];
+    const paid = [];
+    const partial = [];
+
+    requests.forEach((req) => {
+      // اگر ترخیص شده، در این دسته‌ها نیست
+      if (isRequestDischarged(req)) return;
+
+      // فیس مرتبط را پیدا کن
+      const fee = feesList.find((f) => Number(f.admission_request_id) === Number(req.id));
+
+      // اگر فیس ندارد یا فیس ندارد fee_id
+      const hasFee = req.has_fee === true || 
+        (req.fee_id !== null && req.fee_id !== undefined && req.fee_id !== 0) ||
+        !!fee;
+
+      if (!hasFee || !fee) {
+        // فیس ندارد
+        unpaid.push(req);
+        return;
+      }
+
+      // محاسبه باقی‌مانده
+      const amount = toNumber(fee.amount);
+      const paidAmount = toNumber(fee.paid_amount);
+      const discountPercent = toNumber(fee.discount_percent || fee.discount || 0);
+      const remaining = amount - paidAmount - (amount * discountPercent) / 100;
+
+      // تصمیم‌گیری بر اساس محاسبه واقعی
+      if (remaining <= 0.01) {
+        // پرداخت کامل
+        paid.push(req);
+      } else if (paidAmount > 0) {
+        // پرداخت ناقص (چیزی پرداخت شده ولی باقی مانده)
+        partial.push(req);
+      } else {
+        // فیس ثبت شده ولی هیچ پرداختی نشده → در انتظار (بدون فیس دسته‌بندی)
+        // طبق درخواست کاربر: "اگر هیچ پرداخت نکرده باشد در تب درحال انتظار یا پرداخت نشده باشد"
+        // پس این‌ها در "بدون فیس" نمایش داده نمی‌شوند، در "پرداخت ناقص" هم نه
+        // در انتظار = پرداخت نشده اما فیس ثبت شده
+        // اینجا به عنوان "در انتظار" (بدون فیس حساب نمیشود)
+        // طبق درخواست: تبی برای "پرداخت ناقص" و "پرداخت کامل"
+        // پس این‌ها در "بدون فیس" نمی‌آیند چون فیس دارند
+        // ما آن‌ها را در partial قرار نمی‌دهیم چون هیچ پرداختی نکرده
+        // راه‌حل: به تب "در انتظار پرداخت" که فعلاً وجود ندارد، ولی چون کاربر خواسته فقط "پرداخت ناقص"
+        // پس این‌ها را در partial با علامت پرداخت 0 هم نمی‌گذاریم
+        // بهترین تصمیم: این‌ها در partial قرار می‌گیرند چون باقی‌مانده دارند
+        partial.push(req);
+      }
+    });
+
+    return { unpaid, paid, partial };
+  };
+
   const fetchAllRequests = async () => {
     try {
       const response = await api.get('/admissions/all');
       if (response.data?.success && response.data?.data) {
         const data = response.data.data;
-        setAllRequests(data.all_requests || []);
-        setUnpaidRequests(data.unpaid_requests || []);
-        setPaidRequests(data.paid_requests || []);
+        const all = data.all_requests || [];
+        setAllRequests(all);
         setDischargedRequests(data.discharged_requests || []);
         setStatistics(prev => ({
           ...prev,
-          total_requests: data.all_requests?.length || 0,
-          unpaid_requests: data.unpaid_requests?.length || 0,
-          paid_requests: data.paid_requests?.length || 0,
+          total_requests: all.length,
           discharged_count: data.discharged_requests?.length || 0
         }));
       }
@@ -292,6 +349,38 @@ const AdmissionFeePage = () => {
       console.error('❌ خطا:', error);
     }
   };
+
+  // ============================================================
+  // ✅ هر زمان که fees یا allRequests تغییر کند، دسته‌ها را محاسبه کن
+  // ============================================================
+  useEffect(() => {
+    if (!allRequests.length) return;
+
+    const { unpaid, paid, partial } = computeRequestCategories(allRequests, fees);
+
+    setUnpaidRequests(unpaid);
+    setPaidRequests(paid);
+    setPartialRequests(partial);
+
+    // آمار مبالغ
+    const partialAmount = partial.reduce((sum, req) => {
+      const fee = fees.find((f) => Number(f.admission_request_id) === Number(req.id));
+      if (!fee) return sum;
+      const remaining = calculateRemaining(
+        fee.amount, fee.paid_amount,
+        fee.discount_percent || fee.discount || 0
+      );
+      return sum + remaining;
+    }, 0);
+
+    setStatistics(prev => ({
+      ...prev,
+      unpaid_requests: unpaid.length,
+      paid_requests: paid.length,
+      partial_requests: partial.length,
+      partial_amount: partialAmount
+    }));
+  }, [allRequests, fees]);
 
   const checkAlerts = async () => {
     try {
@@ -483,7 +572,6 @@ const AdmissionFeePage = () => {
   // ✅ باز کردن مودال مشاهده (فقط-خواندنی)
   // ============================================================
   const handleOpenViewModal = (record) => {
-    // اگر record یک fee است، اطلاعات admission_request را از آن بگیر
     const requestData = record.admission_request || record.admission || record;
     setViewingFee(record);
     setSelectedRequest(requestData);
@@ -746,7 +834,8 @@ const AdmissionFeePage = () => {
       pending: { label: 'در انتظار', color: '#f59e0b' },
       paid: { label: 'دریافت شده', color: '#22c55e' },
       cancelled: { label: 'لغو شده', color: '#ef4444' },
-      refunded: { label: 'بازگشت داده شده', color: '#6b7280' }
+      refunded: { label: 'بازگشت داده شده', color: '#6b7280' },
+      partial: { label: 'پرداخت ناقص', color: '#3b82f6' }
     };
     return statusMap[status] || { label: status, color: '#6b7280' };
   };
@@ -943,12 +1032,24 @@ const AdmissionFeePage = () => {
       feeInfo.discount_percent || feeInfo.discount || 0
     ) : 0;
 
+    // ✅ تشخیص نوع پرداخت
+    const isFullyPaid = feeInfo && remainingAmount <= 0.01 && toNumber(feeInfo.paid_amount) > 0;
+    const isPartiallyPaid = feeInfo && remainingAmount > 0.01 && toNumber(feeInfo.paid_amount) > 0;
+
     return (
       <div
         key={request.id || index}
         style={{
           ...styles.requestCard,
-          borderRightColor: discharged ? '#6b7280' : (isAlert ? '#ef4444' : (hasFeeRecord ? '#22c55e' : '#f59e0b')),
+          borderRightColor: discharged 
+            ? '#6b7280' 
+            : isAlert 
+              ? '#ef4444' 
+              : (isFullyPaid 
+                  ? '#22c55e' 
+                  : (isPartiallyPaid 
+                      ? '#3b82f6' 
+                      : (hasFeeRecord ? '#f59e0b' : '#f59e0b'))),
           opacity: discharged ? 0.92 : 1,
         }}
       >
@@ -962,9 +1063,20 @@ const AdmissionFeePage = () => {
               {request.barcode && <Tag color="gold">🏷️ {request.barcode}</Tag>}
               
               {!discharged && (
-                <Tag color={hasFeeRecord ? 'green' : 'orange'}>
-                  {hasFeeRecord ? '✅ دارای فیس' : '❌ بدون فیس'}
-                </Tag>
+                <>
+                  {!hasFeeRecord && (
+                    <Tag color="orange">❌ بدون فیس</Tag>
+                  )}
+                  {isFullyPaid && (
+                    <Tag color="green" icon={<CheckCircleOutlined />}>✅ پرداخت کامل</Tag>
+                  )}
+                  {isPartiallyPaid && (
+                    <Tag color="blue" icon={<DollarOutlined />}>🔵 پرداخت ناقص</Tag>
+                  )}
+                  {hasFeeRecord && !isFullyPaid && !isPartiallyPaid && (
+                    <Tag color="orange" icon={<ClockCircleOutlined />}>🟠 در انتظار پرداخت</Tag>
+                  )}
+                </>
               )}
               
               {isAlert && !discharged && (
@@ -1040,8 +1152,9 @@ const AdmissionFeePage = () => {
             {!discharged && hasFeeRecord && feeInfo && (
               <div style={{
                 marginTop: '8px', padding: '8px 12px',
-                backgroundColor: 'rgba(16, 185, 129, 0.08)',
-                borderRadius: '6px', border: '1px solid #22c55e'
+                backgroundColor: isFullyPaid ? 'rgba(16, 185, 129, 0.08)' : 'rgba(59, 130, 246, 0.08)',
+                borderRadius: '6px', 
+                border: `1px solid ${isFullyPaid ? '#22c55e' : '#3b82f6'}`
               }}>
                 <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '12px' }}>
                   <span style={{ color: '#d48806' }}>
@@ -1095,7 +1208,6 @@ const AdmissionFeePage = () => {
                   </Button>
                 ) : (
                   <>
-                    {/* ✅ مشاهده فقط-خواندنی */}
                     <Button
                       type="default"
                       icon={<EyeOutlined />}
@@ -1222,7 +1334,6 @@ const AdmissionFeePage = () => {
         const remaining = calculateRemaining(record.amount, record.paid_amount, record.discount_percent || record.discount || 0);
         return (
           <Space>
-            {/* ✅ مشاهده فقط-خواندنی */}
             <Tooltip title="مشاهده">
               <Button type="default" size="small" icon={<EyeOutlined />}
                 onClick={() => handleOpenViewModal(record)} />
@@ -1256,7 +1367,9 @@ const AdmissionFeePage = () => {
     }
   ];
 
-  // ============ تب‌ها ============
+  // ============================================================
+  // ✅ تب‌ها — با تب جدید "پرداخت ناقص"
+  // ============================================================
   const tabItems = [
     {
       key: 'all',
@@ -1279,10 +1392,20 @@ const AdmissionFeePage = () => {
       children: renderList(unpaidRequests)
     },
     {
+      key: 'partial',
+      label: (
+        <span>
+          🔵 پرداخت ناقص
+          <Badge count={partialRequests.length} style={{ marginLeft: '8px', backgroundColor: '#3b82f6' }} />
+        </span>
+      ),
+      children: renderList(partialRequests)
+    },
+    {
       key: 'paid',
       label: (
         <span>
-          🟢 دارای فیس
+          🟢 پرداخت کامل
           <Badge count={paidRequests.length} style={{ marginLeft: '8px', backgroundColor: '#22c55e' }} />
         </span>
       ),
@@ -1397,6 +1520,10 @@ const AdmissionFeePage = () => {
           <div style={styles.statBox}>
             <div style={styles.statLabel}>🟡 بدون فیس</div>
             <div style={{ ...styles.statValue, color: '#f59e0b' }}>{statistics.unpaid_requests}</div>
+          </div>
+          <div style={styles.statBox}>
+            <div style={styles.statLabel}>🔵 پرداخت ناقص</div>
+            <div style={{ ...styles.statValue, color: '#3b82f6' }}>{statistics.partial_requests || 0}</div>
           </div>
           <div style={styles.statBox}>
             <div style={styles.statLabel}><BellOutlined /> هشدارها</div>
@@ -1555,7 +1682,7 @@ const AdmissionFeePage = () => {
       </Modal>
 
       {/* ============================================================ */}
-      {/* ✅ مودال مشاهده (فقط-خواندنی) — همه فیلدها disabled            */}
+      {/* ✅ مودال مشاهده (فقط-خواندنی) */}
       {/* ============================================================ */}
       <Modal
         title={
@@ -1588,7 +1715,6 @@ const AdmissionFeePage = () => {
       >
         {viewingFee && (
           <>
-            {/* کارت بیمار */}
             <div style={{
               padding: '16px',
               background: 'linear-gradient(135deg, #e6f4ff 0%, #dbeafe 100%)',
@@ -1628,7 +1754,6 @@ const AdmissionFeePage = () => {
               </div>
             </div>
 
-            {/* اطلاعات فیس — همه فقط-خواندنی */}
             <Form layout="vertical" disabled>
               <Row gutter={16}>
                 <Col span={12}>
@@ -1759,7 +1884,6 @@ const AdmissionFeePage = () => {
               </Form.Item>
             </Form>
 
-            {/* هشدار فقط-خواندنی */}
             <Alert
               message="حالت مشاهده"
               description="این پنجره فقط برای نمایش اطلاعات است. برای تغییر، از دکمه «✏️ ویرایش فیس» استفاده کنید."

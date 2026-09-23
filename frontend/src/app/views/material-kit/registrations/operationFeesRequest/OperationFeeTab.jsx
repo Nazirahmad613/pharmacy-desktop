@@ -88,6 +88,7 @@ export default function OperationFeeTab({ api, regId }) {
         }
         if (regId) fees = fees.filter((f) => f.reg_id == regId);
       }
+      console.log("💳 Fee Records:", fees);
       setFeeRecords(fees);
     } catch (err) {
       console.error("❌ خطا در دریافت فیس‌ها:", err);
@@ -363,30 +364,140 @@ export default function OperationFeeTab({ api, regId }) {
     return isNaN(num) ? 0 : num;
   };
 
-  // ====== فیلترها ======
-  const unpaidRequests = operationRequests.filter((r) => !r.fee_id);
-  const getFeeForRequest = (r) =>
-    feeRecords.find((f) => f.operation_request_id === r.id || f.id === r.fee_id);
+  // ============================================================
+  // ✅ تابع اصلی: دریافت فیس مرتبط با یک درخواست
+  //    اولویت: search in feeRecords by operation_request_id، سپس by fee_id
+  // ============================================================
+  const getFeeForRequest = (r) => {
+    if (!r) return null;
 
-  const paidRequests = operationRequests.filter((r) => {
-    if (!r.fee_id) return false;
+    // روش ۱: پیدا کردن با operation_request_id
+    let found = feeRecords.find(
+      (f) => Number(f.operation_request_id) === Number(r.id)
+    );
+    if (found) return found;
+
+    // روش ۲: پیدا کردن با fee_id مستقیم
+    if (r.fee_id) {
+      found = feeRecords.find((f) => Number(f.id) === Number(r.fee_id));
+      if (found) return found;
+    }
+
+    return null;
+  };
+
+  // ============================================================
+  // ✅ محاسبه وضعیت واقعی بر اساس مبالغ (نه فقط status)
+  // ============================================================
+  const computeFeeStatus = (fee) => {
+    if (!fee) return "pending";
+
+    const totalAmount = toNumber(fee.total_amount);
+    const paidAmount = toNumber(fee.paid_amount);
+    const discountPercent = toNumber(fee.discount_percent);
+
+    // اگر مبلغ کل صفر → در انتظار
+    if (totalAmount <= 0) return "pending";
+
+    // محاسبه مبلغ قابل پرداخت بعد از تخفیف
+    const discountAmount = (totalAmount * discountPercent) / 100;
+    const netAmount = totalAmount - discountAmount;
+    const remaining = netAmount - paidAmount;
+
+    // اگر پرداخت شده >= مبلغ قابل پرداخت → پرداخت کامل
+    if (paidAmount <= 0) {
+      // هیچ پرداختی نشده → در انتظار
+      return "pending";
+    }
+
+    // اگر پرداخت > 0 ولی باقی‌مانده > 0 → ناقص
+    if (remaining > 0.01) {
+      return "partial";
+    }
+
+    // پرداخت کامل
+    return "paid";
+  };
+
+  // ============================================================
+  // ✅ تعیین وضعیت نهایی هر درخواست
+  // ============================================================
+  const getRequestStatus = (r) => {
+    // اگر fee_id ندارد → بدون فیس
+    if (!r.fee_id) return "unpaid";
+
+    // فیس مرتبط را پیدا کن
     const fee = getFeeForRequest(r);
-    return (fee?.payment_status || fee?.status || "").toLowerCase() === "paid";
-  });
 
-  const partialRequests = operationRequests.filter((r) => {
-    if (!r.fee_id) return false;
+    // اگر fee_id دارد ولی فیس پیدا نشد، از داده‌های موجود در r استفاده کن
+    if (!fee) {
+      // داده‌های fee ممکن است در r باشد
+      const totalFromR = toNumber(r.fee_amount);
+      const paidFromR = toNumber(r.fee_paid);
+      const discountFromR = toNumber(r.fee_discount_percent || r.discount_percent);
+
+      if (totalFromR > 0) {
+        const discountAmount = (totalFromR * discountFromR) / 100;
+        const netAmount = totalFromR - discountAmount;
+        const remaining = netAmount - paidFromR;
+
+        if (paidFromR <= 0) return "pending";
+        if (remaining > 0.01) return "partial";
+        return "paid";
+      }
+
+      // داده کافی نیست → پیش‌فرض pending
+      return "pending";
+    }
+
+    // محاسبه دقیق با تابع کمکی
+    return computeFeeStatus(fee);
+  };
+
+  // ============================================================
+  // ✅ محاسبه مبالغ هر درخواست (برای نمایش در جدول)
+  // ============================================================
+  const getRequestAmounts = (r) => {
     const fee = getFeeForRequest(r);
-    return (fee?.payment_status || fee?.status || "").toLowerCase() === "partial";
-  });
 
-  const pendingRequests = operationRequests.filter((r) => {
-    if (!r.fee_id) return false;
-    const fee = getFeeForRequest(r);
-    const status = (fee?.payment_status || fee?.status || "").toLowerCase();
-    return status === "pending" || (!status && r.fee_id);
-  });
+    let totalAmount = 0;
+    let paidAmount = 0;
+    let discountPercent = 0;
 
+    if (fee) {
+      totalAmount = toNumber(fee.total_amount);
+      paidAmount = toNumber(fee.paid_amount);
+      discountPercent = toNumber(fee.discount_percent);
+    } else if (r.fee_id) {
+      // از داده‌های inline
+      totalAmount = toNumber(r.fee_amount);
+      paidAmount = toNumber(r.fee_paid);
+      discountPercent = toNumber(r.fee_discount_percent || r.discount_percent);
+    }
+
+    const discountAmount = (totalAmount * discountPercent) / 100;
+    const netAmount = totalAmount - discountAmount;
+    const remaining = netAmount - paidAmount;
+
+    return {
+      totalAmount,
+      paidAmount,
+      discountPercent,
+      remaining: remaining > 0 ? remaining : 0,
+    };
+  };
+
+  // ============================================================
+  // ✅ فیلترها بر اساس وضعیت محاسبه‌شده
+  // ============================================================
+  const unpaidRequests = operationRequests.filter((r) => getRequestStatus(r) === "unpaid");
+  const pendingRequests = operationRequests.filter((r) => getRequestStatus(r) === "pending");
+  const partialRequests = operationRequests.filter((r) => getRequestStatus(r) === "partial");
+  const paidRequests = operationRequests.filter((r) => getRequestStatus(r) === "paid");
+
+  // ============================================================
+  // جستجو
+  // ============================================================
   const filterBySearch = (requests) => {
     if (!searchTerm.trim()) return requests;
     const term = searchTerm.trim().toLowerCase();
@@ -402,9 +513,9 @@ export default function OperationFeeTab({ api, regId }) {
   };
 
   const filteredUnpaid = filterBySearch(unpaidRequests);
-  const filteredPaid = filterBySearch(paidRequests);
-  const filteredPartial = filterBySearch(partialRequests);
   const filteredPending = filterBySearch(pendingRequests);
+  const filteredPartial = filterBySearch(partialRequests);
+  const filteredPaid = filterBySearch(paidRequests);
 
   const getActiveList = () => {
     switch (activeTab) {
@@ -417,7 +528,7 @@ export default function OperationFeeTab({ api, regId }) {
   };
   const activeList = getActiveList();
 
-  // ====== استایل‌ها (دقیقاً مثل PharmacyFeeTab) ======
+  // ====== استایل‌ها (بدون تغییر) ======
   const styles = {
     container: { padding: "8px" },
     statsGrid: {
@@ -665,14 +776,11 @@ export default function OperationFeeTab({ api, regId }) {
                   payment_method: "cash",
                   payment_status: "pending",
                 } : null);
-                const status = feeData?.payment_status || feeData?.status || "";
-                const isPaid = status.toLowerCase() === "paid";
-                const isUnpaid = !request.fee_id;
+                const status = getRequestStatus(request);
+                const isPaid = status === "paid";
+                const isUnpaid = status === "unpaid";
                 const badge = getStatusBadge(status);
-                const totalAmt = toNumber(feeData?.total_amount);
-                const paidAmt = toNumber(feeData?.paid_amount);
-                const discount = toNumber(feeData?.discount_percent);
-                const remaining = totalAmt - paidAmt - (totalAmt * discount) / 100;
+                const { totalAmount, paidAmount, remaining } = getRequestAmounts(request);
 
                 return (
                   <tr key={request.id || idx}>
@@ -698,13 +806,13 @@ export default function OperationFeeTab({ api, regId }) {
                       )}
                     </td>
                     <td style={{ ...styles.td, color: "#d48806", fontWeight: "bold" }}>
-                      {totalAmt > 0 ? `${totalAmt.toLocaleString()} AFN` : "-"}
+                      {totalAmount > 0 ? `${totalAmount.toLocaleString()} AFN` : "-"}
                     </td>
                     <td style={{ ...styles.td, color: "#16a34a" }}>
-                      {paidAmt > 0 ? `${paidAmt.toLocaleString()} AFN` : "-"}
+                      {paidAmount > 0 ? `${paidAmount.toLocaleString()} AFN` : "-"}
                     </td>
                     <td style={{ ...styles.td, color: remaining <= 0 ? "#16a34a" : "#dc2626", fontWeight: "bold" }}>
-                      {totalAmt > 0 ? `${remaining.toLocaleString()} AFN` : "-"}
+                      {totalAmount > 0 ? `${remaining.toLocaleString()} AFN` : "-"}
                     </td>
                     <td style={styles.td}>
                       {isUnpaid ? (
@@ -781,7 +889,7 @@ export default function OperationFeeTab({ api, regId }) {
         </div>
       )}
 
-      {/* مودال فرم فیس (سفید مثل PharmacyFeeTab) */}
+      {/* مودال فرم فیس */}
       {showFeeForm && (selectedRequest || editingFee) && (
         <div style={styles.modal} onClick={handleCloseForm}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>

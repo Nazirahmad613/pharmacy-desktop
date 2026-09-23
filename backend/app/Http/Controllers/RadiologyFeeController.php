@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\RadiologyFee;
 use App\Models\RadiologyRequest;
-use App\Models\Registrations;  // ✅ نام صحیح با s
+use App\Models\Registrations;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -94,7 +94,6 @@ class RadiologyFeeController extends Controller
                 ->get();
 
             $data = $requests->map(function ($request) {
-                // بررسی وجود فیس برای این درخواست
                 $fee = RadiologyFee::where('radiology_request_id', $request->id)->first();
                 $hasFee = $fee !== null;
                 
@@ -144,7 +143,6 @@ class RadiologyFeeController extends Controller
             $unpaid = $data->filter(fn($r) => !$r['has_fee'])->values();
             $paid = $data->filter(fn($r) => $r['has_fee'])->values();
 
-            // گروه‌بندی بر اساس reg_id
             $grouped = $data->groupBy('reg_id')->map(function ($items, $regId) {
                 $first = $items->first();
                 return [
@@ -185,7 +183,6 @@ class RadiologyFeeController extends Controller
     public function getByRegistration($regId)
     {
         try {
-            // ✅ استفاده از Registrations (با s)
             $registration = Registrations::with(['patient'])->find($regId);
             
             if (!$registration) {
@@ -195,19 +192,16 @@ class RadiologyFeeController extends Controller
                 ], 404);
             }
 
-            // دریافت تمام درخواست‌های رادیولوژی این مراجعه
             $radiologyRequests = RadiologyRequest::where('reg_id', $regId)
                 ->with(['patient'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // دریافت فیس‌های این مراجعه
             $fees = RadiologyFee::where('reg_id', $regId)
                 ->with(['radiologyRequest'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // تبدیل درخواست‌ها با اطلاعات فیس
             $requestsData = $radiologyRequests->map(function ($request) {
                 $fee = RadiologyFee::where('radiology_request_id', $request->id)->first();
                 $hasFee = $fee !== null;
@@ -252,7 +246,6 @@ class RadiologyFeeController extends Controller
                 ];
             });
 
-            // داده‌های فیس‌ها
             $feesData = $fees->map(function ($fee) {
                 return [
                     'id' => $fee->id,
@@ -327,7 +320,6 @@ class RadiologyFeeController extends Controller
     public function store(Request $request, $regId)
     {
         try {
-            // ✅ استفاده از Registrations (با s)
             $registration = Registrations::find($regId);
             if (!$registration) {
                 return response()->json([
@@ -354,7 +346,6 @@ class RadiologyFeeController extends Controller
                 ], 422);
             }
 
-            // بررسی اینکه آیا این درخواست قبلاً فیس دارد
             $existingFee = RadiologyFee::where('radiology_request_id', $request->radiology_request_id)->first();
             if ($existingFee) {
                 return response()->json([
@@ -363,7 +354,6 @@ class RadiologyFeeController extends Controller
                 ], 409);
             }
 
-            // بررسی وجود درخواست
             $radiologyRequest = RadiologyRequest::find($request->radiology_request_id);
             if (!$radiologyRequest) {
                 return response()->json([
@@ -386,7 +376,6 @@ class RadiologyFeeController extends Controller
                 $paymentStatus = 'partial';
             }
 
-            // ایجاد فیس
             $fee = new RadiologyFee();
             $fee->reg_id = $regId;
             $fee->patient_id = $registration->patient_id;
@@ -405,13 +394,14 @@ class RadiologyFeeController extends Controller
             $fee->paid_date = $paymentStatus === 'paid' ? now() : null;
             $fee->save();
 
-            // بروزرسانی درخواست رادیولوژی
+            // ✅ ثبت خودکار در ژورنال
+            $this->syncJournalEntry($fee);
+
             $radiologyRequest->has_fee = true;
             $radiologyRequest->save();
 
             DB::commit();
 
-            // بارگذاری روابط
             $fee->load(['patient', 'radiologyRequest']);
 
             return response()->json([
@@ -500,6 +490,9 @@ class RadiologyFeeController extends Controller
             $fee->paid_date = $paymentStatus === 'paid' ? now() : null;
             $fee->save();
 
+            // ✅ بروزرسانی خودکار ژورنال
+            $this->syncJournalEntry($fee);
+
             DB::commit();
 
             $fee->load(['patient', 'radiologyRequest']);
@@ -550,7 +543,9 @@ class RadiologyFeeController extends Controller
 
             DB::beginTransaction();
 
-            // بروزرسانی درخواست رادیولوژی
+            // ✅ حذف اثر ژورنال مرتبط
+            $this->removeJournalEntry($fee);
+
             $radiologyRequest = RadiologyRequest::find($fee->radiology_request_id);
             if ($radiologyRequest) {
                 $radiologyRequest->has_fee = false;
@@ -632,6 +627,112 @@ class RadiologyFeeController extends Controller
                 'success' => false,
                 'message' => 'خطا در دریافت فیس: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /* ============================================================
+     *  متدهای کمکی ژورنال (Journal Sync)
+     * ============================================================ */
+
+    /**
+     * ثبت یا بروزرسانی خودکار سند حسابداری در ژورنال
+     * این متد بر اساس مبلغ فیس، تخفیف، پرداختی و روش پرداخت
+     * سند مربوطه را در جدول journal_entries ثبت/بروزرسانی می‌کند.
+     *
+     * @param RadiologyFee $fee
+     * @return void
+     */
+    protected function syncJournalEntry(RadiologyFee $fee): void
+    {
+        // اگر جدول یا مدل ژورنال وجود ندارد، از این متد صرف‌نظر کن
+        if (!class_exists(\App\Models\JournalEntry::class)) {
+            return;
+        }
+
+        try {
+            $amount       = (float) $fee->amount;
+            $paidAmount   = (float) $fee->paid_amount;
+            $discount     = (float) $fee->discount;
+            $remaining    = (float) $fee->remaining_amount;
+            $paymentMethod = $fee->payment_method;
+
+            // تعیین حساب بدهکار بر اساس روش پرداخت
+            $debitAccount = match ($paymentMethod) {
+                'cash'      => 'صندوق',
+                'card'      => 'بانک - کارتخوان',
+                'online'    => 'بانک - درگاه آنلاین',
+                'insurance' => 'بیمه - مطالبات',
+                default     => 'صندوق',
+            };
+
+            // حساب بستانکار همیشه درآمد رادیولوژی است
+            $creditAccount = 'درآمد رادیولوژی';
+
+            // شرح سند
+            $description = sprintf(
+                'فیس رادیولوژی - رسید %s - بیمار %s',
+                $fee->receipt_number ?? $fee->id,
+                $fee->patient ? trim($fee->patient->first_name . ' ' . $fee->patient->last_name) : 'نامشخص'
+            );
+
+            // جستجوی سند قبلی این فیس
+            $journal = \App\Models\JournalEntry::where('reference_type', RadiologyFee::class)
+                ->where('reference_id', $fee->id)
+                ->first();
+
+            $data = [
+                'reference_type'  => RadiologyFee::class,
+                'reference_id'    => $fee->id,
+                'reg_id'          => $fee->reg_id,
+                'patient_id'      => $fee->patient_id,
+                'doctor_id'       => $fee->doctor_id,
+                'created_by'      => $fee->created_by,
+                'entry_date'      => now()->toDateString(),
+                'debit_account'   => $debitAccount,
+                'credit_account'  => $creditAccount,
+                'amount'          => $amount,           // مبلغ کل فاکتور
+                'discount'        => $discount,          // تخفیف
+                'paid_amount'     => $paidAmount,        // پرداختی
+                'remaining_amount'=> $remaining,         // باقیمانده
+                'payment_method'  => $paymentMethod,
+                'payment_status'  => $fee->payment_status,
+                'description'     => $description,
+                'barcode'         => $fee->barcode,
+                'receipt_number'  => $fee->receipt_number,
+                'source'          => 'radiology_fee',
+            ];
+
+            if ($journal) {
+                // بروزرسانی سند موجود (اگر قیمت‌ها تغییر کرده باشند)
+                $journal->update($data);
+            } else {
+                // ایجاد سند جدید
+                \App\Models\JournalEntry::create($data);
+            }
+        } catch (\Throwable $e) {
+            // لاگ کردن خطا بدون متوقف کردن عملیات اصلی
+            \Log::warning('Journal sync failed for RadiologyFee #' . $fee->id . ': ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * حذف سند ژورنال مرتبط با فیس حذف‌شده
+     *
+     * @param RadiologyFee $fee
+     * @return void
+     */
+    protected function removeJournalEntry(RadiologyFee $fee): void
+    {
+        if (!class_exists(\App\Models\JournalEntry::class)) {
+            return;
+        }
+
+        try {
+            \App\Models\JournalEntry::where('reference_type', RadiologyFee::class)
+                ->where('reference_id', $fee->id)
+                ->delete();
+        } catch (\Throwable $e) {
+            \Log::warning('Journal remove failed for RadiologyFee #' . $fee->id . ': ' . $e->getMessage());
         }
     }
 }

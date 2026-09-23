@@ -1,10 +1,12 @@
 <?php
+// app/Http/Controllers/PrescriptionFeeController.php
 
 namespace App\Http\Controllers;
 
 use App\Models\PrescriptionFee;
 use App\Models\Journal;
 use App\Models\Registrations;
+use App\Services\JournalSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
@@ -14,8 +16,17 @@ use Illuminate\Support\Facades\Log;
 
 class PrescriptionFeeController extends Controller
 {
+    protected JournalSyncService $journalSync;
+
+    public function __construct(JournalSyncService $journalSync)
+    {
+        $this->journalSync = $journalSync;
+    }
+
     /**
+     * ============================================================
      * ثبت فیس نسخه
+     * ============================================================
      */
     public function store(Request $request)
     {
@@ -63,7 +74,7 @@ class PrescriptionFeeController extends Controller
                 'created_by' => Auth::id(),
             ]);
 
-            // ثبت در ژورنال
+            // ثبت در ژورنال (روش قدیمی)
             if ($paidAmount > 0) {
                 $journal = Journal::create([
                     'journal_date' => now(),
@@ -83,12 +94,27 @@ class PrescriptionFeeController extends Controller
                         'Prescription fee journal created',
                         $journal->toArray()
                     );
-                } catch(\Exception $e){
-                    Log::error("Journal log failed: ".$e->getMessage());
+                } catch (\Exception $e) {
+                    Log::error("Journal log failed: " . $e->getMessage());
                 }
             }
 
             DB::commit();
+
+            // ✅ ثبت در ژورنال جدید (اتوماتیک)
+            $this->journalSync->syncFee([
+                'reg_id'           => $request->registration_id,
+                'patient_id'       => $request->patient_id,
+                'source_type'      => 'prescription_fee',
+                'ref_type'         => 'prescription_fee',
+                'ref_id'           => $fee->id,
+                'amount'           => (float) $fee->total_amount,
+                'paid_amount'      => (float) $fee->paid_amount,
+                'discount'         => (float) ($fee->discount ?? 0),
+                'remaining_amount' => (float) $fee->remaining_amount,
+                'payment_status'   => $fee->payment_status,
+                'description'      => 'فیس نسخه - مراجعه #' . $request->registration_id,
+            ]);
 
             // ثبت لاگ
             try {
@@ -99,8 +125,8 @@ class PrescriptionFeeController extends Controller
                     'Prescription fee created',
                     $fee->toArray()
                 );
-            } catch(\Exception $e){
-                Log::error("Prescription fee log failed: ".$e->getMessage());
+            } catch (\Exception $e) {
+                Log::error("Prescription fee log failed: " . $e->getMessage());
             }
 
             return response()->json([
@@ -120,7 +146,9 @@ class PrescriptionFeeController extends Controller
     }
 
     /**
+     * ============================================================
      * بروزرسانی فیس نسخه
+     * ============================================================
      */
     public function update(Request $request, $id)
     {
@@ -169,7 +197,7 @@ class PrescriptionFeeController extends Controller
             $fee->remaining_amount = $fee->total_amount - $fee->discount - $fee->paid_amount;
             $fee->save();
 
-            // به‌روزرسانی ژورنال
+            // به‌روزرسانی ژورنال (روش قدیمی)
             $journal = Journal::where('ref_type', 'prescription_fee')
                 ->where('ref_id', $fee->id)
                 ->first();
@@ -199,6 +227,21 @@ class PrescriptionFeeController extends Controller
 
             DB::commit();
 
+            // ✅ ثبت در ژورنال جدید (اتوماتیک - حذف قبلی و ساخت جدید)
+            $this->journalSync->syncFee([
+                'reg_id'           => $fee->registration_id,
+                'patient_id'       => $fee->patient_id,
+                'source_type'      => 'prescription_fee',
+                'ref_type'         => 'prescription_fee',
+                'ref_id'           => $fee->id,
+                'amount'           => (float) $fee->total_amount,
+                'paid_amount'      => (float) $fee->paid_amount,
+                'discount'         => (float) ($fee->discount ?? 0),
+                'remaining_amount' => (float) $fee->remaining_amount,
+                'payment_status'   => $fee->payment_status,
+                'description'      => 'فیس نسخه (ویرایش) - مراجعه #' . $fee->registration_id,
+            ]);
+
             // ثبت لاگ
             try {
                 LogService::create(
@@ -215,8 +258,8 @@ class PrescriptionFeeController extends Controller
                         'new' => $fee->toArray()
                     ]
                 );
-            } catch(\Exception $e){
-                Log::error("Prescription fee update log failed: ".$e->getMessage());
+            } catch (\Exception $e) {
+                Log::error("Prescription fee update log failed: " . $e->getMessage());
             }
 
             return response()->json([
@@ -236,7 +279,9 @@ class PrescriptionFeeController extends Controller
     }
 
     /**
+     * ============================================================
      * حذف فیس نسخه
+     * ============================================================
      */
     public function destroy($id)
     {
@@ -252,15 +297,19 @@ class PrescriptionFeeController extends Controller
                 ], 404);
             }
 
-            // حذف ژورنال مرتبط
+            // حذف ژورنال مرتبط (روش قدیمی)
             Journal::where('ref_type', 'prescription_fee')
                 ->where('ref_id', $fee->id)
                 ->delete();
 
             $feeData = $fee->toArray();
+            $feeId = $fee->id;
             $fee->delete();
 
             DB::commit();
+
+            // ✅ حذف از ژورنال جدید (اتوماتیک)
+            $this->journalSync->deleteFee('prescription_fee', $feeId);
 
             // ثبت لاگ
             try {
@@ -271,8 +320,8 @@ class PrescriptionFeeController extends Controller
                     'Prescription fee deleted',
                     $feeData
                 );
-            } catch(\Exception $e){
-                Log::error("Prescription fee delete log failed: ".$e->getMessage());
+            } catch (\Exception $e) {
+                Log::error("Prescription fee delete log failed: " . $e->getMessage());
             }
 
             return response()->json([
@@ -291,7 +340,9 @@ class PrescriptionFeeController extends Controller
     }
 
     /**
+     * ============================================================
      * دریافت لیست فیس‌های نسخه
+     * ============================================================
      */
     public function index(Request $request)
     {
@@ -335,7 +386,9 @@ class PrescriptionFeeController extends Controller
     }
 
     /**
+     * ============================================================
      * دریافت آمار فیس‌های نسخه
+     * ============================================================
      */
     public function statistics()
     {

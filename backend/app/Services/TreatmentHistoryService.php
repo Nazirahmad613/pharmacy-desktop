@@ -14,10 +14,9 @@ use Illuminate\Support\Facades\Log;
 
 class TreatmentHistoryService
 {
-    /**
-     * ثبت / به‌روزرسانی تاریخچه اصلی مراجعه
-     * هر بار که داکتر وارد صفحه معالجه می‌شود یا دکمه ثبت می‌زند، این تابع صدا زده می‌شود
-     */
+    // ============================================================
+    // 1. همگام‌سازی/ایجاد رکورد اصلی
+    // ============================================================
     public function syncMainHistory(int $regId, array $progressData = []): ?TreatmentHistory
     {
         try {
@@ -32,10 +31,10 @@ class TreatmentHistoryService
 
             $patient = $registration->patient;
 
-            // پیدا کردن یا ساختن رکورد اصلی
             $history = TreatmentHistory::firstOrNew(['reg_id' => $regId]);
+            $isNew = !$history->exists;
 
-            // ============ اطلاعات بیمار (Snapshot) ============
+            // ============ Snapshot بیمار ============
             if ($patient) {
                 $history->patient_id = $patient->id;
                 $history->patient_name = trim(($patient->first_name ?? '') . ' ' . ($patient->last_name ?? ''));
@@ -49,7 +48,6 @@ class TreatmentHistoryService
             // ============ اطلاعات مراجعه ============
             $history->visit_number = $registration->visit_number ?? null;
             $history->queue_number = $registration->queue_number ?? null;
-            $history->visit_status = $registration->visit_status ?? 'InProgress';
 
             // ============ اطلاعات داکتر ============
             $doctorId = $registration->doctor_id ?? auth()->id();
@@ -64,9 +62,32 @@ class TreatmentHistoryService
 
             // ============ وضعیت مراحل ============
             if (!empty($progressData)) {
-                $history->current_step = $progressData['current_step'] ?? $history->current_step;
-                $history->current_step_index = $progressData['current_step_index'] ?? $history->current_step_index;
-                $history->completed_steps = $progressData['completed_steps'] ?? $history->completed_steps;
+                if (isset($progressData['current_step'])) {
+                    $history->current_step = $progressData['current_step'];
+                }
+                if (isset($progressData['current_step_index'])) {
+                    $history->current_step_index = $progressData['current_step_index'];
+                }
+                if (isset($progressData['completed_steps'])) {
+                    $history->completed_steps = $progressData['completed_steps'];
+                }
+
+                // ✅ اگر finalize=true → Completed
+                if (!empty($progressData['finalize'])) {
+                    $history->visit_status = 'Completed';
+                    $history->treatment_completed_at = $history->treatment_completed_at ?? now();
+                } else {
+                    $history->visit_status = $registration->visit_status ?? $history->visit_status ?? 'InProgress';
+                }
+            } else {
+                $history->visit_status = $registration->visit_status ?? $history->visit_status ?? 'InProgress';
+            }
+
+            // ✅ زمان شروع معالجه — فقط یکبار
+            if (!$history->treatment_started_at) {
+                $history->treatment_started_at = $registration->sent_to_doctor_at
+                    ?? $registration->created_at
+                    ?? now();
             }
 
             $history->created_by = $history->created_by ?? auth()->id();
@@ -74,9 +95,10 @@ class TreatmentHistoryService
 
             $history->save();
 
-            // ============ به‌روزرسانی شمارش‌ها و مبالغ ============
+            // ============ به‌روزرسانی شمارش‌ها، مبالغ، خلاصه، فعالیت‌ها ============
             $this->refreshCounters($history);
             $this->refreshAmounts($history);
+            $this->refreshClinicalDataFromExamination($history);
             $this->rebuildActivityLog($history);
             $this->rebuildSummary($history);
 
@@ -94,14 +116,17 @@ class TreatmentHistoryService
         }
     }
 
-    /**
-     * افزودن یک آیتم (مرحله) به تاریخچه
-     * بعد از هر ثبت موفق یک مرحله صدا زده می‌شود
-     */
-    public function addItem(int $regId, string $stepKey, array $data = [], ?int $refId = null, ?string $refTable = null): ?TreatmentHistoryItem
-    {
+    // ============================================================
+    // 2. افزودن آیتم (مرحله) به تاریخچه
+    // ============================================================
+    public function addItem(
+        int $regId,
+        string $stepKey,
+        array $data = [],
+        ?int $refId = null,
+        ?string $refTable = null
+    ): ?TreatmentHistoryItem {
         try {
-            // اطمینان از وجود History اصلی
             $history = TreatmentHistory::where('reg_id', $regId)->first();
             if (!$history) {
                 $history = $this->syncMainHistory($regId);
@@ -109,9 +134,42 @@ class TreatmentHistoryService
             if (!$history) return null;
 
             $stepMap = $this->getStepMap();
-            $stepInfo = $stepMap[$stepKey] ?? ['label' => $stepKey, 'order' => 99];
+            $stepInfo = $stepMap[$stepKey] ?? ['label' => $stepKey, 'order' => 99, 'table' => null];
 
-            // استخراج خلاصه، مبلغ، وضعیت
+            // ============ جلوگیری از تکرار ============
+            $effectiveRefId = $refId ?? ($data['id'] ?? null);
+
+            if ($effectiveRefId) {
+                $existing = TreatmentHistoryItem::where('history_id', $history->history_id)
+                    ->where('step_key', $stepKey)
+                    ->where('ref_id', $effectiveRefId)
+                    ->first();
+
+                if ($existing) {
+                    // به‌روزرسانی آیتم موجود (اجرای مجدد = ویرایش)
+                    $existing->data = $data;
+                    $existing->summary = $this->buildItemSummary($stepKey, $data);
+                    $existing->amount = $this->extractAmount($stepKey, $data);
+                    $existing->paid_amount = $data['paid_amount'] ?? $existing->paid_amount;
+                    $existing->payment_status = $data['payment_status'] ?? $existing->payment_status;
+                    $existing->status = $data['status'] ?? $existing->status;
+                    $existing->status_label = $this->getStatusLabel($stepKey, $existing->status);
+                    $existing->barcode = $data['barcode'] ?? $existing->barcode;
+                    $existing->pdf_file = $data['pdf_url'] ?? $data['pdf_file'] ?? $existing->pdf_file;
+                    $existing->action_type = 'update';
+                    $existing->save();
+
+                    $this->refreshCounters($history);
+                    $this->refreshAmounts($history);
+                    $this->rebuildActivityLog($history);
+                    $this->rebuildSummary($history);
+                    $history->save();
+
+                    return $existing;
+                }
+            }
+
+            // ============ ساخت آیتم جدید ============
             $summary = $this->buildItemSummary($stepKey, $data);
             $amount = $this->extractAmount($stepKey, $data);
             $status = $data['status'] ?? 'completed';
@@ -125,7 +183,7 @@ class TreatmentHistoryService
                 'step_label' => $stepInfo['label'],
                 'action_type' => 'create',
                 'step_order' => $stepInfo['order'],
-                'ref_id' => $refId ?? ($data['id'] ?? null),
+                'ref_id' => $effectiveRefId,
                 'ref_table' => $refTable ?? $stepInfo['table'] ?? null,
                 'data' => $data,
                 'summary' => $summary,
@@ -141,9 +199,13 @@ class TreatmentHistoryService
                 'performed_by_name' => auth()->user()?->name,
             ]);
 
-            // به‌روزرسانی شمارش‌ها
+            // ============ به‌روزرسانی زمان‌های کلیدی ============
+            $this->updateTimestamps($history, $stepKey);
+
+            // ============ به‌روزرسانی شمارش‌ها ============
             $this->refreshCounters($history);
             $this->refreshAmounts($history);
+            $this->refreshClinicalDataFromExamination($history);
             $this->rebuildActivityLog($history);
             $this->rebuildSummary($history);
             $history->save();
@@ -160,51 +222,144 @@ class TreatmentHistoryService
         }
     }
 
-    /**
-     * به‌روزرسانی شمارش‌های مرحله‌ای
-     */
-    private function refreshCounters(TreatmentHistory $history): void
+    // ============================================================
+    // 3. نهایی‌سازی (هنگام ختم معالجه)
+    // ============================================================
+    public function finalizeHistory(int $regId): ?TreatmentHistory
     {
-        $history->examinations_count = TreatmentHistoryItem::where('history_id', $history->history_id)
-            ->where('step_key', 'examination')->count();
+        try {
+            $history = TreatmentHistory::where('reg_id', $regId)->first();
+            if (!$history) {
+                $history = $this->syncMainHistory($regId, ['finalize' => true]);
+            }
+            if (!$history) return null;
 
-        $history->laboratory_tests_count = TreatmentHistoryItem::where('history_id', $history->history_id)
-            ->where('step_key', 'laboratory')->count();
+            $history->visit_status = 'Completed';
+            $history->treatment_completed_at = now();
+            $history->current_step = 'completed';
+            $history->current_step_index = 8;
+            $history->updated_by = auth()->id();
 
-        $history->radiology_requests_count = TreatmentHistoryItem::where('history_id', $history->history_id)
-            ->where('step_key', 'radiology')->count();
+            $this->refreshCounters($history);
+            $this->refreshAmounts($history);
+            $this->refreshClinicalDataFromExamination($history);
+            $this->rebuildActivityLog($history);
+            $this->rebuildSummary($history);
 
-        $history->operations_count = TreatmentHistoryItem::where('history_id', $history->history_id)
-            ->where('step_key', 'operation')->count();
+            $history->save();
 
-        $history->prescriptions_count = TreatmentHistoryItem::where('history_id', $history->history_id)
-            ->where('step_key', 'pres_insert')->count();
+            return $history;
 
-        $history->admissions_count = TreatmentHistoryItem::where('history_id', $history->history_id)
-            ->where('step_key', 'admission')->count();
-
-        $history->followups_count = TreatmentHistoryItem::where('history_id', $history->history_id)
-            ->where('step_key', 'followup')->count();
+        } catch (\Throwable $e) {
+            Log::error("TreatmentHistory::finalizeHistory error", [
+                'reg_id' => $regId,
+                'message' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 
-    /**
-     * محاسبه مجموع مبالغ
-     */
+    // ============================================================
+    // به‌روزرسانی زمان‌های کلیدی بر اساس مرحله
+    // ============================================================
+    private function updateTimestamps(TreatmentHistory $history, string $stepKey): void
+    {
+        $now = now();
+        switch ($stepKey) {
+            case 'examination':
+                if (!$history->sent_to_doctor_at) {
+                    $history->sent_to_doctor_at = $now;
+                }
+                if (!$history->treatment_started_at) {
+                    $history->treatment_started_at = $now;
+                }
+                break;
+            case 'laboratory':
+                if (!$history->sent_to_laboratory_at) {
+                    $history->sent_to_laboratory_at = $now;
+                }
+                break;
+            case 'pres_insert':
+                if (!$history->sent_to_pharmacy_at) {
+                    $history->sent_to_pharmacy_at = $now;
+                }
+                break;
+        }
+    }
+
+    // ============================================================
+    // انتقال اطلاعات بالینی از آخرین معاینه
+    // ============================================================
+    private function refreshClinicalDataFromExamination(TreatmentHistory $history): void
+    {
+        // آخرین معاینه را پیدا کن
+        $lastExam = TreatmentHistoryItem::where('history_id', $history->history_id)
+            ->where('step_key', 'examination')
+            ->orderByDesc('step_at')
+            ->first();
+
+        if (!$lastExam) return;
+
+        $d = $lastExam->data ?? [];
+        if (is_string($d)) {
+            $d = json_decode($d, true) ?? [];
+        }
+
+        if (!empty($d['diagnosis'])) {
+            $history->diagnosis = $d['diagnosis'];
+        }
+        if (!empty($d['weight'])) {
+            $history->weight = (string) $d['weight'];
+        }
+        if (!empty($d['blood_pressure'])) {
+            $history->blood_pressure = $d['blood_pressure'];
+        }
+        if (!empty($d['temperature'])) {
+            $history->temperature = (string) $d['temperature'];
+        }
+        if (!empty($d['oxygen'])) {
+            $history->oxygen = (string) $d['oxygen'];
+        }
+    }
+
+    // ============================================================
+    // شمارش‌ها
+    // ============================================================
+    private function refreshCounters(TreatmentHistory $history): void
+    {
+        $base = TreatmentHistoryItem::where('history_id', $history->history_id)
+            ->whereNull('deleted_at');
+
+        $history->examinations_count = (clone $base)->where('step_key', 'examination')->count();
+        $history->laboratory_tests_count = (clone $base)->where('step_key', 'laboratory')->count();
+        $history->radiology_requests_count = (clone $base)->where('step_key', 'radiology')->count();
+        $history->operations_count = (clone $base)->where('step_key', 'operation')->count();
+        $history->prescriptions_count = (clone $base)->where('step_key', 'pres_insert')->count();
+        $history->admissions_count = (clone $base)->where('step_key', 'admission')->count();
+        $history->followups_count = (clone $base)->where('step_key', 'followup')->count();
+    }
+
+    // ============================================================
+    // مبالغ
+    // ============================================================
     private function refreshAmounts(TreatmentHistory $history): void
     {
-        $items = TreatmentHistoryItem::where('history_id', $history->history_id)->get();
+        $items = TreatmentHistoryItem::where('history_id', $history->history_id)
+            ->whereNull('deleted_at')
+            ->get();
 
         $history->total_amount = $items->sum('amount') ?? 0;
         $history->total_paid = $items->sum('paid_amount') ?? 0;
-        $history->total_remaining = $history->total_amount - $history->total_paid;
+        $history->total_remaining = max(0, $history->total_amount - $history->total_paid);
     }
 
-    /**
-     * ساخت activity_log برای نمایش سریع
-     */
+    // ============================================================
+    // Activity Log
+    // ============================================================
     private function rebuildActivityLog(TreatmentHistory $history): void
     {
         $items = TreatmentHistoryItem::where('history_id', $history->history_id)
+            ->whereNull('deleted_at')
             ->orderBy('step_order')
             ->orderBy('step_at')
             ->get();
@@ -226,9 +381,9 @@ class TreatmentHistoryService
         $history->activity_log = $log;
     }
 
-    /**
-     * ساخت خلاصه متنی
-     */
+    // ============================================================
+    // خلاصه متنی
+    // ============================================================
     private function rebuildSummary(TreatmentHistory $history): void
     {
         $parts = [];
@@ -254,38 +409,43 @@ class TreatmentHistoryService
         if ($history->admissions_count > 0) {
             $parts[] = "بستری: {$history->admissions_count}";
         }
+        if ($history->followups_count > 0) {
+            $parts[] = "ملاقات بعدی: {$history->followups_count}";
+        }
 
-        $history->summary = implode(' | ', $parts);
+        $history->summary = implode(' | ', $parts) ?: null;
     }
 
-    /**
-     * خلاصه هر آیتم
-     */
+    // ============================================================
+    // خلاصه هر آیتم
+    // ============================================================
     private function buildItemSummary(string $stepKey, array $data): string
     {
         return match ($stepKey) {
             'examination' => 'معاینه: ' . ($data['diagnosis'] ?? $data['chief_complaint'] ?? '-'),
             'laboratory' => 'لابراتوار: ' . ($data['test_type_label'] ?? $data['test_name'] ?? $data['test_type'] ?? '-'),
-            'radiology' => 'رادیولوژی: ' . ($data['radiology_type_label'] ?? $data['radiology_type'] ?? '-') . ' - ' . ($data['body_part'] ?? ''),
+            'radiology' => 'رادیولوژی: ' . ($data['radiology_type_label'] ?? $data['radiology_type'] ?? '-')
+                . (!empty($data['body_part']) ? ' - ' . $data['body_part'] : ''),
             'operation' => 'عملیات: ' . ($data['surgery_type'] ?? '-'),
-            'pres_insert' => 'نسخه #' . ($data['pres_num'] ?? $data['id'] ?? '-'),
-            'followup' => 'ملاقات بعدی: ' . ($data['followup_date'] ?? '-'),
+            'pres_insert' => 'نسخه #' . ($data['pres_num'] ?? $data['pres_id'] ?? $data['id'] ?? '-')
+                . (!empty($data['items_count']) ? ' (' . $data['items_count'] . ' قلم)' : ''),
+            'followup' => 'ملاقات بعدی: ' . ($data['follow_up_date'] ?? '-'),
             'admission' => 'بستری: بخش ' . ($data['ward_name'] ?? $data['ward'] ?? '-'),
             default => $stepKey,
         };
     }
 
-    /**
-     * استخراج مبلغ مرتبط با هر مرحله
-     */
+    // ============================================================
+    // استخراج مبلغ
+    // ============================================================
     private function extractAmount(string $stepKey, array $data): float
     {
         return (float) ($data['total_amount'] ?? $data['amount'] ?? 0);
     }
 
-    /**
-     * برچسب فارسی وضعیت
-     */
+    // ============================================================
+    // برچسب فارسی وضعیت
+    // ============================================================
     private function getStatusLabel(string $stepKey, string $status): string
     {
         $labels = [
@@ -306,9 +466,9 @@ class TreatmentHistoryService
         return $labels[$status] ?? $status;
     }
 
-    /**
-     * نقشه مراحل
-     */
+    // ============================================================
+    // نقشه مراحل
+    // ============================================================
     private function getStepMap(): array
     {
         return [

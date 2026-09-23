@@ -10,7 +10,7 @@ use App\Models\Patient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Log; // ✅ اضافه کردن این خط
+use Illuminate\Support\Facades\Log;
 
 class OperationController extends Controller
 {
@@ -22,7 +22,6 @@ class OperationController extends Controller
         try {
             Log::info('🔪 getByRegistration called for reg_id: ' . $regId);
             
-            // بررسی وجود مراجعه
             $registration = Registrations::where('reg_id', $regId)->first();
             if (!$registration) {
                 return response()->json([
@@ -31,7 +30,6 @@ class OperationController extends Controller
                 ], 404);
             }
 
-            // دریافت درخواست‌های عملیات برای این مراجعه
             $requests = OperationRequest::with(['patient', 'doctor', 'fee'])
                 ->where('reg_id', $regId)
                 ->orderBy('created_at', 'desc')
@@ -39,7 +37,6 @@ class OperationController extends Controller
 
             Log::info('✅ Found ' . $requests->count() . ' operation requests for reg_id: ' . $regId);
 
-            // فرمت کردن داده‌ها برای فرانت‌اند
             $formattedRequests = $requests->map(function($request) {
                 return [
                     'id' => $request->id,
@@ -110,9 +107,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * دریافت برچسب اولویت
-     */
     private function getPriorityLabel($priority)
     {
         $labels = [
@@ -124,9 +118,6 @@ class OperationController extends Controller
         return $labels[$priority] ?? $priority;
     }
 
-    /**
-     * دریافت برچسب وضعیت
-     */
     private function getStatusLabel($status)
     {
         $labels = [
@@ -140,31 +131,24 @@ class OperationController extends Controller
         return $labels[$status] ?? $status;
     }
 
-    /**
-     * دریافت لیست درخواست‌های عملیات (با فیلتر)
-     */
     public function index(Request $request)
     {
         try {
             $query = OperationRequest::with(['patient', 'doctor', 'fee', 'registration'])
                 ->byDoctor(auth()->id());
 
-            // فیلتر بر اساس وضعیت
             if ($request->has('status') && $request->status !== 'all') {
                 $query->where('status', $request->status);
             }
 
-            // فیلتر بر اساس اولویت
             if ($request->has('priority')) {
                 $query->where('priority', $request->priority);
             }
 
-            // فیلتر بر اساس reg_id
             if ($request->has('reg_id')) {
                 $query->where('reg_id', $request->reg_id);
             }
 
-            // جستجو
             if ($request->has('search') && $request->search) {
                 $search = $request->search;
                 $query->whereHas('patient', function ($q) use ($search) {
@@ -174,7 +158,6 @@ class OperationController extends Controller
                   ->orWhere('surgeon', 'like', "%{$search}%");
             }
 
-            // مرتب‌سازی
             $sortBy = $request->sort_by ?? 'created_at';
             $sortOrder = $request->sort_order ?? 'desc';
             $query->orderBy($sortBy, $sortOrder);
@@ -182,7 +165,6 @@ class OperationController extends Controller
             $perPage = $request->per_page ?? 10;
             $operations = $query->paginate($perPage);
 
-            // آمار
             $stats = [
                 'total' => OperationRequest::byDoctor(auth()->id())->count(),
                 'pending' => OperationRequest::byDoctor(auth()->id())->pending()->count(),
@@ -208,9 +190,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * دریافت درخواست‌های بدون فیس برای اخذ فیس
-     */
     public function getRequestsForFee(Request $request)
     {
         try {
@@ -255,9 +234,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * ثبت درخواست عملیات جدید
-     */
     public function store(Request $request, $regId)
     {
         try {
@@ -350,9 +326,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * نمایش جزئیات یک درخواست عملیات
-     */
     public function show($id)
     {
         try {
@@ -374,9 +347,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * بروزرسانی درخواست عملیات
-     */
     public function update(Request $request, $id)
     {
         try {
@@ -432,9 +402,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * بروزرسانی وضعیت عملیات
-     */
     public function updateStatus(Request $request, $id)
     {
         try {
@@ -483,9 +450,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * حذف درخواست عملیات
-     */
     public function destroy($id)
     {
         try {
@@ -527,9 +491,6 @@ class OperationController extends Controller
     // بخش مدیریت فیس‌های عملیات
     // ==========================================
 
-    /**
-     * دریافت لیست فیس‌های عملیات
-     */
     public function feesIndex(Request $request)
     {
         try {
@@ -687,6 +648,9 @@ class OperationController extends Controller
             $operation->fee_status = $paymentStatus;
             $operation->save();
 
+            // ✅ ثبت خودکار در ژورنال
+            $this->syncJournalEntry($fee);
+
             DB::commit();
 
             return response()->json([
@@ -711,9 +675,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * نمایش جزئیات یک فیس عملیات
-     */
     public function showFee($id)
     {
         try {
@@ -796,6 +757,9 @@ class OperationController extends Controller
                 ]);
             }
 
+            // ✅ بروزرسانی خودکار ژورنال
+            $this->syncJournalEntry($fee);
+
             DB::commit();
 
             return response()->json([
@@ -832,6 +796,9 @@ class OperationController extends Controller
 
             DB::beginTransaction();
 
+            // ✅ حذف اثر ژورنال مرتبط
+            $this->removeJournalEntry($fee);
+
             if ($fee->operationRequest) {
                 $fee->operationRequest->update([
                     'fee_id' => null,
@@ -861,9 +828,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * دریافت آمار فیس‌های عملیات
-     */
     public function feesStatistics()
     {
         try {
@@ -900,9 +864,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * دریافت جزئیات کامل عملیات با فیس
-     */
     public function getOperationWithFee($id)
     {
         try {
@@ -944,9 +905,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * دریافت لیست عملیات‌های بدون فیس
-     */
     public function getOperationsWithoutFee()
     {
         try {
@@ -972,9 +930,6 @@ class OperationController extends Controller
         }
     }
 
-    /**
-     * دریافت لیست عملیات‌های با فیس
-     */
     public function getOperationsWithFee()
     {
         try {
@@ -996,6 +951,111 @@ class OperationController extends Controller
                 'message' => 'خطا در دریافت عملیات‌های با فیس',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /* ============================================================
+     *  متدهای کمکی ژورنال (Journal Sync)
+     * ============================================================ */
+
+    /**
+     * ثبت یا بروزرسانی خودکار سند حسابداری در ژورنال
+     * این متد بر اساس مبلغ فیس، تخفیف، پرداختی و روش پرداخت
+     * سند مربوطه را در جدول journal_entries ثبت/بروزرسانی می‌کند.
+     *
+     * @param OperationFee $fee
+     * @return void
+     */
+    protected function syncJournalEntry(OperationFee $fee): void
+    {
+        if (!class_exists(\App\Models\JournalEntry::class)) {
+            return;
+        }
+
+        try {
+            $amount        = (float) $fee->total_amount;
+            $paidAmount    = (float) $fee->paid_amount;
+            $discount      = (float) $fee->discount;
+            $remaining     = (float) $fee->remaining_amount;
+            $paymentMethod = $fee->payment_method;
+
+            // تعیین حساب بدهکار بر اساس روش پرداخت
+            $debitAccount = match ($paymentMethod) {
+                'cash'      => 'صندوق',
+                'card'      => 'بانک - کارتخوان',
+                'online'    => 'بانک - درگاه آنلاین',
+                'insurance' => 'بیمه - مطالبات',
+                default     => 'صندوق',
+            };
+
+            // حساب بستانکار همیشه درآمد عملیات است
+            $creditAccount = 'درآمد عملیات';
+
+            // شرح سند
+            $description = sprintf(
+                'فیس عملیات - %s - بیمار %s',
+                $fee->operationRequest?->surgery_type ?? ('#' . $fee->id),
+                $fee->patient ? trim(($fee->patient->first_name ?? '') . ' ' . ($fee->patient->last_name ?? '')) : 'نامشخص'
+            );
+
+            // جستجوی سند قبلی این فیس
+            $journal = \App\Models\JournalEntry::where('reference_type', OperationFee::class)
+                ->where('reference_id', $fee->id)
+                ->first();
+
+            $data = [
+                'reference_type'   => OperationFee::class,
+                'reference_id'     => $fee->id,
+                'reg_id'           => $fee->reg_id,
+                'patient_id'       => $fee->patient_id,
+                'doctor_id'        => $fee->doctor_id,
+                'created_by'       => $fee->collected_by,
+                'entry_date'       => now()->toDateString(),
+                'debit_account'    => $debitAccount,
+                'credit_account'   => $creditAccount,
+                'amount'           => $amount,        // مبلغ کل فاکتور
+                'discount'         => $discount,       // تخفیف (مبلغ)
+                'paid_amount'      => $paidAmount,     // پرداختی
+                'remaining_amount' => $remaining,      // باقیمانده
+                'payment_method'   => $paymentMethod,
+                'payment_status'   => $fee->payment_status,
+                'description'      => $description,
+                'barcode'          => $fee->barcode ?? null,
+                'receipt_number'   => $fee->transaction_id ?? null,
+                'source'           => 'operation_fee',
+            ];
+
+            if ($journal) {
+                // بروزرسانی سند موجود (اگر قیمت‌ها تغییر کرده باشند)
+                $journal->update($data);
+            } else {
+                // ایجاد سند جدید
+                \App\Models\JournalEntry::create($data);
+            }
+        } catch (\Throwable $e) {
+            // لاگ کردن خطا بدون متوقف کردن عملیات اصلی
+            Log::warning('Journal sync failed for OperationFee #' . $fee->id . ': ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * حذف سند ژورنال مرتبط با فیس حذف‌شده
+     *
+     * @param OperationFee $fee
+     * @return void
+     */
+    protected function removeJournalEntry(OperationFee $fee): void
+    {
+        if (!class_exists(\App\Models\JournalEntry::class)) {
+            return;
+        }
+
+        try {
+            \App\Models\JournalEntry::where('reference_type', OperationFee::class)
+                ->where('reference_id', $fee->id)
+                ->delete();
+        } catch (\Throwable $e) {
+            Log::warning('Journal remove failed for OperationFee #' . $fee->id . ': ' . $e->getMessage());
         }
     }
 }
