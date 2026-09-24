@@ -32,7 +32,6 @@ class TreatmentHistoryService
             $patient = $registration->patient;
 
             $history = TreatmentHistory::firstOrNew(['reg_id' => $regId]);
-            $isNew = !$history->exists;
 
             // ============ Snapshot بیمار ============
             if ($patient) {
@@ -72,7 +71,6 @@ class TreatmentHistoryService
                     $history->completed_steps = $progressData['completed_steps'];
                 }
 
-                // ✅ اگر finalize=true → Completed
                 if (!empty($progressData['finalize'])) {
                     $history->visit_status = 'Completed';
                     $history->treatment_completed_at = $history->treatment_completed_at ?? now();
@@ -95,7 +93,7 @@ class TreatmentHistoryService
 
             $history->save();
 
-            // ============ به‌روزرسانی شمارش‌ها، مبالغ، خلاصه، فعالیت‌ها ============
+            // ============ به‌روزرسانی شمارش‌ها، مبالغ، خلاصه ============
             $this->refreshCounters($history);
             $this->refreshAmounts($history);
             $this->refreshClinicalDataFromExamination($history);
@@ -117,7 +115,7 @@ class TreatmentHistoryService
     }
 
     // ============================================================
-    // 2. افزودن آیتم (مرحله) به تاریخچه
+    // 2. افزودن آیتم (مرحله) به تاریخچه — نسخه بهبود یافته
     // ============================================================
     public function addItem(
         int $regId,
@@ -131,22 +129,49 @@ class TreatmentHistoryService
             if (!$history) {
                 $history = $this->syncMainHistory($regId);
             }
-            if (!$history) return null;
+            if (!$history) {
+                Log::warning("addItem: no history could be created", ['reg_id' => $regId]);
+                return null;
+            }
 
             $stepMap = $this->getStepMap();
             $stepInfo = $stepMap[$stepKey] ?? ['label' => $stepKey, 'order' => 99, 'table' => null];
 
-            // ============ جلوگیری از تکرار ============
-            $effectiveRefId = $refId ?? ($data['id'] ?? null);
+            // ✅ اطمینان از آرایه بودن data
+            if (!is_array($data)) {
+                $data = (array) $data;
+            }
 
-            if ($effectiveRefId) {
+            // ✅ پاک‌سازی data از اشیاء غیرقابل serialize (Eloquent models, closures, etc.)
+            $data = $this->sanitizeData($data);
+
+            // ============ محاسبه ref_id مؤثر ============
+            $effectiveRefId = $refId
+                ?? ($data['id'] ?? null)
+                ?? ($data['ref_id'] ?? null)
+                ?? null;
+
+            if ($effectiveRefId !== null) {
+                $effectiveRefId = (int) $effectiveRefId;
+            }
+
+            Log::info('addItem: called', [
+                'reg_id' => $regId,
+                'step_key' => $stepKey,
+                'ref_id_input' => $refId,
+                'effective_ref_id' => $effectiveRefId,
+                'data_keys' => array_keys($data),
+            ]);
+
+            // ============ جلوگیری از تکرار ============
+            if ($effectiveRefId !== null) {
                 $existing = TreatmentHistoryItem::where('history_id', $history->history_id)
                     ->where('step_key', $stepKey)
                     ->where('ref_id', $effectiveRefId)
                     ->first();
 
                 if ($existing) {
-                    // به‌روزرسانی آیتم موجود (اجرای مجدد = ویرایش)
+                    // به‌روزرسانی آیتم موجود
                     $existing->data = $data;
                     $existing->summary = $this->buildItemSummary($stepKey, $data);
                     $existing->amount = $this->extractAmount($stepKey, $data);
@@ -161,9 +186,15 @@ class TreatmentHistoryService
 
                     $this->refreshCounters($history);
                     $this->refreshAmounts($history);
+                    $this->refreshClinicalDataFromExamination($history);
                     $this->rebuildActivityLog($history);
                     $this->rebuildSummary($history);
                     $history->save();
+
+                    Log::info('addItem: updated existing item', [
+                        'item_id' => $existing->id,
+                        'step_key' => $stepKey,
+                    ]);
 
                     return $existing;
                 }
@@ -199,6 +230,12 @@ class TreatmentHistoryService
                 'performed_by_name' => auth()->user()?->name,
             ]);
 
+            Log::info('addItem: created new item', [
+                'item_id' => $item->id,
+                'step_key' => $stepKey,
+                'history_id' => $history->history_id,
+            ]);
+
             // ============ به‌روزرسانی زمان‌های کلیدی ============
             $this->updateTimestamps($history, $stepKey);
 
@@ -217,6 +254,7 @@ class TreatmentHistoryService
                 'reg_id' => $regId,
                 'step_key' => $stepKey,
                 'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             return null;
         }
@@ -260,6 +298,33 @@ class TreatmentHistoryService
     }
 
     // ============================================================
+    // ✅ پاک‌سازی data از اشیاء غیرقابل serialize
+    // ============================================================
+    private function sanitizeData(array $data): array
+    {
+        $sanitized = [];
+
+        foreach ($data as $key => $value) {
+            if ($value instanceof \Illuminate\Database\Eloquent\Model) {
+                $sanitized[$key] = $value->toArray();
+            } elseif ($value instanceof \JsonSerializable) {
+                $sanitized[$key] = $value->jsonSerialize();
+            } elseif (is_object($value)) {
+                // تبدیل object به array از طریق json
+                $sanitized[$key] = json_decode(json_encode($value), true) ?? (array) $value;
+            } elseif (is_array($value)) {
+                $sanitized[$key] = $this->sanitizeData($value);
+            } elseif (is_resource($value)) {
+                $sanitized[$key] = null;
+            } else {
+                $sanitized[$key] = $value;
+            }
+        }
+
+        return $sanitized;
+    }
+
+    // ============================================================
     // به‌روزرسانی زمان‌های کلیدی بر اساس مرحله
     // ============================================================
     private function updateTimestamps(TreatmentHistory $history, string $stepKey): void
@@ -292,7 +357,6 @@ class TreatmentHistoryService
     // ============================================================
     private function refreshClinicalDataFromExamination(TreatmentHistory $history): void
     {
-        // آخرین معاینه را پیدا کن
         $lastExam = TreatmentHistoryItem::where('history_id', $history->history_id)
             ->where('step_key', 'examination')
             ->orderByDesc('step_at')
@@ -330,13 +394,13 @@ class TreatmentHistoryService
         $base = TreatmentHistoryItem::where('history_id', $history->history_id)
             ->whereNull('deleted_at');
 
-        $history->examinations_count = (clone $base)->where('step_key', 'examination')->count();
-        $history->laboratory_tests_count = (clone $base)->where('step_key', 'laboratory')->count();
+        $history->examinations_count      = (clone $base)->where('step_key', 'examination')->count();
+        $history->laboratory_tests_count  = (clone $base)->where('step_key', 'laboratory')->count();
         $history->radiology_requests_count = (clone $base)->where('step_key', 'radiology')->count();
-        $history->operations_count = (clone $base)->where('step_key', 'operation')->count();
-        $history->prescriptions_count = (clone $base)->where('step_key', 'pres_insert')->count();
-        $history->admissions_count = (clone $base)->where('step_key', 'admission')->count();
-        $history->followups_count = (clone $base)->where('step_key', 'followup')->count();
+        $history->operations_count        = (clone $base)->where('step_key', 'operation')->count();
+        $history->prescriptions_count     = (clone $base)->where('step_key', 'pres_insert')->count();
+        $history->admissions_count        = (clone $base)->where('step_key', 'admission')->count();
+        $history->followups_count         = (clone $base)->where('step_key', 'followup')->count();
     }
 
     // ============================================================

@@ -1,10 +1,10 @@
 // src/app/pages/treatment/history/HistoryList.jsx
 // کاملاً مطابق backend: treatment_history + treatment_history_items
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { toast } from "react-toastify";
 
-// 🎨 پالت رنگ ملایم (همان TreatmentPage)
+// 🎨 پالت رنگ ملایم
 const C = {
   pageBg: '#f1f5f9',
   cardBg: '#ffffff',
@@ -38,6 +38,16 @@ const STEP_META = {
   admission: { label: 'بستری', icon: '🏥', color: '#ef4444' },
 };
 
+// ✅ نقشه stage filter → query params
+const STAGE_TO_PARAM = {
+  examination: 'has_examination',
+  laboratory: 'has_laboratory',
+  radiology: 'has_radiology',
+  operation: 'has_operation',
+  pres_insert: 'has_prescription',
+  admission: 'has_admission',
+};
+
 export default function HistoryList({ api, onSelectHistory }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -53,30 +63,44 @@ export default function HistoryList({ api, onSelectHistory }) {
   const [detailLoading, setDetailLoading] = useState(false);
 
   // ============================================================
-  // ✅ بارگذاری لیست تاریخچه از API جدید
+  // ✅ بارگذاری لیست تاریخچه — با تمام فیلترها در سرور
   // ============================================================
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
-      if (searchTerm) params.search = searchTerm;
+
+      // جستجو — سرور
+      if (searchTerm.trim()) params.search = searchTerm.trim();
+
+      // فیلتر تاریخ — سرور
       if (filterFromDate) params.from_date = filterFromDate;
       if (filterToDate) params.to_date = filterToDate;
       if (filterDoctor) params.doctor_id = filterDoctor;
+
+      // فیلتر وضعیت — سرور
       if (activeTab === 'completed') params.visit_status = 'Completed';
       if (activeTab === 'in_progress') params.visit_status = 'InProgress';
       if (activeTab === 'cancelled') params.visit_status = 'Cancelled';
 
+      // فیلتر مرحله — سرور
+      if (filterStep !== 'all' && STAGE_TO_PARAM[filterStep]) {
+        params[STAGE_TO_PARAM[filterStep]] = true;
+      }
+
       const response = await api.get('/treatment-history', { params });
 
+      // ✅ استخراج داده از پاسخ
       let data = [];
       if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
-        data = response.data.data.data;
+        data = response.data.data.data; // paginated
       } else if (response.data?.data && Array.isArray(response.data.data)) {
         data = response.data.data;
       } else if (Array.isArray(response.data)) {
         data = response.data;
       }
+
+      console.log('📥 History list loaded:', data.length, 'items');
       setHistory(data);
     } catch (err) {
       console.error("❌ خطا در دریافت تاریخچه:", err);
@@ -85,22 +109,36 @@ export default function HistoryList({ api, onSelectHistory }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [api, searchTerm, filterFromDate, filterToDate, filterDoctor, filterStep, activeTab]);
 
+  // ✅ fetch اولیه + هر بار که فیلترها تغییر کنند
   useEffect(() => {
     fetchHistory();
-  }, [activeTab]);
+  }, [activeTab]); // فقط تب باعث fetch خودکار می‌شود
 
   // ============================================================
-  // ✅ بارگذاری جزئیات کامل یک تاریخچه
+  // ✅ بارگذاری جزئیات کامل یک تاریخچه (با items)
   // ============================================================
   const loadDetail = async (historyId) => {
+    if (!historyId) return null;
     setDetailLoading(true);
     try {
       const response = await api.get(`/treatment-history/${historyId}`);
       if (response.data?.success && response.data?.data) {
-        setSelectedItem(response.data.data);
-        return response.data.data;
+        const detail = response.data.data;
+        console.log('📥 History detail loaded:', {
+          history_id: detail.history_id,
+          items_count: (detail.items || []).length,
+          counters: {
+            exam: detail.examinations_count,
+            lab: detail.laboratory_tests_count,
+            rad: detail.radiology_requests_count,
+            pres: detail.prescriptions_count,
+            adm: detail.admissions_count,
+          },
+        });
+        setSelectedItem(detail);
+        return detail;
       }
       throw new Error('داده یافت نشد');
     } catch (err) {
@@ -113,15 +151,20 @@ export default function HistoryList({ api, onSelectHistory }) {
   };
 
   // ============================================================
-  // ✅ نمایش جزئیات
+  // ✅ نمایش جزئیات — ابتدا داده لیست، سپس داده کامل
   // ============================================================
   const viewDetails = async (item) => {
-    setSelectedItem(item); // نمایش فوری داده لیست
+    // ✅ نمایش فوری داده لیست (بدون items)
+    setSelectedItem({ ...item, items: item.items || [] });
     setShowModal(true);
     if (onSelectHistory) onSelectHistory(item);
 
-    // بارگذاری داده کامل با items
-    await loadDetail(item.history_id || item.id);
+    // ✅ بارگذاری داده کامل با items
+    const detail = await loadDetail(item.history_id || item.id);
+    if (!detail) {
+      // اگر خطا داد، همان داده لیست را نگه دار
+      console.warn('⚠️ Detail load failed, keeping list data');
+    }
   };
 
   const closeModal = () => {
@@ -130,51 +173,11 @@ export default function HistoryList({ api, onSelectHistory }) {
   };
 
   // ============================================================
-  // ✅ فیلتر و جستجو (سمت کلاینت برای داده های لود شده)
+  // ✅ فیلتر سمت کلاینت فقط برای چیزی که سرور انجام نمی‌دهد
+  //    (در این نسخه، سرور همه فیلترها را انجام می‌دهد،
+  //     پس اینجا فقط یک پاس‌ترو است)
   // ============================================================
-  const filteredHistory = useMemo(() => {
-    return history.filter((item) => {
-      // جستجو
-      if (searchTerm.trim()) {
-        const term = searchTerm.trim().toLowerCase();
-        const matchName = (item.patient_name || '').toLowerCase().includes(term);
-        const matchTazkira = (item.tazkira_number || '').toLowerCase().includes(term);
-        const matchVisit = (item.visit_number || '').toLowerCase().includes(term);
-        const matchPhone = (item.patient_phone || '').toLowerCase().includes(term);
-        const matchDoctor = (item.doctor_name || '').toLowerCase().includes(term);
-        const matchDiagnosis = (item.diagnosis || '').toLowerCase().includes(term);
-
-        if (!matchName && !matchTazkira && !matchVisit && !matchPhone && !matchDoctor && !matchDiagnosis) {
-          return false;
-        }
-      }
-
-      // فیلتر تاریخ
-      if (filterFromDate) {
-        const itemDate = item.created_at ? new Date(item.created_at).toISOString().split('T')[0] : null;
-        if (!itemDate || itemDate < filterFromDate) return false;
-      }
-      if (filterToDate) {
-        const itemDate = item.created_at ? new Date(item.created_at).toISOString().split('T')[0] : null;
-        if (!itemDate || itemDate > filterToDate) return false;
-      }
-
-      // فیلتر مرحله
-      if (filterStep !== 'all') {
-        const hasStep =
-          (filterStep === 'examination' && item.examinations_count > 0) ||
-          (filterStep === 'laboratory' && item.laboratory_tests_count > 0) ||
-          (filterStep === 'radiology' && item.radiology_requests_count > 0) ||
-          (filterStep === 'operation' && item.operations_count > 0) ||
-          (filterStep === 'pres_insert' && item.prescriptions_count > 0) ||
-          (filterStep === 'followup' && item.followups_count > 0) ||
-          (filterStep === 'admission' && item.admissions_count > 0);
-        if (!hasStep) return false;
-      }
-
-      return true;
-    });
-  }, [history, searchTerm, filterFromDate, filterToDate, filterStep]);
+  const filteredHistory = useMemo(() => history, [history]);
 
   // ============================================================
   // ✅ Helpers
@@ -237,12 +240,21 @@ export default function HistoryList({ api, onSelectHistory }) {
   };
 
   // ============================================================
-  // 🖨️ پرینت
+  // 🖨️ پرینت — نسخه بهبود یافته با escape کردن HTML
   // ============================================================
+  const escapeHtml = (str) => {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
   const handlePrint = (item) => {
     if (!item) return;
     const items = item.items || [];
-    const patient = item.patient || {};
 
     const printWindow = window.open('', '_blank', 'width=900,height=700');
     if (!printWindow) {
@@ -254,22 +266,23 @@ export default function HistoryList({ api, onSelectHistory }) {
       const meta = STEP_META[it.step_key] || { label: it.step_label || it.step_key, icon: '📄' };
       const data = it.data || {};
       const badge = getItemStatusBadge(it.status);
+      const safeData = escapeHtml(JSON.stringify(data, null, 2));
       return `
         <div class="item">
           <div class="item-head">
             <span class="item-num">${idx + 1}</span>
             <span class="item-icon">${meta.icon}</span>
-            <span class="item-title">${meta.label}</span>
+            <span class="item-title">${escapeHtml(meta.label)}</span>
             <span class="item-status" style="background:${badge.bg};color:${badge.color}">${badge.text}</span>
             <span class="item-time">${formatDateTime(it.step_at)}</span>
           </div>
           <div class="item-body">
-            <div class="summary">${it.summary || '-'}</div>
+            <div class="summary">${escapeHtml(it.summary || '-')}</div>
             ${it.amount ? `<div class="amount">💰 مبلغ: ${Number(it.amount).toLocaleString()} افغانی</div>` : ''}
-            ${it.barcode ? `<div class="barcode">🏷️ بارکد: ${it.barcode}</div>` : ''}
+            ${it.barcode ? `<div class="barcode">🏷️ بارکد: ${escapeHtml(it.barcode)}</div>` : ''}
             <details>
               <summary style="cursor:pointer;color:#3b82f6;font-size:11px;">📋 مشاهده داده کامل</summary>
-              <pre class="data-pre">${JSON.stringify(data, null, 2)}</pre>
+              <pre class="data-pre">${safeData}</pre>
             </details>
           </div>
         </div>
@@ -279,7 +292,7 @@ export default function HistoryList({ api, onSelectHistory }) {
     const printContent = `
       <html dir="rtl">
         <head>
-          <title>تاریخچه معالجه - ${item.patient_name || ''}</title>
+          <title>تاریخچه معالجه - ${escapeHtml(item.patient_name || '')}</title>
           <style>
             body { font-family: Tahoma, Arial, sans-serif; padding: 25px; direction: rtl; color: #1e293b; }
             .header { text-align: center; border-bottom: 3px solid #10b981; padding-bottom: 15px; margin-bottom: 20px; }
@@ -322,22 +335,22 @@ export default function HistoryList({ api, onSelectHistory }) {
           <div class="section">
             <div class="section-title">👤 معلومات مریض</div>
             <div class="info-grid">
-              <div class="info-row"><span class="label">نام و تخلص:</span><span class="value">${item.patient_name || '-'}</span></div>
-              <div class="info-row"><span class="label">شماره تذکره:</span><span class="value">${item.tazkira_number || '-'}</span></div>
+              <div class="info-row"><span class="label">نام و تخلص:</span><span class="value">${escapeHtml(item.patient_name || '-')}</span></div>
+              <div class="info-row"><span class="label">شماره تذکره:</span><span class="value">${escapeHtml(item.tazkira_number || '-')}</span></div>
               <div class="info-row"><span class="label">سن:</span><span class="value">${item.patient_age ? item.patient_age + ' سال' : '-'}</span></div>
-              <div class="info-row"><span class="label">جنسیت:</span><span class="value">${item.patient_gender === 'male' || item.patient_gender === 'Male' ? 'مرد' : item.patient_gender === 'female' || item.patient_gender === 'Female' ? 'زن' : (item.patient_gender || '-')}</span></div>
-              <div class="info-row"><span class="label">شماره تماس:</span><span class="value">${item.patient_phone || '-'}</span></div>
-              <div class="info-row"><span class="label">گروپ خون:</span><span class="value">${item.patient_blood_group || '-'}</span></div>
+              <div class="info-row"><span class="label">جنسیت:</span><span class="value">${item.patient_gender === 'male' || item.patient_gender === 'Male' ? 'مرد' : item.patient_gender === 'female' || item.patient_gender === 'Female' ? 'زن' : escapeHtml(item.patient_gender || '-')}</span></div>
+              <div class="info-row"><span class="label">شماره تماس:</span><span class="value">${escapeHtml(item.patient_phone || '-')}</span></div>
+              <div class="info-row"><span class="label">گروپ خون:</span><span class="value">${escapeHtml(item.patient_blood_group || '-')}</span></div>
             </div>
           </div>
 
           <div class="section">
             <div class="section-title">🩺 معلومات معالجه</div>
             <div class="info-grid">
-              <div class="info-row"><span class="label">شماره مراجعه:</span><span class="value">${item.visit_number || '-'}</span></div>
-              <div class="info-row"><span class="label">شماره صف:</span><span class="value">${item.queue_number || '-'}</span></div>
-              <div class="info-row"><span class="label">داکتر معالج:</span><span class="value">${item.doctor_name || '-'}</span></div>
-              <div class="info-row"><span class="label">تخصص:</span><span class="value">${item.doctor_specialty || '-'}</span></div>
+              <div class="info-row"><span class="label">شماره مراجعه:</span><span class="value">${escapeHtml(item.visit_number || '-')}</span></div>
+              <div class="info-row"><span class="label">شماره صف:</span><span class="value">${escapeHtml(item.queue_number || '-')}</span></div>
+              <div class="info-row"><span class="label">داکتر معالج:</span><span class="value">${escapeHtml(item.doctor_name || '-')}</span></div>
+              <div class="info-row"><span class="label">تخصص:</span><span class="value">${escapeHtml(item.doctor_specialty || '-')}</span></div>
               <div class="info-row"><span class="label">وضعیت:</span><span class="value">${getStatusBadge(item.visit_status).text}</span></div>
               <div class="info-row"><span class="label">تاریخ مراجعه:</span><span class="value">${formatDate(item.created_at)}</span></div>
               <div class="info-row"><span class="label">شروع معالجه:</span><span class="value">${formatDateTime(item.treatment_started_at)}</span></div>
@@ -349,7 +362,7 @@ export default function HistoryList({ api, onSelectHistory }) {
           ${item.diagnosis ? `
           <div class="section">
             <div class="section-title">📝 تشخیص</div>
-            <div style="padding: 8px; background: #ffffff; border-radius: 5px; font-size: 13px;">${item.diagnosis}</div>
+            <div style="padding: 8px; background: #ffffff; border-radius: 5px; font-size: 13px;">${escapeHtml(item.diagnosis)}</div>
           </div>` : ''}
 
           <div class="section">
@@ -661,6 +674,9 @@ export default function HistoryList({ api, onSelectHistory }) {
           placeholder="🔍 جستجو: نام، تذکره، شماره مراجعه، تلیفون، داکتر، تشخیص..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') fetchHistory();
+          }}
           style={styles.searchInput}
         />
 
@@ -701,6 +717,9 @@ export default function HistoryList({ api, onSelectHistory }) {
             setFilterFromDate("");
             setFilterToDate("");
             setFilterStep("all");
+            setFilterDoctor("");
+            // ✅ بعد از پاک کردن، دوباره fetch کن
+            setTimeout(() => fetchHistory(), 0);
           }}
           style={{ ...styles.btn, background: "#6b7280", color: "white", padding: "8px 16px" }}
         >

@@ -72,6 +72,56 @@ const STEP_REF_TABLE = {
   'admission': 'admission_requests',
 };
 
+// ============================================================
+// ✅ تابع کمکی: استخراج refId از پاسخ API
+// ============================================================
+const extractRefId = (returnedData) => {
+  if (!returnedData || typeof returnedData !== 'object') return null;
+
+  // اگر مستقیم id دارد
+  if (returnedData.id != null) return returnedData.id;
+
+  // ساختارهای تودرتو — به ترتیب اولویت
+  const candidates = [
+    returnedData.examination?.id,
+    returnedData.laboratory_request?.id,
+    returnedData.laboratory?.id,
+    returnedData.radiology_request?.id,
+    returnedData.radiology?.id,
+    returnedData.prescription?.pres_id,
+    returnedData.prescription?.id,
+    returnedData.admission?.id,
+    returnedData.operation?.id,
+    returnedData.operation_request?.id,
+    returnedData.followup?.id,
+    // آرایه‌ها — اولین عضو
+    Array.isArray(returnedData.tests) ? returnedData.tests[0]?.id : null,
+    Array.isArray(returnedData.radiology) ? returnedData.radiology[0]?.id : null,
+    Array.isArray(returnedData.all_tests) ? returnedData.all_tests[0]?.id : null,
+    Array.isArray(returnedData.all_radiology) ? returnedData.all_radiology[0]?.id : null,
+  ];
+
+  return candidates.find((c) => c != null) ?? null;
+};
+
+// ============================================================
+// ✅ تابع کمکی: پاک‌سازی داده قبل از ارسال به سرور
+// ============================================================
+const sanitizeForApi = (obj) => {
+  if (obj == null) return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeForApi);
+  if (typeof obj === 'object') {
+    // اگر File/Blob/Date است، دست نزن
+    if (obj instanceof File || obj instanceof Blob || obj instanceof Date) return obj;
+    const out = {};
+    for (const k of Object.keys(obj)) {
+      out[k] = sanitizeForApi(obj[k]);
+    }
+    return out;
+  }
+  return obj;
+};
+
 export default function TreatmentPage() {
   const { api } = useAuth();
   
@@ -95,6 +145,9 @@ export default function TreatmentPage() {
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { selectedPatientIdRef.current = selectedPatientId; }, [selectedPatientId]);
 
+  // ============================================================
+  // ✅ همگام‌سازی تاریخچه — نسخه بهبود یافته
+  // ============================================================
   const syncTreatmentHistory = async (regId, stepKey = null, stepData = null, refId = null, finalize = false) => {
     if (!regId) return null;
 
@@ -121,16 +174,36 @@ export default function TreatmentPage() {
 
       if (stepKey && stepData) {
         payload.step_key = stepKey;
-        payload.step_data = stepData;
-        payload.ref_id = refId || stepData?.id || null;
+        // ✅ اطمینان از اینکه stepData یک آبجکت تمیز است
+        payload.step_data = sanitizeForApi(stepData);
+        payload.ref_id = refId ?? extractRefId(stepData);
         payload.ref_table = STEP_REF_TABLE[stepKey] || null;
       }
+
+      console.log('📤 syncTreatmentHistory payload:', {
+        reg_id: payload.reg_id,
+        step_key: payload.step_key,
+        ref_id: payload.ref_id,
+        ref_table: payload.ref_table,
+        finalize: payload.finalize,
+      });
 
       const response = await api.post('/treatment-history/sync', payload);
 
       if (response.data?.success) {
-        console.log('✅ Treatment history synced:', regId, finalize ? 'FINALIZED' : (stepKey || 'main'));
+        console.log('✅ Treatment history synced:', regId, finalize ? 'FINALIZED' : (stepKey || 'main'), {
+          item_id: response.data?.item?.id,
+          history_id: response.data?.data?.history_id,
+          counters: {
+            exam: response.data?.data?.examinations_count,
+            lab: response.data?.data?.laboratory_tests_count,
+            rad: response.data?.data?.radiology_requests_count,
+            pres: response.data?.data?.prescriptions_count,
+          },
+        });
         return response.data.data;
+      } else {
+        console.warn('⚠️ sync returned success=false:', response.data?.message);
       }
     } catch (err) {
       console.warn('⚠️ Treatment history sync failed (non-blocking):', err?.response?.data?.message || err.message);
@@ -620,24 +693,31 @@ export default function TreatmentPage() {
       
       toast.success(`✅ ${currentStep.label} با موفقیت ثبت شد`);
       
+      // ✅ همگام‌سازی با تاریخچه
       try {
         const returnedData = response.data?.data || payload;
-        const refId = returnedData?.id || returnedData?.examination?.id
-          || returnedData?.laboratory_request?.id
-          || returnedData?.radiology_request?.id
-          || returnedData?.prescription?.pres_id
-          || returnedData?.admission?.id
-          || null;
+        const refId = extractRefId(returnedData);
 
-        const historySnapshot = {
+        // ✅ historySnapshot را تمیز کن
+        const historySnapshot = sanitizeForApi({
           ...payload,
           ...(typeof returnedData === 'object' ? returnedData : {}),
           status: returnedData?.status || 'completed',
           submitted_at: new Date().toISOString(),
           step_label: currentStep.label,
-        };
+        });
 
-        await syncTreatmentHistory(regId, currentStep.key, historySnapshot, refId);
+        console.log('🔄 Syncing history:', {
+          step_key: currentStep.key,
+          refId,
+          snapshot_keys: Object.keys(historySnapshot),
+        });
+
+        const syncResult = await syncTreatmentHistory(regId, currentStep.key, historySnapshot, refId);
+
+        if (!syncResult) {
+          console.warn('⚠️ History sync returned null — check backend logs');
+        }
       } catch (histErr) {
         console.warn('⚠️ History sync failed but main step saved:', histErr);
       }

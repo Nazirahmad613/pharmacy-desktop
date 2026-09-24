@@ -1,5 +1,5 @@
+// src/app/pages/treatment/prescription/PrescriptionRequest.jsx
 import { useState, useEffect, useRef, Fragment, useCallback } from "react";
-import MainLayoutjur from "../../../../../components/Mainlayoutjur";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useAuth } from "app/contexts/AuthContext";
@@ -54,14 +54,19 @@ const pick = (...vals) => {
   return "-";
 };
 
-export default function PrescriptionForm({
+export default function PrescriptionRequest({
   registration,
   regId,
   api: propApi,
   onComplete,
   onRefresh,
   onSave,
+  onFinish,       // ✅ جدید: تابع ختم معالجه از TreatmentPage
+  onNextStep,     // ✅ جدید: رفتن به مرحله بعد
+  onPrevStep,     // ✅ جدید: برگشت به مرحله قبل
   isSubmitting,
+  patientRegId,
+  patientName,
 }) {
   const { api: authApi, user } = useAuth();
   const api = propApi || authApi;
@@ -104,10 +109,10 @@ export default function PrescriptionForm({
   const [prescriptionPrintData, setPrescriptionPrintData] = useState(null);
   const [isPrintReady, setIsPrintReady] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [finishing, setFinishing] = useState(false); // ✅ حالت ختم معالجه
 
-  // ✅ جلوگیری از فراخوانی همزمان
   const isLoadingRef = useRef(false);
-  const abortRef = useRef(null);
 
   // ========== patient_id از سرور ==========
   const fetchPatientIdFromServer = async (regIdValue) => {
@@ -135,40 +140,15 @@ export default function PrescriptionForm({
     const pd = patientData || {};
     const p = prescription || {};
 
-    const patient_name = pick(
-      p.patient_name, p.patient?.full_name,
-      p.registration?.patient_name, pd.full_name
-    );
-    const patient_age = pick(
-      p.patient_age, p.patient?.age,
-      p.registration?.patient_age, pd.age
-    );
-    const patient_gender = pick(
-      p.patient_gender, p.patient?.gender,
-      p.registration?.patient_gender, pd.gender
-    );
-    const patient_phone = pick(
-      p.patient_phone, p.patient?.mobile, p.patient?.phone,
-      p.registration?.patient_phone, pd.phone
-    );
-    const tazkira_number = pick(
-      p.tazkira_number, p.patient?.national_id, p.patient?.tazkira_number,
-      p.registration?.tazkira_number, pd.tazkira_number
-    );
-    const blood_group = pick(
-      p.patient_blood_group, p.patient?.blood_group,
-      p.registration?.patient_blood_group, pd.blood_group
-    );
-
     return {
       pres_num: pick(p.pres_num, p.pres_id, prescriptionNumber),
       date: pick(p.pres_date, prescriptionDate),
-      patient_name,
-      patient_age,
-      patient_gender,
-      patient_phone,
-      tazkira_number,
-      blood_group,
+      patient_name: pick(p.patient_name, p.patient?.full_name, p.registration?.patient_name, pd.full_name),
+      patient_age: pick(p.patient_age, p.patient?.age, p.registration?.patient_age, pd.age),
+      patient_gender: pick(p.patient_gender, p.patient?.gender, p.registration?.patient_gender, pd.gender),
+      patient_phone: pick(p.patient_phone, p.patient?.mobile, p.patient?.phone, p.registration?.patient_phone, pd.phone),
+      tazkira_number: pick(p.tazkira_number, p.patient?.national_id, p.patient?.tazkira_number, p.registration?.tazkira_number, pd.tazkira_number),
+      blood_group: pick(p.patient_blood_group, p.patient?.blood_group, p.registration?.patient_blood_group, pd.blood_group),
       diagnosis: pick(p.diagnosis, pd.diagnosis),
       weight: pick(p.weight, pd.weight),
       blood_pressure: pick(p.blood_pressure, pd.blood_pressure),
@@ -191,22 +171,22 @@ export default function PrescriptionForm({
   };
 
   // ============================================================
-  // ✅ بارگذاری لیست نسخه‌ها (بدون درخواست اضافی فیس)
+  // ✅ بارگذاری نسخه‌های همین مریض
   // ============================================================
   const loadPrescriptions = useCallback(async () => {
     if (isLoadingRef.current) return;
-
     isLoadingRef.current = true;
     setLoadingList(true);
+
     try {
+      const effectiveRegId = patientRegId || regId || registration?.reg_id;
       const res = await api.get("/prescriptions");
       const all = res.data?.data ?? res.data ?? [];
-      const effectiveRegId = regId || registration?.reg_id;
+
       const filtered = effectiveRegId
         ? all.filter(p => Number(p.reg_id) === Number(effectiveRegId))
         : all;
 
-      // ✅ سرور خودش fee را برگردانده — دیگر نیازی به درخواست جدا نیست
       const normalized = filtered.map(p => {
         const feeStatus = normalizeFeeStatus(
           p.fee_status ?? p.fee?.payment_status ?? null
@@ -214,12 +194,10 @@ export default function PrescriptionForm({
 
         let status = normalizeStatus(p.status);
 
-        // اگر فیس paid است و نسخه هنوز paid نشده، وضعیت نمایشی را paid نشان بده
         if (feeStatus === "paid" && status !== "paid" && status !== "cancelled") {
           status = "paid";
         }
-        if ((feeStatus === "cancelled" || feeStatus === "refunded")
-            && status !== "cancelled") {
+        if ((feeStatus === "cancelled" || feeStatus === "refunded") && status !== "cancelled") {
           status = "cancelled";
         }
 
@@ -227,26 +205,21 @@ export default function PrescriptionForm({
           ...p,
           status,
           status_label: p.status_label || STATUS_MAP[status]?.label,
-          fee_status: feeStatus,
-          fee_paid: p.fee_paid ?? p.fee?.paid_amount ?? 0,
-          fee_remaining: p.fee_remaining ?? p.fee?.remaining_amount ?? 0,
-          fee_total: p.fee_total ?? p.fee?.total_amount ?? 0,
+          fee_status: feeStatus || 'pending',
+          fee_paid: Number(p.fee_paid ?? p.fee?.paid_amount ?? 0),
+          fee_remaining: Number(p.fee_remaining ?? p.fee?.remaining_amount ?? 0),
+          fee_total: Number(p.fee_total ?? p.fee?.total_amount ?? 0),
         };
       });
 
       setPrescriptions(normalized);
     } catch (error) {
-      // ✅ خطای 500 را نگیر (تا polling را متوقف نکند)
       console.warn("loadPrescriptions failed:", error?.response?.status);
-      if (error?.response?.status !== 500) {
-        // اگر خطا از نوع دیگر بود، لاگ کن
-        console.error("Error loading prescriptions:", error);
-      }
     } finally {
       setLoadingList(false);
       isLoadingRef.current = false;
     }
-  }, [api, regId, registration]);
+  }, [api, regId, registration, patientRegId]);
 
   // ========== مقداردهی اولیه ==========
   useEffect(() => {
@@ -255,7 +228,7 @@ export default function PrescriptionForm({
 
     const initialize = async () => {
       setLoading(true);
-      const effectiveRegId = regId || registration?.reg_id;
+      const effectiveRegId = patientRegId || regId || registration?.reg_id;
       const rawStored = sessionStorage.getItem("selectedPatient");
       let storedPatient = null;
       if (rawStored) {
@@ -304,24 +277,6 @@ export default function PrescriptionForm({
           temperature: registration.temperature ?? patient?.temperature ?? storedPatient?.temperature ?? null,
           oxygen: registration.oxygen ?? patient?.oxygen ?? storedPatient?.oxygen ?? null
         });
-      } else if (storedPatient) {
-        const regIdForFetch = storedPatient.reg_id || storedPatient.id || effectiveRegId;
-        let resolvedPatientId = storedPatient.patient_id || storedPatient.id || null;
-        if (!resolvedPatientId && regIdForFetch) {
-          resolvedPatientId = await fetchPatientIdFromServer(regIdForFetch);
-        }
-        if (cancelled) return;
-        setPatientData({
-          ...storedPatient,
-          reg_id: regIdForFetch,
-          patient_id: resolvedPatientId,
-          full_name: storedPatient.full_name || storedPatient.name || "نامشخص",
-          age: storedPatient.age || "-",
-          gender:
-            storedPatient.gender === "male" ? "مرد"
-            : storedPatient.gender === "female" ? "زن"
-            : storedPatient.gender || "-"
-        });
       }
 
       if (cancelled) return;
@@ -334,10 +289,9 @@ export default function PrescriptionForm({
       await loadPrescriptions();
       setLoading(false);
 
-      // ✅ Polling خودکار هر 30 ثانیه (به‌جای 15)
       pollTimer = setInterval(() => {
         if (!cancelled) loadPrescriptions();
-      }, 30000);
+      }, 20000);
     };
 
     initialize();
@@ -347,7 +301,7 @@ export default function PrescriptionForm({
       if (pollTimer) clearInterval(pollTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registration, regId]);
+  }, [registration, regId, patientRegId]);
 
   // ========== بارگذاری‌ها ==========
   const loadMedications = async () => {
@@ -564,6 +518,7 @@ export default function PrescriptionForm({
       setPrescriptionDate(data.pres_date ? data.pres_date.slice(0, 10) : prescriptionDate);
       setPrescriptionNumber(String(data.pres_id));
       setEditingId(data.pres_id);
+      setShowForm(true);
 
       const items = (data.items ?? []).map((it, i) => ({
         id: Date.now() + i + Math.random(),
@@ -608,9 +563,7 @@ export default function PrescriptionForm({
     }
   };
 
-  // ============================================================
-  // ✅ همگام‌سازی دستی وضعیت از فیس
-  // ============================================================
+  // ========== همگام‌سازی وضعیت از فیس ==========
   const handleSyncFromFee = async (presId) => {
     setSyncingId(presId);
     try {
@@ -631,9 +584,7 @@ export default function PrescriptionForm({
     }
   };
 
-  // ============================================================
-  // ✅ شروع ویرایش inline یک قلم
-  // ============================================================
+  // ========== ویرایش inline ==========
   const handleStartEditItem = (presId, item) => {
     setEditingItem({
       presId,
@@ -645,21 +596,13 @@ export default function PrescriptionForm({
     });
   };
 
-  // ============================================================
-  // ✅ ذخیره ویرایش inline یک قلم
-  // ============================================================
   const handleSaveEditItem = async () => {
     if (!editingItem) return;
-
     const qty = Number(editingItem.quantity);
-    if (!qty || qty <= 0) {
-      toast.error("❌ تعداد باید حداقل ۱ باشد");
-      return;
-    }
+    if (!qty || qty <= 0) { toast.error("❌ تعداد باید حداقل ۱ باشد"); return; }
 
     try {
       const { presId, presItId } = editingItem;
-
       const res = await api.get(`/prescriptions/${presId}`);
       const data = res.data?.data ?? res.data;
       if (!data) { toast.error("❌ نسخه یافت نشد"); return; }
@@ -693,7 +636,7 @@ export default function PrescriptionForm({
         };
       });
 
-      const payload = {
+      await api.put(`/prescriptions/${presId}`, {
         patient_id: data.patient_id,
         reg_id: data.reg_id,
         pres_date: data.pres_date,
@@ -710,9 +653,8 @@ export default function PrescriptionForm({
         oxygen: data.oxygen,
         status: data.status,
         items: updatedItems,
-      };
+      });
 
-      await api.put(`/prescriptions/${presId}`, payload);
       toast.success("✅ قلم دارو بروزرسانی شد");
       setEditingItem(null);
       await loadPrescriptions();
@@ -723,13 +665,9 @@ export default function PrescriptionForm({
     }
   };
 
-  const handleCancelEditItem = () => {
-    setEditingItem(null);
-  };
+  const handleCancelEditItem = () => setEditingItem(null);
 
-  // ============================================================
-  // ✅ حذف یک قلم
-  // ============================================================
+  // ========== حذف یک قلم ==========
   const handleDeleteSingleItem = async (presId, presItId) => {
     if (!window.confirm(`حذف این قلم دارو؟`)) return;
 
@@ -745,7 +683,7 @@ export default function PrescriptionForm({
         return;
       }
 
-      const payload = {
+      await api.put(`/prescriptions/${presId}`, {
         patient_id: data.patient_id,
         reg_id: data.reg_id,
         pres_date: data.pres_date,
@@ -773,9 +711,8 @@ export default function PrescriptionForm({
           quantity: Number(it.quantity),
           remarks: it.remarks || null,
         })),
-      };
+      });
 
-      await api.put(`/prescriptions/${presId}`, payload);
       toast.success("✅ قلم دارو حذف شد");
       await loadPrescriptions();
       if (onRefresh) onRefresh();
@@ -791,23 +728,6 @@ export default function PrescriptionForm({
       const res = await api.get(`/prescriptions/${pres.pres_id}`);
       const data = res.data?.data ?? res.data;
 
-      if (data) {
-        setPatientData(prev => ({
-          ...(prev || {}),
-          full_name: pick(data.patient_name, data.patient?.full_name, prev?.full_name, "نامشخص"),
-          age: pick(data.patient_age, data.patient?.age, prev?.age, "-"),
-          gender: pick(data.patient_gender, data.patient?.gender, prev?.gender, "-"),
-          phone: pick(data.patient_phone, data.patient?.mobile, prev?.phone, "-"),
-          tazkira_number: pick(data.tazkira_number, data.patient?.national_id, prev?.tazkira_number, "-"),
-          blood_group: pick(data.patient_blood_group, data.patient?.blood_group, prev?.blood_group, "-"),
-          diagnosis: pick(data.diagnosis, prev?.diagnosis, "-"),
-          weight: data.weight ?? prev?.weight,
-          blood_pressure: pick(data.blood_pressure, prev?.blood_pressure, "-"),
-          temperature: data.temperature ?? prev?.temperature,
-          oxygen: data.oxygen ?? prev?.oxygen,
-        }));
-      }
-
       const printData = buildPrintData({
         prescription: data || pres,
         items: data?.items ?? pres.items ?? []
@@ -822,6 +742,35 @@ export default function PrescriptionForm({
       });
       setPrescriptionPrintData(printData);
       setIsPrintReady(true);
+    }
+  };
+
+  const handlePrintAllPaid = async () => {
+    const paidPrescriptions = prescriptions.filter(p =>
+      p.fee_status === 'paid' || p.status === 'paid'
+    );
+
+    if (paidPrescriptions.length === 0) {
+      toast.warning("⚠️ هیچ نسخه پرداخت‌شده‌ای وجود ندارد");
+      return;
+    }
+
+    for (const pres of paidPrescriptions) {
+      try {
+        const res = await api.get(`/prescriptions/${pres.pres_id}`);
+        const data = res.data?.data ?? res.data;
+        const printData = buildPrintData({
+          prescription: data || pres,
+          items: data?.items ?? pres.items ?? []
+        });
+
+        setPrescriptionPrintData(printData);
+        setIsPrintReady(true);
+
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } catch (err) {
+        console.error(`Error printing ${pres.pres_id}:`, err);
+      }
     }
   };
 
@@ -906,9 +855,10 @@ export default function PrescriptionForm({
       }
 
       setPrescriptionItems([]);
+      setShowForm(false);
       await loadPrescriptions();
       if (onSave) { try { await onSave(payload); } catch (err) {} }
-      if (onComplete) onComplete();
+      if (onRefresh) onRefresh();
     } catch (error) {
       console.error("❌ خطا:", error);
       if (error.response) {
@@ -952,22 +902,103 @@ export default function PrescriptionForm({
     setEditingId(null);
     setPrescriptionNumber("");
     setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null });
-    if (onComplete) onComplete();
+    setShowForm(false);
+  };
+
+  // ============================================================
+  // ✅ ختم معالجه — دکمه جدید
+  // ============================================================
+  const handleFinishTreatment = async () => {
+    // ✅ بررسی نسخه‌های پرداخت‌نشده
+    const unpaidCount = prescriptions.filter(p =>
+      p.fee_status === 'pending' || p.fee_status === 'partial'
+    ).length;
+
+    let confirmMsg = `آیا مطمئن هستید که می‌خواهید معالجه این مریض را خاتمه دهید؟\n\n` +
+                      `📝 تعداد نسخه‌ها: ${prescriptions.length}\n` +
+                      `✅ پرداخت‌شده: ${prescriptions.filter(p => p.fee_status === 'paid' || p.status === 'paid').length}`;
+
+    if (unpaidCount > 0) {
+      confirmMsg += `\n⚠️ پرداخت‌نشده: ${unpaidCount}\n\n` +
+                    `توجه: بعضی نسخه‌ها هنوز پرداخت نشده‌اند.`;
+    }
+
+    confirmMsg += `\n\nتمام اطلاعات در بخش تاریخچه ثبت خواهد شد.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setFinishing(true);
+    try {
+      // ✅ اگر onFinish از پراپ‌ها وجود دارد، از آن استفاده کن
+      if (onFinish) {
+        await onFinish();
+      } else {
+        // ✅ در غیر این صورت، خودمان کارها را انجام دهیم
+        const regIdValue = patientRegId || regId || registration?.reg_id;
+
+        // 1. نهایی‌سازی تاریخچه
+        try {
+          await api.post('/treatment-history/sync', {
+            reg_id: regIdValue,
+            finalize: true,
+            progress: {
+              current_step: 'completed',
+              current_step_index: 8,
+              completed_steps: ['examination', 'pres_insert'],
+              finalize: true,
+            },
+          });
+        } catch (e) {
+          console.warn('Finalize history failed:', e);
+        }
+
+        // 2. ختم معالجه
+        try {
+          await api.post(`/doctor/complete/${regIdValue}`, {
+            end_time: new Date().toISOString()
+          });
+        } catch (e) {
+          console.warn('Complete treatment failed:', e);
+        }
+
+        // 3. به‌روزرسانی وضعیت مراجعه
+        try {
+          await api.put(`/registrations/${regIdValue}/status`, {
+            visit_status: 'Completed'
+          });
+        } catch (e) {
+          console.warn('Update registration status failed:', e);
+        }
+
+        toast.success("✅ معالجه با موفقیت خاتمه یافت و در تاریخچه ثبت شد");
+
+        if (onComplete) onComplete();
+      }
+    } catch (err) {
+      console.error("❌ خطا در ختم معالجه:", err);
+      toast.error(`❌ خطا در ختم معالجه: ${err?.message || 'خطای ناشناخته'}`);
+    } finally {
+      setFinishing(false);
+    }
   };
 
   // ========== رندر ==========
   if (loading) {
     return (
-      <MainLayoutjur>
-        <div style={{ textAlign: "center", padding: "50px", color: "#1f2937" }}>
-          <h2>⏳ در حال بارگذاری...</h2>
-        </div>
-      </MainLayoutjur>
+      <div style={{ textAlign: "center", padding: "50px", color: "#1f2937" }}>
+        <h2>⏳ در حال بارگذاری...</h2>
+      </div>
     );
   }
 
+  // ✅ محاسبه آمار
+  const paidCount = prescriptions.filter(p => p.fee_status === 'paid' || p.status === 'paid').length;
+  const pendingCount = prescriptions.filter(p => p.fee_status === 'pending' && p.status !== 'paid').length;
+  const partialCount = prescriptions.filter(p => p.fee_status === 'partial').length;
+
   return (
-    <MainLayoutjur>
+    <div>
+      {/* ✅ هدر مریض */}
       {patientData && (
         <div style={{ background: "#fff", padding: "15px 20px", borderRadius: "8px", marginBottom: "20px", border: "1px solid #e5e7eb" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px 15px" }}>
@@ -977,158 +1008,217 @@ export default function PrescriptionForm({
             <div><span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>سن</span><span>{patientData.age ? `${patientData.age} سال` : "-"}</span></div>
             <div><span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>جنسیت</span><span>{patientData.gender || "-"}</span></div>
             <div><span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>تشخیص</span><span>{patientData.diagnosis || "-"}</span></div>
-            <div><span style={{ color: "#6b7280", fontSize: "11px", display: "block" }}>شماره نسخه</span><span style={{ color: "#059669", fontWeight: "bold" }}>{prescriptionNumber || "—"}</span></div>
           </div>
         </div>
       )}
 
-      <div className="form-container">
-        <h3 style={{ color: "#059669", marginBottom: "15px" }}>
-          {editingId ? `✏️ ویرایش نسخه ${editingId}` : "📝 ثبت نسخه"}
-        </h3>
-
-        <div style={{ marginTop: "20px", borderTop: "1px solid #e5e7eb", paddingTop: "20px" }}>
-          <h4 style={{ color: "#2563eb", marginBottom: "12px" }}>➕ افزودن دارو</h4>
-
-          <div className="form-grid" onKeyDown={handleKeyDown}>
-            <div style={{ gridColumn: "1 / -1", marginBottom: "10px" }}>
-              <div style={{ display: "flex", gap: "15px", flexWrap: "wrap" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-                  <input type="radio" name="prescriptionType" checked={!formItem.is_custom}
-                    onChange={() => { setFormItem({ ...emptyItem, is_custom: false, category_id: formItem.category_id }); setSuppliers([]); setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null }); }} />
-                  <span>📦 از داروهای موجود</span>
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-                  <input type="radio" name="prescriptionType" checked={formItem.is_custom}
-                    onChange={() => { setFormItem({ ...emptyItem, is_custom: true, category_id: formItem.category_id }); setSuppliers([]); setStockAvailability({ available: true, totalStock: 0, message: "", checking: false, nextBatch: null }); }} />
-                  <span>✍️ داروی دستی</span>
-                </label>
-              </div>
-            </div>
-
-            <div>
-              <label>کتگوری *</label>
-              <select value={formItem.category_id} onChange={(e) => handleChange("category_id", e.target.value)} className="form-input">
-                <option value="">انتخاب</option>
-                {categories.map((c) => <option key={c.category_id} value={c.category_id}>{c.category_name}</option>)}
-              </select>
-            </div>
-
-            {formItem.is_custom ? (
-              <>
-                <div><label>نام دارو *</label><input type="text" value={formItem.custom_name} onChange={(e) => setFormItem({ ...formItem, custom_name: e.target.value })} className="form-input" /></div>
-                <div><label>نوع دارو</label><input type="text" value={formItem.custom_type} onChange={(e) => setFormItem({ ...formItem, custom_type: e.target.value })} className="form-input" /></div>
-                <div><label>حمایت‌کننده *</label><input type="text" value={formItem.custom_supplier_name} onChange={(e) => setFormItem({ ...formItem, custom_supplier_name: e.target.value })} className="form-input" /></div>
-              </>
-            ) : (
-              <>
-                <div>
-                  <label>دارو *</label>
-                  <select value={formItem.med_id} onChange={(e) => handleChange("med_id", e.target.value)} className="form-input">
-                    <option value="">انتخاب</option>
-                    {filteredMedications.map((m) => <option key={m.med_id} value={m.med_id}>{m.gen_name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label>حمایت‌کننده *</label>
-                  <select value={formItem.supplier_id} onChange={(e) => handleChange("supplier_id", e.target.value)} disabled={!formItem.med_id || loadingSuppliers} className="form-input">
-                    <option value="">{loadingSuppliers ? "⏳..." : !formItem.med_id ? "ابتدا دارو" : suppliers.length === 0 ? "یافت نشد" : "انتخاب"}</option>
-                    {suppliers.map((s) => <option key={s.reg_id} value={s.reg_id}>{s.full_name ?? s.name ?? s.reg_name}</option>)}
-                  </select>
-                </div>
-                <div><label>نوع دارو</label><input type="text" value={formItem.type} readOnly className="form-input" /></div>
-              </>
-            )}
-
-            <div><label>مقدار مصرف *</label><input value={formItem.dosage} onChange={(e) => handleChange("dosage", e.target.value)} placeholder="1×3" className="form-input" /></div>
-            <div>
-              <label>تعداد *</label>
-              <input type="number" min="1" value={formItem.quantity} onChange={(e) => handleChange("quantity", e.target.value)} className="form-input" />
-              {!formItem.is_custom && stockAvailability.message && (
-                <small style={{ color: stockAvailability.available ? "#059669" : "#dc2626", display: "block", marginTop: "4px", fontSize: "11px" }}>
-                  {stockAvailability.checking ? "⏳..." : stockAvailability.message}
-                </small>
-              )}
-            </div>
-            <div><label>ملاحظات</label><input value={formItem.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="form-input" /></div>
-          </div>
-
-          <div style={{ marginTop: "15px", display: "flex", gap: "10px" }}>
-            <button type="button" onClick={handleAddItem} className="btn-add">➕ افزودن</button>
-            {formItem.is_custom && (
-              <button type="button" onClick={() => { setFormItem({ ...emptyItem, category_id: formItem.category_id }); setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null }); }} className="btn-cancel-custom">❌ لغو</button>
-            )}
-          </div>
+      {/* ✅ خلاصه وضعیت نسخه‌ها */}
+      {prescriptions.length > 0 && (
+        <div style={{
+          background: "#f0f9ff", padding: "12px 18px", borderRadius: "8px",
+          marginBottom: "20px", border: "1px solid #bae6fd",
+          display: "flex", gap: "15px", flexWrap: "wrap", alignItems: "center"
+        }}>
+          <span style={{ fontWeight: "bold", color: "#0369a1" }}>📊 خلاصه:</span>
+          <span>📝 کل: <strong>{prescriptions.length}</strong></span>
+          <span style={{ color: "#047857" }}>
+            ✅ پرداخت شده: <strong>{paidCount}</strong>
+          </span>
+          <span style={{ color: "#b45309" }}>
+            ⏳ در انتظار: <strong>{pendingCount}</strong>
+          </span>
+          <span style={{ color: "#0369a1" }}>
+            💰 جزئی: <strong>{partialCount}</strong>
+          </span>
+          {paidCount > 0 && (
+            <button
+              onClick={handlePrintAllPaid}
+              style={{
+                marginRight: 'auto', background: "#7c3aed", color: "#fff",
+                padding: "6px 14px", borderRadius: "6px",
+                border: "none", cursor: "pointer", fontSize: "12px", fontWeight: "bold"
+              }}
+            >
+              🖨️ چاپ همه پرداخت‌شده‌ها
+            </button>
+          )}
         </div>
+      )}
 
-        {prescriptionItems.length > 0 && (
-          <div className="table-container" style={{ marginTop: "20px" }}>
-            <h4 style={{ color: "#2563eb" }}>📋 لیست داروها ({prescriptionItems.length})</h4>
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th><th>کتگوری</th><th>نام دارو</th><th>نوع</th><th>حمایت‌کننده</th>
-                  <th>بارکد</th><th>Batch</th><th>مقدار</th><th>تعداد</th><th>ملاحظات</th><th>عملیات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {prescriptionItems.map((item, idx) => (
-                  <tr key={item.id}>
-                    <td>{idx + 1}</td>
-                    <td>{item.category_name || "-"}</td>
-                    <td>{item.med_name || "-"}{item.is_custom && <span className="badge-custom">دستی</span>}</td>
-                    <td>{item.med_type || "-"}</td>
-                    <td>{item.supplier_name || "-"}</td>
-                    <td>{item.barcode ? <span className="badge-barcode">{item.barcode}</span> : "-"}</td>
-                    <td>{item.batch_number ? <span className="badge-batch">{item.batch_number}</span> : "-"}</td>
-                    <td>{item.dosage || "-"}</td>
-                    <td>{item.quantity}</td>
-                    <td>{item.remarks || "-"}</td>
-                    <td><button onClick={() => handleRemoveItem(item.id)} className="btn-delete">حذف</button></td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr><td colSpan="11" style={{ textAlign: "left", fontWeight: "bold", color: "#b45309" }}>مجموع: {prescriptionItems.length} قلم</td></tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-
-        <div className="action-buttons">
-          <button type="button" onClick={handleSavePrescription} disabled={prescriptionItems.length === 0 || isSubmitting} className="btn-save">
-            {isSubmitting ? "⏳..." : editingId ? `💾 بروزرسانی ${editingId}` : "💾 ذخیره"}
-          </button>
-          {prescriptionItems.length > 0 && <button type="button" onClick={handlePrintClick} className="btn-print">🖨️ چاپ</button>}
-          <button type="button" onClick={handleCancel} className="btn-cancel">{editingId ? "❌ لغو ویرایش" : "❌ انصراف"}</button>
-        </div>
+      {/* ✅ دکمه باز/بسته کردن فرم ثبت */}
+      <div style={{ display: "flex", gap: "10px", marginBottom: "15px", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={() => setShowForm(!showForm)}
+          style={{
+            background: showForm ? "#6b7280" : "#059669",
+            color: "#fff", padding: "10px 20px", borderRadius: "6px",
+            border: "none", cursor: "pointer", fontWeight: "bold"
+          }}
+        >
+          {showForm ? "❌ بستن فرم" : "➕ ثبت نسخه جدید"}
+        </button>
+        <button
+          type="button"
+          onClick={loadPrescriptions}
+          disabled={loadingList}
+          style={{
+            background: "#eff6ff", color: "#1e40af",
+            border: "1px solid #bfdbfe", padding: "10px 20px",
+            borderRadius: "6px", cursor: "pointer",
+            fontSize: "13px", fontWeight: "600"
+          }}
+        >
+          {loadingList ? "⏳..." : "🔄 بروزرسانی لیست"}
+        </button>
       </div>
 
-      <div className="prescriptions-list-container">
+      {/* ✅ فرم ثبت نسخه (فقط اگر showForm باشد) */}
+      {showForm && (
+        <div className="form-container">
+          <h3 style={{ color: "#059669", marginBottom: "15px" }}>
+            {editingId ? `✏️ ویرایش نسخه ${editingId}` : "📝 ثبت نسخه جدید"}
+          </h3>
+
+          <div style={{ marginTop: "20px", borderTop: "1px solid #e5e7eb", paddingTop: "20px" }}>
+            <h4 style={{ color: "#2563eb", marginBottom: "12px" }}>➕ افزودن دارو</h4>
+
+            <div className="form-grid" onKeyDown={handleKeyDown}>
+              <div style={{ gridColumn: "1 / -1", marginBottom: "10px" }}>
+                <div style={{ display: "flex", gap: "15px", flexWrap: "wrap" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                    <input type="radio" name="prescriptionType" checked={!formItem.is_custom}
+                      onChange={() => { setFormItem({ ...emptyItem, is_custom: false, category_id: formItem.category_id }); setSuppliers([]); setStockAvailability({ available: false, totalStock: 0, message: "", checking: false, nextBatch: null }); }} />
+                    <span>📦 از داروهای موجود</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                    <input type="radio" name="prescriptionType" checked={formItem.is_custom}
+                      onChange={() => { setFormItem({ ...emptyItem, is_custom: true, category_id: formItem.category_id }); setSuppliers([]); setStockAvailability({ available: true, totalStock: 0, message: "", checking: false, nextBatch: null }); }} />
+                    <span>✍️ داروی دستی</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label>کتگوری *</label>
+                <select value={formItem.category_id} onChange={(e) => handleChange("category_id", e.target.value)} className="form-input">
+                  <option value="">انتخاب</option>
+                  {categories.map((c) => <option key={c.category_id} value={c.category_id}>{c.category_name}</option>)}
+                </select>
+              </div>
+
+              {formItem.is_custom ? (
+                <>
+                  <div><label>نام دارو *</label><input type="text" value={formItem.custom_name} onChange={(e) => setFormItem({ ...formItem, custom_name: e.target.value })} className="form-input" /></div>
+                  <div><label>نوع دارو</label><input type="text" value={formItem.custom_type} onChange={(e) => setFormItem({ ...formItem, custom_type: e.target.value })} className="form-input" /></div>
+                  <div><label>حمایت‌کننده *</label><input type="text" value={formItem.custom_supplier_name} onChange={(e) => setFormItem({ ...formItem, custom_supplier_name: e.target.value })} className="form-input" /></div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label>دارو *</label>
+                    <select value={formItem.med_id} onChange={(e) => handleChange("med_id", e.target.value)} className="form-input">
+                      <option value="">انتخاب</option>
+                      {filteredMedications.map((m) => <option key={m.med_id} value={m.med_id}>{m.gen_name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label>حمایت‌کننده *</label>
+                    <select value={formItem.supplier_id} onChange={(e) => handleChange("supplier_id", e.target.value)} disabled={!formItem.med_id || loadingSuppliers} className="form-input">
+                      <option value="">{loadingSuppliers ? "⏳..." : !formItem.med_id ? "ابتدا دارو" : suppliers.length === 0 ? "یافت نشد" : "انتخاب"}</option>
+                      {suppliers.map((s) => <option key={s.reg_id} value={s.reg_id}>{s.full_name ?? s.name ?? s.reg_name}</option>)}
+                    </select>
+                  </div>
+                  <div><label>نوع دارو</label><input type="text" value={formItem.type} readOnly className="form-input" /></div>
+                </>
+              )}
+
+              <div><label>مقدار مصرف *</label><input value={formItem.dosage} onChange={(e) => handleChange("dosage", e.target.value)} placeholder="1×3" className="form-input" /></div>
+              <div>
+                <label>تعداد *</label>
+                <input type="number" min="1" value={formItem.quantity} onChange={(e) => handleChange("quantity", e.target.value)} className="form-input" />
+                {!formItem.is_custom && stockAvailability.message && (
+                  <small style={{ color: stockAvailability.available ? "#059669" : "#dc2626", display: "block", marginTop: "4px", fontSize: "11px" }}>
+                    {stockAvailability.checking ? "⏳..." : stockAvailability.message}
+                  </small>
+                )}
+              </div>
+              <div><label>ملاحظات</label><input value={formItem.remarks} onChange={(e) => handleChange("remarks", e.target.value)} className="form-input" /></div>
+            </div>
+
+            <div style={{ marginTop: "15px", display: "flex", gap: "10px" }}>
+              <button type="button" onClick={handleAddItem} className="btn-add">➕ افزودن</button>
+            </div>
+          </div>
+
+          {prescriptionItems.length > 0 && (
+            <div className="table-container" style={{ marginTop: "20px" }}>
+              <h4 style={{ color: "#2563eb" }}>📋 لیست داروها ({prescriptionItems.length})</h4>
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th><th>کتگوری</th><th>نام دارو</th><th>نوع</th><th>حمایت‌کننده</th>
+                    <th>بارکد</th><th>Batch</th><th>مقدار</th><th>تعداد</th><th>ملاحظات</th><th>عملیات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prescriptionItems.map((item, idx) => (
+                    <tr key={item.id}>
+                      <td>{idx + 1}</td>
+                      <td>{item.category_name || "-"}</td>
+                      <td>{item.med_name || "-"}{item.is_custom && <span className="badge-custom">دستی</span>}</td>
+                      <td>{item.med_type || "-"}</td>
+                      <td>{item.supplier_name || "-"}</td>
+                      <td>{item.barcode ? <span className="badge-barcode">{item.barcode}</span> : "-"}</td>
+                      <td>{item.batch_number ? <span className="badge-batch">{item.batch_number}</span> : "-"}</td>
+                      <td>{item.dosage || "-"}</td>
+                      <td>{item.quantity}</td>
+                      <td>{item.remarks || "-"}</td>
+                      <td><button onClick={() => handleRemoveItem(item.id)} className="btn-delete">حذف</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="action-buttons">
+            <button type="button" onClick={handleSavePrescription} disabled={prescriptionItems.length === 0 || isSubmitting} className="btn-save">
+              {isSubmitting ? "⏳..." : editingId ? `💾 بروزرسانی ${editingId}` : "💾 ذخیره"}
+            </button>
+            {prescriptionItems.length > 0 && <button type="button" onClick={handlePrintClick} className="btn-print">🖨️ چاپ پیش‌نمایش</button>}
+            <button type="button" onClick={handleCancel} className="btn-cancel">{editingId ? "❌ لغو ویرایش" : "❌ انصراف"}</button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ لیست نسخه‌های همین مریض */}
+      <div className="prescriptions-list-container" style={{ marginTop: showForm ? "30px" : "0" }}>
         <div className="list-header">
-          <h3 style={{ color: "#1e40af", margin: 0 }}>📚 نسخه‌ها ({prescriptions.length})</h3>
-          <button type="button" onClick={loadPrescriptions} className="btn-refresh" disabled={loadingList}>
-            {loadingList ? "⏳..." : "🔄 بروزرسانی"}
-          </button>
+          <h3 style={{ color: "#1e40af", margin: 0 }}>
+            📚 نسخه‌های {patientName || patientData?.full_name || 'مریض'} ({prescriptions.length})
+          </h3>
         </div>
 
         {loadingList && prescriptions.length === 0 ? (
-          <div className="empty-state">⏳...</div>
+          <div className="empty-state">⏳ در حال بارگذاری...</div>
         ) : prescriptions.length === 0 ? (
-          <div className="empty-state">📭 نسخه‌ای نیست</div>
+          <div className="empty-state">📭 هنوز نسخه‌ای برای این مریض ثبت نشده است</div>
         ) : (
           <div className="table-container" style={{ marginTop: 0 }}>
             <table className="prescriptions-table">
               <thead>
                 <tr>
-                  <th style={{ width: "36px" }}></th><th>#</th><th>شماره</th><th>تاریخ</th>
-                  <th>داکتر</th><th>تشخیص</th><th>اقلام</th><th>وضعیت</th><th>فیس</th><th>عملیات</th>
+                  <th style={{ width: "36px" }}></th>
+                  <th>#</th><th>شماره</th><th>تاریخ</th>
+                  <th>داکتر</th><th>تشخیص</th><th>اقلام</th>
+                  <th>وضعیت داروخانه</th><th>وضعیت فیس</th><th>مبلغ</th><th>عملیات</th>
                 </tr>
               </thead>
               <tbody>
                 {prescriptions.map((pres, idx) => {
                   const st = STATUS_MAP[pres.status] || STATUS_MAP.pending;
-                  const fs = pres.fee_status ? FEE_STATUS_MAP[pres.fee_status] : null;
+                  const fs = FEE_STATUS_MAP[pres.fee_status] || FEE_STATUS_MAP.pending;
                   const isOpen = !!expandedRows[pres.pres_id];
                   const items = pres.items ?? [];
                   const isSyncing = syncingId === pres.pres_id;
@@ -1149,15 +1239,34 @@ export default function PrescriptionForm({
                         <td>{pres.doc_name || pres.doctor?.name || "-"}</td>
                         <td className="td-ellipsis">{pres.diagnosis || "-"}</td>
                         <td><span className="items-count">{items.length}</span></td>
-                        <td><span className="status-badge" style={{ backgroundColor: st.bg, color: st.color }}>● {st.label}</span></td>
                         <td>
-                          {fs ? (
-                            <span className="status-badge" style={{ backgroundColor: fs.bg, color: fs.color }} title={`پرداخت: ${pres.fee_paid} / باقیمانده: ${pres.fee_remaining}`}>
-                              {fs.label}
-                            </span>
-                          ) : (
-                            <span style={{ color: "#9ca3af", fontSize: "11px" }}>—</span>
-                          )}
+                          <span className="status-badge" style={{ backgroundColor: st.bg, color: st.color }}>
+                            ● {st.label}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="status-badge" style={{ backgroundColor: fs.bg, color: fs.color }}>
+                            {fs.label}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
+                            {pres.fee_total > 0 && (
+                              <div style={{ color: '#0369a1', fontWeight: 'bold' }}>
+                                کل: {pres.fee_total.toLocaleString()}
+                              </div>
+                            )}
+                            {pres.fee_paid > 0 && (
+                              <div style={{ color: '#047857' }}>
+                                ✅ {pres.fee_paid.toLocaleString()}
+                              </div>
+                            )}
+                            {pres.fee_remaining > 0 && (
+                              <div style={{ color: '#b91c1c' }}>
+                                باقی: {pres.fee_remaining.toLocaleString()}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td>
                           <div className="row-actions">
@@ -1172,21 +1281,14 @@ export default function PrescriptionForm({
                             >
                               {isSyncing ? "⏳" : "🔄"}
                             </button>
-                            <button type="button" className="btn-action btn-delete-sm" onClick={() => handleDeletePrescription(pres.pres_id)} title="حذف کل">🗑️</button>
-                            <select value={pres.status} onChange={(e) => handleChangeStatus(pres.pres_id, e.target.value)} className="status-select-inline">
-                              <option value="pending">در انتظار</option>
-                              <option value="sent_to_pharmacy">ارسال دواخانه</option>
-                              <option value="pharmacy_registered">ثبت دواخانه</option>
-                              <option value="paid">پول اخذ</option>
-                              <option value="cancelled">لغو</option>
-                            </select>
+                            <button type="button" className="btn-action btn-delete-sm" onClick={() => handleDeletePrescription(pres.pres_id)} title="حذف">🗑️</button>
                           </div>
                         </td>
                       </tr>
 
                       {isOpen && items.length > 0 && (
                         <tr className="pres-detail-row">
-                          <td colSpan="10">
+                          <td colSpan="11">
                             <div className="detail-wrapper">
                               <div className="detail-items-title">💊 داروها ({items.length})</div>
                               <table className="detail-items-table">
@@ -1213,33 +1315,23 @@ export default function PrescriptionForm({
 
                                         <td>
                                           {isEditing ? (
-                                            <input
-                                              type="text"
-                                              value={editingItem.dosage}
+                                            <input type="text" value={editingItem.dosage}
                                               onChange={(e) => setEditingItem({ ...editingItem, dosage: e.target.value })}
-                                              style={{ width: "80px", padding: "3px 5px", fontSize: "11px", textAlign: "center" }}
-                                            />
+                                              style={{ width: "80px", padding: "3px 5px", fontSize: "11px", textAlign: "center" }} />
                                           ) : (it.dosage || "-")}
                                         </td>
                                         <td>
                                           {isEditing ? (
-                                            <input
-                                              type="number"
-                                              min="1"
-                                              value={editingItem.quantity}
+                                            <input type="number" min="1" value={editingItem.quantity}
                                               onChange={(e) => setEditingItem({ ...editingItem, quantity: e.target.value })}
-                                              style={{ width: "60px", padding: "3px 5px", fontSize: "11px", textAlign: "center" }}
-                                            />
+                                              style={{ width: "60px", padding: "3px 5px", fontSize: "11px", textAlign: "center" }} />
                                           ) : it.quantity}
                                         </td>
                                         <td>
                                           {isEditing ? (
-                                            <input
-                                              type="text"
-                                              value={editingItem.remarks}
+                                            <input type="text" value={editingItem.remarks}
                                               onChange={(e) => setEditingItem({ ...editingItem, remarks: e.target.value })}
-                                              style={{ width: "100px", padding: "3px 5px", fontSize: "11px" }}
-                                            />
+                                              style={{ width: "100px", padding: "3px 5px", fontSize: "11px" }} />
                                           ) : (it.remarks || "-")}
                                         </td>
                                         <td>
@@ -1247,24 +1339,16 @@ export default function PrescriptionForm({
                                             {isEditing ? (
                                               <>
                                                 <button type="button" className="btn-action" onClick={handleSaveEditItem}
-                                                  style={{ padding: "3px 6px", fontSize: "11px", background: "#059669", color: "#fff", borderColor: "#059669" }}>
-                                                  💾
-                                                </button>
+                                                  style={{ padding: "3px 6px", fontSize: "11px", background: "#059669", color: "#fff", borderColor: "#059669" }}>💾</button>
                                                 <button type="button" className="btn-action" onClick={handleCancelEditItem}
-                                                  style={{ padding: "3px 6px", fontSize: "11px" }}>
-                                                  ❌
-                                                </button>
+                                                  style={{ padding: "3px 6px", fontSize: "11px" }}>❌</button>
                                               </>
                                             ) : (
                                               <>
                                                 <button type="button" className="btn-action btn-edit" onClick={() => handleStartEditItem(pres.pres_id, it)}
-                                                  title="ویرایش این قلم" style={{ padding: "3px 6px", fontSize: "11px" }}>
-                                                  ✏️
-                                                </button>
+                                                  title="ویرایش" style={{ padding: "3px 6px", fontSize: "11px" }}>✏️</button>
                                                 <button type="button" className="btn-action btn-delete-sm" onClick={() => handleDeleteSingleItem(pres.pres_id, it.pres_it_id)}
-                                                  title="حذف این قلم" style={{ padding: "3px 6px", fontSize: "11px" }}>
-                                                  🗑️
-                                                </button>
+                                                  title="حذف" style={{ padding: "3px 6px", fontSize: "11px" }}>🗑️</button>
                                               </>
                                             )}
                                           </div>
@@ -1287,19 +1371,108 @@ export default function PrescriptionForm({
         )}
       </div>
 
+      {/* ============================================================ */}
+      {/* ✅ دکمه‌های ناوبری و ختم معالجه */}
+      {/* ============================================================ */}
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: "10px",
+        marginTop: "25px",
+        padding: "18px 20px",
+        background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+        borderRadius: "10px",
+        border: "2px solid #86efac",
+        flexWrap: "wrap"
+      }}>
+        {/* مرحله قبل */}
+        {onPrevStep && (
+          <button
+            type="button"
+            onClick={onPrevStep}
+            disabled={finishing}
+            style={{
+              padding: "10px 20px",
+              background: "#fff",
+              color: "#374151",
+              border: "1px solid #d1d5db",
+              borderRadius: "8px",
+              cursor: finishing ? "not-allowed" : "pointer",
+              fontSize: "13px",
+              fontWeight: "bold",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+          >
+            ↩️ مرحله قبل
+          </button>
+        )}
+
+        {/* دکمه ختم معالجه */}
+        <button
+          type="button"
+          onClick={handleFinishTreatment}
+          disabled={finishing || isSubmitting}
+          style={{
+            padding: "12px 30px",
+            background: finishing
+              ? "#9ca3af"
+              : "linear-gradient(135deg, #059669 0%, #047857 100%)",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            cursor: (finishing || isSubmitting) ? "not-allowed" : "pointer",
+            fontSize: "15px",
+            fontWeight: "bold",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            boxShadow: finishing ? "none" : "0 4px 12px rgba(5, 150, 105, 0.4)",
+            transition: "all 0.2s"
+          }}
+          title="ثبت نهایی در تاریخچه و ختم معالجه"
+        >
+          {finishing ? "⏳ در حال ختم..." : "✅ ختم معالجه"}
+        </button>
+
+        {/* مرحله بعد */}
+        {onNextStep && (
+          <button
+            type="button"
+            onClick={onNextStep}
+            disabled={finishing}
+            style={{
+              padding: "10px 20px",
+              background: "#3b82f6",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              cursor: finishing ? "not-allowed" : "pointer",
+              fontSize: "13px",
+              fontWeight: "bold",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+          >
+            مرحله بعد ➡️
+          </button>
+        )}
+      </div>
+
       <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
         {prescriptionPrintData && <PrescriptionPrint ref={printRef} data={prescriptionPrintData} />}
       </div>
 
       <style>{`
-        .form-container { background: #fff; padding: 25px; border-radius: 10px; color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .form-container { background: #fff; padding: 25px; border-radius: 10px; color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px; }
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
         .form-grid label { display: block; margin-bottom: 5px; color: #374151; font-size: 13px; font-weight: 600; }
         .form-input { padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; color: #111827; width: 100%; font-size: 14px; outline: none; }
         .form-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
         .btn-add { background: #3b82f6; color: #fff; padding: 10px 25px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; }
-        .btn-add:hover { background: #2563eb; }
-        .btn-cancel-custom { background: #6b7280; color: #fff; padding: 10px 25px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; }
         .btn-delete { background: #dc2626; color: #fff; padding: 4px 12px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; }
         .btn-save { background: #059669; color: #fff; padding: 10px 25px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; }
         .btn-save:disabled { background: #9ca3af; cursor: not-allowed; }
@@ -1313,11 +1486,9 @@ export default function PrescriptionForm({
         .table-container th { background: #f9fafb; color: #1e40af; padding: 10px 12px; text-align: center; border: 1px solid #e5e7eb; white-space: nowrap; font-weight: 700; }
         .table-container td { padding: 8px 12px; text-align: center; border: 1px solid #e5e7eb; color: #111827; }
         .table-container tbody tr:hover { background: #f9fafb; }
-        .table-container tfoot td { font-weight: bold; background: #f9fafb; }
         .action-buttons { display: flex; gap: 10px; justify-content: center; margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 20px; }
-        .prescriptions-list-container { margin-top: 30px; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .prescriptions-list-container { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 12px; border-bottom: 2px solid #e5e7eb; }
-        .btn-refresh { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
         .empty-state { text-align: center; padding: 40px 20px; color: #6b7280; background: #f9fafb; border-radius: 8px; border: 1px dashed #d1d5db; }
         .prescriptions-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .prescriptions-table thead th { background: #eff6ff; color: #1e40af; padding: 10px 8px; text-align: center; border: 1px solid #dbeafe; font-weight: 700; font-size: 12px; }
@@ -1335,7 +1506,6 @@ export default function PrescriptionForm({
         .btn-print-sm { color: #7c3aed; border-color: #ddd6fe; }
         .btn-sync { color: #047857; border-color: #a7f3d0; }
         .btn-delete-sm { color: #dc2626; border-color: #fecaca; }
-        .status-select-inline { padding: 5px 6px; border-radius: 5px; border: 1px solid #d1d5db; font-size: 11px; cursor: pointer; }
         .pres-detail-row td { padding: 0; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; }
         .detail-wrapper { padding: 15px 20px; }
         .detail-items-title { font-weight: bold; color: #1e40af; margin-bottom: 8px; font-size: 13px; }
@@ -1344,6 +1514,6 @@ export default function PrescriptionForm({
         .detail-items-table td { padding: 7px 10px; text-align: center; border: 1px solid #e5e7eb; }
         .detail-items-table tbody tr:hover { background: #f9fafb; }
       `}</style>
-    </MainLayoutjur>
+    </div>
   );
 }

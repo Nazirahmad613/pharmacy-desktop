@@ -26,7 +26,6 @@ class TreatmentHistoryController extends Controller
     public function index(Request $request)
     {
         try {
-            // ✅ بدون items (پیش‌فرض سبک)
             $withRelations = ['patient', 'doctor'];
             if ($request->boolean('with_items')) {
                 $withRelations[] = 'items';
@@ -57,7 +56,7 @@ class TreatmentHistoryController extends Controller
                 $query->whereDate('created_at', '<=', $request->to_date);
             }
 
-            // ✅ فیلترهای پیشرفته — با درست‌سازی
+            // فیلترهای پیشرفته
             if ($request->boolean('has_laboratory')) {
                 $query->where('laboratory_tests_count', '>', 0);
             }
@@ -110,7 +109,7 @@ class TreatmentHistoryController extends Controller
 
     /**
      * ============================================================
-     * نمایش جزئیات یک تاریخچه
+     * نمایش جزئیات یک تاریخچه (با تمام items)
      * ============================================================
      */
     public function show($id)
@@ -169,7 +168,7 @@ class TreatmentHistoryController extends Controller
 
     /**
      * ============================================================
-     * همگام‌سازی (ثبت هر مرحله)
+     * همگام‌سازی (ثبت هر مرحله) — نسخه بهبود یافته
      * ============================================================
      */
     public function sync(Request $request)
@@ -197,6 +196,11 @@ class TreatmentHistoryController extends Controller
                 ]);
             }
 
+            // ✅ اطمینان از آرایه بودن stepData
+            if (!is_array($stepData)) {
+                $stepData = [];
+            }
+
             // همگام‌سازی اصلی
             $progressData['finalize'] = false;
             $history = $this->historyService->syncMainHistory((int) $regId, $progressData);
@@ -209,19 +213,37 @@ class TreatmentHistoryController extends Controller
             }
 
             // ✅ افزودن آیتم (اگر stepKey داده شده)
+            $item = null;
             if ($stepKey) {
-                $this->historyService->addItem(
+                $item = $this->historyService->addItem(
                     (int) $regId,
-                    $stepKey,
+                    (string) $stepKey,
                     $stepData,
-                    $refId,
-                    $refTable
+                    $refId ? (int) $refId : null,
+                    $refTable ? (string) $refTable : null
                 );
+
+                if (!$item) {
+                    Log::warning('sync: addItem returned null', [
+                        'reg_id' => $regId,
+                        'step_key' => $stepKey,
+                        'ref_id' => $refId,
+                        'step_data_keys' => array_keys($stepData),
+                    ]);
+                    // ولی ادامه بده و history را برگردان
+                }
             }
+
+            // ✅ دوباره از DB بخوان تا شمارنده‌های به‌روز را داشته باشیم
+            $history->refresh();
+            $history->load(['items' => function ($q) {
+                $q->orderBy('step_order')->orderBy('step_at');
+            }]);
 
             return response()->json([
                 'success' => true,
                 'data' => $history,
+                'item' => $item,
                 'message' => 'تاریخچه با موفقیت همگام شد',
             ]);
 
@@ -230,6 +252,7 @@ class TreatmentHistoryController extends Controller
                 'reg_id' => $regId,
                 'step_key' => $stepKey,
                 'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             return response()->json([
                 'success' => false,
@@ -240,7 +263,7 @@ class TreatmentHistoryController extends Controller
 
     /**
      * ============================================================
-     * نهایی‌سازی مستقیم (اختیاری — می‌توان از sync با finalize=true استفاده کرد)
+     * نهایی‌سازی مستقیم
      * ============================================================
      */
     public function finalize(Request $request)
