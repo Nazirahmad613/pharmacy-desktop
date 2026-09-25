@@ -4,7 +4,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\TreatmentHistory;
-use App\Models\TreatmentHistoryItem;
 use App\Services\TreatmentHistoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -110,6 +109,7 @@ class TreatmentHistoryController extends Controller
     /**
      * ============================================================
      * نمایش جزئیات یک تاریخچه (با تمام items)
+     * ✅ اگر آیتم‌ها خالی بودند، به‌صورت خودکار rebuild می‌شود
      * ============================================================
      */
     public function show($id)
@@ -131,13 +131,38 @@ class TreatmentHistoryController extends Controller
                 ], 404);
             }
 
+            // ✅ اگر آیتم‌ها خالی بودند، rebuild کن
+            if (!$history->items || $history->items->count() === 0) {
+                Log::info('TreatmentHistory::show — items empty, rebuilding', [
+                    'history_id' => $history->history_id,
+                    'reg_id' => $history->reg_id,
+                ]);
+
+                $rebuilt = $this->historyService->rebuildHistory((int) $history->reg_id);
+
+                if ($rebuilt) {
+                    $rebuilt->load([
+                        'patient',
+                        'doctor',
+                        'registration',
+                        'items' => function ($q) {
+                            $q->orderBy('step_order')->orderBy('step_at');
+                        }
+                    ]);
+                    $history = $rebuilt;
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => $history,
             ]);
 
         } catch (\Throwable $e) {
-            Log::error('TreatmentHistory::show error', ['id' => $id, 'message' => $e->getMessage()]);
+            Log::error('TreatmentHistory::show error', [
+                'id' => $id,
+                'message' => $e->getMessage(),
+            ]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -161,7 +186,10 @@ class TreatmentHistoryController extends Controller
             ]);
 
         } catch (\Throwable $e) {
-            Log::error('TreatmentHistory::byPatient error', ['patient_id' => $patientId, 'message' => $e->getMessage()]);
+            Log::error('TreatmentHistory::byPatient error', [
+                'patient_id' => $patientId,
+                'message' => $e->getMessage(),
+            ]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -186,9 +214,21 @@ class TreatmentHistoryController extends Controller
         }
 
         try {
-            // ✅ اگر finalize=true، از متد finalizeHistory استفاده کن
+            // ✅ اگر finalize=true، تاریخچه را نهایی کن
             if ($finalize) {
                 $history = $this->historyService->finalizeHistory((int) $regId);
+
+                if (!$history) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'خطا در نهایی‌سازی تاریخچه',
+                    ], 500);
+                }
+
+                $history->load(['items' => function ($q) {
+                    $q->orderBy('step_order')->orderBy('step_at');
+                }]);
+
                 return response()->json([
                     'success' => true,
                     'data' => $history,
@@ -228,6 +268,7 @@ class TreatmentHistoryController extends Controller
                         'reg_id' => $regId,
                         'step_key' => $stepKey,
                         'ref_id' => $refId,
+                        'ref_table' => $refTable,
                         'step_data_keys' => array_keys($stepData),
                     ]);
                     // ولی ادامه بده و history را برگردان
@@ -276,6 +317,12 @@ class TreatmentHistoryController extends Controller
         try {
             $history = $this->historyService->finalizeHistory((int) $regId);
 
+            if ($history) {
+                $history->load(['items' => function ($q) {
+                    $q->orderBy('step_order')->orderBy('step_at');
+                }]);
+            }
+
             return response()->json([
                 'success' => (bool) $history,
                 'data' => $history,
@@ -288,6 +335,63 @@ class TreatmentHistoryController extends Controller
                 'message' => $e->getMessage(),
             ]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * ============================================================
+     * ✅ بازسازی کامل تاریخچه از تمام جداول
+     * POST /treatment-history/rebuild/{regId}
+     *
+     * این متد از تمام جداول (examinations, laboratory_requests,
+     * radiology_requests, operation_requests, prescriptions,
+     * followups, admission_requests) داده می‌خواند و آیتم‌های
+     * treatment_history_items را دوباره می‌سازد.
+     * ============================================================
+     */
+    public function rebuild($regId)
+    {
+        try {
+            if (!$regId) {
+                return response()->json(['success' => false, 'message' => 'reg_id لازم است'], 422);
+            }
+
+            Log::info('TreatmentHistory::rebuild called', ['reg_id' => $regId]);
+
+            $history = $this->historyService->rebuildHistory((int) $regId);
+
+            if (!$history) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'خطا در بازسازی تاریخچه — مراجعه یافت نشد یا خطای داخلی',
+                ], 500);
+            }
+
+            $history->load([
+                'patient',
+                'doctor',
+                'registration',
+                'items' => function ($q) {
+                    $q->orderBy('step_order')->orderBy('step_at');
+                }
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'data' => $history,
+                'message' => 'تاریخچه با موفقیت بازسازی شد',
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('TreatmentHistory::rebuild error', [
+                'reg_id' => $regId,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در بازسازی تاریخچه: ' . $e->getMessage(),
+            ], 500);
         }
     }
 }

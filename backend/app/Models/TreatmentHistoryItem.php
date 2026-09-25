@@ -4,50 +4,42 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class TreatmentHistoryItem extends Model
 {
-    use SoftDeletes;
-
     protected $table = 'treatment_history_items';
+    protected $primaryKey = 'id';
 
     protected $fillable = [
         'history_id',
+        'reg_id',
         'step_key',
         'step_label',
-        'action_type',
+        'step_icon',
         'step_order',
+        'step_at',
         'ref_id',
         'ref_table',
-        'data',
+        'status',
         'summary',
         'amount',
         'paid_amount',
-        'payment_status',
-        'status',
-        'status_label',
-        'pdf_file',
         'barcode',
-        'step_at',
+        'pdf_file',
+        'data',
         'performed_by',
         'performed_by_name',
     ];
 
     protected $casts = [
-        'data' => 'array',
-        'amount' => 'decimal:2',
+        'data'      => 'array',
+        'step_at'   => 'datetime',
+        'amount'    => 'decimal:2',
         'paid_amount' => 'decimal:2',
-        'step_at' => 'datetime',
     ];
 
     public function history()
     {
         return $this->belongsTo(TreatmentHistory::class, 'history_id', 'history_id');
-    }
-
-    public function performedBy()
-    {
-        return $this->belongsTo(User::class, 'performed_by');
     }
 }

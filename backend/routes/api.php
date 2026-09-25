@@ -191,11 +191,23 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/treatment/{registrationId}/complete', [ExaminationController::class, 'complete']);
     });
 
+    // ============================================================
+    // ✅ تاریخچه معالجه (Treatment History)
+    // ⭐ routes خاص قبل از /{id}
+    // ============================================================
     Route::prefix('treatment-history')->group(function () {
-        Route::get('/', [TreatmentHistoryController::class, 'index']);
-        Route::get('/{id}', [TreatmentHistoryController::class, 'show']);
-        Route::get('/patient/{patientId}', [TreatmentHistoryController::class, 'byPatient']);
+        // ⭐ routes خاص اول
+        Route::get('/patient/{patientId}', [TreatmentHistoryController::class, 'byPatient'])
+            ->where('patientId', '[0-9]+');
+
         Route::post('/sync', [TreatmentHistoryController::class, 'sync']);
+        Route::post('/finalize', [TreatmentHistoryController::class, 'finalize']);
+        Route::post('/rebuild/{regId}', [TreatmentHistoryController::class, 'rebuild'])
+            ->where('regId', '[0-9]+'); // ✅ بازسازی کامل از تمام جداول
+
+        // ⭐ CRUD
+        Route::get('/', [TreatmentHistoryController::class, 'index']);
+        Route::get('/{id}', [TreatmentHistoryController::class, 'show'])->where('id', '[0-9]+');
     });
 
     // ============================================================
