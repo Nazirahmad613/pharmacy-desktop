@@ -29,7 +29,8 @@ use App\Http\Controllers\AccountSummaryController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\PermissionController;
-use App\Http\Controllers\DepartementController;
+// ✅ اصلاح شد: DepartmentController (با a) به جای DepartementController
+use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\BenefitController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ViewInventoryController;
@@ -137,8 +138,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/permissions', [PermissionController::class, 'store']);
     Route::delete('/permissions/{id}', [PermissionController::class, 'destroy']);
 
-    // ===== Departments (لیست ساده) =====
-    Route::get('/departments', [DepartementController::class, 'index']);
+    // ============================================================
+    // ✅ Departments (CRUD کامل — ماژول «مدیریت بخش‌ها»)
+    // ============================================================
+    Route::prefix('departments')->group(function () {
+        Route::get('/', [DepartmentController::class, 'index']);
+        Route::post('/', [DepartmentController::class, 'store']);
+        Route::get('/{id}', [DepartmentController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [DepartmentController::class, 'update'])->where('id', '[0-9]+');
+        Route::patch('/{id}', [DepartmentController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [DepartmentController::class, 'destroy'])->where('id', '[0-9]+');
+    });
 
     // ===== Dashboard =====
     Route::get('/dashboard', [DashboardController::class, 'index']);

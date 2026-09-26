@@ -12,8 +12,6 @@ class DepartmentController extends Controller
 {
     /**
      * دریافت لیست تمام بخش‌ها
-     * 
-     * @return \Illuminate\Http\JsonResponse
      */
     public function index()
     {
@@ -39,27 +37,27 @@ class DepartmentController extends Controller
 
     /**
      * ایجاد بخش جدید
-     * 
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
      */
     public function store(Request $request)
     {
         try {
             $validated = $request->validate([
-                'name' => 'required|string|max:255|unique:departments,name',
-                'code' => 'required|string|max:20|unique:departments,code',
+                'name'        => 'required|string|max:255|unique:departments,name',
+                'code'        => 'nullable|string|max:20|unique:departments,code',
                 'description' => 'nullable|string',
-                'status' => ['nullable', Rule::in(['Active', 'Inactive'])],
+                'status'      => ['nullable', Rule::in(['Active', 'Inactive'])],
             ]);
 
+            // اگر code داده نشد، خودکار بساز
+            $code = $validated['code'] ?? $this->generateUniqueCode($validated['name']);
+
             $department = Department::create([
-                'uuid' => Str::uuid(),
-                'code' => $validated['code'],
-                'name' => $validated['name'],
+                'uuid'        => (string) Str::uuid(),
+                'code'        => $code,
+                'name'        => $validated['name'],
                 'description' => $validated['description'] ?? null,
-                'status' => $validated['status'] ?? 'Active',
-                'created_by' => auth()->id(),
+                'status'      => $validated['status'] ?? 'Active',
+                'created_by'  => auth()->id(),
             ]);
 
             Log::info('Department created: ' . ($department->id ?? 'unknown'));
@@ -67,36 +65,33 @@ class DepartmentController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'بخش با موفقیت ایجاد شد',
-                'data' => $department
+                'data'    => $department
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در اعتبارسنجی اطلاعات',
-                'errors' => $e->errors()
+                'errors'  => $e->errors()
             ], 422);
         } catch (\Exception $e) {
             Log::error('Error creating department: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در ایجاد بخش',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
      * نمایش یک بخش خاص
-     * 
-     * @param int $id
-     * @return \Illuminate\Http\JsonResponse
      */
     public function show($id)
     {
         try {
             $department = Department::find($id);
-            
+
             if (!$department) {
                 return response()->json([
                     'success' => false,
@@ -106,7 +101,7 @@ class DepartmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $department
+                'data'    => $department
             ]);
 
         } catch (\Exception $e) {
@@ -114,23 +109,19 @@ class DepartmentController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت اطلاعات بخش',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
      * به‌روزرسانی بخش
-     * 
-     * @param Request $request
-     * @param int $id
-     * @return \Illuminate\Http\JsonResponse
      */
     public function update(Request $request, $id)
     {
         try {
             $department = Department::find($id);
-            
+
             if (!$department) {
                 return response()->json([
                     'success' => false,
@@ -146,21 +137,21 @@ class DepartmentController extends Controller
                     Rule::unique('departments', 'name')->ignore($department->id)
                 ],
                 'code' => [
-                    'required',
+                    'nullable',
                     'string',
                     'max:20',
                     Rule::unique('departments', 'code')->ignore($department->id)
                 ],
                 'description' => 'nullable|string',
-                'status' => ['nullable', Rule::in(['Active', 'Inactive'])],
+                'status'      => ['nullable', Rule::in(['Active', 'Inactive'])],
             ]);
 
             $department->update([
-                'name' => $validated['name'],
-                'code' => $validated['code'],
+                'name'        => $validated['name'],
+                'code'        => $validated['code'] ?? $department->code,
                 'description' => $validated['description'] ?? $department->description,
-                'status' => $validated['status'] ?? $department->status,
-                'updated_by' => auth()->id(),
+                'status'      => $validated['status'] ?? $department->status,
+                'updated_by'  => auth()->id(),
             ]);
 
             Log::info('Department updated: ' . $department->id);
@@ -168,37 +159,33 @@ class DepartmentController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'بخش با موفقیت به‌روزرسانی شد',
-                'data' => $department
+                'data'    => $department->fresh()
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در اعتبارسنجی اطلاعات',
-                'errors' => $e->errors()
+                'errors'  => $e->errors()
             ], 422);
         } catch (\Exception $e) {
             Log::error('Error updating department: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در به‌روزرسانی بخش',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * حذف بخش (سخت یا نرم)
-     * 
-     * @param Request $request
-     * @param int $id
-     * @return \Illuminate\Http\JsonResponse
+     * حذف بخش (نرم یا سخت)
      */
     public function destroy(Request $request, $id)
     {
         try {
             $department = Department::find($id);
-            
+
             if (!$department) {
                 return response()->json([
                     'success' => false,
@@ -206,24 +193,25 @@ class DepartmentController extends Controller
                 ], 404);
             }
 
-            $hasRegistrations = $department->registrations()->exists();
-            
+            $hasRegistrations = method_exists($department, 'registrations')
+                && $department->registrations()->exists();
+
             if ($hasRegistrations) {
                 $department->update([
-                    'status' => 'Inactive',
+                    'status'     => 'Inactive',
                     'updated_by' => auth()->id(),
                 ]);
 
                 return response()->json([
                     'success' => true,
                     'message' => 'بخش به دلیل استفاده در مراجعات، غیرفعال شد',
-                    'data' => $department
+                    'data'    => $department->fresh()
                 ]);
             }
 
             $department->delete();
 
-            Log::info('Department deleted: ' . $department->id);
+            Log::info('Department deleted: ' . $id);
 
             return response()->json([
                 'success' => true,
@@ -235,15 +223,13 @@ class DepartmentController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در حذف بخش',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت بخش‌های فعال (برای استفاده در انتخاب‌ها)
-     * 
-     * @return \Illuminate\Http\JsonResponse
+     * دریافت بخش‌های فعال
      */
     public function getActiveDepartments()
     {
@@ -255,7 +241,7 @@ class DepartmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $departments
+                'data'    => $departments
             ]);
 
         } catch (\Exception $e) {
@@ -263,27 +249,25 @@ class DepartmentController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت بخش‌های فعال',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
      * دریافت آمار بخش‌ها
-     * 
-     * @return \Illuminate\Http\JsonResponse
      */
     public function statistics()
     {
         try {
-            $total = Department::count();
-            $active = Department::where('status', 'Active')->count();
+            $total    = Department::count();
+            $active   = Department::where('status', 'Active')->count();
             $inactive = Department::where('status', 'Inactive')->count();
 
             return response()->json([
-                'success' => true,
-                'total' => $total,
-                'active' => $active,
+                'success'  => true,
+                'total'    => $total,
+                'active'   => $active,
                 'inactive' => $inactive
             ]);
 
@@ -292,8 +276,35 @@ class DepartmentController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت آمار بخش‌ها',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * تولید کد یکتا از نام بخش
+     * مثال: "لابراتوار" → "LAB-XXXX" (اگر code داده نشود)
+     */
+    private function generateUniqueCode(string $name): string
+    {
+        // تلاش برای ساخت کد از سه حرف اول نام (لاتین)
+        $base = strtoupper(preg_replace('/[^A-Za-z]/', '', $name));
+        $base = substr($base, 0, 3);
+        if (strlen($base) < 2) {
+            $base = 'DEP';
+        }
+
+        // اطمینان از یکتا بودن
+        $code = $base;
+        $i = 1;
+        while (Department::where('code', $code)->exists()) {
+            $code = $base . $i;
+            $i++;
+            if ($i > 999) {
+                $code = $base . '-' . Str::upper(Str::random(4));
+                break;
+            }
+        }
+        return $code;
     }
 }

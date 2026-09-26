@@ -58,18 +58,22 @@ const AppRadiology = Loadable(lazy(() => import("./radiology/Radiology")));
 const AppAccounts = Loadable(lazy(() => import("./accounts/accounts")));
 
 // ============================================================
-// ===== ✅ جدید: ماژول دواخانه (Pharmacy) =====
+// ===== ✅ ماژول دواخانه (Pharmacy) =====
 // ============================================================
-// ⭐ فایل اصلی pharmacy.jsx مستقیماً در پوشه pharmacy قرار دارد
 const AppPharmacy = Loadable(lazy(() => import("./pharmacy/pharmacy")));
-
-// ⭐ فایل‌های فرعی در زیرپوشه‌ها
 const AppPharmacySales = Loadable(lazy(() => import("./pharmacy/sales/PharmacySales")));
 const AppPharmacyPrescriptions = Loadable(lazy(() => import("./pharmacy/prescriptions/PharmacyPrescriptions")));
 const AppPharmacyInventory = Loadable(lazy(() => import("./pharmacy/inventory/inventory")));
 const AppPharmacyMedications = Loadable(lazy(() => import("./pharmacy/medications/PharmacyMedications")));
 const AppPharmacyHistory = Loadable(lazy(() => import("./pharmacy/history/PharmacyHistory")));
 const AppPharmacyExecutions = Loadable(lazy(() => import("./pharmacy/executions/PharmacyPrescriptionExecutions")));
+
+// ============================================================
+// ===== ✅ جدید: ماژول مدیریت بخش‌ها (Departments) =====
+// ============================================================
+const AppDepartmentsPage = Loadable(
+  lazy(() => import("./departments/DepartmentsPage"))
+);
 
 // ============================================================
 // ===== Routes =====
@@ -112,25 +116,17 @@ const materialRoutes = [
   // ===== Stock =====
   { path: "/material/stock", element: <AppStock /> },
 
-  // ============================================================
-  // ===== ✅ ماژول حساب‌ها (Accounts) =====
-  // ============================================================
+  // ===== Accounts =====
   { path: "/material/accounts", element: <AppAccounts /> },
 
-  // ============================================================
-  // ===== ✅ صفحات لابراتوار =====
-  // ============================================================
+  // ===== Laboratory =====
   { path: "/material/lab-hematology", element: <AppLabHematology /> },
   { path: "/material/lab-results", element: <AppLabResults /> },
 
-  // ============================================================
-  // ===== ✅ صفحه رادیولوژی =====
-  // ============================================================
+  // ===== Radiology =====
   { path: "/material/radiology", element: <AppRadiology /> },
 
-  // ============================================================
-  // ===== ✅ ماژول دواخانه (Pharmacy) =====
-  // ============================================================
+  // ===== Pharmacy =====
   { path: "/material/pharmacy", element: <AppPharmacy /> },
   { path: "/material/pharmacy/sales", element: <AppPharmacySales /> },
   { path: "/material/pharmacy/prescriptions", element: <AppPharmacyPrescriptions /> },
@@ -138,6 +134,11 @@ const materialRoutes = [
   { path: "/material/pharmacy/medications", element: <AppPharmacyMedications /> },
   { path: "/material/pharmacy/history", element: <AppPharmacyHistory /> },
   { path: "/material/pharmacy/executions", element: <AppPharmacyExecutions /> },
+
+  // ============================================================
+  // ===== ✅ جدید: مدیریت بخش‌ها (Departments) =====
+  // ============================================================
+  { path: "/material/departments", element: <AppDepartmentsPage /> },
 
   // ===== Users Management (Admin Only) =====
   {

@@ -30,8 +30,9 @@ import ImageIcon from "@mui/icons-material/Image";
 import RadioIcon from "@mui/icons-material/Radio";
 import ScannerIcon from "@mui/icons-material/Scanner";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
-// ✅ آیکون دواخانه
 import LocalPharmacyIcon from "@mui/icons-material/LocalPharmacy";
+// ✅ آیکون جدید برای مدیریت بخش‌ها
+import BusinessIcon from "@mui/icons-material/Business";
 
 const navigations = [
   {
@@ -126,9 +127,6 @@ const navigations = [
 
   // ============================================================
   // ✅ ماژول دواخانه (Pharmacy)
-  // ⭐ فقط یک آیتم ساده - بدون children
-  // ⭐ کلیک روی آن → داشبورد دواخانه
-  // ⭐ داشبورد خودش شامل کارت‌های دسترسی سریع به صفحات فرعی
   // ============================================================
   {
     label: "دواخانه",
@@ -139,13 +137,11 @@ const navigations = [
     name: "💊 دواخانه",
     icon: <LocalPharmacyIcon />,
     path: "/material/pharmacy",
-    // ❌ بدون children - دقیقاً مثل لابراتوار و رادیولوژی
   },
 
   // ============================================================
-  // ادامه سایر بخش‌ها
+  // مدیریت مالی
   // ============================================================
-
   {
     label: "مدیریت مالی",
     type: "label",
@@ -178,6 +174,9 @@ const navigations = [
     ],
   },
 
+  // ============================================================
+  // تنظیمات  ⭐ اینجا آیتم جدید اضافه شد
+  // ============================================================
   {
     label: "تنظیمات",
     type: "label",
@@ -197,6 +196,14 @@ const navigations = [
         path: "/material/addcatagory",
         icon: <CategoryIcon />,
       },
+      // ============================================================
+      // ✅ جدید: مدیریت بخش‌ها
+      // ============================================================
+      {
+        name: "مدیریت بخش‌ها",
+        path: "/material/departments",
+        icon: <BusinessIcon />,
+      },
       {
         name: "logs",
         path: "/material/logs",
@@ -205,6 +212,9 @@ const navigations = [
     ],
   },
 
+  // ============================================================
+  // مدیریت سیستم
+  // ============================================================
   {
     label: "مدیریت سیستم",
     type: "label",
