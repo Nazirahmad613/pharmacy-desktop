@@ -130,6 +130,8 @@ export default function RegistrationForm() {
   const [showNewPatientForm, setShowNewPatientForm] = useState(false);
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  // ✅ داکترهای فیلترشده بر اساس بخش انتخاب‌شده
+  const [filteredDoctors, setFilteredDoctors] = useState([]);
   const [patients, setPatients] = useState([]);
   const [registrations, setRegistrations] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -233,6 +235,46 @@ export default function RegistrationForm() {
     fetchRegistrations();
     fetchStatistics();
   }, [api]);
+
+  // ✅ فیلتر کردن داکترها بر اساس بخش انتخاب‌شده
+  useEffect(() => {
+    if (!form.department_id) {
+      // اگر بخشی انتخاب نشده، لیست داکترها خالی باشد
+      setFilteredDoctors([]);
+      return;
+    }
+
+    const deptId = parseInt(form.department_id);
+
+    const deptDoctors = doctors.filter(doc => {
+      // بررسی department_id مستقیم
+      if (doc.department_id !== undefined && doc.department_id !== null) {
+        if (parseInt(doc.department_id) === deptId) return true;
+      }
+      // بررسی department.id
+      if (doc.department && parseInt(doc.department.id) === deptId) {
+        return true;
+      }
+      // بررسی departments (آرایه)
+      if (Array.isArray(doc.departments) && doc.departments.length > 0) {
+        return doc.departments.some(dept =>
+          parseInt(dept.id) === deptId ||
+          parseInt(dept.department_id) === deptId
+        );
+      }
+      return false;
+    });
+
+    setFilteredDoctors(deptDoctors);
+
+    // اگر داکتر انتخاب‌شده فعلی در بخش جدید نیست، آن را پاک کن
+    if (form.doctor_id) {
+      const doctorExists = deptDoctors.some(d => parseInt(d.id) === parseInt(form.doctor_id));
+      if (!doctorExists) {
+        setForm(prev => ({ ...prev, doctor_id: "" }));
+      }
+    }
+  }, [form.department_id, doctors]);
 
   const fetchRegistrations = async () => {
     setLoading(true);
@@ -1693,6 +1735,7 @@ export default function RegistrationForm() {
               </select>
             </div>
 
+            {/* ✅ انتخاب داکتر - فیلتر شده بر اساس بخش */}
             <div>
               <label>داکتر معالج</label>
               <select
@@ -1700,14 +1743,35 @@ export default function RegistrationForm() {
                 value={form.doctor_id}
                 onChange={handleChange}
                 className="form-control"
+                disabled={!form.department_id}
+                style={{
+                  opacity: !form.department_id ? 0.6 : 1,
+                  cursor: !form.department_id ? 'not-allowed' : 'pointer'
+                }}
               >
-                <option value="">-- انتخاب داکتر --</option>
-                {doctors.map((doc) => (
+                <option value="">
+                  {!form.department_id
+                    ? "-- ابتدا بخش را انتخاب کنید --"
+                    : filteredDoctors.length === 0
+                      ? "-- داکتری در این بخش یافت نشد --"
+                      : "-- انتخاب داکتر --"}
+                </option>
+                {filteredDoctors.map((doc) => (
                   <option key={doc.id} value={doc.id}>
                     {doc.name || doc.full_name || `داکتر ${doc.id}`}
                   </option>
                 ))}
               </select>
+              {form.department_id && filteredDoctors.length === 0 && (
+                <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px' }}>
+                  ⚠️ هیچ داکتری در این بخش ثبت نشده است
+                </div>
+              )}
+              {!form.department_id && (
+                <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                  💡 ابتدا بخش را انتخاب کنید تا لیست داکترهای همان بخش نمایش داده شود
+                </div>
+              )}
             </div>
 
             <div>

@@ -18,6 +18,7 @@ class User extends Authenticatable
         'email',
         'password',
         'avatar',
+        'department_id', // ✅ اضافه شد
     ];
 
     protected $hidden = [
@@ -38,21 +39,17 @@ class User extends Authenticatable
     // ================= AVATAR URL =================
     public function getAvatarUrlAttribute()
     {
-        // اگر عکس نداشت
         if (!$this->avatar) {
             return null;
         }
 
-        // اگر لینک کامل باشد
         if (filter_var($this->avatar, FILTER_VALIDATE_URL)) {
             return $this->avatar;
         }
 
-        // حذف / اضافی
         $avatarPath = ltrim($this->avatar, '/');
 
-        // ساخت URL کامل
-       return asset('storage/avatars/' . $avatarPath);
+        return asset('storage/avatars/' . $avatarPath);
     }
 
     // ================= ROLE NAME =================
@@ -68,6 +65,15 @@ class User extends Authenticatable
     }
 
     // ================= RELATIONS =================
+
+    /**
+     * بخش مربوطه کاربر
+     */
+    public function department()
+    {
+        return $this->belongsTo(Department::class, 'department_id', 'id');
+    }
+
     public function prescriptions()
     {
         return $this->hasMany(Prescription::class, 'doc_id', 'id');
