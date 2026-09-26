@@ -56,12 +56,10 @@ class TreatmentHistoryService
                 }
             }
 
-            // اگر پیدا نشد، از registrations.doctor_id
             if (!$doctorId && !empty($registration->doctor_id)) {
                 $doctorId = $registration->doctor_id;
             }
 
-            // اگر باز پیدا نشد، از current user
             if (!$doctorId && auth()->check()) {
                 $doctorId = auth()->id();
             }
@@ -142,7 +140,6 @@ class TreatmentHistoryService
     {
         $regId = $history->reg_id;
 
-        // ✅ معاینات — examinations ستون registration_id دارد
         $history->examinations_count = $this->safeCountExaminations($regId);
 
         $history->laboratory_tests_count   = $this->safeCount('laboratory_requests', $regId);
@@ -194,20 +191,12 @@ class TreatmentHistoryService
         $history->save();
     }
 
-    /**
-     * شمارش امن در جدول با ستون reg_id
-     */
     protected function safeCount(string $table, int $regId): int
     {
-        if (!Schema::hasTable($table)) {
-            return 0;
-        }
+        if (!Schema::hasTable($table)) return 0;
 
         try {
-            if (!Schema::hasColumn($table, 'reg_id')) {
-                return 0;
-            }
-
+            if (!Schema::hasColumn($table, 'reg_id')) return 0;
             return (int) DB::table($table)->where('reg_id', $regId)->count();
         } catch (\Throwable $e) {
             Log::warning("safeCount failed for {$table}", ['message' => $e->getMessage()]);
@@ -215,26 +204,17 @@ class TreatmentHistoryService
         }
     }
 
-    /**
-     * ✅ شمارش امن معاینات — examinations ستون registration_id دارد
-     */
     protected function safeCountExaminations(int $regId): int
     {
         if (!Schema::hasTable('examinations')) return 0;
 
         try {
             if (Schema::hasColumn('examinations', 'registration_id')) {
-                return (int) DB::table('examinations')
-                    ->where('registration_id', $regId)
-                    ->count();
+                return (int) DB::table('examinations')->where('registration_id', $regId)->count();
             }
-
             if (Schema::hasColumn('examinations', 'reg_id')) {
-                return (int) DB::table('examinations')
-                    ->where('reg_id', $regId)
-                    ->count();
+                return (int) DB::table('examinations')->where('reg_id', $regId)->count();
             }
-
             return 0;
         } catch (\Throwable $e) {
             return 0;
@@ -299,6 +279,7 @@ class TreatmentHistoryService
 
             $item->amount       = $stepData['amount'] ?? $stepData['total_amount'] ?? null;
             $item->paid_amount  = $stepData['paid_amount'] ?? null;
+            $item->payment_status = $stepData['payment_status'] ?? null;
             $item->barcode      = $stepData['barcode'] ?? null;
 
             if (!empty($stepData['pdf_url'])) {
@@ -307,6 +288,7 @@ class TreatmentHistoryService
                 $item->pdf_file = $stepData['pdf_file'];
             }
 
+            // ✅ اطمینان از اینکه data آرایه است
             $item->data = $stepData;
 
             $item->performed_by      = $stepData['performed_by'] ?? null;
@@ -323,6 +305,7 @@ class TreatmentHistoryService
                 'reg_id' => $regId,
                 'step_key' => $stepKey,
                 'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             return null;
         }
@@ -419,7 +402,7 @@ class TreatmentHistoryService
     }
 
     // ============================================================
-    //  بازسازی هر بخش
+    //  بازسازی هر بخش — ✅ با data کامل
     // ============================================================
 
     protected function rebuildExaminations(int $regId): void
@@ -427,7 +410,6 @@ class TreatmentHistoryService
         if (!Schema::hasTable('examinations')) return;
 
         try {
-            // ✅ examinations ستون registration_id دارد
             $rows = DB::table('examinations')
                 ->where('registration_id', $regId)
                 ->orderBy('created_at')
@@ -439,7 +421,6 @@ class TreatmentHistoryService
                 $data = (array) $row;
                 $data['status'] = 'completed';
 
-                // ✅ نام داکتر از جدول users با user_id
                 if (!empty($row->user_id)) {
                     try {
                         $doctor = DB::table('users')->where('id', $row->user_id)->first();
@@ -478,19 +459,36 @@ class TreatmentHistoryService
             foreach ($rows as $row) {
                 $data = (array) $row;
 
-                // فیس
-                if (Schema::hasTable('laboratory_fees') && !empty($row->fee_id)) {
+                // ✅ اطمینان از وجود فیلدهای کلیدی برای summary
+                if (empty($data['test_name']) && !empty($data['test_type'])) {
+                    $data['test_name'] = $data['test_type'];
+                }
+
+                // ✅ فیس — چند روش را امتحان کن
+                if (Schema::hasTable('laboratory_fees')) {
                     try {
-                        $fee = DB::table('laboratory_fees')->where('id', $row->fee_id)->first();
+                        $fee = null;
+                        if (Schema::hasColumn('laboratory_fees', 'laboratory_request_id')) {
+                            $fee = DB::table('laboratory_fees')
+                                ->where('laboratory_request_id', $row->id)
+                                ->first();
+                        }
+                        if (!$fee && Schema::hasColumn('laboratory_fees', 'reg_id')) {
+                            $fee = DB::table('laboratory_fees')
+                                ->where('reg_id', $regId)
+                                ->orderByDesc('id')
+                                ->first();
+                        }
                         if ($fee) {
-                            $data['amount']         = (float) $fee->amount;
-                            $data['paid_amount']    = (float) $fee->paid_amount;
-                            $data['payment_status'] = $fee->payment_status;
+                            $data['amount']         = (float) ($fee->amount ?? 0);
+                            $data['paid_amount']    = (float) ($fee->paid_amount ?? 0);
+                            $data['payment_status'] = $fee->payment_status ?? null;
+                            $data['fee_id']         = $fee->id ?? null;
                         }
                     } catch (\Throwable $e) {}
                 }
 
-                // نتیجه
+                // ✅ نتیجه
                 if (Schema::hasTable('laboratory_results')) {
                     try {
                         $result = DB::table('laboratory_results')
@@ -499,9 +497,28 @@ class TreatmentHistoryService
                         if ($result) {
                             $data['has_result'] = true;
                             $data['result']     = $result->result ?? null;
+                            $data['result_text']= $result->result ?? null;
                             $data['pdf_url']    = !empty($result->pdf_file)
                                 ? asset('storage/' . $result->pdf_file)
                                 : null;
+                        }
+                    } catch (\Throwable $e) {}
+                }
+
+                // ✅ آیتم‌های تست (اگر جدول laboratory_request_items وجود دارد)
+                if (Schema::hasTable('laboratory_request_items')) {
+                    try {
+                        $items = DB::table('laboratory_request_items')
+                            ->where('laboratory_request_id', $row->id)
+                            ->get()
+                            ->toArray();
+                        if (!empty($items)) {
+                            $data['tests'] = $items;
+                            if (empty($data['test_name']) && !empty($items[0])) {
+                                $data['test_name'] = $items[0]->test_name 
+                                    ?? $items[0]->name 
+                                    ?? null;
+                            }
                         }
                     } catch (\Throwable $e) {}
                 }
@@ -528,19 +545,31 @@ class TreatmentHistoryService
             foreach ($rows as $row) {
                 $data = (array) $row;
 
-                // فیس
-                if (Schema::hasTable('radiology_fees') && !empty($row->fee_id)) {
+                // ✅ فیس
+                if (Schema::hasTable('radiology_fees')) {
                     try {
-                        $fee = DB::table('radiology_fees')->where('id', $row->fee_id)->first();
+                        $fee = null;
+                        if (Schema::hasColumn('radiology_fees', 'radiology_request_id')) {
+                            $fee = DB::table('radiology_fees')
+                                ->where('radiology_request_id', $row->id)
+                                ->first();
+                        }
+                        if (!$fee && Schema::hasColumn('radiology_fees', 'reg_id')) {
+                            $fee = DB::table('radiology_fees')
+                                ->where('reg_id', $regId)
+                                ->orderByDesc('id')
+                                ->first();
+                        }
                         if ($fee) {
-                            $data['amount']         = (float) $fee->amount;
-                            $data['paid_amount']    = (float) $fee->paid_amount;
-                            $data['payment_status'] = $fee->payment_status;
+                            $data['amount']         = (float) ($fee->amount ?? 0);
+                            $data['paid_amount']    = (float) ($fee->paid_amount ?? 0);
+                            $data['payment_status'] = $fee->payment_status ?? null;
+                            $data['fee_id']         = $fee->id ?? null;
                         }
                     } catch (\Throwable $e) {}
                 }
 
-                // نتیجه
+                // ✅ نتیجه
                 if (Schema::hasTable('radiology_results')) {
                     try {
                         $result = DB::table('radiology_results')
@@ -614,16 +643,21 @@ class TreatmentHistoryService
             foreach ($rows as $row) {
                 $data = (array) $row;
 
-                // تعداد اقلام
+                // ✅ اقلام نسخه — هم در data ذخیره کن
                 if (Schema::hasTable('prescription_items')) {
                     try {
-                        $data['items_count'] = DB::table('prescription_items')
+                        $items = DB::table('prescription_items')
                             ->where('pres_id', $row->pres_id)
-                            ->count();
-                    } catch (\Throwable $e) {}
+                            ->get()
+                            ->toArray();
+                        $data['items'] = $items;
+                        $data['items_count'] = count($items);
+                    } catch (\Throwable $e) {
+                        $data['items_count'] = 0;
+                    }
                 }
 
-                // فیس
+                // ✅ فیس
                 if (Schema::hasTable('prescription_fees')) {
                     try {
                         $fee = DB::table('prescription_fees')
@@ -733,6 +767,9 @@ class TreatmentHistoryService
         return $map[$stepKey] ?? ['label' => $stepKey, 'icon' => '📄', 'table' => null];
     }
 
+    /**
+     * ✅ buildSummary اصلاح‌شده با fallback برای همه فیلدها
+     */
     protected function buildSummary(string $stepKey, array $data): string
     {
         switch ($stepKey) {
@@ -744,27 +781,84 @@ class TreatmentHistoryService
                 return implode(' | ', $parts) ?: 'معاینه انجام شد';
 
             case 'laboratory':
-                $name = $data['test_name'] ?? $data['test_type'] ?? '';
-                return "تست: {$name}" . (!empty($data['barcode']) ? " | بارکد: {$data['barcode']}" : '');
+                // ✅ چند منبع برای نام تست
+                $name = $data['test_name'] 
+                    ?? $data['test_type'] 
+                    ?? $data['name'] 
+                    ?? null;
+
+                // اگر tests array دارد، از آن استفاده کن
+                if (!$name && !empty($data['tests']) && is_array($data['tests']) && count($data['tests']) > 0) {
+                    $name = $data['tests'][0]->test_name 
+                        ?? $data['tests'][0]->test_type 
+                        ?? $data['tests'][0]->name 
+                        ?? null;
+                }
+
+                $name = $name ?: 'تست لابراتوار';
+                $count = !empty($data['tests']) && is_array($data['tests']) ? count($data['tests']) : 1;
+
+                $summary = "تست: {$name}";
+                if ($count > 1) $summary .= " ({$count} تست)";
+                if (!empty($data['barcode'])) $summary .= " | بارکد: {$data['barcode']}";
+                return $summary;
 
             case 'radiology':
-                $name = $data['radiology_type'] ?? '';
+                $name = $data['radiology_type'] 
+                    ?? $data['type'] 
+                    ?? $data['name'] 
+                    ?? 'رادیولوژی';
                 $part = $data['body_part'] ?? '';
-                return "رادیولوژی: {$name}" . ($part ? " ({$part})" : '');
+                $reason = $data['reason'] ?? '';
+
+                $summary = "رادیولوژی: {$name}";
+                if ($part) $summary .= " ({$part})";
+                if ($reason) $summary .= " | دلیل: {$reason}";
+                return $summary;
 
             case 'operation':
-                return "عملیات: " . ($data['surgery_type'] ?? '-') . " | جراح: " . ($data['surgeon'] ?? '-');
+                $surgery = $data['surgery_type'] 
+                    ?? $data['operation_type'] 
+                    ?? $data['name'] 
+                    ?? '-';
+                $surgeon = $data['surgeon'] 
+                    ?? $data['surgeon_name'] 
+                    ?? '-';
+                $date = $data['operation_date'] 
+                    ?? $data['scheduled_date'] 
+                    ?? '';
+
+                $summary = "عملیات: {$surgery} | جراح: {$surgeon}";
+                if ($date) $summary .= " | تاریخ: {$date}";
+                return $summary;
 
             case 'pres_insert':
             case 'prescription':
-                $count = $data['items_count'] ?? 0;
-                return "نسخه با {$count} قلم دارو";
+                $count = $data['items_count'] 
+                    ?? (is_array($data['items'] ?? null) ? count($data['items']) : 0);
+
+                $medicines = '';
+                if (!empty($data['items']) && is_array($data['items'])) {
+                    $names = [];
+                    foreach (array_slice($data['items'], 0, 3) as $item) {
+                        $n = is_array($item) 
+                            ? ($item['medicine_name'] ?? $item['name'] ?? null)
+                            : ($item->medicine_name ?? $item->name ?? null);
+                        if ($n) $names[] = $n;
+                    }
+                    if (!empty($names)) $medicines = ' | ' . implode('، ', $names);
+                }
+
+                return "نسخه با {$count} قلم دارو{$medicines}";
 
             case 'followup':
                 return "ملاقات بعدی: " . ($data['followup_date'] ?? $data['next_visit_date'] ?? '-');
 
             case 'admission':
-                return "بستری در " . ($data['ward_name'] ?? '-');
+                $ward = $data['ward_name'] 
+                    ?? ($data['ward']['name'] ?? null) 
+                    ?? '-';
+                return "بستری در {$ward}";
 
             default:
                 return 'ثبت شد';

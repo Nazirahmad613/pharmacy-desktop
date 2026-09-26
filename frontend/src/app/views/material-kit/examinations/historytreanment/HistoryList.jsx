@@ -34,6 +34,7 @@ const STEP_META = {
   radiology: { label: 'رادیولوژی', icon: '📷', color: '#ec4899' },
   operation: { label: 'عملیات', icon: '🔪', color: '#dc2626' },
   pres_insert: { label: 'نسخه', icon: '📝', color: '#10b981' },
+  prescription: { label: 'نسخه', icon: '📝', color: '#10b981' },
   followup: { label: 'ملاقات بعدی', icon: '📅', color: '#f59e0b' },
   admission: { label: 'بستری', icon: '🏥', color: '#ef4444' },
 };
@@ -46,6 +47,31 @@ const STAGE_TO_PARAM = {
   operation: 'has_operation',
   pres_insert: 'has_prescription',
   admission: 'has_admission',
+};
+
+// ============================================================
+// ✅ تابع کمکی: تبدیل data به object (اگر string باشد)
+// ============================================================
+const normalizeData = (data) => {
+  if (data == null) return {};
+  if (typeof data === 'object') return data;
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return typeof parsed === 'object' && parsed !== null ? parsed : { raw: data };
+    } catch {
+      return { raw: data };
+    }
+  }
+  return { raw: data };
+};
+
+// ============================================================
+// ✅ تابع کمکی: استخراج مقدار امن
+// ============================================================
+const safeVal = (v, fallback = null) => {
+  if (v === null || v === undefined || v === '') return fallback;
+  return v;
 };
 
 export default function HistoryList({ api, onSelectHistory }) {
@@ -70,30 +96,24 @@ export default function HistoryList({ api, onSelectHistory }) {
     try {
       const params = {};
 
-      // جستجو — سرور
       if (searchTerm.trim()) params.search = searchTerm.trim();
-
-      // فیلتر تاریخ — سرور
       if (filterFromDate) params.from_date = filterFromDate;
       if (filterToDate) params.to_date = filterToDate;
       if (filterDoctor) params.doctor_id = filterDoctor;
 
-      // فیلتر وضعیت — سرور
       if (activeTab === 'completed') params.visit_status = 'Completed';
       if (activeTab === 'in_progress') params.visit_status = 'InProgress';
       if (activeTab === 'cancelled') params.visit_status = 'Cancelled';
 
-      // فیلتر مرحله — سرور
       if (filterStep !== 'all' && STAGE_TO_PARAM[filterStep]) {
         params[STAGE_TO_PARAM[filterStep]] = true;
       }
 
       const response = await api.get('/treatment-history', { params });
 
-      // ✅ استخراج داده از پاسخ
       let data = [];
       if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
-        data = response.data.data.data; // paginated
+        data = response.data.data.data;
       } else if (response.data?.data && Array.isArray(response.data.data)) {
         data = response.data.data;
       } else if (Array.isArray(response.data)) {
@@ -111,10 +131,9 @@ export default function HistoryList({ api, onSelectHistory }) {
     }
   }, [api, searchTerm, filterFromDate, filterToDate, filterDoctor, filterStep, activeTab]);
 
-  // ✅ fetch اولیه + هر بار که فیلترها تغییر کنند
   useEffect(() => {
     fetchHistory();
-  }, [activeTab]); // فقط تب باعث fetch خودکار می‌شود
+  }, [activeTab]);
 
   // ============================================================
   // ✅ بارگذاری جزئیات کامل یک تاریخچه (با items)
@@ -126,9 +145,26 @@ export default function HistoryList({ api, onSelectHistory }) {
       const response = await api.get(`/treatment-history/${historyId}`);
       if (response.data?.success && response.data?.data) {
         const detail = response.data.data;
+
+        // ✅ اطمینان از آرایه بودن items
+        if (!detail.items) detail.items = [];
+
+        // ✅ نرمال‌سازی data برای همه items
+        detail.items = detail.items.map(it => ({
+          ...it,
+          data: normalizeData(it.data),
+        }));
+
         console.log('📥 History detail loaded:', {
           history_id: detail.history_id,
-          items_count: (detail.items || []).length,
+          items_count: detail.items.length,
+          items_detail: detail.items.map(it => ({
+            step_key: it.step_key,
+            summary: it.summary,
+            display_summary: it.display_summary,
+            data_type: typeof it.data,
+            data_keys: it.data && typeof it.data === 'object' ? Object.keys(it.data) : [],
+          })),
           counters: {
             exam: detail.examinations_count,
             lab: detail.laboratory_tests_count,
@@ -137,6 +173,7 @@ export default function HistoryList({ api, onSelectHistory }) {
             adm: detail.admissions_count,
           },
         });
+
         setSelectedItem(detail);
         return detail;
       }
@@ -154,15 +191,12 @@ export default function HistoryList({ api, onSelectHistory }) {
   // ✅ نمایش جزئیات — ابتدا داده لیست، سپس داده کامل
   // ============================================================
   const viewDetails = async (item) => {
-    // ✅ نمایش فوری داده لیست (بدون items)
     setSelectedItem({ ...item, items: item.items || [] });
     setShowModal(true);
     if (onSelectHistory) onSelectHistory(item);
 
-    // ✅ بارگذاری داده کامل با items
     const detail = await loadDetail(item.history_id || item.id);
     if (!detail) {
-      // اگر خطا داد، همان داده لیست را نگه دار
       console.warn('⚠️ Detail load failed, keeping list data');
     }
   };
@@ -172,11 +206,6 @@ export default function HistoryList({ api, onSelectHistory }) {
     setSelectedItem(null);
   };
 
-  // ============================================================
-  // ✅ فیلتر سمت کلاینت فقط برای چیزی که سرور انجام نمی‌دهد
-  //    (در این نسخه، سرور همه فیلترها را انجام می‌دهد،
-  //     پس اینجا فقط یک پاس‌ترو است)
-  // ============================================================
   const filteredHistory = useMemo(() => history, [history]);
 
   // ============================================================
@@ -240,7 +269,136 @@ export default function HistoryList({ api, onSelectHistory }) {
   };
 
   // ============================================================
-  // 🖨️ پرینت — نسخه بهبود یافته با escape کردن HTML
+  // ✅ رندر جزئیات خاص هر مرحله (برای استفاده در مودال و پرینت)
+  // ============================================================
+  const renderItemDetails = (it) => {
+    const data = normalizeData(it.data);
+    const rows = [];
+
+    const addRow = (label, value) => {
+      if (value === null || value === undefined || value === '') return;
+      rows.push(
+        <div key={`${label}-${rows.length}`} style={{ display: 'flex', gap: '6px', fontSize: '12px', marginBottom: '3px' }}>
+          <span style={{ fontWeight: 'bold', color: C.textSecondary, minWidth: '110px' }}>{label}:</span>
+          <span style={{ color: C.textPrimary, flex: 1 }}>{String(value)}</span>
+        </div>
+      );
+    };
+
+    switch (it.step_key) {
+      case 'laboratory':
+        addRow('نام تست', safeVal(data.test_name, safeVal(data.test_type)));
+        addRow('نوع تست', data.test_type);
+        addRow('توضیحات', data.test_description);
+        addRow('علت کلینیکی', data.clinical_indication);
+        addRow('یادداشت', data.special_notes);
+        addRow('بارکد', data.barcode);
+        addRow('وضعیت نتیجه', data.has_result ? 'دارای نتیجه' : null);
+        addRow('نتیجه', data.result);
+        addRow('PDF', data.pdf_url);
+
+        if (Array.isArray(data.tests) && data.tests.length > 0) {
+          rows.push(
+            <div key="tests-list" style={{ marginTop: '8px' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '12px', color: C.textSecondary, marginBottom: '4px' }}>
+                تست‌ها ({data.tests.length}):
+              </div>
+              <ul style={{ margin: '0 20px 0 0', padding: 0, fontSize: '12px' }}>
+                {data.tests.slice(0, 15).map((t, i) => {
+                  const tName = t?.test_name || t?.test_type || t?.name || `تست ${i + 1}`;
+                  return <li key={i}>{tName}</li>;
+                })}
+              </ul>
+            </div>
+          );
+        }
+        break;
+
+      case 'radiology':
+        addRow('نوع رادیولوژی', safeVal(data.radiology_type, safeVal(data.type, data.name)));
+        addRow('عضو', data.body_part);
+        addRow('دلیل', data.reason);
+        addRow('علت کلینیکی', data.clinical_indication);
+        addRow('یادداشت', data.notes);
+        addRow('اولویت', data.priority);
+        addRow('یافته‌ها', data.findings);
+        addRow('نتیجه', data.result);
+        addRow('PDF', data.pdf_url);
+        break;
+
+      case 'operation':
+        addRow('نوع عملیات', safeVal(data.surgery_type, safeVal(data.operation_type, data.name)));
+        addRow('جراح', safeVal(data.surgeon, data.surgeon_name));
+        addRow('تاریخ', safeVal(data.operation_date, data.scheduled_date));
+        addRow('اتاق عمل', data.room_name);
+        addRow('یادداشت', safeVal(data.operation_notes, data.notes));
+        addRow('وضعیت', data.status);
+        break;
+
+      case 'pres_insert':
+      case 'prescription':
+        addRow('تعداد اقلام', safeVal(data.items_count, Array.isArray(data.items) ? data.items.length : null));
+        addRow('یادداشت', data.notes);
+
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          rows.push(
+            <div key="pres-items" style={{ marginTop: '8px' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '12px', color: C.textSecondary, marginBottom: '4px' }}>
+                داروها ({data.items.length}):
+              </div>
+              <ul style={{ margin: '0 20px 0 0', padding: 0, fontSize: '12px' }}>
+                {data.items.slice(0, 20).map((item, i) => {
+                  const name = item?.medicine_name || item?.name || item?.drug_name || '-';
+                  const dose = item?.dose || item?.dosage || '';
+                  const qty = item?.quantity || item?.qty || '';
+                  const freq = item?.frequency || '';
+                  return (
+                    <li key={i} style={{ marginBottom: '2px' }}>
+                      <strong>{name}</strong>
+                      {dose && ` — ${dose}`}
+                      {qty && ` (${qty})`}
+                      {freq && ` - ${freq}`}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        }
+        break;
+
+      case 'examination':
+        addRow('تشخیص', data.diagnosis);
+        addRow('وزن', data.weight);
+        addRow('فشار خون', data.blood_pressure);
+        addRow('حرارت', data.temperature);
+        addRow('اکسیژن', data.oxygen);
+        addRow('یادداشت کلینیکی', data.clinical_notes);
+        break;
+
+      case 'admission':
+        addRow('بخش', safeVal(data.ward_name, data.ward?.name));
+        addRow('تاریخ بستری', data.admission_date);
+        addRow('تشخیص', data.diagnosis);
+        addRow('دستورات', data.admission_instructions);
+        addRow('یادداشت', data.special_notes);
+        addRow('اولویت', data.priority);
+        break;
+
+      case 'followup':
+        addRow('تاریخ ملاقات', safeVal(data.followup_date, data.next_visit_date));
+        addRow('یادداشت', data.notes);
+        break;
+
+      default:
+        break;
+    }
+
+    return rows.length > 0 ? rows : null;
+  };
+
+  // ============================================================
+  // 🖨️ پرینت
   // ============================================================
   const escapeHtml = (str) => {
     if (str == null) return '';
@@ -250,6 +408,88 @@ export default function HistoryList({ api, onSelectHistory }) {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  };
+
+  // ✅ ساخت HTML جزئیات برای پرینت
+  const buildPrintItemDetails = (it) => {
+    const data = normalizeData(it.data);
+    const lines = [];
+
+    const push = (label, value) => {
+      if (value === null || value === undefined || value === '') return;
+      lines.push(`<div class="detail-row"><span class="detail-label">${escapeHtml(label)}:</span><span class="detail-value">${escapeHtml(String(value))}</span></div>`);
+    };
+
+    switch (it.step_key) {
+      case 'laboratory':
+        push('نام تست', safeVal(data.test_name, safeVal(data.test_type)));
+        push('نوع تست', data.test_type);
+        push('توضیحات', data.test_description);
+        push('علت کلینیکی', data.clinical_indication);
+        push('یادداشت', data.special_notes);
+        push('بارکد', data.barcode);
+        push('نتیجه', data.result);
+        if (Array.isArray(data.tests) && data.tests.length > 1) {
+          push('تعداد تست‌ها', data.tests.length);
+        }
+        break;
+
+      case 'radiology':
+        push('نوع رادیولوژی', safeVal(data.radiology_type, safeVal(data.type, data.name)));
+        push('عضو', data.body_part);
+        push('دلیل', data.reason);
+        push('علت کلینیکی', data.clinical_indication);
+        push('یادداشت', data.notes);
+        push('اولویت', data.priority);
+        push('یافته‌ها', data.findings);
+        push('نتیجه', data.result);
+        break;
+
+      case 'operation':
+        push('نوع عملیات', safeVal(data.surgery_type, safeVal(data.operation_type, data.name)));
+        push('جراح', safeVal(data.surgeon, data.surgeon_name));
+        push('تاریخ', safeVal(data.operation_date, data.scheduled_date));
+        push('یادداشت', safeVal(data.operation_notes, data.notes));
+        break;
+
+      case 'pres_insert':
+      case 'prescription':
+        push('تعداد اقلام', safeVal(data.items_count, Array.isArray(data.items) ? data.items.length : null));
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          const items = data.items.slice(0, 15).map((item, i) => {
+            const name = item?.medicine_name || item?.name || item?.drug_name || '-';
+            const dose = item?.dose || item?.dosage || '';
+            const qty = item?.quantity || item?.qty || '';
+            return `<li>${escapeHtml(name)}${dose ? ' — ' + escapeHtml(dose) : ''}${qty ? ' (' + escapeHtml(String(qty)) + ')' : ''}</li>`;
+          }).join('');
+          lines.push(`<div class="detail-row" style="display:block;"><span class="detail-label">داروها:</span><ul style="margin:4px 20px 0 0;padding:0;">${items}</ul></div>`);
+        }
+        break;
+
+      case 'examination':
+        push('تشخیص', data.diagnosis);
+        push('وزن', data.weight);
+        push('فشار خون', data.blood_pressure);
+        push('حرارت', data.temperature);
+        push('اکسیژن', data.oxygen);
+        break;
+
+      case 'admission':
+        push('بخش', safeVal(data.ward_name, data.ward?.name));
+        push('تاریخ بستری', data.admission_date);
+        push('تشخیص', data.diagnosis);
+        push('دستورات', data.admission_instructions);
+        break;
+
+      case 'followup':
+        push('تاریخ ملاقات', safeVal(data.followup_date, data.next_visit_date));
+        break;
+
+      default:
+        break;
+    }
+
+    return lines.join('');
   };
 
   const handlePrint = (item) => {
@@ -263,10 +503,10 @@ export default function HistoryList({ api, onSelectHistory }) {
     }
 
     const stepsHtml = items.map((it, idx) => {
-      const meta = STEP_META[it.step_key] || { label: it.step_label || it.step_key, icon: '📄' };
-      const data = it.data || {};
+      const meta = STEP_META[it.step_key] || { label: it.step_label || it.step_key, icon: it.step_icon || '📄' };
       const badge = getItemStatusBadge(it.status);
-      const safeData = escapeHtml(JSON.stringify(data, null, 2));
+      const detailsHtml = buildPrintItemDetails(it);
+
       return `
         <div class="item">
           <div class="item-head">
@@ -277,13 +517,11 @@ export default function HistoryList({ api, onSelectHistory }) {
             <span class="item-time">${formatDateTime(it.step_at)}</span>
           </div>
           <div class="item-body">
-            <div class="summary">${escapeHtml(it.summary || '-')}</div>
+            ${it.summary ? `<div class="summary"><strong>خلاصه:</strong> ${escapeHtml(it.summary)}</div>` : ''}
+            ${detailsHtml ? `<div class="item-details">${detailsHtml}</div>` : ''}
             ${it.amount ? `<div class="amount">💰 مبلغ: ${Number(it.amount).toLocaleString()} افغانی</div>` : ''}
+            ${it.paid_amount ? `<div class="amount" style="color:#10b981;">✅ پرداخت شده: ${Number(it.paid_amount).toLocaleString()} افغانی</div>` : ''}
             ${it.barcode ? `<div class="barcode">🏷️ بارکد: ${escapeHtml(it.barcode)}</div>` : ''}
-            <details>
-              <summary style="cursor:pointer;color:#3b82f6;font-size:11px;">📋 مشاهده داده کامل</summary>
-              <pre class="data-pre">${safeData}</pre>
-            </details>
           </div>
         </div>
       `;
@@ -312,10 +550,14 @@ export default function HistoryList({ api, onSelectHistory }) {
             .item-status { padding: 3px 10px; border-radius: 12px; font-size: 10px; font-weight: bold; }
             .item-time { margin-right: auto; font-size: 11px; color: #6b7280; }
             .item-body { padding: 10px 12px; font-size: 12px; }
-            .summary { color: #4b5563; margin-bottom: 6px; }
-            .amount { color: #d97706; font-weight: bold; margin-top: 4px; }
+            .summary { color: #4b5563; margin-bottom: 8px; }
+            .item-details { background: #f9fafb; border-radius: 6px; padding: 8px 10px; margin-top: 6px; }
+            .detail-row { display: flex; gap: 8px; padding: 3px 0; font-size: 12px; border-bottom: 1px dotted #e5e7eb; }
+            .detail-row:last-child { border-bottom: none; }
+            .detail-label { font-weight: bold; color: #6b7280; min-width: 110px; }
+            .detail-value { color: #1f2937; flex: 1; }
+            .amount { color: #d97706; font-weight: bold; margin-top: 6px; }
             .barcode { color: #6b7280; font-family: monospace; margin-top: 4px; }
-            .data-pre { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; padding: 8px; font-size: 10px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin-top: 6px; }
             .signature { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 20px; border-top: 2px dashed #ccc; }
             .sig-box { width: 200px; text-align: center; font-size: 12px; }
             .sig-line { border-top: 1px solid #333; margin-top: 40px; padding-top: 6px; }
@@ -718,7 +960,6 @@ export default function HistoryList({ api, onSelectHistory }) {
             setFilterToDate("");
             setFilterStep("all");
             setFilterDoctor("");
-            // ✅ بعد از پاک کردن، دوباره fetch کن
             setTimeout(() => fetchHistory(), 0);
           }}
           style={{ ...styles.btn, background: "#6b7280", color: "white", padding: "8px 16px" }}
@@ -1090,9 +1331,14 @@ export default function HistoryList({ api, onSelectHistory }) {
                 </div>
               ) : (
                 (selectedItem.items || []).map((it, idx) => {
-                  const meta = STEP_META[it.step_key] || { label: it.step_label || it.step_key, icon: '📄', color: C.textSecondary };
+                  const meta = STEP_META[it.step_key] || {
+                    label: it.step_label || it.step_key,
+                    icon: it.step_icon || '📄',
+                    color: C.textSecondary,
+                  };
                   const badge = getItemStatusBadge(it.status);
-                  const data = it.data || {};
+                  const data = normalizeData(it.data);
+                  const detailsContent = renderItemDetails(it);
 
                   return (
                     <div key={it.id || idx} style={styles.itemCard}>
@@ -1124,12 +1370,21 @@ export default function HistoryList({ api, onSelectHistory }) {
                       </div>
 
                       <div style={styles.itemBody}>
-                        {it.summary && (
-                          <div style={{ marginBottom: '8px', color: C.textPrimary, fontSize: '12px' }}>
+                        {/* خلاصه */}
+                        {it.summary && it.summary !== 'ثبت شد' && (
+                          <div style={{ marginBottom: '10px', color: C.textPrimary, fontSize: '12px', padding: '6px 10px', background: C.accentSoft, borderRadius: '6px', borderRight: `3px solid ${C.accent}` }}>
                             <strong>خلاصه:</strong> {it.summary}
                           </div>
                         )}
 
+                        {/* ✅ جزئیات خاص هر مرحله */}
+                        {detailsContent && (
+                          <div style={{ background: C.softBg, borderRadius: '6px', padding: '10px 12px', marginBottom: '8px', border: `1px solid ${C.border}` }}>
+                            {detailsContent}
+                          </div>
+                        )}
+
+                        {/* مالی و بارکد */}
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '11px', marginBottom: '8px' }}>
                           {it.amount > 0 && (
                             <span style={{ color: '#d97706', fontWeight: 'bold' }}>

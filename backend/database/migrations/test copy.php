@@ -1,5 +1,5 @@
-```php
 <?php
+// database/migrations/2026_02_01_000002_create_treatment_history_items_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -9,55 +9,68 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('parchaseitems', function (Blueprint $table) {
-            $table->bigIncrements('parchase_it_id');
+        Schema::dropIfExists('treatment_history_items');
 
-            $table->unsignedBigInteger('parchase_id');
-            $table->unsignedBigInteger('med_id');
-            $table->unsignedBigInteger('category_id');
-            $table->unsignedBigInteger('supplier_id'); // ← ارجاع به accounts.id
+        Schema::create('treatment_history_items', function (Blueprint $table) {
+            $table->id();
 
-            // شماره Batch / Lot دوا
-            $table->string('batch_no')->nullable();
+            $table->unsignedBigInteger('history_id')
+                ->comment('FK → treatment_history.history_id');
 
-            $table->string('type')->nullable();
+            $table->unsignedBigInteger('reg_id')->nullable()
+                ->comment('FK → registrations.reg_id');
 
-            $table->integer('quantity');
+            $table->string('step_key', 50);
+            $table->string('step_label', 100)->nullable();
+            $table->string('step_icon', 20)->nullable();
+            $table->string('action_type', 50)->default('create');
+            $table->integer('step_order')->default(0);
 
-            // موجودی باقی‌مانده از همین Batch
-            $table->integer('remaining_qty')->default(0);
+            $table->unsignedBigInteger('ref_id')->nullable();
+            $table->string('ref_table', 100)->nullable();
 
-            $table->integer('unit_price');
-            $table->integer('total_price');
-            $table->date('exp_date');
+            $table->json('data')->nullable();
+
+            $table->string('summary', 500)->nullable();
+
+            $table->decimal('amount', 12, 2)->nullable();
+            $table->decimal('paid_amount', 12, 2)->nullable();
+            $table->string('payment_status', 30)->nullable();
+
+            $table->string('status', 50)->nullable();
+            $table->string('status_label', 100)->nullable();
+
+            $table->string('pdf_file')->nullable();
+            $table->string('barcode', 100)->nullable();
+
+            $table->timestamp('step_at')->nullable();
+
+            $table->unsignedBigInteger('performed_by')->nullable();
+            $table->string('performed_by_name')->nullable();
 
             $table->timestamps();
+            $table->softDeletes();
 
-            $table->foreign('parchase_id')
-                ->references('parchase_id')
-                ->on('parchases')
-                ->onDelete('cascade');
+            $table->index('history_id');
+            $table->index('reg_id');
+            $table->index('step_key');
+            $table->index('ref_id');
+            $table->index('ref_table');
+            $table->index('status');
+            $table->index('step_at');
+            $table->index(['history_id', 'step_key']);
+            $table->index(['reg_id', 'step_key']);
+            $table->index(['step_key', 'step_at']);
 
-            $table->foreign('med_id')
-                ->references('med_id')
-                ->on('medications')
-                ->onDelete('cascade');
-
-            $table->foreign('category_id')
-                ->references('category_id')
-                ->on('categories')
-                ->onDelete('cascade');
-
-            // ✅ ارجاع به accounts.id مثل parchases
-            $table->foreign('supplier_id')
-                ->references('id')
-                ->on('accounts')
+            $table->foreign('history_id')
+                ->references('history_id')
+                ->on('treatment_history')
                 ->onDelete('cascade');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('parchaseitems');
+        Schema::dropIfExists('treatment_history_items');
     }
 };

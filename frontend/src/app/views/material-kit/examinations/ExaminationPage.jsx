@@ -78,9 +78,17 @@ const STEP_REF_TABLE = {
 const extractRefId = (returnedData) => {
   if (!returnedData || typeof returnedData !== 'object') return null;
 
+  // اگر مستقیم id دارد
   if (returnedData.id != null) return returnedData.id;
+  if (returnedData.pres_id != null) return returnedData.pres_id;
+
+  // ✅ چک کردن data نستد
+  const inner = returnedData.data && typeof returnedData.data === 'object' 
+    ? returnedData.data 
+    : {};
 
   const candidates = [
+    // مستقیم
     returnedData.examination?.id,
     returnedData.laboratory_request?.id,
     returnedData.laboratory?.id,
@@ -92,10 +100,29 @@ const extractRefId = (returnedData) => {
     returnedData.operation?.id,
     returnedData.operation_request?.id,
     returnedData.followup?.id,
+    // در inner.data
+    inner.id,
+    inner.pres_id,
+    inner.examination?.id,
+    inner.laboratory_request?.id,
+    inner.laboratory?.id,
+    inner.radiology_request?.id,
+    inner.radiology?.id,
+    inner.prescription?.pres_id,
+    inner.prescription?.id,
+    inner.admission?.id,
+    inner.operation?.id,
+    inner.operation_request?.id,
+    inner.followup?.id,
+    // آرایه‌ها
     Array.isArray(returnedData.tests) ? returnedData.tests[0]?.id : null,
     Array.isArray(returnedData.radiology) ? returnedData.radiology[0]?.id : null,
     Array.isArray(returnedData.all_tests) ? returnedData.all_tests[0]?.id : null,
     Array.isArray(returnedData.all_radiology) ? returnedData.all_radiology[0]?.id : null,
+    Array.isArray(inner.tests) ? inner.tests[0]?.id : null,
+    Array.isArray(inner.radiology) ? inner.radiology[0]?.id : null,
+    Array.isArray(inner.all_tests) ? inner.all_tests[0]?.id : null,
+    Array.isArray(inner.all_radiology) ? inner.all_radiology[0]?.id : null,
   ];
 
   return candidates.find((c) => c != null) ?? null;
@@ -111,6 +138,8 @@ const sanitizeForApi = (obj) => {
     if (obj instanceof File || obj instanceof Blob || obj instanceof Date) return obj;
     const out = {};
     for (const k of Object.keys(obj)) {
+      // حذف فیلدهای غیرضروری
+      if (k === '__proto__' || k === 'constructor') continue;
       out[k] = sanitizeForApi(obj[k]);
     }
     return out;
@@ -120,40 +149,268 @@ const sanitizeForApi = (obj) => {
 
 // ============================================================
 // ✅ تابع کمکی: ساخت snapshot کامل برای هر مرحله
+//    با استخراج فیلدهای خاص لابراتوار/رادیولوژی/عملیات/نسخه
 // ============================================================
 const buildHistorySnapshot = (stepKey, payload, returnedData, currentStepLabel) => {
+  // ✅ پاسخ API معمولاً در data است
+  const responseData = returnedData?.data && typeof returnedData.data === 'object'
+    ? returnedData.data
+    : (returnedData && typeof returnedData === 'object' ? returnedData : {});
+
   const base = {
     ...payload,
-    ...(typeof returnedData === 'object' ? returnedData : {}),
-    status: returnedData?.status || 'completed',
+    ...(typeof responseData === 'object' ? responseData : {}),
+    status: responseData?.status || returnedData?.status || 'completed',
     submitted_at: new Date().toISOString(),
     step_label: currentStepLabel,
   };
 
-  // استخراج فیلدهای مالی از ساختارهای مختلف
-  const fee = returnedData?.fee || returnedData?.data?.fee || null;
+  // ==========================================================
+  // ✅ لابراتوار
+  // ==========================================================
+  if (stepKey === 'laboratory') {
+    base.test_name = 
+      payload.test_name 
+      || responseData.test_name 
+      || responseData.test_type 
+      || null;
+    base.test_type = 
+      payload.test_type 
+      || responseData.test_type 
+      || null;
+    base.test_description = 
+      payload.test_description 
+      || responseData.test_description 
+      || null;
+    base.clinical_indication = 
+      payload.clinical_indication 
+      || responseData.clinical_indication 
+      || null;
+    base.special_notes = 
+      payload.special_notes 
+      || responseData.special_notes 
+      || null;
+    base.barcode = 
+      responseData.barcode 
+      || payload.barcode 
+      || null;
+
+    // اگر tests array برگشت
+    if (responseData.tests && Array.isArray(responseData.tests) && responseData.tests.length > 0) {
+      base.tests = responseData.tests;
+      base.tests_count = responseData.tests.length;
+      if (!base.test_name) {
+        base.test_name = 
+          responseData.tests[0]?.test_name 
+          || responseData.tests[0]?.test_type 
+          || responseData.tests[0]?.name 
+          || null;
+      }
+    }
+    if (responseData.all_tests && Array.isArray(responseData.all_tests)) {
+      base.all_tests = responseData.all_tests;
+    }
+  }
+
+  // ==========================================================
+  // ✅ رادیولوژی
+  // ==========================================================
+  if (stepKey === 'radiology') {
+    base.radiology_type = 
+      payload.radiology_type 
+      || responseData.radiology_type 
+      || null;
+    base.body_part = 
+      payload.body_part 
+      || responseData.body_part 
+      || null;
+    base.reason = 
+      payload.reason 
+      || responseData.reason 
+      || null;
+    base.notes = 
+      payload.notes 
+      || responseData.notes 
+      || null;
+    base.priority = 
+      payload.priority 
+      || responseData.priority 
+      || 'normal';
+    base.clinical_indication = 
+      payload.clinical_indication 
+      || responseData.clinical_indication 
+      || null;
+    base.special_notes = 
+      payload.special_notes 
+      || responseData.special_notes 
+      || null;
+    base.barcode = 
+      responseData.barcode 
+      || payload.barcode 
+      || null;
+
+    if (responseData.radiology && Array.isArray(responseData.radiology)) {
+      base.radiology_list = responseData.radiology;
+    }
+    if (responseData.all_radiology && Array.isArray(responseData.all_radiology)) {
+      base.all_radiology = responseData.all_radiology;
+    }
+  }
+
+  // ==========================================================
+  // ✅ عملیات
+  // ==========================================================
+  if (stepKey === 'operation') {
+    base.surgery_type = 
+      payload.surgery_type 
+      || responseData.surgery_type 
+      || null;
+    base.operation_type = 
+      payload.operation_type 
+      || responseData.operation_type 
+      || null;
+    base.surgeon = 
+      payload.surgeon 
+      || responseData.surgeon 
+      || null;
+    base.surgeon_name = 
+      payload.surgeon_name 
+      || responseData.surgeon_name 
+      || null;
+    base.operation_date = 
+      payload.operation_date 
+      || responseData.operation_date 
+      || null;
+    base.scheduled_date = 
+      payload.scheduled_date 
+      || responseData.scheduled_date 
+      || null;
+    base.operation_notes = 
+      payload.operation_notes 
+      || responseData.operation_notes 
+      || null;
+    base.room_name = 
+      payload.room_name 
+      || responseData.room_name 
+      || null;
+  }
+
+  // ==========================================================
+  // ✅ نسخه
+  // ==========================================================
+  if (stepKey === 'pres_insert' || stepKey === 'prescription') {
+    const items = 
+      responseData.items 
+      || payload.items 
+      || responseData.prescription?.items 
+      || [];
+    base.items = items;
+    base.items_count = items.length;
+
+    base.medicines = 
+      responseData.medicines 
+      || payload.medicines 
+      || null;
+
+    if (responseData.prescription) {
+      base.prescription = responseData.prescription;
+    }
+    if (responseData.all_prescriptions && Array.isArray(responseData.all_prescriptions)) {
+      base.all_prescriptions = responseData.all_prescriptions;
+    }
+  }
+
+  // ==========================================================
+  // ✅ معاینه
+  // ==========================================================
+  if (stepKey === 'examination') {
+    base.diagnosis = 
+      payload.diagnosis 
+      || responseData.diagnosis 
+      || null;
+    base.weight = 
+      payload.weight 
+      || responseData.weight 
+      || null;
+    base.blood_pressure = 
+      payload.blood_pressure 
+      || responseData.blood_pressure 
+      || null;
+    base.temperature = 
+      payload.temperature 
+      || responseData.temperature 
+      || null;
+    base.oxygen = 
+      payload.oxygen 
+      || responseData.oxygen 
+      || null;
+    base.clinical_notes = 
+      payload.clinical_notes 
+      || responseData.clinical_notes 
+      || null;
+  }
+
+  // ==========================================================
+  // ✅ بستری
+  // ==========================================================
+  if (stepKey === 'admission') {
+    base.ward_id = 
+      payload.ward_id 
+      || responseData.ward_id 
+      || null;
+    base.ward_name = 
+      payload.ward_name 
+      || responseData.ward_name 
+      || responseData.ward?.name 
+      || null;
+    base.admission_date = 
+      payload.admission_date 
+      || responseData.admission_date 
+      || null;
+    base.diagnosis = 
+      payload.diagnosis 
+      || responseData.diagnosis 
+      || null;
+    base.admission_instructions = 
+      payload.admission_instructions 
+      || responseData.admission_instructions 
+      || null;
+    base.special_notes = 
+      payload.special_notes 
+      || responseData.special_notes 
+      || null;
+    base.priority = 
+      payload.priority 
+      || responseData.priority 
+      || 'normal';
+  }
+
+  // ==========================================================
+  // ✅ فیس (برای همه مراحل)
+  // ==========================================================
+  const fee = 
+    responseData?.fee 
+    || returnedData?.fee 
+    || responseData?.data?.fee 
+    || null;
   if (fee) {
-    base.amount = fee.amount || fee.total_amount;
-    base.paid_amount = fee.paid_amount;
-    base.remaining_amount = fee.remaining_amount;
-    base.payment_status = fee.payment_status;
+    base.amount = fee.amount || fee.total_amount || base.amount;
+    base.paid_amount = fee.paid_amount || base.paid_amount;
+    base.remaining_amount = fee.remaining_amount || base.remaining_amount;
+    base.payment_status = fee.payment_status || base.payment_status;
   }
 
-  // بارکد
-  if (returnedData?.barcode) base.barcode = returnedData.barcode;
-  else if (returnedData?.data?.barcode) base.barcode = returnedData.data.barcode;
+  // ==========================================================
+  // ✅ بارکد عمومی
+  // ==========================================================
+  if (responseData?.barcode) base.barcode = responseData.barcode;
+  else if (returnedData?.barcode) base.barcode = returnedData.barcode;
 
-  // PDF
-  if (returnedData?.pdf_url) base.pdf_url = returnedData.pdf_url;
-  else if (returnedData?.data?.pdf_url) base.pdf_url = returnedData.data.pdf_url;
-
-  // برای نسخه
-  if (stepKey === 'pres_insert') {
-    base.items_count = returnedData?.items?.length
-      || returnedData?.data?.items?.length
-      || payload?.items?.length
-      || 0;
-  }
+  // ==========================================================
+  // ✅ PDF
+  // ==========================================================
+  if (responseData?.pdf_url) base.pdf_url = responseData.pdf_url;
+  else if (returnedData?.pdf_url) base.pdf_url = returnedData.pdf_url;
 
   return sanitizeForApi(base);
 };
@@ -228,6 +485,7 @@ export default function TreatmentPage() {
         ref_id: payload.ref_id,
         ref_table: payload.ref_table,
         finalize: payload.finalize,
+        step_data_keys: payload.step_data ? Object.keys(payload.step_data) : [],
       });
 
       const response = await api.post('/treatment-history/sync', payload);
@@ -727,6 +985,12 @@ export default function TreatmentPage() {
         default:
           url = `/doctor/${currentStep.key}/save`;
       }
+
+      console.log('📤 saveCurrentStep payload:', {
+        url,
+        step: currentStep.key,
+        payload_keys: Object.keys(payload),
+      });
 
       const response = await api.post(url, payload);
 

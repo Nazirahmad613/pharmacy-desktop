@@ -1,4 +1,5 @@
 <?php
+// database/migrations/2026_02_01_000001_create_treatment_history_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -8,120 +9,91 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('prescription_items', function (Blueprint $table) {
+        Schema::dropIfExists('treatment_history_items');
+        Schema::dropIfExists('treatment_history');
 
-            $table->bigIncrements('pres_it_id');
+        Schema::create('treatment_history', function (Blueprint $table) {
+            $table->id('history_id');
 
-            /*
-            |--------------------------------------------------------------------------
-            | روابط اصلی
-            |--------------------------------------------------------------------------
-            | pres_id     : FK → prescriptions.pres_id
-            | category_id : FK → categories.category_id   (nullable)
-            | med_id      : FK → medications.med_id        (nullable برای داروی دستی)
-            | supplier_id : FK → accounts.id               (nullable برای داروی دستی)
-            | stock_id    : FK → stock.stock_id            (nullable برای داروی دستی)
-            |--------------------------------------------------------------------------
-            */
-            $table->unsignedBigInteger('pres_id');
-            $table->unsignedBigInteger('category_id')->nullable();
-            $table->unsignedBigInteger('med_id')->nullable();
-            $table->unsignedBigInteger('supplier_id')->nullable();
+            $table->unsignedBigInteger('reg_id')
+                ->comment('FK → registrations.reg_id');
 
-            // ✅ جدید: اتصال به بچ مشخص ستاک (FEFO)
-            $table->unsignedBigInteger('stock_id')->nullable()
-                ->comment('FK → stock.stock_id — بچ تجویز شده (FEFO)');
+            $table->unsignedBigInteger('patient_id')
+                ->comment('FK → patients.id');
 
-            /*
-            |--------------------------------------------------------------------------
-            | اطلاعات دارو
-            |--------------------------------------------------------------------------
-            | is_custom = true  →  med_id و supplier_id برابر null
-            |                       med_name و supplier_name پر می‌شوند (تایپ‌شده)
-            |
-            | is_custom = false →  med_id و supplier_id پر هستند
-            |                       med_name و supplier_name برابر null
-            |--------------------------------------------------------------------------
-            */
-            $table->boolean('is_custom')->default(false)
-                ->comment('true = داروی دستی خارج از سیستم');
+            $table->unsignedBigInteger('doctor_id')->nullable()
+                ->comment('FK → users.id');
 
-            $table->string('med_name')->nullable()
-                ->comment('نام دارو — برای داروی دستی');
+            $table->string('visit_number', 50)->nullable();
+            $table->integer('queue_number')->nullable();
 
-            $table->string('supplier_name')->nullable()
-                ->comment('نام حمایت‌کننده — برای داروی دستی');
+            $table->string('patient_name')->nullable();
+            $table->string('tazkira_number', 100)->nullable();
+            $table->integer('patient_age')->nullable();
+            $table->string('patient_gender', 20)->nullable();
+            $table->string('patient_phone', 30)->nullable();
+            $table->string('patient_blood_group', 10)->nullable();
 
-            $table->string('type')->nullable()
-                ->comment('نوع دارو (قرص، شربت، آمپول)');
+            $table->string('doctor_name')->nullable();
+            $table->string('doctor_specialty')->nullable();
 
-            // ✅ جدید: بارکد (Snapshot از medications)
-            $table->string('barcode')->nullable()
-                ->comment('بارکد دوا — Snapshot از medications');
+            $table->string('visit_status', 50)->default('InProgress');
+            $table->string('current_step', 50)->nullable();
+            $table->integer('current_step_index')->default(0);
+            $table->json('completed_steps')->nullable();
 
-            // ✅ جدید: شماره بچ (Snapshot از stock)
-            $table->string('batch_number')->nullable()
-                ->comment('شماره بچ — Snapshot از stock');
+            $table->integer('examinations_count')->default(0);
+            $table->integer('laboratory_tests_count')->default(0);
+            $table->integer('radiology_requests_count')->default(0);
+            $table->integer('operations_count')->default(0);
+            $table->integer('prescriptions_count')->default(0);
+            $table->integer('admissions_count')->default(0);
+            $table->integer('followups_count')->default(0);
 
-            $table->string('dosage')
-                ->comment('مقدار مصرف (مثلاً 1×3)');
+            $table->text('diagnosis')->nullable();
+            $table->string('weight', 20)->nullable();
+            $table->string('blood_pressure', 30)->nullable();
+            $table->string('temperature', 20)->nullable();
+            $table->string('oxygen', 20)->nullable();
 
-            $table->integer('quantity')
-                ->comment('تعداد');
+            $table->decimal('registration_fee', 12, 2)->default(0);
+            $table->decimal('total_amount', 12, 2)->default(0);
+            $table->decimal('total_paid', 12, 2)->default(0);
+            $table->decimal('total_remaining', 12, 2)->default(0);
 
-            $table->text('remarks')->nullable();
+            $table->timestamp('sent_to_doctor_at')->nullable();
+            $table->timestamp('treatment_started_at')->nullable();
+            $table->timestamp('treatment_completed_at')->nullable();
+            $table->timestamp('sent_to_laboratory_at')->nullable();
+            $table->timestamp('sent_to_pharmacy_at')->nullable();
+
+            $table->text('summary')->nullable();
+            $table->json('activity_log')->nullable();
+            $table->text('note')->nullable();
+
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
 
             $table->timestamps();
+            $table->softDeletes();
 
-            /*
-            |--------------------------------------------------------------------------
-            | Foreign Keys
-            |--------------------------------------------------------------------------
-            */
-            $table->foreign('pres_id')
-                ->references('pres_id')
-                ->on('prescriptions')
-                ->cascadeOnDelete();
-
-            $table->foreign('category_id')
-                ->references('category_id')
-                ->on('categories')
-                ->nullOnDelete();
-
-            $table->foreign('med_id')
-                ->references('med_id')
-                ->on('medications')
-                ->nullOnDelete();
-
-            $table->foreign('supplier_id')
-                ->references('id')
-                ->on('accounts')
-                ->nullOnDelete();
-
-            // ✅ جدید: FK به stock
-            $table->foreign('stock_id')
-                ->references('stock_id')
-                ->on('stock')
-                ->nullOnDelete();
-
-            /*
-            |--------------------------------------------------------------------------
-            | Indexes
-            |--------------------------------------------------------------------------
-            */
-            $table->index('pres_id');
-            $table->index('category_id');
-            $table->index('med_id');
-            $table->index('supplier_id');
-            $table->index('stock_id');       // ✅ جدید
-            $table->index('barcode');         // ✅ جدید
-            $table->index('batch_number');    // ✅ جدید
-            $table->index('is_custom');
+            $table->index('reg_id');
+            $table->index('patient_id');
+            $table->index('doctor_id');
+            $table->index('visit_number');
+            $table->index('visit_status');
+            $table->index('current_step');
+            $table->index('created_at');
+            $table->index(['patient_id', 'created_at']);
+            $table->index(['reg_id', 'visit_status']);
+            $table->index(['doctor_id', 'visit_status']);
+            $table->index('tazkira_number');
+            $table->index('patient_name');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('prescription_items');
+        Schema::dropIfExists('treatment_history');
     }
 };
