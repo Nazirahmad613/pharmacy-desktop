@@ -52,6 +52,8 @@ use App\Http\Controllers\PharmacyExecutionController;
 use App\Http\Controllers\TreatmentHistoryController;
 // ✅ کنترلرهای مورد نیاز برای JournalPage
 use App\Http\Controllers\PatientController;
+// ✅ کنترلر جدید برای مراجعه بعدی
+use App\Http\Controllers\FollowUpController;
 
 /*
 |--------------------------------------------------------------------------
@@ -110,9 +112,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ============================================================
     // ✅ Users Management
-    // ⭐ اضافه شد: by-role برای dropdown منابع (داکتر، نرس، ...)
     // ============================================================
-    Route::get('/users/by-role', [UserController::class, 'getByRole']); // ✅ جدید
+    Route::get('/users/by-role', [UserController::class, 'getByRole']);
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
     Route::get('/users/{user}', [UserController::class, 'show']);
@@ -166,7 +167,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/return-to-treatment/{history_id}', [DoctorTreatmentController::class, 'returnToTreatment']);
         Route::get('/treatment-history', [DoctorTreatmentController::class, 'treatmentHistory']);
         Route::post('/radiology-request', [DoctorTreatmentController::class, 'storeRadiologyRequest']);
-        Route::post('/follow-up', [DoctorTreatmentController::class, 'storeFollowUp']);
+        
         Route::get('/wards', [DoctorTreatmentController::class, 'getWards']);
         Route::post('/admission', [DoctorTreatmentController::class, 'storeAdmission']);
 
@@ -189,23 +190,71 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/examinations/{id}', [ExaminationController::class, 'updateExamination']);
         Route::delete('/examinations/{id}', [ExaminationController::class, 'deleteExamination']);
         Route::post('/treatment/{registrationId}/complete', [ExaminationController::class, 'complete']);
+
+        // ============================================================
+        // ✅ Follow-up Routes — با خط تیره (follow-up)
+        // مسیرهای خاص قبل از /{id}
+        // ============================================================
+        Route::get('/follow-up/stats', [FollowUpController::class, 'stats']);
+        Route::get('/follow-up/registration/{regId}', [FollowUpController::class, 'byRegistration'])
+            ->where('regId', '[0-9]+');
+        Route::get('/follow-up', [FollowUpController::class, 'index']);
+        Route::post('/follow-up', [FollowUpController::class, 'store']);
+        Route::get('/follow-up/{id}', [FollowUpController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/follow-up/{id}', [FollowUpController::class, 'update'])->where('id', '[0-9]+');
+        Route::patch('/follow-up/{id}', [FollowUpController::class, 'update'])->where('id', '[0-9]+');
+        Route::patch('/follow-up/{id}/status', [FollowUpController::class, 'updateStatus'])->where('id', '[0-9]+');
+        Route::delete('/follow-up/{id}', [FollowUpController::class, 'destroy'])->where('id', '[0-9]+');
+
+        // ============================================================
+        // ✅ Follow-up Routes — بدون خط تیره (followup)
+        // ⭐ این برای سازگاری با frontend فعلی اضافه شد
+        // ⚠️ مسیرهای خاص باید قبل از /{id} باشند
+        // ============================================================
+        Route::get('/followup/stats', [FollowUpController::class, 'stats']);
+        Route::get('/followup/registration/{regId}', [FollowUpController::class, 'byRegistration'])
+            ->where('regId', '[0-9]+');
+        Route::get('/followup', [FollowUpController::class, 'index']);
+        Route::post('/followup', [FollowUpController::class, 'store']);       // ⭐ POST اصلی که Frontend صدا می‌زند
+        Route::get('/followup/{id}', [FollowUpController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/followup/{id}', [FollowUpController::class, 'update'])->where('id', '[0-9]+');
+        Route::patch('/followup/{id}', [FollowUpController::class, 'update'])->where('id', '[0-9]+');
+        Route::patch('/followup/{id}/status', [FollowUpController::class, 'updateStatus'])->where('id', '[0-9]+');
+        Route::delete('/followup/{id}', [FollowUpController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Follow-up Routes (بدون پیشوند doctor — نسخه fallback)
+    // ============================================================
+    Route::prefix('follow-ups')->group(function () {
+        Route::get('/stats', [FollowUpController::class, 'stats']);
+        Route::get('/patient/{patientId}', [FollowUpController::class, 'byPatient'])
+            ->where('patientId', '[0-9]+');
+        Route::get('/doctor/{doctorId}', [FollowUpController::class, 'byDoctor'])
+            ->where('doctorId', '[0-9]+');
+        Route::get('/upcoming', [FollowUpController::class, 'upcoming']);
+        Route::get('/today', [FollowUpController::class, 'today']);
+
+        Route::get('/', [FollowUpController::class, 'index']);
+        Route::post('/', [FollowUpController::class, 'store']);
+        Route::get('/{id}', [FollowUpController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [FollowUpController::class, 'update'])->where('id', '[0-9]+');
+        Route::patch('/{id}/status', [FollowUpController::class, 'updateStatus'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [FollowUpController::class, 'destroy'])->where('id', '[0-9]+');
     });
 
     // ============================================================
     // ✅ تاریخچه معالجه (Treatment History)
-    // ⭐ routes خاص قبل از /{id}
     // ============================================================
     Route::prefix('treatment-history')->group(function () {
-        // ⭐ routes خاص اول
         Route::get('/patient/{patientId}', [TreatmentHistoryController::class, 'byPatient'])
             ->where('patientId', '[0-9]+');
 
         Route::post('/sync', [TreatmentHistoryController::class, 'sync']);
         Route::post('/finalize', [TreatmentHistoryController::class, 'finalize']);
         Route::post('/rebuild/{regId}', [TreatmentHistoryController::class, 'rebuild'])
-            ->where('regId', '[0-9]+'); // ✅ بازسازی کامل از تمام جداول
+            ->where('regId', '[0-9]+');
 
-        // ⭐ CRUD
         Route::get('/', [TreatmentHistoryController::class, 'index']);
         Route::get('/{id}', [TreatmentHistoryController::class, 'show'])->where('id', '[0-9]+');
     });
@@ -544,34 +593,27 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ============================================================
     // ✅ Journals (ژورنال)
-    // ⭐ ترتیب مهم: routes خاص قبل از /{id}
     // ============================================================
     Route::prefix('journals')->group(function () {
-        // ✅ routes خاص اول (قبل از /{id})
         Route::get('/ref-sources', [JournalController::class, 'getRefSources']);
         Route::get('/patient-summary/{regId}', [JournalController::class, 'getPatientJournalSummary'])
             ->where('regId', '[0-9]+');
 
-        // ⭐ CRUD
         Route::get('/', [JournalController::class, 'index']);
         Route::post('/', [JournalController::class, 'store']);
 
-        // ⭐ upsert (ایجاد یا به‌روزرسانی)
         Route::post('/upsert/{id?}', [JournalController::class, 'upsert'])->where('id', '[0-9]+');
         Route::put('/upsert/{id?}',  [JournalController::class, 'upsert'])->where('id', '[0-9]+');
 
-        // ⭐ show / update / destroy
-        Route::get('/{id}',    [JournalController::class, 'index'])->where('id', '[0-9]+'); // اگر show ندارید
+        Route::get('/{id}',    [JournalController::class, 'index'])->where('id', '[0-9]+');
         Route::put('/{id}',    [JournalController::class, 'upsert'])->where('id', '[0-9]+');
         Route::delete('/{id}', [JournalController::class, 'destroy'])->where('id', '[0-9]+');
     });
 
     // ============================================================
-    // ✅ Accounts (حساب‌ها - شرکت دوا، مشتری، ...)
-    // ⭐ routes خاص قبل از /{id}
+    // ✅ Accounts
     // ============================================================
     Route::prefix('accounts')->group(function () {
-        // ⭐ routes خاص اول
         Route::get('/parents', [AccountController::class, 'parents']);
         Route::get('/transaction-accounts', [AccountController::class, 'transactionAccounts']);
         Route::get('/summary', [AccountController::class, 'summary']);
@@ -579,28 +621,23 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/categories/{accountType}', [AccountController::class, 'categories']);
         Route::get('/by-category', [AccountController::class, 'byCategory']);
         
-        // ⭐ CRUD
         Route::get('/', [AccountController::class, 'index']);
         Route::post('/', [AccountController::class, 'store']);
         Route::get('/{id}', [AccountController::class, 'show'])->where('id', '[0-9]+');
         Route::put('/{id}', [AccountController::class, 'update'])->where('id', '[0-9]+');
         Route::delete('/{id}', [AccountController::class, 'destroy'])->where('id', '[0-9]+');
 
-        // ⭐ toggle-status
         Route::post('/{id}/toggle-status', [AccountController::class, 'toggleStatus'])->where('id', '[0-9]+');
     });
 
     // ============================================================
-    // ✅ Patients (مریضان)
-    // ⭐ routes خاص قبل از /{id}
+    // ✅ Patients
     // ============================================================
     Route::prefix('patients')->group(function () {
-        // ⭐ routes خاص اول
         Route::get('/search', [RegistrationsController::class, 'searchPatients']);
         Route::get('/{patient_id}/info', [RegistrationsController::class, 'getPatientInfo'])
             ->where('patient_id', '[0-9]+');
 
-        // ⭐ CRUD
         Route::get('/', [PatientController::class, 'index']);
         Route::post('/', [PatientController::class, 'store']);
         Route::get('/{id}', [PatientController::class, 'show'])->where('id', '[0-9]+');

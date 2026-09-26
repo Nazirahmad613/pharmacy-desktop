@@ -932,10 +932,11 @@ export default function TreatmentPage() {
       let url = "";
       let payload = { ...data };
 
-      switch (currentStep.key) {
+            switch (currentStep.key) {
         case "examination":
           url = `/doctor/examination/${regId}`;
           break;
+
         case "laboratory":
           url = `/laboratory-requests/registration/${regId}`;
           payload = {
@@ -948,6 +949,7 @@ export default function TreatmentPage() {
             sample_collection_date: data.sample_collection_date || null,
           };
           break;
+
         case "radiology":
           url = `/radiology-requests/registration/${regId}`;
           payload = {
@@ -961,12 +963,32 @@ export default function TreatmentPage() {
             special_notes: data.special_notes || null,
           };
           break;
+
         case "pres_insert":
           url = `/doctor/prescription/${regId}`;
           break;
+
+        // ============================================================
+        // ✅ followup — اصلاح شد
+        // قبل: url = `/doctor/followup/${regId}`   ❌ POST به /doctor/followup/9 → 405
+        // بعد:  url = `/doctor/follow-up`           ✅ POST به /doctor/follow-up → 201
+        // ============================================================
         case "followup":
-          url = `/doctor/followup/${regId}`;
+          url = `/doctor/follow-up`;
+          payload = {
+            reg_id: regId,
+            patient_id: selectedRegistration?.patient_id
+              || selectedRegistration?.patient?.id
+              || null,
+            doctor_id: selectedRegistration?.doctor_id || null,
+            follow_up_date: data.follow_up_date,
+            follow_up_time: data.follow_up_time || null,
+            reason: data.reason || '',
+            instructions: data.instructions || null,
+            priority: data.priority || 'normal',
+          };
           break;
+
         case "admission":
           url = `/admissions`;
           payload = {
@@ -979,9 +1001,11 @@ export default function TreatmentPage() {
             priority: data.priority || "normal"
           };
           break;
+
         case "operation":
           url = `/doctor/operation/${regId}`;
           break;
+
         default:
           url = `/doctor/${currentStep.key}/save`;
       }

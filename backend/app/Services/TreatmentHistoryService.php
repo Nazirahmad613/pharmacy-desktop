@@ -681,6 +681,11 @@ class TreatmentHistoryService
         }
     }
 
+    /**
+     * ============================================================
+     * ✅ بازسازی ملاقات بعدی — نسخه بهبود یافته
+     * ============================================================
+     */
     protected function rebuildFollowUps(int $regId): void
     {
         if (!Schema::hasTable('followups')) return;
@@ -694,7 +699,73 @@ class TreatmentHistoryService
             Log::info("rebuildFollowUps: found {$rows->count()} rows", ['reg_id' => $regId]);
 
             foreach ($rows as $row) {
-                $this->addItem($regId, 'followup', (array) $row, $row->id, 'followups');
+                $data = (array) $row;
+
+                // ✅ اطمینان از وجود فیلدهای کلیدی برای summary
+                // (چون ممکن است در جدول با نام‌های مختلف ذخیره شده باشند)
+                $data['followup_date']    = $row->follow_up_date 
+                    ?? $row->followup_date 
+                    ?? $row->next_visit_date 
+                    ?? null;
+
+                $data['follow_up_date']   = $data['followup_date'];
+                $data['next_visit_date']  = $data['followup_date'];
+
+                $data['follow_up_time']   = $row->follow_up_time 
+                    ?? $row->followup_time 
+                    ?? null;
+
+                // ✅ نام داکتر (اگر doctor_id دارد)
+                if (!empty($row->doctor_id) && Schema::hasTable('users')) {
+                    try {
+                        $doctor = DB::table('users')->where('id', $row->doctor_id)->first();
+                        if ($doctor) {
+                            $doctorName = $doctor->name
+                                ?? $doctor->full_name
+                                ?? $doctor->username
+                                ?? null;
+
+                            $data['doctor_name']       = $doctorName;
+                            $data['performed_by']      = $doctor->id;
+                            $data['performed_by_name'] = $doctorName;
+                        }
+                    } catch (\Throwable $e) {}
+                }
+
+                // ✅ نام مریض (اگر patient_id دارد)
+                if (!empty($row->patient_id) && Schema::hasTable('patients')) {
+                    try {
+                        $patient = DB::table('patients')->where('id', $row->patient_id)->first();
+                        if ($patient) {
+                            $data['patient_name'] = trim(
+                                ($patient->first_name ?? '') . ' ' . ($patient->last_name ?? '')
+                            );
+                        }
+                    } catch (\Throwable $e) {}
+                }
+
+                // ✅ وضعیت
+                $data['status'] = $row->status ?? 'pending';
+
+                // ✅ اولویت
+                if (empty($data['priority'])) {
+                    $data['priority'] = 'normal';
+                }
+
+                // ✅ بارکد خودکار اگر وجود ندارد
+                if (empty($data['barcode'])) {
+                    try {
+                        $date = !empty($data['follow_up_date'])
+                            ? Carbon::parse($data['follow_up_date'])->format('Ymd')
+                            : now()->format('Ymd');
+                        $data['barcode'] = 'FUP-' . $date . '-' 
+                            . str_pad((string) $row->id, 6, '0', STR_PAD_LEFT);
+                    } catch (\Throwable $e) {
+                        $data['barcode'] = 'FUP-' . $row->id;
+                    }
+                }
+
+                $this->addItem($regId, 'followup', $data, $row->id, 'followups');
             }
         } catch (\Throwable $e) {
             Log::warning("rebuildFollowUps failed: {$e->getMessage()}");
@@ -769,6 +840,7 @@ class TreatmentHistoryService
 
     /**
      * ✅ buildSummary اصلاح‌شده با fallback برای همه فیلدها
+     * + پشتیبانی کامل از ملاقات بعدی
      */
     protected function buildSummary(string $stepKey, array $data): string
     {
@@ -789,10 +861,10 @@ class TreatmentHistoryService
 
                 // اگر tests array دارد، از آن استفاده کن
                 if (!$name && !empty($data['tests']) && is_array($data['tests']) && count($data['tests']) > 0) {
-                    $name = $data['tests'][0]->test_name 
-                        ?? $data['tests'][0]->test_type 
-                        ?? $data['tests'][0]->name 
-                        ?? null;
+                    $test = $data['tests'][0];
+                    $name = is_array($test) 
+                        ? ($test['test_name'] ?? $test['test_type'] ?? $test['name'] ?? null)
+                        : ($test->test_name ?? $test->test_type ?? $test->name ?? null);
                 }
 
                 $name = $name ?: 'تست لابراتوار';
@@ -851,12 +923,60 @@ class TreatmentHistoryService
 
                 return "نسخه با {$count} قلم دارو{$medicines}";
 
+            // ============================================================
+            // ✅ ملاقات بعدی — نسخه بهبود یافته
+            // ============================================================
             case 'followup':
-                return "ملاقات بعدی: " . ($data['followup_date'] ?? $data['next_visit_date'] ?? '-');
+                $date = $data['follow_up_date'] 
+                    ?? $data['followup_date'] 
+                    ?? $data['next_visit_date'] 
+                    ?? null;
+
+                $time = $data['follow_up_time'] 
+                    ?? $data['followup_time'] 
+                    ?? null;
+
+                $priority = $data['priority'] ?? 'normal';
+                $reason = $data['reason'] ?? null;
+
+                $priorityLabels = [
+                    'normal'    => '🟢 عادی',
+                    'urgent'    => '🟡 فوری',
+                    'emergency' => '🔴 اورژانسی',
+                ];
+                $priorityText = $priorityLabels[$priority] ?? '';
+
+                $summary = "ملاقات بعدی";
+                if ($date) {
+                    try {
+                        $formattedDate = Carbon::parse($date)->format('Y-m-d');
+                        $summary .= ": {$formattedDate}";
+                    } catch (\Throwable $e) {
+                        $summary .= ": {$date}";
+                    }
+                } else {
+                    $summary .= ": -";
+                }
+
+                if ($time) {
+                    $summary .= " ساعت {$time}";
+                }
+
+                if ($priorityText) {
+                    $summary .= " | {$priorityText}";
+                }
+
+                if ($reason) {
+                    $shortReason = mb_substr($reason, 0, 50);
+                    if (mb_strlen($reason) > 50) $shortReason .= '...';
+                    $summary .= " | {$shortReason}";
+                }
+
+                return $summary;
 
             case 'admission':
                 $ward = $data['ward_name'] 
-                    ?? ($data['ward']['name'] ?? null) 
+                    ?? (is_array($data['ward'] ?? null) ? ($data['ward']['name'] ?? null) : null) 
                     ?? '-';
                 return "بستری در {$ward}";
 
