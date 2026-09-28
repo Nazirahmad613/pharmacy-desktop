@@ -13,10 +13,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   IconButton,
   Dialog,
-  DialogTitle,
   DialogContent,
   DialogActions,
   Snackbar,
@@ -141,16 +139,16 @@ const SearchField = styled(TextField)(({ theme }) => ({
 
 // رنگ‌های اختصاصی برای هر بخش بر اساس کد
 const PALETTE = [
-  "#6366f1", // indigo
-  "#8b5cf6", // violet
-  "#ec4899", // pink
-  "#ef4444", // red
-  "#f59e0b", // amber
-  "#10b981", // emerald
-  "#06b6d4", // cyan
-  "#3b82f6", // blue
-  "#14b8a6", // teal
-  "#f97316", // orange
+  "#6366f1",
+  "#8b5cf6",
+  "#ec4899",
+  "#ef4444",
+  "#f59e0b",
+  "#10b981",
+  "#06b6d4",
+  "#3b82f6",
+  "#14b8a6",
+  "#f97316",
 ];
 
 const colorFromString = (str = "") => {
@@ -223,16 +221,32 @@ export default function DepartmentsPage() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
-      if (!res.ok) throw new Error("خطا در دریافت لیست بخش‌ها");
+
+      console.log("GET departments status:", res.status);
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(
+          errData.message || `خطا در دریافت لیست بخش‌ها (${res.status})`
+        );
+      }
+
       const data = await res.json();
-      const list = Array.isArray(data)
-        ? data
-        : Array.isArray(data.data)
-        ? data.data
-        : [];
+
+      let list = [];
+      if (Array.isArray(data)) {
+        list = data;
+      } else if (data && Array.isArray(data.data)) {
+        list = data.data;
+      } else if (data && data.success === false) {
+        throw new Error(data.message || "خطا در دریافت لیست");
+      }
+
       setDepartments(list);
     } catch (err) {
+      console.error("fetchDepartments error:", err);
       showSnack(err.message || "خطای شبکه", "error");
+      setDepartments([]);
     } finally {
       setLoading(false);
     }
@@ -299,6 +313,8 @@ export default function DepartmentsPage() {
         status: form.status || "Active",
       };
 
+      console.log(`Saving department [${method} ${url}]:`, payload);
+
       const res = await fetch(url, {
         method,
         headers: {
@@ -310,6 +326,7 @@ export default function DepartmentsPage() {
       });
 
       const resData = await res.json().catch(() => ({}));
+      console.log("Save response:", res.status, resData);
 
       if (res.status === 422) {
         const validationErrors = resData.errors || {};
@@ -324,8 +341,18 @@ export default function DepartmentsPage() {
         return;
       }
 
+      if (res.status === 401) {
+        showSnack(
+          "نشست شما منقضی شده است. لطفاً دوباره وارد شوید.",
+          "error"
+        );
+        return;
+      }
+
       if (!res.ok) {
-        throw new Error(resData.message || "خطا در ذخیره‌سازی");
+        throw new Error(
+          resData.message || `خطا در ذخیره‌سازی (${res.status})`
+        );
       }
 
       showSnack(
@@ -335,6 +362,7 @@ export default function DepartmentsPage() {
       handleCloseDialog();
       fetchDepartments();
     } catch (err) {
+      console.error("handleSave error:", err);
       showSnack(err.message || "خطا در ذخیره‌سازی", "error");
     } finally {
       setSaving(false);
@@ -358,11 +386,14 @@ export default function DepartmentsPage() {
       });
 
       const resData = await res.json().catch(() => ({}));
+      console.log("Delete response:", res.status, resData);
+
       if (!res.ok) throw new Error(resData.message || "خطا در حذف بخش");
 
       showSnack(resData.message || "بخش با موفقیت حذف شد");
       fetchDepartments();
     } catch (err) {
+      console.error("handleDelete error:", err);
       showSnack(err.message || "خطا در حذف", "error");
     }
   };
@@ -769,7 +800,6 @@ export default function DepartmentsPage() {
                           </Typography>
                         </TableCell>
 
-                        {/* نام بخش با آواتار */}
                         <TableCell align="right">
                           <Stack
                             direction="row"
@@ -813,7 +843,6 @@ export default function DepartmentsPage() {
                           </Stack>
                         </TableCell>
 
-                        {/* کد */}
                         <TableCell align="right">
                           <Chip
                             label={dept.code || "—"}
@@ -829,7 +858,6 @@ export default function DepartmentsPage() {
                           />
                         </TableCell>
 
-                        {/* توضیحات */}
                         <TableCell align="right">
                           <Typography
                             variant="body2"
@@ -849,7 +877,6 @@ export default function DepartmentsPage() {
                           </Typography>
                         </TableCell>
 
-                        {/* وضعیت */}
                         <TableCell align="right">
                           <Chip
                             icon={
@@ -875,7 +902,6 @@ export default function DepartmentsPage() {
                           />
                         </TableCell>
 
-                        {/* عملیات */}
                         <TableCell align="right">
                           <Stack
                             direction="row"
@@ -946,7 +972,6 @@ export default function DepartmentsPage() {
           },
         }}
       >
-        {/* هدر دیالوگ */}
         <Box
           sx={{
             background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
@@ -1104,7 +1129,11 @@ export default function DepartmentsPage() {
             onClick={handleSave}
             disabled={saving}
             startIcon={
-              saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />
+              saving ? (
+                <CircularProgress size={18} color="inherit" />
+              ) : (
+                <SaveIcon />
+              )
             }
             sx={{
               borderRadius: 3,

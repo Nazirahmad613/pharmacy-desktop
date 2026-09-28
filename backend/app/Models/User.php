@@ -18,7 +18,8 @@ class User extends Authenticatable
         'email',
         'password',
         'avatar',
-        'department_id', // ✅ اضافه شد
+        'department_id',
+        'role',
     ];
 
     protected $hidden = [
@@ -27,6 +28,7 @@ class User extends Authenticatable
     ];
 
     protected $casts = [
+        'email_verified_at' => 'datetime',
         'password' => 'hashed',
     ];
 
@@ -66,12 +68,9 @@ class User extends Authenticatable
 
     // ================= RELATIONS =================
 
-    /**
-     * بخش مربوطه کاربر
-     */
     public function department()
     {
-        return $this->belongsTo(Department::class, 'department_id', 'id');
+        return $this->belongsTo(Department::class, 'department_id');
     }
 
     public function prescriptions()

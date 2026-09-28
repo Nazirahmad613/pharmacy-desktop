@@ -14,14 +14,16 @@ return new class extends Migration
 
             $table->uuid('uuid')->unique();
 
-            $table->string('code', 20)->unique();
+            $table->string('code',20)->unique();
 
-            $table->string('name', 150);
+            $table->string('name');
 
             $table->text('description')->nullable();
 
-            $table->enum('status', ['Active', 'Inactive'])
-                  ->default('Active');
+            $table->enum('status',[
+                'Active',
+                'Inactive'
+            ])->default('Active');
 
             $table->foreignId('created_by')
                 ->nullable()
@@ -36,11 +38,6 @@ return new class extends Migration
             $table->timestamps();
 
             $table->softDeletes();
-
-            // Indexes
-            $table->index('code');
-            $table->index('name');
-            $table->index('status');
         });
     }
 

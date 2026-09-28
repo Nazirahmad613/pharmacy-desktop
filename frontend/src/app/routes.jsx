@@ -77,43 +77,42 @@ const SalesTable = Loadable(
 );
 
 // AdminGuard کامپوننت داخل همین فایل
-const AdminGuardComponent = ({ children }) => {
+ const AdminGuardComponent = ({ children }) => {
   const { user, loading } = useAuth();
-  
-  console.log('AdminGuard in routes - Full user:', JSON.stringify(user, null, 2));
   
   if (loading) {
     return <div>Loading admin check...</div>;
   }
 
   if (!user) {
-    console.log('No user in AdminGuard');
     return <Navigate to="/session/signin" replace />;
   }
 
-  // بررسی ساده - هر کاربری که لاگین کرده اجازه دارد (برای تست)
-  // بعد از تست، شرط زیر را فعال کنید
-  const hasAdminAccess = true; // موقتاً همه را قبول کن
-  
-  // شرط واقعی (بعد از تست، خط بالا را کامنت و این را فعال کنید)
-  /*
+  // ✅ شرط واقعی - بررسی ادمین بودن
   const hasAdminAccess = 
-    user.roles?.some(role => 
-      role.name === 'admin' || 
-      role.name === 'super_admin'
-    ) ||
-    user.role_name === 'admin' ||
-    user.role_name === 'super_admin';
-  */
-  
+    user.isAdmin === true ||                                  // ← از AuthContext
+    user.hasRole?.('admin') ||                                // ← helper از AuthContext
+    user.hasRole?.('Admin') ||
+    user.hasRole?.('super_admin') ||
+    user.role === 'admin' ||                                  // ← ستون role در users
+    user.role_name === 'admin' ||                             // ← از مدل User
+    (Array.isArray(user.role_names) && (
+      user.role_names.includes('admin') ||
+      user.role_names.includes('Admin') ||
+      user.role_names.includes('super_admin')
+    )) ||
+    (Array.isArray(user.roles) && user.roles.some(role => {
+      const name = typeof role === 'string' ? role : role.name;
+      return name === 'admin' || name === 'Admin' || name === 'super_admin';
+    }));
+
   if (!hasAdminAccess) {
-    console.log('Access denied');
+    console.warn('AdminGuard: Access denied for user', user);
     return <Navigate to="/dashboard/default" replace />;
   }
 
   return children;
 };
-
 const routes = [
   {
     path: "/",

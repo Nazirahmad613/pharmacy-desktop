@@ -41,25 +41,17 @@ const ExaminationPage = Loadable(lazy(() => import("./examinations/ExaminationPa
 // ===== Stock =====
 const AppStock = Loadable(lazy(() => import("./stock/Stock")));
 
-// ============================================================
-// ===== ✅ صفحات لابراتوار =====
-// ============================================================
+// ===== Laboratory =====
 const AppLabHematology = Loadable(lazy(() => import("./laboratory/LabHematology")));
 const AppLabResults = Loadable(lazy(() => import("./laboratory/LabResults")));
 
-// ============================================================
-// ===== ✅ صفحات رادیولوژی =====
-// ============================================================
+// ===== Radiology =====
 const AppRadiology = Loadable(lazy(() => import("./radiology/Radiology")));
 
-// ============================================================
-// ===== ✅ ماژول حساب‌ها (Accounts) =====
-// ============================================================
+// ===== Accounts =====
 const AppAccounts = Loadable(lazy(() => import("./accounts/accounts")));
 
-// ============================================================
-// ===== ✅ ماژول دواخانه (Pharmacy) =====
-// ============================================================
+// ===== Pharmacy =====
 const AppPharmacy = Loadable(lazy(() => import("./pharmacy/pharmacy")));
 const AppPharmacySales = Loadable(lazy(() => import("./pharmacy/sales/PharmacySales")));
 const AppPharmacyPrescriptions = Loadable(lazy(() => import("./pharmacy/prescriptions/PharmacyPrescriptions")));
@@ -68,9 +60,7 @@ const AppPharmacyMedications = Loadable(lazy(() => import("./pharmacy/medication
 const AppPharmacyHistory = Loadable(lazy(() => import("./pharmacy/history/PharmacyHistory")));
 const AppPharmacyExecutions = Loadable(lazy(() => import("./pharmacy/executions/PharmacyPrescriptionExecutions")));
 
-// ============================================================
-// ===== ✅ جدید: ماژول مدیریت بخش‌ها (Departments) =====
-// ============================================================
+// ===== Departments =====
 const AppDepartmentsPage = Loadable(
   lazy(() => import("./departments/DepartmentsPage"))
 );
@@ -135,9 +125,7 @@ const materialRoutes = [
   { path: "/material/pharmacy/history", element: <AppPharmacyHistory /> },
   { path: "/material/pharmacy/executions", element: <AppPharmacyExecutions /> },
 
-  // ============================================================
-  // ===== ✅ جدید: مدیریت بخش‌ها (Departments) =====
-  // ============================================================
+  // ===== Departments =====
   { path: "/material/departments", element: <AppDepartmentsPage /> },
 
   // ===== Users Management (Admin Only) =====

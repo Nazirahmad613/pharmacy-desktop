@@ -20,18 +20,42 @@ class Department extends Model
         'updated_by',
     ];
 
+    protected $casts = [
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
+    ];
+
+    /**
+     * رابطه با مراجعات
+     * ⚠️ اگر مدل شما Registrations (جمع) است، این خط را تغییر دهید:
+     * return $this->hasMany(Registrations::class, 'department_id');
+     */
     public function registrations()
     {
-        return $this->hasMany(Registrations::class);
+        return $this->hasMany(Registration::class, 'department_id');
     }
 
     public function creator()
     {
-        return $this->belongsTo(User::class,'created_by');
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public function updater()
     {
-        return $this->belongsTo(User::class,'updated_by');
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    /**
+     * Scopes
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'Active');
+    }
+
+    public function scopeInactive($query)
+    {
+        return $query->where('status', 'Inactive');
     }
 }

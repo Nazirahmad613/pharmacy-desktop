@@ -26,14 +26,34 @@ import { NavLink } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useAuth } from "../../../contexts/AuthContext";
-import "../../../../components/ReportLayout";
+
+// ✅ Timeout helper برای جلوگیری از گیر کردن درخواست‌ها
+const fetchWithTimeout = (promise, ms = 15000) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Request timeout")), ms)
+    ),
+  ]);
+
+// ✅ استخراج هوشمند لیست از هر ساختار API
+const extractList = (raw) => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw.data)) return raw.data;
+  if (raw.data && Array.isArray(raw.data.data)) return raw.data.data;
+  if (Array.isArray(raw.departments)) return raw.departments;
+  if (Array.isArray(raw.users)) return raw.users;
+  if (Array.isArray(raw.roles)) return raw.roles;
+  return [];
+};
 
 export default function UsersPage() {
   const { user: currentUser, updateUser } = useAuth();
 
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
-  const [departments, setDepartments] = useState([]); // ✅ لیست بخش‌ها
+  const [departments, setDepartments] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [formData, setFormData] = useState({
@@ -42,78 +62,148 @@ export default function UsersPage() {
     role: "user",
     password: "",
     avatar: null,
-    department_id: "", // ✅ اضافه شد
+    department_id: "",
   });
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
-  // ✅ فیلترها
   const [filters, setFilters] = useState({
     search: "",
     department_id: "",
     role: "",
   });
 
-  // ================= دسترسی =================
+  // ============================================================
+  // ✅ دسترسی
+  // ============================================================
   const getUserRoles = () => {
     if (!currentUser) return [];
-    if (currentUser.role_names) return currentUser.role_names;
-    if (currentUser.roles) return currentUser.roles.map((r) => r.name);
-    if (currentUser.role) return [currentUser.role];
-    return [];
+
+    let raw = [];
+
+    if (Array.isArray(currentUser.role_names)) {
+      raw = currentUser.role_names;
+    } else if (Array.isArray(currentUser.roles)) {
+      raw = currentUser.roles
+        .map((r) => (typeof r === "string" ? r : r?.name))
+        .filter(Boolean);
+    } else if (typeof currentUser.roles === "string") {
+      raw = [currentUser.roles];
+    } else if (typeof currentUser.role === "string") {
+      raw = [currentUser.role];
+    }
+
+    return raw.map((r) => String(r).toLowerCase().trim()).filter(Boolean);
   };
 
   const userRoles = getUserRoles();
+
   const isAdmin =
-    userRoles.includes("Admin") || userRoles.includes("super_admin");
-  const isHospitalHead = userRoles.includes("hospital_head");
+    userRoles.includes("admin") ||
+    userRoles.includes("super_admin") ||
+    userRoles.includes("superadmin") ||
+    userRoles.includes("administrator");
+
+  const isHospitalHead =
+    userRoles.includes("hospital_head") ||
+    userRoles.includes("hospitalhead") ||
+    userRoles.includes("hospital-head");
 
   const hasAccess = isAdmin;
 
-  // ================= دریافت داده‌ها =================
+  // ============================================================
+  // ✅ دریافت داده‌ها
+  // ============================================================
   useEffect(() => {
-    if (!hasAccess) return;
+    if (!currentUser) {
+      return;
+    }
 
-    Promise.all([
-      api.get("/users"),
-      api.get("/roles"),
-      api.get("/departments"), // ✅ دریافت بخش‌ها
-    ])
-      .then(([usersRes, rolesRes, deptsRes]) => {
-        setUsers(usersRes.data);
-        setRoles(rolesRes.data);
-        setDepartments(deptsRes.data.data || deptsRes.data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error(err);
-        toast.error("❌ خطا در دریافت اطلاعات");
-        setLoading(false);
-      });
-  }, [hasAccess]);
+    if (!hasAccess) {
+      setLoading(false);
+      return;
+    }
 
-  if (loading) {
+    let isMounted = true;
+
+    const fetchData = async () => {
+      try {
+        const [usersRes, rolesRes, deptsRes] = await Promise.all([
+          fetchWithTimeout(api.get("/users")),
+          fetchWithTimeout(api.get("/roles")),
+          fetchWithTimeout(api.get("/departments")).catch((err) => {
+            console.error("Departments fetch error:", err);
+            return { data: [] };
+          }),
+        ]);
+
+        if (!isMounted) return;
+
+        // ✅ استخراج هوشمند کاربران
+        const usersList = extractList(usersRes?.data);
+        const rolesList = extractList(rolesRes?.data);
+        const deptsList = extractList(deptsRes?.data);
+
+        console.log("📦 Users raw:", usersRes?.data);
+        console.log("📦 Roles raw:", rolesRes?.data);
+        console.log("📦 Departments raw:", deptsRes?.data);
+        console.log("✅ Users parsed:", usersList.length);
+        console.log("✅ Roles parsed:", rolesList.length);
+        console.log("✅ Departments parsed:", deptsList.length);
+
+        setUsers(usersList);
+        setRoles(rolesList);
+        setDepartments(deptsList);
+      } catch (err) {
+        console.error("Fetch error:", err);
+        if (isMounted) toast.error("❌ خطا در دریافت اطلاعات");
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [hasAccess, currentUser]);
+
+  // ============================================================
+  // ✅ اگر currentUser لود نشده → Loading
+  // ============================================================
+  if (!currentUser) {
     return (
       <ReportLayout>
         <div className="report-page">
           <div className="loading-box">
             <CircularProgress />
+            <p style={{ textAlign: "center", marginTop: 10 }}>
+              در حال بارگذاری اطلاعات کاربر...
+            </p>
           </div>
         </div>
       </ReportLayout>
     );
   }
 
+  // ============================================================
   // ✅ عدم دسترسی
+  // ============================================================
   if (!hasAccess) {
     return (
       <ReportLayout>
         <div className="report-page">
           <div style={{ textAlign: "center", marginTop: "40px" }}>
-            <h2 className="report-title">⛔ شما دسترسی به این بخش را ندارید</h2>
+            <h2 className="report-title">
+              ⛔ شما دسترسی به این بخش را ندارید
+            </h2>
             <p style={{ marginTop: 10, color: "#666" }}>
               فقط کاربران با نقش ادمین می‌توانند کاربران را مدیریت کنند.
+            </p>
+            <p style={{ marginTop: 10, color: "#999", fontSize: 12 }}>
+              نقش‌های شما: {userRoles.length > 0 ? userRoles.join(", ") : "—"}
             </p>
             <NavLink to="/dashboard/default" style={{ textDecoration: "none" }}>
               <Button variant="contained" color="primary" sx={{ mt: 2 }}>
@@ -126,6 +216,9 @@ export default function UsersPage() {
     );
   }
 
+  // ============================================================
+  // ✅ رئیس شفاخانه (بدون دسترسی ادمین)
+  // ============================================================
   if (isHospitalHead && !isAdmin) {
     return (
       <ReportLayout>
@@ -145,17 +238,34 @@ export default function UsersPage() {
     );
   }
 
-  // ================= Dialog =================
+  // ============================================================
+  // ✅ Loading داده‌ها
+  // ============================================================
+  if (loading) {
+    return (
+      <ReportLayout>
+        <div className="report-page">
+          <div className="loading-box">
+            <CircularProgress />
+          </div>
+        </div>
+      </ReportLayout>
+    );
+  }
+
+  // ============================================================
+  // Dialog
+  // ============================================================
   const handleOpenDialog = (user = null) => {
     if (user) {
       setEditingUser(user);
       setFormData({
-        name: user.name,
-        email: user.email,
+        name: user.name || "",
+        email: user.email || "",
         role: user.roles?.[0]?.name || "user",
         password: "",
         avatar: null,
-        department_id: user.department_id || "", // ✅
+        department_id: user.department_id || "",
       });
       setAvatarPreview(user.avatar_url || null);
     } else {
@@ -188,14 +298,14 @@ export default function UsersPage() {
     }
   };
 
-  // ✅ تشخیص نقش داکتر
   const isDoctorRole =
     formData.role &&
     ["doctor", "Doctor", "داکتر", "دکتر"].includes(formData.role);
 
-  // ================= ذخیره =================
+  // ============================================================
+  // ذخیره
+  // ============================================================
   const handleSave = async () => {
-    // اعتبارسنجی
     if (!formData.name.trim()) {
       toast.error("❌ نام کاربر را وارد کنید");
       return;
@@ -208,7 +318,6 @@ export default function UsersPage() {
       toast.error("❌ رمز عبور را وارد کنید");
       return;
     }
-    // ✅ اگر داکتر است، بخش الزامی
     if (isDoctorRole && !formData.department_id) {
       toast.error("❌ برای نقش داکتر، انتخاب بخش الزامی است");
       return;
@@ -221,7 +330,6 @@ export default function UsersPage() {
     formDataToSend.append("email", formData.email);
     formDataToSend.append("role", formData.role);
 
-    // ✅ بخش
     if (formData.department_id) {
       formDataToSend.append("department_id", formData.department_id);
     }
@@ -245,7 +353,9 @@ export default function UsersPage() {
           headers: { "Content-Type": "multipart/form-data" },
         });
         const updatedUser = res.data.user || res.data;
-        setUsers(users.map((u) => (u.id === editingUser.id ? updatedUser : u)));
+        setUsers(
+          users.map((u) => (u.id === editingUser.id ? updatedUser : u))
+        );
 
         if (currentUser && currentUser.id === editingUser.id) {
           updateUser(updatedUser);
@@ -301,7 +411,9 @@ export default function UsersPage() {
     }
   };
 
-  // ================= فیلتر کاربران =================
+  // ============================================================
+  // فیلتر کاربران
+  // ============================================================
   const filteredUsers = users.filter((u) => {
     if (filters.search) {
       const s = filters.search.toLowerCase();
@@ -322,7 +434,9 @@ export default function UsersPage() {
     return true;
   });
 
-  // ================= رندر =================
+  // ============================================================
+  // رندر
+  // ============================================================
   return (
     <ReportLayout>
       <div className="report-page">
@@ -469,12 +583,7 @@ export default function UsersPage() {
                       {!u.avatar_url && <FaUserCircle />}
                     </Avatar>
                   </td>
-                  <td
-                    style={{
-                      ...tdStyle,
-                      fontWeight: "500",
-                    }}
-                  >
+                  <td style={{ ...tdStyle, fontWeight: "500" }}>
                     {u.name}{" "}
                     <FaKey style={{ marginLeft: 5, color: "#0d47a1" }} />
                   </td>
@@ -498,7 +607,6 @@ export default function UsersPage() {
                         : "بدون رول"}
                     </span>
                   </td>
-                  {/* ✅ ستون بخش */}
                   <td style={tdStyle}>
                     {u.department ? (
                       <Chip
@@ -571,7 +679,6 @@ export default function UsersPage() {
               pt: 2,
             }}
           >
-            {/* آواتار */}
             <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
               <Box sx={{ position: "relative", display: "inline-block" }}>
                 <Avatar
@@ -637,7 +744,6 @@ export default function UsersPage() {
               fullWidth
             />
 
-            {/* نقش */}
             <FormControl fullWidth>
               <InputLabel>نقش</InputLabel>
               <Select
@@ -660,7 +766,6 @@ export default function UsersPage() {
               </Select>
             </FormControl>
 
-            {/* ✅ بخش */}
             <FormControl fullWidth>
               <InputLabel>
                 بخش {isDoctorRole ? "*" : "(اختیاری)"}

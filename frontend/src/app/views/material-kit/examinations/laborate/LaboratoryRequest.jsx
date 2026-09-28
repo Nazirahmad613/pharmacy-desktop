@@ -4,15 +4,15 @@ import { toast } from "react-toastify";
 
 // 🎨 پالت رنگ ملایم برای چشم (همان TreatmentPage)
 const C = {
-  pageBg: '#f1f5f9',        // پس‌زمینه کل صفحه
-  cardBg: '#ffffff',        // کارت‌های سفید
-  softBg: '#f8fafc',        // پس‌زمینه داخلی ملایم‌تر
-  border: '#e2e8f0',        // مرز روشن
-  textPrimary: '#1e293b',   // متن اصلی تیره نرم
-  textSecondary: '#64748b', // متن فرعی
-  textMuted: '#94a3b8',     // متن کم‌رنگ
-  accent: '#3b82f6',        // آبی اصلی
-  accentSoft: '#eff6ff',    // آبی خیلی ملایم
+  pageBg: '#f1f5f9',
+  cardBg: '#ffffff',
+  softBg: '#f8fafc',
+  border: '#e2e8f0',
+  textPrimary: '#1e293b',
+  textSecondary: '#64748b',
+  textMuted: '#94a3b8',
+  accent: '#3b82f6',
+  accentSoft: '#eff6ff',
   success: '#10b981',
   successSoft: '#ecfdf5',
   warning: '#f59e0b',
@@ -23,6 +23,25 @@ const C = {
   purpleSoft: '#f5f3ff',
   shadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
   shadowMd: '0 2px 8px rgba(15, 23, 42, 0.08)',
+};
+
+// ✅ FIXED: تابع کمکی برای حذف تکراری‌ها بر اساس id یا laboratory_request_id
+const dedupeResults = (results) => {
+  const seen = new Map();
+  const output = [];
+  for (const r of results) {
+    if (!r) continue;
+    // کلید یکتا: اول id، بعد laboratory_request_id، بعد report_no
+    const key =
+      r.id ? `id-${r.id}` :
+      r.laboratory_request_id ? `lrid-${r.laboratory_request_id}` :
+      r.report_no ? `rpt-${r.report_no}` :
+      `idx-${output.length}`;
+    if (seen.has(key)) continue;
+    seen.set(key, true);
+    output.push(r);
+  }
+  return output;
 };
 
 export default function LaboratoryRequest({ 
@@ -145,7 +164,6 @@ export default function LaboratoryRequest({
     other: 'سایر آزمایشات', general: 'عمومی',
   };
 
-  // ============ Styles — پالت ملایم ============
   const styles = {
     container: { padding: "8px" },
     statsGrid: {
@@ -330,6 +348,8 @@ export default function LaboratoryRequest({
     fetchPatientInfo();
   }, [registration?.reg_id, api]);
 
+  // ✅ FIXED: این useEffect دیگر resultsData را از tests استخراج نمی‌کند
+  // تا از تکرار جلوگیری شود. فقط tests را ست می‌کند.
   useEffect(() => {
     if (allTests && Array.isArray(allTests) && allTests.length > 0) {
       setTests(allTests);
@@ -338,8 +358,7 @@ export default function LaboratoryRequest({
       
       const hasResultsData = allTests.some(t => t.has_result === true && t.result_details);
       setHasResults(hasResultsData);
-      const results = allTests.filter(t => t.has_result === true && t.result_details);
-      setResultsData(results);
+      // ❌ نتایج را از tests استخراج نکن — از loadResultsFromServer استفاده کن
     } else if (allTests && Array.isArray(allTests) && allTests.length === 0) {
       setTests([]);
       setResultsData([]);
@@ -381,11 +400,12 @@ export default function LaboratoryRequest({
         
         const hasResultsData = testsData.some(t => t.has_result === true && t.result_details);
         setHasResults(hasResultsData);
-        const results = testsData.filter(t => t.has_result === true && t.result_details);
-        setResultsData(results);
         
         if (testsData.length > 0 && testsData[0].barcode) setBarcode(testsData[0].barcode);
         else if (data.barcode) setBarcode(data.barcode);
+
+        // ✅ FIXED: بعد از بارگذاری تست‌ها، نتایج را هم از سرور بگیر
+        await loadResultsFromServer();
       } else {
         setTests([]); setResultsData([]); setHasResults(false);
         if (setIsLabRequested) setIsLabRequested(false);
@@ -420,10 +440,15 @@ export default function LaboratoryRequest({
         else if (data.results && Array.isArray(data.results)) resultsArray = data.results;
         else if (data.data && Array.isArray(data.data)) resultsArray = data.data;
         
-        if (resultsArray.length > 0) {
-          setResultsData(resultsArray); setHasResults(true);
+        // ✅ FIXED: حذف تکراری‌ها قبل از ذخیره
+        const uniqueResults = dedupeResults(resultsArray);
+        
+        if (uniqueResults.length > 0) {
+          setResultsData(uniqueResults); 
+          setHasResults(true);
         } else {
-          setResultsData([]); setHasResults(false);
+          setResultsData([]); 
+          setHasResults(false);
         }
       } else {
         setResultsData([]); setHasResults(false);
@@ -848,34 +873,10 @@ export default function LaboratoryRequest({
     }
   };
 
-  // ============ نمایش نتایج — استایل ملایم ============
+  // ============ نمایش نتایج — ✅ FIXED: فقط از resultsData ============
   const renderResults = () => {
-    let allResults = [];
-    
-    if (resultsData && resultsData.length > 0) {
-      allResults = [...resultsData];
-    }
-    
-    if (tests && tests.length > 0) {
-      for (const test of tests) {
-        if (test.has_result && test.result_details) {
-          const exists = allResults.some(r => 
-            r.id === test.result_details.id || 
-            r.laboratory_request_id === test.id
-          );
-          if (!exists) {
-            allResults.push({
-              ...test.result_details,
-              laboratory_request_id: test.id,
-              test_type: test.test_type,
-              test_type_label: test.test_type_label,
-              test_name: test.test_name,
-              result_details: test.result_details
-            });
-          }
-        }
-      }
-    }
+    // ✅ FIXED: فقط از resultsData استفاده کن، نه از tests
+    const allResults = dedupeResults(resultsData || []);
     
     if (allResults.length === 0) {
       return (
@@ -955,8 +956,15 @@ export default function LaboratoryRequest({
                 const statusLabel = statusLabels[resultData.result_status] || resultData.result_status || 'نامشخص';
                 const statusColor = statusColors[resultData.result_status] || '#f59e0b';
                 
+                // ✅ FIXED: key یکتا برای جلوگیری از warning
+                const rowKey = result.id 
+                  ? `result-${result.id}` 
+                  : result.laboratory_request_id 
+                    ? `lr-${result.laboratory_request_id}` 
+                    : `idx-${index}`;
+                
                 return (
-                  <tr key={result.id || index}>
+                  <tr key={rowKey}>
                     <td style={styles.td}>{index + 1}</td>
                     <td style={{ ...styles.td, color: C.accent, fontWeight: 'bold' }}>
                       {testType}
@@ -1157,7 +1165,6 @@ export default function LaboratoryRequest({
         🔬 درخواست لابراتوار
       </h3>
 
-      {/* آمار */}
       <div style={styles.statsGrid}>
         <div style={styles.statBox}>
           <div style={{ ...styles.statValue, color: labRequested ? C.success : C.warning }}>
@@ -1183,7 +1190,6 @@ export default function LaboratoryRequest({
         </div>
       </div>
 
-      {/* اطلاعات مریض */}
       <div style={styles.infoCard}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: `1px solid ${C.border}`, paddingBottom: '8px' }}>
           <h5 style={{ color: C.textPrimary, margin: 0, fontSize: '14px' }}>👤 اطلاعات مریض</h5>
@@ -1219,7 +1225,6 @@ export default function LaboratoryRequest({
         </div>
       </div>
 
-      {/* فرم */}
       <form onSubmit={handleSubmit} className="no-print" style={styles.card}>
         <h4 style={{ color: C.textPrimary, marginBottom: '15px', fontSize: '15px', borderBottom: `1px solid ${C.border}`, paddingBottom: '10px' }}>
           📋 ثبت درخواست جدید
@@ -1308,7 +1313,6 @@ export default function LaboratoryRequest({
         </div>
       </form>
 
-      {/* لیست تست‌ها */}
       <div style={{ marginTop: '30px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <h4 style={{ color: C.textPrimary, fontSize: '15px', margin: 0 }}>
@@ -1430,10 +1434,8 @@ export default function LaboratoryRequest({
         )}
       </div>
 
-      {/* نمایش نتایج */}
       {renderResults()}
 
-      {/* مودال ویرایش */}
       {showEditModal && (
         <div style={styles.modal} onClick={() => { setShowEditModal(false); setEditingTest(null); resetForm(); }}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>

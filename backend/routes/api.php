@@ -29,7 +29,6 @@ use App\Http\Controllers\AccountSummaryController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\PermissionController;
-// ✅ اصلاح شد: DepartmentController (با a) به جای DepartementController
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\BenefitController;
 use App\Http\Controllers\ProfileController;
@@ -51,9 +50,7 @@ use App\Http\Controllers\BedController;
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\PharmacyExecutionController;
 use App\Http\Controllers\TreatmentHistoryController;
-// ✅ کنترلرهای مورد نیاز برای JournalPage
 use App\Http\Controllers\PatientController;
-// ✅ کنترلر جدید برای مراجعه بعدی
 use App\Http\Controllers\FollowUpController;
 
 /*
@@ -104,10 +101,10 @@ Route::get('/low-stock', [StockController::class, 'lowStock']);
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth:sanctum')->group(function () {
-    
+
     Route::put('/profile', [ProfileController::class, 'updateProfile']);
     Route::get('/profile', [ProfileController::class, 'getProfile']);
-    
+
     // ===== Logs =====
     Route::get('/logs', [LogController::class, 'index'])->middleware('can:view-logs');
 
@@ -141,13 +138,31 @@ Route::middleware('auth:sanctum')->group(function () {
     // ============================================================
     // ✅ Departments (CRUD کامل — ماژول «مدیریت بخش‌ها»)
     // ============================================================
-    Route::prefix('departments')->group(function () {
-        Route::get('/', [DepartmentController::class, 'index']);
-        Route::post('/', [DepartmentController::class, 'store']);
-        Route::get('/{id}', [DepartmentController::class, 'show'])->where('id', '[0-9]+');
-        Route::put('/{id}', [DepartmentController::class, 'update'])->where('id', '[0-9]+');
-        Route::patch('/{id}', [DepartmentController::class, 'update'])->where('id', '[0-9]+');
-        Route::delete('/{id}', [DepartmentController::class, 'destroy'])->where('id', '[0-9]+');
+    Route::prefix('departments')->name('departments.')->group(function () {
+
+        // ---------- مسیرهای خاص (قبل از {id}) ----------
+        Route::get('/active',       [DepartmentController::class, 'active'])->name('active');
+        Route::get('/statistics',   [DepartmentController::class, 'statistics'])->name('statistics');
+        Route::get('/search',       [DepartmentController::class, 'search'])->name('search');
+        Route::get('/doctors/{id}', [DepartmentController::class, 'doctors'])->name('doctors')
+            ->where('id', '[0-9]+');
+
+        // ---------- CRUD ----------
+        Route::get('/',      [DepartmentController::class, 'index'])->name('index');
+        Route::post('/',     [DepartmentController::class, 'store'])->name('store');
+        Route::get('/{id}',  [DepartmentController::class, 'show'])->name('show')
+            ->where('id', '[0-9]+');
+        Route::put('/{id}',  [DepartmentController::class, 'update'])->name('update')
+            ->where('id', '[0-9]+');
+        Route::patch('/{id}', [DepartmentController::class, 'update'])->name('update.patch')
+            ->where('id', '[0-9]+');
+        Route::delete('/{id}', [DepartmentController::class, 'destroy'])->name('destroy')
+            ->where('id', '[0-9]+');
+
+        // ---------- عملیات ویژه ----------
+        Route::patch('/{id}/toggle-status', [DepartmentController::class, 'toggleStatus'])
+            ->name('toggle-status')
+            ->where('id', '[0-9]+');
     });
 
     // ===== Dashboard =====
@@ -164,7 +179,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ✅ مسیرهای داکتر (Doctor)
     // ============================================================
     Route::prefix('doctor')->group(function () {
-        
+
         Route::get('/treatment/active', [DoctorTreatmentController::class,'activePatients']);
         Route::get('/queue', [DoctorTreatmentController::class, 'doctorQueue']);
         Route::post('/treatment/progress/save', [DoctorTreatmentController::class, 'saveProgress']);
@@ -177,7 +192,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/return-to-treatment/{history_id}', [DoctorTreatmentController::class, 'returnToTreatment']);
         Route::get('/treatment-history', [DoctorTreatmentController::class, 'treatmentHistory']);
         Route::post('/radiology-request', [DoctorTreatmentController::class, 'storeRadiologyRequest']);
-        
+
         Route::get('/wards', [DoctorTreatmentController::class, 'getWards']);
         Route::post('/admission', [DoctorTreatmentController::class, 'storeAdmission']);
 
@@ -203,7 +218,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // ============================================================
         // ✅ Follow-up Routes — با خط تیره (follow-up)
-        // مسیرهای خاص قبل از /{id}
         // ============================================================
         Route::get('/follow-up/stats', [FollowUpController::class, 'stats']);
         Route::get('/follow-up/registration/{regId}', [FollowUpController::class, 'byRegistration'])
@@ -218,14 +232,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // ============================================================
         // ✅ Follow-up Routes — بدون خط تیره (followup)
-        // ⭐ این برای سازگاری با frontend فعلی اضافه شد
-        // ⚠️ مسیرهای خاص باید قبل از /{id} باشند
         // ============================================================
         Route::get('/followup/stats', [FollowUpController::class, 'stats']);
         Route::get('/followup/registration/{regId}', [FollowUpController::class, 'byRegistration'])
             ->where('regId', '[0-9]+');
         Route::get('/followup', [FollowUpController::class, 'index']);
-        Route::post('/followup', [FollowUpController::class, 'store']);       // ⭐ POST اصلی که Frontend صدا می‌زند
+        Route::post('/followup', [FollowUpController::class, 'store']);
         Route::get('/followup/{id}', [FollowUpController::class, 'show'])->where('id', '[0-9]+');
         Route::put('/followup/{id}', [FollowUpController::class, 'update'])->where('id', '[0-9]+');
         Route::patch('/followup/{id}', [FollowUpController::class, 'update'])->where('id', '[0-9]+');
@@ -377,7 +389,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ============================================================
-    // ✅ مسیرهای بخش‌ها
+    // ✅ مسیرهای بخش‌ها (Wards)
     // ============================================================
     Route::prefix('wards')->name('wards.')->group(function () {
         Route::get('/statistics', [WardController::class, 'getStatistics'])->name('statistics');
@@ -575,23 +587,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::put('/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
     });
-    
-    // ============================================================
-    // مسیرهای مدیریت دیپارتمنت‌ها (کامل با CRUD)
-    // ============================================================
-    Route::prefix('departments-management')->group(function () {
-        Route::get('/active', [RegistrationsController::class, 'getActiveDepartments']);
-        Route::get('/statistics', [RegistrationsController::class, 'departmentStatistics']);
-        Route::get('/search', [RegistrationsController::class, 'searchDepartments']);
-
-        Route::get('/', [RegistrationsController::class, 'getDepartments']);
-        Route::post('/', [RegistrationsController::class, 'createDepartment']);
-        Route::get('/{id}', [RegistrationsController::class, 'getDepartment']);
-        Route::put('/{id}', [RegistrationsController::class, 'updateDepartment']);
-        Route::delete('/{id}', [RegistrationsController::class, 'deleteDepartment']);
-
-        Route::patch('/{id}/toggle-status', [RegistrationsController::class, 'toggleDepartmentStatus']);
-    });
 
     // ===== Sales CRUD =====
     Route::prefix('sales')->group(function () {
@@ -630,7 +625,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/types', [AccountController::class, 'types']);
         Route::get('/categories/{accountType}', [AccountController::class, 'categories']);
         Route::get('/by-category', [AccountController::class, 'byCategory']);
-        
+
         Route::get('/', [AccountController::class, 'index']);
         Route::post('/', [AccountController::class, 'store']);
         Route::get('/{id}', [AccountController::class, 'show'])->where('id', '[0-9]+');
