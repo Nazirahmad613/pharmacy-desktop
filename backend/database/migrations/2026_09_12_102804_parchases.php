@@ -28,7 +28,6 @@ return new class extends Migration
             $table->unsignedBigInteger('par_user')->nullable();
 
             // حساب تأمین‌کننده / شرکت فروشنده
-            // ارتباط مستقیم با جدول accounts
             $table->unsignedBigInteger('supplier_id')->nullable();
 
             $table->foreign('supplier_id')

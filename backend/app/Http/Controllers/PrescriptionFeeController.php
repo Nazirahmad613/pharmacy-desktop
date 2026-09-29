@@ -6,6 +6,8 @@ namespace App\Http\Controllers;
 use App\Models\PrescriptionFee;
 use App\Models\Journal;
 use App\Models\Registrations;
+use App\Models\PharmacyExecution;
+use App\Models\ExternalPrescription;
 use App\Services\JournalSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -387,6 +389,37 @@ class PrescriptionFeeController extends Controller
 
     /**
      * ============================================================
+     * ⭐ نمایش جزئیات یک فیس نسخه (اضافه شده برای رفع خطا)
+     * ============================================================
+     */
+    public function show($id)
+    {
+        try {
+            $fee = PrescriptionFee::with(['patient', 'registration'])->find($id);
+
+            if (!$fee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'فیس نسخه یافت نشد'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $fee
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Prescription fee show error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت جزئیات: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ============================================================
      * دریافت آمار فیس‌های نسخه
      * ============================================================
      */
@@ -415,6 +448,322 @@ class PrescriptionFeeController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت آمار فیس‌های نسخه: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ============================================================
+     * ⭐ لیست فیس‌های در انتظار پرداخت (داخلی + بیرونی)
+     * ============================================================
+     * 
+     * ✅ اصلاح شده: استفاده از collect() پایه به جای Eloquent\Collection
+     * تا از خطای "Call to a member function getKey() on array" جلوگیری شود.
+     */
+    public function pendingFees(Request $request)
+    {
+        try {
+            // ⭐ 1. نسخه‌های داخلی
+            $internalFees = PharmacyExecution::where('status', 'sent_to_registration')
+                ->with('items')
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(function ($ex) {
+                    return [
+                        'id'             => $ex->id,
+                        'source'         => 'internal',
+                        'source_label'   => 'نسخه داخلی',
+                        'pres_id'        => $ex->pres_id,
+                        'reg_id'         => $ex->reg_id,
+                        'patient_id'     => $ex->patient_id,
+                        'patient_name'   => $ex->patient_name,
+                        'patient_age'    => $ex->patient_age,
+                        'patient_gender' => $ex->patient_gender,
+                        'patient_phone'  => $ex->patient_phone,
+                        'tazkira_number' => $ex->tazkira_number,
+                        'doctor_name'    => $ex->doctor_name,
+                        'total_amount'   => (float) $ex->total_amount,
+                        'discount'       => (float) ($ex->discount ?? 0),
+                        'paid_amount'    => (float) ($ex->paid_amount ?? 0),
+                        'status'         => $ex->status,
+                        'receipt_number' => $ex->receipt_number ?? ('INT-' . $ex->id),
+                        'items'          => $ex->items,
+                        'created_at'     => $ex->created_at,
+                    ];
+                });
+
+            // ⭐ 2. نسخه‌های بیرونی
+            $externalFees = ExternalPrescription::where('status', 'sent_to_registration')
+                ->with('items')
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(function ($ex) {
+                    return [
+                        'id'             => $ex->id,
+                        'source'         => 'external',
+                        'source_label'   => 'نسخه بیرونی',
+                        'pres_id'        => null,
+                        'reg_id'         => null,
+                        'patient_id'     => null,
+                        'patient_name'   => $ex->patient_name,
+                        'patient_age'    => $ex->patient_age,
+                        'patient_gender' => $ex->patient_gender,
+                        'patient_phone'  => $ex->patient_phone,
+                        'tazkira_number' => $ex->tazkira_number,
+                        'doctor_name'    => $ex->doctor_name,
+                        'total_amount'   => (float) $ex->total_amount,
+                        'discount'       => (float) ($ex->discount ?? 0),
+                        'paid_amount'    => 0,
+                        'status'         => $ex->status,
+                        'receipt_number' => $ex->receipt_number ?? ('EXT-' . $ex->id),
+                        'items'          => $ex->items,
+                        'created_at'     => $ex->created_at,
+                    ];
+                });
+
+            // ✅ اصلاح: تبدیل به Collection پایه با collect() قبل از merge
+            // چون map() روی Eloquent\Collection یک Eloquent\Collection از آرایه‌ها برمی‌گرداند
+            // و merge() در Eloquent\Collection روی آرایه‌ها getKey() صدا می‌زند → خطا
+            $all = collect($internalFees->all())
+                ->concat(collect($externalFees->all()))
+                ->sortByDesc('created_at')
+                ->values();
+
+            return response()->json([
+                'success' => true,
+                'data'    => $all,
+                'counts'  => [
+                    'internal' => $internalFees->count(),
+                    'external' => $externalFees->count(),
+                    'total'    => $all->count(),
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('pendingFees error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت لیست: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ============================================================
+     * ⭐ اخذ فیس (داخلی یا بیرونی)
+     * ============================================================
+     * 
+     * @param  string  $source  internal | external
+     * @param  int     $id
+     */
+    public function collectFee(Request $request, $source, $id)
+    {
+        $validator = Validator::make($request->all(), [
+            'paid_amount'    => 'required|numeric|min:0',
+            'discount'       => 'nullable|numeric|min:0',
+            'payment_method' => 'nullable|string|in:cash,card,online,insurance',
+            'note'           => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $paidAmount = (float) $request->paid_amount;
+            $discount   = (float) ($request->discount ?? 0);
+            $method     = $request->payment_method ?? 'cash';
+
+            // ==========================================
+            // ⭐ نسخه داخلی
+            // ==========================================
+            if ($source === 'internal') {
+                $execution = PharmacyExecution::find($id);
+
+                if (!$execution) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'نسخه یافت نشد'
+                    ], 404);
+                }
+
+                if ($execution->status === 'paid') {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'این نسخه قبلاً پرداخت شده است'
+                    ], 422);
+                }
+
+                // بروزرسانی وضعیت
+                $execution->update([
+                    'status' => 'paid',
+                ]);
+
+                // ثبت در فیس نسخه (برای ژورنال و آمار)
+                $fee = PrescriptionFee::create([
+                    'registration_id'  => $execution->reg_id,
+                    'patient_id'       => $execution->patient_id,
+                    'total_amount'     => (float) $execution->total_amount,
+                    'paid_amount'      => $paidAmount,
+                    'discount'         => $discount,
+                    'remaining_amount' => max(0, $execution->total_amount - $discount - $paidAmount),
+                    'payment_status'   => ($execution->total_amount - $discount - $paidAmount) <= 0 ? 'paid' : 'partial',
+                    'payment_method'   => $method,
+                    'payment_date'     => now(),
+                    'medication_items' => $execution->items,
+                    'description'      => 'فیس نسخه داخلی #' . $execution->pres_id,
+                    'note'             => $request->note,
+                    'created_by'       => Auth::id(),
+                ]);
+
+                DB::commit();
+
+                // ✅ ژورنال جدید
+                $this->journalSync->syncFee([
+                    'reg_id'           => $execution->reg_id,
+                    'patient_id'       => $execution->patient_id,
+                    'source_type'      => 'prescription_fee',
+                    'ref_type'         => 'prescription_fee',
+                    'ref_id'           => $fee->id,
+                    'amount'           => (float) $execution->total_amount,
+                    'paid_amount'      => $paidAmount,
+                    'discount'         => $discount,
+                    'remaining_amount' => (float) $fee->remaining_amount,
+                    'payment_status'   => $fee->payment_status,
+                    'description'      => 'فیس نسخه داخلی #' . $execution->pres_id,
+                ]);
+
+                // لاگ
+                try {
+                    LogService::create(
+                        'create',
+                        'prescription_fees',
+                        $fee->id,
+                        'Internal prescription fee collected',
+                        $fee->toArray()
+                    );
+                } catch (\Exception $e) {
+                    Log::error("Internal fee log failed: " . $e->getMessage());
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'فیس نسخه داخلی با موفقیت اخذ شد',
+                    'data'    => $execution->fresh(),
+                ]);
+            }
+
+            // ==========================================
+            // ⭐ نسخه بیرونی
+            // ==========================================
+            if ($source === 'external') {
+                $external = ExternalPrescription::find($id);
+
+                if (!$external) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'نسخه بیرونی یافت نشد'
+                    ], 404);
+                }
+
+                if ($external->status === 'paid') {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'این نسخه قبلاً پرداخت شده است'
+                    ], 422);
+                }
+
+                if ($external->status === 'cancelled') {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'این نسخه لغو شده است'
+                    ], 422);
+                }
+
+                // بروزرسانی وضعیت
+                $external->update([
+                    'status'  => 'paid',
+                    'paid_by' => Auth::id(),
+                    'paid_at' => now(),
+                ]);
+
+                // ثبت در فیس نسخه (برای ژورنال و آمار)
+                $fee = PrescriptionFee::create([
+                    'registration_id'  => null,           // نسخه بیرونی reg_id ندارد
+                    'patient_id'       => null,           // بیمار ثبت‌نام‌شده نیست
+                    'total_amount'     => (float) $external->total_amount,
+                    'paid_amount'      => $paidAmount,
+                    'discount'         => $discount,
+                    'remaining_amount' => max(0, $external->total_amount - $discount - $paidAmount),
+                    'payment_status'   => ($external->total_amount - $discount - $paidAmount) <= 0 ? 'paid' : 'partial',
+                    'payment_method'   => $method,
+                    'payment_date'     => now(),
+                    'medication_items' => $external->items,
+                    'description'      => 'فیس نسخه بیرونی - ' . ($external->receipt_number ?? $external->id),
+                    'note'             => $request->note,
+                    'created_by'       => Auth::id(),
+                ]);
+
+                DB::commit();
+
+                // ✅ ژورنال جدید
+                $this->journalSync->syncFee([
+                    'reg_id'           => null,
+                    'patient_id'       => null,
+                    'source_type'      => 'external_prescription_fee',
+                    'ref_type'         => 'external_prescription_fee',
+                    'ref_id'           => $fee->id,
+                    'amount'           => (float) $external->total_amount,
+                    'paid_amount'      => $paidAmount,
+                    'discount'         => $discount,
+                    'remaining_amount' => (float) $fee->remaining_amount,
+                    'payment_status'   => $fee->payment_status,
+                    'description'      => 'فیس نسخه بیرونی - ' . ($external->receipt_number ?? $external->id),
+                ]);
+
+                // لاگ
+                try {
+                    LogService::create(
+                        'create',
+                        'prescription_fees',
+                        $fee->id,
+                        'External prescription fee collected',
+                        $fee->toArray()
+                    );
+                } catch (\Exception $e) {
+                    Log::error("External fee log failed: " . $e->getMessage());
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'فیس نسخه بیرونی با موفقیت اخذ شد',
+                    'data'    => $external->fresh(),
+                ]);
+            }
+
+            // منبع نامعتبر
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'نوع منبع نامعتبر است (باید internal یا external باشد)'
+            ], 400);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('collectFee error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در اخذ فیس: ' . $e->getMessage()
             ], 500);
         }
     }

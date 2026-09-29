@@ -1,6 +1,5 @@
 // src/app/views/material-kit/pharmacy/PharmacyFeeTab.jsx
 // یا: src/app/views/material-kit/registrations/PharmacyFeeTab.jsx
-// این کامپوننت را در تب Registration استفاده کنید
 
 import React, { useState, useEffect } from "react";
 import { toast } from "react-toastify";
@@ -18,9 +17,12 @@ export default function PharmacyFeeTab({ api }) {
     total_remaining: 0,
     today: 0,
     today_amount: 0,
+    internal: 0,
+    external: 0,
   });
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all"); // all | internal | external
   const [selectedExecution, setSelectedExecution] = useState(null);
   const [showCollectModal, setShowCollectModal] = useState(false);
   const [collectData, setCollectData] = useState({
@@ -33,25 +35,36 @@ export default function PharmacyFeeTab({ api }) {
   // ============ Effects ============
   useEffect(() => {
     fetchExecutions();
-  }, [filter]);
+  }, []);
 
   // ============ Fetch ============
+  /**
+   * ⭐ تغییر اصلی: دریافت از endpoint ترکیبی که هم نسخه‌های داخلی
+   * و هم نسخه‌های بیرونی را برمی‌گرداند
+   */
   const fetchExecutions = async () => {
     setLoading(true);
     try {
-      const params = {};
-      if (filter !== "all") params.status = filter;
-      if (searchTerm) params.search = searchTerm;
-
-      const response = await api.get("/pharmacy-executions", { params });
+      // ⭐ استفاده از endpoint ترکیبی جدید
+      const response = await api.get("/prescription-fees/pending");
       const data = response?.data?.data || [];
-      setExecutions(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setExecutions(list);
 
       // محاسبه آمار
-      calculateStats(data);
+      calculateStats(list);
     } catch (err) {
       console.error("خطا در دریافت فیس‌ها:", err);
-      toast.error("❌ خطا در دریافت فیس‌های دواخانه");
+      // Fallback: اگر endpoint جدید نبود، از قدیمی استفاده کن
+      try {
+        const fallback = await api.get("/pharmacy-executions");
+        const data = fallback?.data?.data || [];
+        const list = Array.isArray(data) ? data.map(x => ({ ...x, source: 'internal' })) : [];
+        setExecutions(list);
+        calculateStats(list);
+      } catch (fallbackErr) {
+        toast.error("❌ خطا در دریافت فیس‌های دواخانه");
+      }
     } finally {
       setLoading(false);
     }
@@ -81,6 +94,8 @@ export default function PharmacyFeeTab({ api }) {
       total_remaining: totalRemaining,
       today: todayList.length,
       today_amount: todayList.reduce((s, e) => s + Number(e.total_amount || 0), 0),
+      internal: list.filter((e) => e.source === "internal").length,
+      external: list.filter((e) => e.source === "external").length,
     });
   };
 
@@ -96,6 +111,9 @@ export default function PharmacyFeeTab({ api }) {
     setShowCollectModal(true);
   };
 
+  /**
+   * ⭐ تغییر اصلی: ارسال به endpoint ترکیبی با source
+   */
   const handleCollectFee = async () => {
     if (!selectedExecution) return;
     if (collectData.paid_amount <= 0) {
@@ -103,9 +121,12 @@ export default function PharmacyFeeTab({ api }) {
       return;
     }
 
+    setLoading(true);
     try {
+      // ⭐ endpoint ترکیبی جدید
+      const source = selectedExecution.source || 'internal';
       const response = await api.post(
-        `/pharmacy-executions/${selectedExecution.id}/collect-fee`,
+        `/prescription-fees/collect/${source}/${selectedExecution.id}`,
         {
           discount: collectData.discount,
           paid_amount: collectData.paid_amount,
@@ -125,14 +146,28 @@ export default function PharmacyFeeTab({ api }) {
     } catch (err) {
       console.error("خطا:", err);
       toast.error(err.response?.data?.message || "خطا در دریافت فیس");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handlePrint = async (execution) => {
     try {
-      const response = await api.get(`/pharmacy-executions/${execution.id}/print`);
-      const data = response.data.data;
-      const e = data.execution;
+      // ⭐ برای نسخه‌های بیرونی از endpoint مربوطه استفاده کن
+      const source = execution.source || 'internal';
+      const endpoint = source === 'external'
+        ? `/external-prescriptions/${execution.id}/print`
+        : `/pharmacy-executions/${execution.id}/print`;
+
+      let e = execution;
+      try {
+        const response = await api.get(endpoint);
+        const data = response.data.data;
+        e = data.execution || data;
+      } catch (printErr) {
+        // اگر endpoint print نبود، از داده‌های موجود استفاده کن
+        console.warn('Print endpoint failed, using local data');
+      }
 
       const w = window.open("", "_blank", "width=800,height=700");
       if (w) {
@@ -163,8 +198,8 @@ export default function PharmacyFeeTab({ api }) {
             </head>
             <body>
               <div class="header">
-                <div class="title">💊 رسید فیس دواخانه</div>
-                <div>${data.hospital_name || 'بیمارستان'}</div>
+                <div class="title">💊 رسید فیس دواخانه${source === 'external' ? ' (نسخه بیرونی)' : ''}</div>
+                <div>بیمارستان</div>
               </div>
               <div class="section">
                 <div class="section-title">👤 معلومات بیمار</div>
@@ -182,7 +217,7 @@ export default function PharmacyFeeTab({ api }) {
                 <div class="info-grid">
                   <div class="row"><span class="label">نام داکتر:</span><span class="value">${e.doctor_name || '-'}</span></div>
                   <div class="row"><span class="label">شماره رسید:</span><span class="value">${e.receipt_number || '-'}</span></div>
-                  <div class="row"><span class="label">تاریخ:</span><span class="value">${new Date(e.created_at).toLocaleDateString('fa-IR')}</span></div>
+                  <div class="row"><span class="label">تاریخ:</span><span class="value">${new Date(e.created_at || Date.now()).toLocaleDateString('fa-IR')}</span></div>
                 </div>
               </div>
               <div class="section">
@@ -193,8 +228,8 @@ export default function PharmacyFeeTab({ api }) {
                     ${(e.items || []).map((it, i) => `
                       <tr>
                         <td>${i + 1}</td>
-                        <td>${it.medication_name || '-'}</td>
-                        <td>${it.medication_type || '-'}</td>
+                        <td>${it.medication_name || it.med_name || '-'}</td>
+                        <td>${it.medication_type || it.med_type || '-'}</td>
                         <td>${it.quantity || 0}</td>
                         <td>${Number(it.unit_price || 0).toLocaleString()}</td>
                         <td><b>${Number(it.total_price || 0).toLocaleString()}</b></td>
@@ -212,7 +247,7 @@ export default function PharmacyFeeTab({ api }) {
                 <div class="sig-box"><div class="sig-line">امضای رسپشن</div></div>
               </div>
               <div class="footer">
-                <p>تاریخ چاپ: ${data.print_date}</p>
+                <p>تاریخ چاپ: ${new Date().toLocaleDateString('fa-IR')} ${new Date().toLocaleTimeString('fa-IR')}</p>
               </div>
               <script>window.onload = function() { window.print(); }<\/script>
             </body>
@@ -228,6 +263,13 @@ export default function PharmacyFeeTab({ api }) {
 
   // ============ Filters ============
   const filteredExecutions = executions.filter((e) => {
+    // فیلتر وضعیت
+    if (filter !== "all" && e.status !== filter) return false;
+
+    // فیلتر منبع (داخلی / بیرونی)
+    if (sourceFilter !== "all" && e.source !== sourceFilter) return false;
+
+    // جستجو
     if (!searchTerm) return true;
     const s = searchTerm.toLowerCase();
     return (
@@ -247,6 +289,13 @@ export default function PharmacyFeeTab({ api }) {
       cancelled: { bg: "#fee2e2", color: "#991b1b", text: "❌ لغو شده" },
     };
     return map[status] || { bg: "#f3f4f6", color: "#374151", text: status };
+  };
+
+  const getSourceBadge = (source) => {
+    if (source === "external") {
+      return { bg: "#f3e8ff", color: "#7c3aed", text: "📋 نسخه بیرونی" };
+    }
+    return { bg: "#d1fae5", color: "#065f46", text: "💊 نسخه داخلی" };
   };
 
   const formatDate = (d) => {
@@ -303,6 +352,11 @@ export default function PharmacyFeeTab({ api }) {
       background: "#10b981",
       color: "white",
       borderColor: "#10b981",
+    },
+    filterBtnExternalActive: {
+      background: "#8b5cf6",
+      color: "white",
+      borderColor: "#8b5cf6",
     },
     searchInput: {
       padding: "8px 16px",
@@ -392,6 +446,14 @@ export default function PharmacyFeeTab({ api }) {
           <div style={styles.statLabel}>مجموع</div>
         </div>
         <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#10b981" }}>{stats.internal}</div>
+          <div style={styles.statLabel}>داخلی</div>
+        </div>
+        <div style={styles.statBox}>
+          <div style={{ ...styles.statValue, color: "#8b5cf6" }}>{stats.external}</div>
+          <div style={styles.statLabel}>بیرونی</div>
+        </div>
+        <div style={styles.statBox}>
           <div style={{ ...styles.statValue, color: "#f59e0b" }}>{stats.pending}</div>
           <div style={styles.statLabel}>در انتظار</div>
         </div>
@@ -425,14 +487,37 @@ export default function PharmacyFeeTab({ api }) {
 
       {/* فیلترها */}
       <div style={styles.filters}>
+        {/* فیلتر منبع */}
         {[
-          { key: "all", label: "📋 همه" },
+          { key: "all", label: "📋 همه منابع" },
+          { key: "internal", label: "💊 داخلی" },
+          { key: "external", label: "📋 بیرونی" },
+        ].map((f) => (
+          <button
+            key={`source-${f.key}`}
+            style={{
+              ...styles.filterBtn,
+              ...(sourceFilter === f.key
+                ? (f.key === "external" ? styles.filterBtnExternalActive : styles.filterBtnActive)
+                : {}),
+            }}
+            onClick={() => setSourceFilter(f.key)}
+          >
+            {f.label}
+          </button>
+        ))}
+
+        <span style={{ width: "1px", height: "24px", background: "#e5e7eb" }} />
+
+        {/* فیلتر وضعیت */}
+        {[
+          { key: "all", label: "همه" },
           { key: "pending", label: "⏳ در انتظار" },
           { key: "sent_to_registration", label: "📤 ارسال شده" },
           { key: "paid", label: "✅ پرداخت شده" },
         ].map((f) => (
           <button
-            key={f.key}
+            key={`status-${f.key}`}
             style={{
               ...styles.filterBtn,
               ...(filter === f.key ? styles.filterBtnActive : {}),
@@ -442,6 +527,7 @@ export default function PharmacyFeeTab({ api }) {
             {f.label}
           </button>
         ))}
+
         <input
           type="text"
           placeholder="🔍 جستجوی نام، تذکره، رسید..."
@@ -473,12 +559,12 @@ export default function PharmacyFeeTab({ api }) {
             <thead>
               <tr>
                 <th style={styles.th}>#</th>
+                <th style={styles.th}>منبع</th>
                 <th style={styles.th}>شماره رسید</th>
                 <th style={styles.th}>معلومات بیمار</th>
                 <th style={styles.th}>داکتر</th>
                 <th style={styles.th}>تعداد اقلام</th>
                 <th style={styles.th}>مبلغ کل</th>
-                <th style={styles.th}>پرداخت شده</th>
                 <th style={styles.th}>باقیمانده</th>
                 <th style={styles.th}>وضعیت</th>
                 <th style={styles.th}>تاریخ</th>
@@ -488,12 +574,23 @@ export default function PharmacyFeeTab({ api }) {
             <tbody>
               {filteredExecutions.map((e, idx) => {
                 const badge = getStatusBadge(e.status);
+                const srcBadge = getSourceBadge(e.source);
                 const isPaid = e.status === "paid";
                 const remaining = Number(e.total_amount || 0) - Number(e.paid_amount || 0);
 
                 return (
-                  <tr key={e.id || idx}>
+                  <tr key={`${e.source || 'internal'}-${e.id}` || idx}>
                     <td style={styles.td}>{idx + 1}</td>
+                    <td style={styles.td}>
+                      <span style={{
+                        background: srcBadge.bg, color: srcBadge.color,
+                        padding: "4px 10px", borderRadius: "10px",
+                        fontSize: "11px", fontWeight: "bold",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {srcBadge.text}
+                      </span>
+                    </td>
                     <td style={styles.td}>
                       <code style={{ background: "#f3f4f6", padding: "3px 8px", borderRadius: "4px", fontSize: "12px" }}>
                         {e.receipt_number || "-"}
@@ -528,9 +625,6 @@ export default function PharmacyFeeTab({ api }) {
                     </td>
                     <td style={{ ...styles.td, color: "#d48806", fontWeight: "bold" }}>
                       {Number(e.total_amount || 0).toLocaleString()} AFN
-                    </td>
-                    <td style={{ ...styles.td, color: "#16a34a" }}>
-                      {Number(e.paid_amount || 0).toLocaleString()} AFN
                     </td>
                     <td style={{ ...styles.td, color: remaining <= 0 ? "#16a34a" : "#dc2626", fontWeight: "bold" }}>
                       {remaining.toLocaleString()} AFN
@@ -568,13 +662,21 @@ export default function PharmacyFeeTab({ api }) {
         </div>
       )}
 
-      {/* ============================================================ */}
       {/* مودال دریافت فیس */}
-      {/* ============================================================ */}
       {showCollectModal && selectedExecution && (
         <div style={styles.modal} onClick={() => setShowCollectModal(false)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ marginTop: 0, color: "#10b981" }}>💰 دریافت فیس دواخانه</h2>
+            <h2 style={{ marginTop: 0, color: "#10b981" }}>
+              💰 دریافت فیس دواخانه
+              {selectedExecution.source === "external" && (
+                <span style={{
+                  fontSize: "12px", background: "#f3e8ff", color: "#7c3aed",
+                  padding: "4px 10px", borderRadius: "10px", marginRight: "10px",
+                }}>
+                  📋 نسخه بیرونی
+                </span>
+              )}
+            </h2>
 
             {/* معلومات بیمار */}
             <div style={{

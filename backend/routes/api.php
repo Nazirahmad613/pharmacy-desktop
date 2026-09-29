@@ -49,6 +49,7 @@ use App\Http\Controllers\WardController;
 use App\Http\Controllers\BedController;
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\PharmacyExecutionController;
+use App\Http\Controllers\ExternalPrescriptionController;
 use App\Http\Controllers\TreatmentHistoryController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\FollowUpController;
@@ -485,23 +486,31 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ============================================================
-    // ✅ مسیرهای فیس نسخه
+    // ✅ مسیرهای فیس نسخه (اصلاح‌شده + ترکیبی)
     // ============================================================
     Route::prefix('prescription-fees')->group(function () {
-        Route::get('/all-requests', [PrescriptionFeeController::class, 'index']);
-        Route::get('/statistics',   [PrescriptionFeeController::class, 'statistics']);
-        Route::get('/reg-id/{regId}',   [PrescriptionFeeController::class, 'index']);
-        Route::get('/unpaid/{regId}',   [PrescriptionFeeController::class, 'index']);
+        // ⭐ روت‌های ترکیبی جدید (باید قبل از /{id} باشند)
+        Route::get('/pending',  [PrescriptionFeeController::class, 'pendingFees']);
+        Route::post('/collect/{source}/{id}', [PrescriptionFeeController::class, 'collectFee'])
+            ->where('source', 'internal|external')
+            ->where('id', '[0-9]+');
+
+        // روت‌های خاص
+        Route::get('/all-requests',   [PrescriptionFeeController::class, 'index']);
+        Route::get('/statistics',     [PrescriptionFeeController::class, 'statistics']);
+        Route::get('/reg-id/{regId}', [PrescriptionFeeController::class, 'index']);
+        Route::get('/unpaid/{regId}', [PrescriptionFeeController::class, 'index']);
         Route::get('/registration/{regId}', [PrescriptionFeeController::class, 'index']);
 
+        // CRUD
         Route::get('/',  [PrescriptionFeeController::class, 'index']);
         Route::post('/', [PrescriptionFeeController::class, 'store']);
         Route::post('/registration/{regId}', [PrescriptionFeeController::class, 'store']);
-        Route::get('/{id}',    [PrescriptionFeeController::class, 'show']);
-        Route::put('/{id}',    [PrescriptionFeeController::class, 'update']);
-        Route::delete('/{id}', [PrescriptionFeeController::class, 'destroy']);
+        Route::get('/{id}',    [PrescriptionFeeController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}',    [PrescriptionFeeController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [PrescriptionFeeController::class, 'destroy'])->where('id', '[0-9]+');
 
-        Route::post('/{id}/sync', [PrescriptionFeeController::class, 'syncStatus']);
+        Route::post('/{id}/sync', [PrescriptionFeeController::class, 'syncStatus'])->where('id', '[0-9]+');
     });
 
     // ============================================================
@@ -528,6 +537,27 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ============================================================
+    // ✅ نسخه‌های بیرونی (اصلاح‌شده — داخل middleware)
+    // ============================================================
+    Route::prefix('external-prescriptions')->group(function () {
+        // ⭐ روت‌های خاص اول
+        Route::get('/pending-for-registration', [ExternalPrescriptionController::class, 'pendingForRegistration']);
+        Route::get('/pending', [ExternalPrescriptionController::class, 'pending']);
+
+        // CRUD
+        Route::get('/', [ExternalPrescriptionController::class, 'index']);
+        Route::post('/', [ExternalPrescriptionController::class, 'store']);
+        Route::get('/{id}', [ExternalPrescriptionController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [ExternalPrescriptionController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [ExternalPrescriptionController::class, 'destroy'])->where('id', '[0-9]+');
+        Route::get('/{id}/print', [ExternalPrescriptionController::class, 'print'])->where('id', '[0-9]+');
+
+        // ⭐ Actions رسپشن
+        Route::post('/{id}/mark-paid', [ExternalPrescriptionController::class, 'markAsPaid'])->where('id', '[0-9]+');
+        Route::post('/{id}/cancel', [ExternalPrescriptionController::class, 'cancel'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
     // ⭐ اجراآت دواخانه
     // ============================================================
     Route::prefix('pharmacy-executions')->group(function () {
@@ -536,13 +566,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/', [PharmacyExecutionController::class, 'index']);
         Route::post('/', [PharmacyExecutionController::class, 'store']);
-        Route::get('/{id}', [PharmacyExecutionController::class, 'show']);
-        Route::put('/{id}', [PharmacyExecutionController::class, 'update']);
-        Route::delete('/{id}', [PharmacyExecutionController::class, 'destroy']);
+        Route::get('/{id}', [PharmacyExecutionController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [PharmacyExecutionController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [PharmacyExecutionController::class, 'destroy'])->where('id', '[0-9]+');
 
-        Route::post('/{id}/send-to-registration', [PharmacyExecutionController::class, 'sendToRegistration']);
-        Route::post('/{id}/collect-fee', [PharmacyExecutionController::class, 'collectFee']);
-        Route::get('/{id}/print', [PharmacyExecutionController::class, 'printReceipt']);
+        Route::post('/{id}/send-to-registration', [PharmacyExecutionController::class, 'sendToRegistration'])->where('id', '[0-9]+');
+        Route::post('/{id}/collect-fee', [PharmacyExecutionController::class, 'collectFee'])->where('id', '[0-9]+');
+        Route::get('/{id}/print', [PharmacyExecutionController::class, 'printReceipt'])->where('id', '[0-9]+');
     });
 
     // ===== Stock & Sales Reports =====
