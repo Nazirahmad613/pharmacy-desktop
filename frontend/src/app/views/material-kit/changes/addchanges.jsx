@@ -5,6 +5,47 @@ import { useAuth } from "app/contexts/AuthContext";
 import MainLayoutjur from "../../../../components/MainLayoutjur";
 import { formatDateToFa } from "../../../../utils/dateHelper";
 
+/* ✅ DatePicker فارسی افغانی */
+import DatePicker from "react-multi-date-picker";
+import persian from "react-date-object/calendars/persian";
+import persian_fa from "react-date-object/locales/persian_fa";
+
+/* ============================================================
+ *  ✅ Locale سفارشی افغانستان — نام ماه‌های افغانی
+ * ============================================================ */
+const afghanistanLocale = {
+  ...persian_fa,
+  name: "afghanistan",
+  months: [
+    ["حمل", "حمل"],
+    ["ثور", "ثور"],
+    ["جوزا", "جوزا"],
+    ["سرطان", "سرطان"],
+    ["اسد", "اسد"],
+    ["سنبله", "سنبله"],
+    ["میزان", "میزان"],
+    ["عقرب", "عقرب"],
+    ["قوس", "قوس"],
+    ["جدی", "جدی"],
+    ["دلو", "دلو"],
+    ["حوت", "حوت"],
+  ],
+  weekDays: [
+    ["شنبه", "ش"],
+    ["یکشنبه", "ی"],
+    ["دوشنبه", "د"],
+    ["سه‌شنبه", "س"],
+    ["چهارشنبه", "چ"],
+    ["پنجشنبه", "پ"],
+    ["جمعه", "ج"],
+  ],
+  digits: ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"],
+  meridiems: [
+    ["قبل از ظهر", "ق.ظ"],
+    ["بعد از ظهر", "ب.ظ"],
+  ],
+};
+
 /* ============================================================
  *  ثابت‌ها
  * ============================================================ */
@@ -44,7 +85,6 @@ const REF_TYPE_FA = {
   other: "سایر",
   sale: "فروش",
   parchase: "خرید",
-  // ✅ فیس‌ها
   prescription_fee: "فیس نسخه",
   external_prescription: "نسخه بیرونی",
   pharmacy_fee: "فیس دواخانه",
@@ -88,7 +128,6 @@ const REF_TYPE_GROUPS = [
       { value: "parchase", label: "خرید" },
     ],
   },
-  // ✅ گروه جدید: فیس‌ها
   {
     label: "فیس‌ها",
     options: [
@@ -141,42 +180,93 @@ const EMPTY_FORM = {
 
 const ROWS_PER_PAGE = 10;
 
+/* ============================================================
+ *  استایل‌های مشترک
+ * ============================================================ */
 const inputClass =
-  "bg-[#111] text-white border border-gray-600 rounded-xl px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-600";
+  "bg-slate-900/70 text-slate-100 border border-slate-700/60 rounded-lg px-3 py-2 w-full text-[13px] transition-all duration-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25 hover:border-slate-600 placeholder:text-slate-500";
+
+const datePickerInputClass =
+  "bg-slate-900/70 text-slate-100 border border-slate-700/60 rounded-lg px-3 py-2 w-full text-[13px] transition-all duration-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25 hover:border-slate-600 placeholder:text-slate-500 h-[38px]";
+
+const datePickerFilterClass =
+  "bg-slate-900/70 text-slate-100 border border-slate-700/60 rounded-lg px-3 py-2 text-[13px] transition-all duration-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25 hover:border-slate-600 h-[38px] w-[150px]";
 
 const btnStyle = {
   edit: {
-    backgroundColor: "#dcc215",
-    color: "#000",
+    background: "linear-gradient(135deg, #facc15 0%, #eab308 100%)",
+    color: "#111827",
     padding: "5px 12px",
-    borderRadius: "5px",
+    borderRadius: "6px",
     border: "none",
     cursor: "pointer",
     fontSize: "12px",
-    fontWeight: "bold",
+    fontWeight: "700",
     marginLeft: "5px",
+    boxShadow: "0 2px 5px rgba(234,179,8,0.25)",
+    transition: "all 0.15s",
   },
   print: {
-    backgroundColor: "#0da62f",
+    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
     color: "#fff",
     padding: "5px 12px",
-    borderRadius: "5px",
+    borderRadius: "6px",
     border: "none",
     cursor: "pointer",
     fontSize: "12px",
-    fontWeight: "bold",
+    fontWeight: "700",
+    boxShadow: "0 2px 5px rgba(16,185,129,0.25)",
+    transition: "all 0.15s",
   },
   cancel: {
-    backgroundColor: "#6c757d",
+    background: "linear-gradient(135deg, #64748b 0%, #475569 100%)",
     color: "white",
     padding: "10px 20px",
-    borderRadius: "8px",
+    borderRadius: "10px",
     border: "none",
     cursor: "pointer",
     flex: "0.5",
+    fontWeight: "600",
+    boxShadow: "0 2px 8px rgba(100,116,139,0.3)",
+    transition: "all 0.15s",
   },
 };
 
+/* ============================================================
+ *  توابع کمکی تاریخ
+ * ============================================================ */
+
+/** تبدیل DateObject فارسی به رشته YYYY-MM-DD میلادی برای ارسال به بک‌اند */
+const dateObjectToISO = (dateObj) => {
+  if (!dateObj) return "";
+  try {
+    // اگر DateObject باشد (از DatePicker)
+    if (typeof dateObj?.toDate === "function") {
+      return dateObj.toDate().toISOString().split("T")[0];
+    }
+    // اگر Date معمولی باشد
+    if (dateObj instanceof Date) {
+      return dateObj.toISOString().split("T")[0];
+    }
+    return "";
+  } catch {
+    return "";
+  }
+};
+
+/** تبدیل رشته میلادی YYYY-MM-DD به Date برای DatePicker */
+const isoToDateObject = (iso) => {
+  if (!iso) return "";
+  try {
+    return new Date(iso);
+  } catch {
+    return "";
+  }
+};
+
+/* ============================================================
+ *  کامپوننت اصلی
+ * ============================================================ */
 export default function JournalPage() {
   const { api } = useAuth();
 
@@ -290,17 +380,14 @@ export default function JournalPage() {
             updated.tazkira_number = found.national_id;
           }
 
-          // ✅ برای نسخه بیرونی: توضیحات و مبلغ را از منبع پر کن
           if (form.ref_type === "external_prescription") {
             if (found.name) {
               updated.description = `فیس نسخه بیرونی - ${found.name}`;
             }
 
-            // ✅ اگر مبلغ پرداختی باقی‌مانده دارد، آن را پر کن
             if (found.total_amount !== undefined) {
               const total = Number(found.total_amount || 0);
               const discount = Number(found.discount || 0);
-              // اگر قبلاً پرداختی داشته، باقی‌مانده را نشان بده
               const paid = Number(found.paid_amount || 0);
               const remaining = Math.max(0, total - discount - paid);
               updated.amount = remaining > 0 ? remaining : total - discount;
@@ -318,6 +405,21 @@ export default function JournalPage() {
 
       return updated;
     });
+  };
+
+  const handleJournalDateChange = (dateObj) => {
+    setForm((prev) => ({
+      ...prev,
+      journal_date: dateObjectToISO(dateObj),
+    }));
+  };
+
+  const handleFromDateChange = (dateObj) => {
+    setFromDate(dateObjectToISO(dateObj));
+  };
+
+  const handleToDateChange = (dateObj) => {
+    setToDate(dateObjectToISO(dateObj));
   };
 
   const handleCancelEdit = () => {
@@ -438,7 +540,6 @@ export default function JournalPage() {
         } else if (j.ref_type === "parchase") {
           description = `خرید شماره ${j.ref_id}`;
         } else if (j.ref_type === "external_prescription") {
-          // ✅ برای نسخه بیرونی، توضیحات را از نام بیمار بساز
           const patientName = j.source_name || j.full_name || j.display_name;
           description = patientName
             ? `فیس نسخه بیرونی - ${patientName}`
@@ -500,16 +601,16 @@ export default function JournalPage() {
   }, [searchTerm, filterType, fromDate, toDate]);
 
   /* ============================================================
-   *  رنگ ردیف بر اساس نوع منبع
+   *  رنگ ردیف بر اساس نوع منبع (بدون تغییر)
    * ============================================================ */
   const getRowColor = (sourceType) => {
     switch (sourceType) {
-      case "sale":                    return "#1a4a70";
-      case "parchase":                return "#701a1a";
-      case "patient":                 return "#1a701a";
-      case "external_prescription":   return "#6b3fa0"; // ✅ بنفش
-      case "prescription_fee":        return "#1a701a";
-      default:                        return "#1a1a1a";
+      case "sale":                  return "#1a4a70";
+      case "parchase":              return "#701a1a";
+      case "patient":               return "#1a701a";
+      case "external_prescription": return "#6b3fa0";
+      case "prescription_fee":      return "#1a701a";
+      default:                      return "#1a1a1a";
     }
   };
 
@@ -532,255 +633,381 @@ export default function JournalPage() {
         }}
       />
 
-      <h2 style={{ textAlign: "center" }}>ثبت و مدیریت محاسبات</h2>
+      <div className="px-4 py-4 max-w-[1500px] mx-auto" dir="rtl">
+        {/* ==================== عنوان صفحه ==================== */}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-[17px] font-bold text-white flex items-center gap-2">
+            <span className="inline-block w-1 h-5 rounded bg-gradient-to-b from-indigo-400 to-purple-500"></span>
+            ثبت و مدیریت محاسبات
+          </h2>
 
-      {/* ===== فیلترها ===== */}
-      <div className="form-container mb-6 flex gap-3">
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          className={inputClass}
-        >
-          <option value="">همه نوع‌ها</option>
-          {Object.entries(ENTRY_TYPE_FA).map(([k, v]) => (
-            <option key={`filter-${k}`} value={k}>
-              {v}
-            </option>
-          ))}
-        </select>
-        <input
-          type="date"
-          value={fromDate}
-          onChange={(e) => setFromDate(e.target.value)}
-          className={inputClass}
-        />
-        <input
-          type="date"
-          value={toDate}
-          onChange={(e) => setToDate(e.target.value)}
-          className={inputClass}
-        />
-        <input
-          type="text"
-          placeholder="جستجو..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className={inputClass}
-        />
-      </div>
+          <span className="text-[11px] text-slate-400 bg-slate-800/60 border border-slate-700/60 rounded-md px-2.5 py-1">
+            {filteredRows.length.toLocaleString("fa-IR")} ردیف
+          </span>
+        </div>
 
-      {/* ===== فرم ===== */}
-      <div className="form-container mb-10">
-        <form onSubmit={handleSubmit} className="form-grid gap-3">
-          <input
-            type="date"
-            name="journal_date"
-            value={form.journal_date}
-            onChange={handleChange}
-            className={inputClass}
-            required
-          />
-
+        {/* ==================== فیلترها ==================== */}
+        <div className="form-container mb-5 flex gap-2 flex-wrap p-3 bg-slate-900/60 border border-slate-800/70 rounded-xl items-center">
           <select
-            name="entry_type"
-            value={form.entry_type}
-            onChange={handleChange}
-            className={inputClass}
-            required
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className={`${inputClass} !w-auto min-w-[140px]`}
           >
+            <option value="">همه نوع‌ها</option>
             {Object.entries(ENTRY_TYPE_FA).map(([k, v]) => (
-              <option key={`entry-${k}`} value={k}>
+              <option key={`filter-${k}`} value={k}>
                 {v}
               </option>
             ))}
           </select>
 
-          <input
-            type="number"
-            name="amount"
-            value={form.amount}
-            onChange={handleChange}
-            placeholder="مبلغ"
-            className={inputClass}
-            required
+          {/* ✅ فیلتر از تاریخ — تقویم افغانستان */}
+          <DatePicker
+            value={isoToDateObject(fromDate)}
+            onChange={handleFromDateChange}
+            calendar={persian}
+            locale={afghanistanLocale}
+            calendarPosition="bottom-right"
+            inputClass={datePickerFilterClass}
+            placeholder="از تاریخ"
+            containerClassName="inline-block"
+          />
+
+          {/* ✅ فیلتر تا تاریخ — تقویم افغانستان */}
+          <DatePicker
+            value={isoToDateObject(toDate)}
+            onChange={handleToDateChange}
+            calendar={persian}
+            locale={afghanistanLocale}
+            calendarPosition="bottom-right"
+            inputClass={datePickerFilterClass}
+            placeholder="تا تاریخ"
+            containerClassName="inline-block"
           />
 
           <input
             type="text"
-            name="description"
-            value={form.description}
-            onChange={handleChange}
-            placeholder="توضیحات"
-            className={inputClass}
+            placeholder="جستجو..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className={`${inputClass} flex-1 min-w-[200px]`}
           />
 
-          <input
-            type="text"
-            name="tazkira_number"
-            value={form.tazkira_number}
-            onChange={handleChange}
-            placeholder="شماره تذکره"
-            className={inputClass}
-          />
-
-          <select
-            name="ref_type"
-            value={form.ref_type}
-            onChange={handleChange}
-            className={inputClass}
-            required
-          >
-            <option value="">نوع منبع</option>
-            {REF_TYPE_GROUPS.map((group) => (
-              <optgroup key={`group-${group.label}`} label={group.label}>
-                {group.options.map((opt) => (
-                  <option key={`opt-${opt.value}`} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-
-          <select
-            name="ref_id"
-            value={form.ref_id}
-            onChange={handleChange}
-            disabled={!form.ref_type || loadingSources}
-            className={inputClass}
-            required
-          >
-            <option value="">
-              {loadingSources
-                ? "در حال بارگذاری..."
-                : refSources.length
-                ? "نام منبع را انتخاب کنید"
-                : form.ref_type
-                ? "منبعی یافت نشد"
-                : "ابتدا نوع منبع را انتخاب کنید"}
-            </option>
-            {refSources.map((r) => (
-              <option key={`src-${r.id}-${r.reg_id ?? "x"}`} value={r.id}>
-                {r.name}
-                {r.code ? ` (${r.code})` : ""}
-                {r.national_id ? ` - ${r.national_id}` : ""}
-              </option>
-            ))}
-          </select>
-
-          <div style={{ display: "flex", gap: "10px" }}>
+          {(filterType || fromDate || toDate || searchTerm) && (
             <button
-              type="submit"
-              className="bg-blue-700 text-white rounded-xl py-2 hover:bg-blue-800"
-              style={{ flex: "1" }}
+              type="button"
+              onClick={() => {
+                setFilterType("");
+                setFromDate("");
+                setToDate("");
+                setSearchTerm("");
+              }}
+              className="text-[12px] text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700/60 rounded-lg px-3 py-2 transition-colors"
             >
-              {editingId ? "بروزرسانی" : "ثبت"}
+              پاک کردن
             </button>
+          )}
+        </div>
+
+        {/* ==================== فرم ==================== */}
+        <div className="form-container mb-5 p-4 bg-slate-900/60 border border-slate-800/70 rounded-xl shadow-lg shadow-black/20">
+          <div className="flex items-center gap-2 mb-3 pb-2.5 border-b border-slate-800/70">
+            <div
+              className={`w-1.5 h-1.5 rounded-full ${
+                editingId ? "bg-amber-400" : "bg-emerald-400"
+              }`}
+            />
+            <span className="text-[13px] font-bold text-slate-100">
+              {editingId ? "ویرایش معامله" : "ثبت معامله جدید"}
+            </span>
             {editingId && (
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                style={btnStyle.cancel}
-              >
-                انصراف
-              </button>
+              <span className="text-[10.5px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                #{editingId}
+              </span>
             )}
           </div>
-        </form>
-      </div>
 
-      {/* ===== جدول ===== */}
-      <div className="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>عملیات</th>
-              <th>تاریخ</th>
-              <th>نوع</th>
-              <th>توضیحات</th>
-              <th>مبلغ کل</th>
-              <th>پرداخت شده</th>
-              <th>باقی‌مانده</th>
-              <th>منبع</th>
-              <th>نام منبع</th>
-              <th>شماره تذکره</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currentRows.length ? (
-              currentRows.map((row) => {
-                const bgColor = getRowColor(row.source_type);
+          <form onSubmit={handleSubmit} className="form-grid gap-3">
+            {/* ✅ تاریخ ژورنال — تقویم افغانستان */}
+            <DatePicker
+              value={isoToDateObject(form.journal_date)}
+              onChange={handleJournalDateChange}
+              calendar={persian}
+              locale={afghanistanLocale}
+              calendarPosition="bottom-right"
+              inputClass={datePickerInputClass}
+              placeholder="تاریخ (شمسی)"
+              containerClassName="w-full"
+            />
 
-                return (
-                  <tr
-                    key={row.id}
-                    style={{ backgroundColor: bgColor, color: "#fff" }}
-                  >
-                    <td className="flex gap-1">
-                      <button
-                        onClick={() => handleEdit(row.id)}
-                        style={btnStyle.edit}
-                      >
-                        تصحیح
-                      </button>
-                      <button
-                        onClick={() => handlePrint(row)}
-                        style={btnStyle.print}
-                      >
-                        پرینت
-                      </button>
-                    </td>
-                    <td>{row.date || "-"}</td>
-                    <td>{ENTRY_TYPE_FA[row.entry_type] || "-"}</td>
-                    <td>{row.description || "-"}</td>
-                    <td>{row.amount ?? 0}</td>
-                    <td>{row.paid ?? 0}</td>
-                    <td>{row.remaining ?? 0}</td>
-                    <td>
-                      {REF_TYPE_FA[row.source_type] ||
-                        row.source_type ||
-                        "-"}
-                    </td>
-                    <td>{row.source_name || "-"}</td>
-                    <td>{row.tazkira_number || "-"}</td>
-                  </tr>
-                );
-              })
-            ) : (
-              <tr>
-                <td colSpan="10" style={{ textAlign: "center" }}>
-                  نتیجه‌ای یافت نشد
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            <select
+              name="entry_type"
+              value={form.entry_type}
+              onChange={handleChange}
+              className={inputClass}
+              required
+            >
+              {Object.entries(ENTRY_TYPE_FA).map(([k, v]) => (
+                <option key={`entry-${k}`} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
 
-      {/* ===== صفحه‌بندی ===== */}
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-3 mt-4">
-          <button
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            className="px-4 py-2 bg-gray-700 rounded disabled:opacity-50"
-          >
-            قبلی
-          </button>
-          <span className="px-4 py-2">
-            {currentPage} / {totalPages}
-          </span>
-          <button
-            disabled={currentPage === totalPages}
-            onClick={() =>
-              setCurrentPage((p) => Math.min(totalPages, p + 1))
-            }
-            className="px-4 py-2 bg-gray-700 rounded disabled:opacity-50"
-          >
-            بعدی
-          </button>
+            <input
+              type="number"
+              name="amount"
+              value={form.amount}
+              onChange={handleChange}
+              placeholder="مبلغ"
+              className={inputClass}
+              required
+            />
+
+            <input
+              type="text"
+              name="description"
+              value={form.description}
+              onChange={handleChange}
+              placeholder="توضیحات"
+              className={inputClass}
+            />
+
+            <input
+              type="text"
+              name="tazkira_number"
+              value={form.tazkira_number}
+              onChange={handleChange}
+              placeholder="شماره تذکره"
+              className={inputClass}
+            />
+
+            <select
+              name="ref_type"
+              value={form.ref_type}
+              onChange={handleChange}
+              className={inputClass}
+              required
+            >
+              <option value="">نوع منبع</option>
+              {REF_TYPE_GROUPS.map((group) => (
+                <optgroup key={`group-${group.label}`} label={group.label}>
+                  {group.options.map((opt) => (
+                    <option key={`opt-${opt.value}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+
+            <select
+              name="ref_id"
+              value={form.ref_id}
+              onChange={handleChange}
+              disabled={!form.ref_type || loadingSources}
+              className={`${inputClass} disabled:opacity-50 disabled:cursor-not-allowed`}
+              required
+            >
+              <option value="">
+                {loadingSources
+                  ? "در حال بارگذاری..."
+                  : refSources.length
+                  ? "نام منبع را انتخاب کنید"
+                  : form.ref_type
+                  ? "منبعی یافت نشد"
+                  : "ابتدا نوع منبع را انتخاب کنید"}
+              </option>
+              {refSources.map((r) => (
+                <option key={`src-${r.id}-${r.reg_id ?? "x"}`} value={r.id}>
+                  {r.name}
+                  {r.code ? ` (${r.code})` : ""}
+                  {r.national_id ? ` - ${r.national_id}` : ""}
+                </option>
+              ))}
+            </select>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                type="submit"
+                className="text-white rounded-xl py-2 font-bold transition-all hover:brightness-110 active:scale-[0.98]"
+                style={{
+                  flex: "1",
+                  background: editingId
+                    ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
+                    : "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%)",
+                  boxShadow: editingId
+                    ? "0 4px 12px rgba(245,158,11,0.3)"
+                    : "0 4px 12px rgba(124,58,237,0.3)",
+                  fontSize: "13px",
+                }}
+              >
+                {editingId ? "بروزرسانی" : "ثبت"}
+              </button>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  style={btnStyle.cancel}
+                >
+                  انصراف
+                </button>
+              )}
+            </div>
+          </form>
         </div>
-      )}
+
+        {/* ==================== جدول ==================== */}
+        <div className="table-container rounded-xl overflow-hidden border border-slate-800/70 shadow-lg shadow-black/20">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="bg-slate-900/90 border-b border-slate-700/70">
+                  {[
+                    "عملیات",
+                    "تاریخ",
+                    "نوع",
+                    "توضیحات",
+                    "مبلغ کل",
+                    "پرداخت شده",
+                    "باقی‌مانده",
+                    "منبع",
+                    "نام منبع",
+                    "شماره تذکره",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-3 py-2.5 text-right text-[11px] font-bold text-slate-400 whitespace-nowrap uppercase tracking-wider"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {currentRows.length ? (
+                  currentRows.map((row) => {
+                    const bgColor = getRowColor(row.source_type);
+
+                    return (
+                      <tr
+                        key={row.id}
+                        className="border-b border-slate-800/50 transition-all duration-150 hover:brightness-125"
+                        style={{ backgroundColor: bgColor, color: "#fff" }}
+                      >
+                        <td className="px-3 py-2">
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleEdit(row.id)}
+                              style={btnStyle.edit}
+                              className="hover:brightness-110 active:scale-95"
+                            >
+                              تصحیح
+                            </button>
+                            <button
+                              onClick={() => handlePrint(row)}
+                              style={btnStyle.print}
+                              className="hover:brightness-110 active:scale-95"
+                            >
+                              پرینت
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-[12px]">
+                          {row.date || "-"}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span
+                            className="inline-block px-2 py-0.5 rounded-md text-[10.5px] font-semibold"
+                            style={{
+                              background:
+                                row.entry_type === "debit"
+                                  ? "rgba(34,197,94,0.25)"
+                                  : "rgba(239,68,68,0.25)",
+                              color:
+                                row.entry_type === "debit"
+                                  ? "#86efac"
+                                  : "#fca5a5",
+                            }}
+                          >
+                            {ENTRY_TYPE_FA[row.entry_type] || "-"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 max-w-xs truncate text-[12px]">
+                          {row.description || "-"}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap font-mono text-[12px]">
+                          {Number(row.amount || 0).toLocaleString("fa-IR")}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap font-mono text-[12px] text-emerald-300 font-semibold">
+                          {Number(row.paid || 0).toLocaleString("fa-IR")}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap font-mono text-[12px] text-amber-300 font-semibold">
+                          {Number(row.remaining || 0).toLocaleString("fa-IR")}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-[12px]">
+                          {REF_TYPE_FA[row.source_type] ||
+                            row.source_type ||
+                            "-"}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-[12px]">
+                          {row.source_name || "-"}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-[12px]">
+                          {row.tazkira_number || "-"}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan="10" className="px-3 py-12 text-center">
+                      <span className="text-slate-500 text-[13px]">
+                        نتیجه‌ای یافت نشد
+                      </span>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ==================== صفحه‌بندی ==================== */}
+          {totalPages > 1 && (
+            <div className="px-4 py-3 bg-slate-900/70 border-t border-slate-800/70 flex items-center justify-between">
+              <span className="text-[11.5px] text-slate-400">
+                صفحه {currentPage.toLocaleString("fa-IR")} از{" "}
+                {totalPages.toLocaleString("fa-IR")}
+              </span>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-[12px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors border border-slate-700/60"
+                >
+                  قبلی
+                </button>
+
+                <span className="text-[12px] text-slate-200 px-3 py-1 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 font-semibold shadow">
+                  {currentPage.toLocaleString("fa-IR")} /{" "}
+                  {totalPages.toLocaleString("fa-IR")}
+                </span>
+
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-[12px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors border border-slate-700/60"
+                >
+                  بعدی
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </MainLayoutjur>
   );
 }

@@ -8,6 +8,8 @@ use App\Models\Journal;
 use App\Models\Registrations;
 use App\Models\PharmacyExecution;
 use App\Models\ExternalPrescription;
+use App\Models\Patient;
+use App\Models\User;
 use App\Services\JournalSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -59,7 +61,6 @@ class PrescriptionFeeController extends Controller
             $paidAmount = $request->paid_amount ?? 0;
             $remainingAmount = $totalAmount - $discount - $paidAmount;
 
-            // ایجاد فیس نسخه
             $fee = PrescriptionFee::create([
                 'registration_id' => $request->registration_id,
                 'patient_id' => $request->patient_id,
@@ -76,7 +77,6 @@ class PrescriptionFeeController extends Controller
                 'created_by' => Auth::id(),
             ]);
 
-            // ثبت در ژورنال (روش قدیمی)
             if ($paidAmount > 0) {
                 $journal = Journal::create([
                     'journal_date' => now(),
@@ -89,13 +89,7 @@ class PrescriptionFeeController extends Controller
                 ]);
 
                 try {
-                    LogService::create(
-                        'create',
-                        'journals',
-                        $journal->id,
-                        'Prescription fee journal created',
-                        $journal->toArray()
-                    );
+                    LogService::create('create', 'journals', $journal->id, 'Prescription fee journal created', $journal->toArray());
                 } catch (\Exception $e) {
                     Log::error("Journal log failed: " . $e->getMessage());
                 }
@@ -103,7 +97,6 @@ class PrescriptionFeeController extends Controller
 
             DB::commit();
 
-            // ✅ ثبت در ژورنال جدید (اتوماتیک)
             $this->journalSync->syncFee([
                 'reg_id'           => $request->registration_id,
                 'patient_id'       => $request->patient_id,
@@ -118,15 +111,8 @@ class PrescriptionFeeController extends Controller
                 'description'      => 'فیس نسخه - مراجعه #' . $request->registration_id,
             ]);
 
-            // ثبت لاگ
             try {
-                LogService::create(
-                    'create',
-                    'prescription_fees',
-                    $fee->id,
-                    'Prescription fee created',
-                    $fee->toArray()
-                );
+                LogService::create('create', 'prescription_fees', $fee->id, 'Prescription fee created', $fee->toArray());
             } catch (\Exception $e) {
                 Log::error("Prescription fee log failed: " . $e->getMessage());
             }
@@ -163,33 +149,24 @@ class PrescriptionFeeController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
 
         try {
             DB::beginTransaction();
 
             $fee = PrescriptionFee::find($id);
-
             if (!$fee) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'فیس نسخه یافت نشد'
-                ], 404);
+                return response()->json(['success' => false, 'message' => 'فیس نسخه یافت نشد'], 404);
             }
 
             $oldPaidAmount = $fee->paid_amount;
             $oldDiscount = $fee->discount;
             $oldStatus = $fee->payment_status;
 
-            // ✅ تشخیص نوع فیس (داخلی / بیرونی)
             $refType = $fee->ref_type ?? 'prescription_fee';
             $refId   = $fee->ref_id   ?? $fee->id;
 
-            // به‌روزرسانی
             $fee->update([
                 'paid_amount' => $request->paid_amount ?? $fee->paid_amount,
                 'discount' => $request->discount ?? $fee->discount,
@@ -199,14 +176,10 @@ class PrescriptionFeeController extends Controller
                 'updated_by' => Auth::id(),
             ]);
 
-            // محاسبه مجدد باقیمانده
             $fee->remaining_amount = $fee->total_amount - $fee->discount - $fee->paid_amount;
             $fee->save();
 
-            // به‌روزرسانی ژورنال (روش قدیمی)
-            $journal = Journal::where('ref_type', $refType)
-                ->where('ref_id', $refId)
-                ->first();
+            $journal = Journal::where('ref_type', $refType)->where('ref_id', $refId)->first();
 
             if ($journal) {
                 if ($fee->paid_amount != $oldPaidAmount) {
@@ -233,7 +206,6 @@ class PrescriptionFeeController extends Controller
 
             DB::commit();
 
-            // ✅ ثبت در ژورنال جدید (اتوماتیک - حذف قبلی و ساخت جدید)
             $this->journalSync->syncFee([
                 'reg_id'           => $fee->registration_id,
                 'patient_id'       => $fee->patient_id,
@@ -251,22 +223,11 @@ class PrescriptionFeeController extends Controller
                 'tazkira_number'   => $fee->tazkira_number ?? null,
             ]);
 
-            // ثبت لاگ
             try {
-                LogService::create(
-                    'update',
-                    'prescription_fees',
-                    $fee->id,
-                    'Prescription fee updated',
-                    [
-                        'old' => [
-                            'paid_amount' => $oldPaidAmount,
-                            'discount' => $oldDiscount,
-                            'status' => $oldStatus
-                        ],
-                        'new' => $fee->toArray()
-                    ]
-                );
+                LogService::create('update', 'prescription_fees', $fee->id, 'Prescription fee updated', [
+                    'old' => ['paid_amount' => $oldPaidAmount, 'discount' => $oldDiscount, 'status' => $oldStatus],
+                    'new' => $fee->toArray()
+                ]);
             } catch (\Exception $e) {
                 Log::error("Prescription fee update log failed: " . $e->getMessage());
             }
@@ -280,10 +241,7 @@ class PrescriptionFeeController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Prescription fee update error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در بروزرسانی فیس نسخه: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'خطا در بروزرسانی فیس نسخه: ' . $e->getMessage()], 500);
         }
     }
 
@@ -298,57 +256,34 @@ class PrescriptionFeeController extends Controller
             DB::beginTransaction();
 
             $fee = PrescriptionFee::find($id);
-
             if (!$fee) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'فیس نسخه یافت نشد'
-                ], 404);
+                return response()->json(['success' => false, 'message' => 'فیس نسخه یافت نشد'], 404);
             }
 
-            // ✅ تشخیص نوع فیس (داخلی / بیرونی)
             $refType = $fee->ref_type ?? 'prescription_fee';
             $refId   = $fee->ref_id   ?? $fee->id;
 
-            // حذف ژورنال مرتبط (روش قدیمی)
-            Journal::where('ref_type', $refType)
-                ->where('ref_id', $refId)
-                ->delete();
+            Journal::where('ref_type', $refType)->where('ref_id', $refId)->delete();
 
             $feeData = $fee->toArray();
-            $feeId = $fee->id;
             $fee->delete();
 
             DB::commit();
 
-            // ✅ حذف از ژورنال جدید (اتوماتیک)
             $this->journalSync->deleteFee($refType, $refId);
 
-            // ثبت لاگ
             try {
-                LogService::create(
-                    'delete',
-                    'prescription_fees',
-                    $id,
-                    'Prescription fee deleted',
-                    $feeData
-                );
+                LogService::create('delete', 'prescription_fees', $id, 'Prescription fee deleted', $feeData);
             } catch (\Exception $e) {
                 Log::error("Prescription fee delete log failed: " . $e->getMessage());
             }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'فیس نسخه با موفقیت حذف شد'
-            ]);
+            return response()->json(['success' => true, 'message' => 'فیس نسخه با موفقیت حذف شد']);
 
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Prescription fee delete error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در حذف فیس نسخه: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'خطا در حذف فیس نسخه: ' . $e->getMessage()], 500);
         }
     }
 
@@ -362,70 +297,39 @@ class PrescriptionFeeController extends Controller
         try {
             $query = PrescriptionFee::with(['patient', 'registration']);
 
-            if ($request->payment_status) {
-                $query->where('payment_status', $request->payment_status);
-            }
-
-            if ($request->patient_id) {
-                $query->where('patient_id', $request->patient_id);
-            }
-
-            if ($request->registration_id) {
-                $query->where('registration_id', $request->registration_id);
-            }
-
-            if ($request->from_date) {
-                $query->whereDate('created_at', '>=', $request->from_date);
-            }
-
-            if ($request->to_date) {
-                $query->whereDate('created_at', '<=', $request->to_date);
-            }
+            if ($request->payment_status) $query->where('payment_status', $request->payment_status);
+            if ($request->patient_id) $query->where('patient_id', $request->patient_id);
+            if ($request->registration_id) $query->where('registration_id', $request->registration_id);
+            if ($request->from_date) $query->whereDate('created_at', '>=', $request->from_date);
+            if ($request->to_date) $query->whereDate('created_at', '<=', $request->to_date);
 
             $fees = $query->orderBy('created_at', 'desc')->paginate($request->per_page ?? 20);
 
-            return response()->json([
-                'success' => true,
-                'data' => $fees
-            ]);
+            return response()->json(['success' => true, 'data' => $fees]);
 
         } catch (\Exception $e) {
             Log::error('Prescription fee index error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در دریافت لیست فیس‌های نسخه: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'خطا در دریافت لیست فیس‌های نسخه: ' . $e->getMessage()], 500);
         }
     }
 
     /**
      * ============================================================
-     * ⭐ نمایش جزئیات یک فیس نسخه (اضافه شده برای رفع خطا)
+     * نمایش جزئیات یک فیس نسخه
      * ============================================================
      */
     public function show($id)
     {
         try {
             $fee = PrescriptionFee::with(['patient', 'registration'])->find($id);
-
             if (!$fee) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'فیس نسخه یافت نشد'
-                ], 404);
+                return response()->json(['success' => false, 'message' => 'فیس نسخه یافت نشد'], 404);
             }
-
-            return response()->json([
-                'success' => true,
-                'data' => $fee
-            ]);
+            return response()->json(['success' => true, 'data' => $fee]);
 
         } catch (\Exception $e) {
             Log::error('Prescription fee show error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در دریافت جزئیات: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'خطا در دریافت جزئیات: ' . $e->getMessage()], 500);
         }
     }
 
@@ -448,33 +352,22 @@ class PrescriptionFeeController extends Controller
                 'today' => PrescriptionFee::whereDate('created_at', today())->count(),
                 'today_amount' => PrescriptionFee::whereDate('created_at', today())->sum('total_amount'),
             ];
-
-            return response()->json([
-                'success' => true,
-                'data' => $stats
-            ]);
+            return response()->json(['success' => true, 'data' => $stats]);
 
         } catch (\Exception $e) {
             Log::error('Prescription fee statistics error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در دریافت آمار فیس‌های نسخه: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'خطا در دریافت آمار: ' . $e->getMessage()], 500);
         }
     }
 
     /**
      * ============================================================
-     * ⭐ لیست فیس‌های در انتظار پرداخت (داخلی + بیرونی)
+     * لیست فیس‌های در انتظار پرداخت (داخلی + بیرونی)
      * ============================================================
-     * 
-     * ✅ اصلاح شده: استفاده از collect() پایه به جای Eloquent\Collection
-     * تا از خطای "Call to a member function getKey() on array" جلوگیری شود.
      */
     public function pendingFees(Request $request)
     {
         try {
-            // ⭐ 1. نسخه‌های داخلی
             $internalFees = PharmacyExecution::where('status', 'sent_to_registration')
                 ->with('items')
                 ->orderByDesc('created_at')
@@ -503,7 +396,6 @@ class PrescriptionFeeController extends Controller
                     ];
                 });
 
-            // ⭐ 2. نسخه‌های بیرونی
             $externalFees = ExternalPrescription::where('status', 'sent_to_registration')
                 ->with('items')
                 ->orderByDesc('created_at')
@@ -532,9 +424,6 @@ class PrescriptionFeeController extends Controller
                     ];
                 });
 
-            // ✅ اصلاح: تبدیل به Collection پایه با collect() قبل از merge
-            // چون map() روی Eloquent\Collection یک Eloquent\Collection از آرایه‌ها برمی‌گرداند
-            // و merge() در Eloquent\Collection روی آرایه‌ها getKey() صدا می‌زند → خطا
             $all = collect($internalFees->all())
                 ->concat(collect($externalFees->all()))
                 ->sortByDesc('created_at')
@@ -552,20 +441,394 @@ class PrescriptionFeeController extends Controller
 
         } catch (\Exception $e) {
             Log::error('pendingFees error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'خطا در دریافت لیست: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * ============================================================
+     * ⭐⭐ دریافت همه فیس‌ها (تاریخچه کامل + در انتظار)
+     * ============================================================
+     *
+     * ✅ نام بیمار داخلی: از جدول patients (از طریق registrations.patient_id)
+     * ✅ نام بیمار بیرونی: از جدول external_prescriptions
+     * ✅ نام داکتر: از جدول users (از طریق registrations.doctor_id)
+     */
+    public function allFees(Request $request)
+    {
+        try {
+            $all = collect();
+
+            /* ====================================================
+             * 1. رکوردهای پرداخت‌شده / partial از جدول fees
+             * ==================================================== */
+            $feeQuery = PrescriptionFee::query()->orderByDesc('created_at');
+
+            if ($request->filled('source')) {
+                if ($request->source === 'internal') {
+                    $feeQuery->where('ref_type', 'prescription_fee');
+                } elseif ($request->source === 'external') {
+                    $feeQuery->where('ref_type', 'external_prescription');
+                }
+            }
+
+            if ($request->filled('payment_status')) {
+                $feeQuery->where('payment_status', $request->payment_status);
+            }
+
+            if ($request->filled('from_date')) {
+                $feeQuery->whereDate('created_at', '>=', $request->from_date);
+            }
+            if ($request->filled('to_date')) {
+                $feeQuery->whereDate('created_at', '<=', $request->to_date);
+            }
+
+            $fees = $feeQuery->get()->map(function ($fee) {
+                $isExternal = ($fee->ref_type === 'external_prescription');
+
+                $patientName   = null;
+                $patientAge    = null;
+                $patientGender = null;
+                $patientPhone  = null;
+                $tazkira       = $fee->tazkira_number ?? null;
+                $doctorName    = $fee->doctor_name ?? null;
+                $receiptNumber = null;
+                $items         = $fee->medication_items ?? [];
+
+                /* =============================================
+                 * ✅ نسخه بیرونی — از ExternalPrescription
+                 * ============================================= */
+                if ($isExternal && $fee->ref_id) {
+                    $external = ExternalPrescription::find($fee->ref_id);
+                    if ($external) {
+                        $patientName   = $external->patient_name;
+                        $patientAge    = $external->patient_age;
+                        $patientGender = $external->patient_gender;
+                        $patientPhone  = $external->patient_phone;
+                        $tazkira       = $tazkira ?? $external->tazkira_number;
+                        $doctorName    = $doctorName ?? $external->doctor_name;
+                        $receiptNumber = $external->receipt_number ?? ('EXT-' . $external->id);
+                        if (empty($items)) {
+                            $items = $external->items ?? [];
+                        }
+                    }
+                }
+                /* =============================================
+                 * ✅ نسخه داخلی — از Registration + Patient + User (داکتر)
+                 * ============================================= */
+                else {
+                    $reg = null;
+                    if ($fee->registration_id) {
+                        $reg = Registrations::where('reg_id', $fee->registration_id)->first();
+                    }
+
+                    /* ---------- نام بیمار ---------- */
+                    // ⭐ 1. patient_id موجود در registration
+                    $patient = null;
+                    if ($reg && !empty($reg->patient_id)) {
+                        $patient = Patient::find($reg->patient_id);
+                    }
+
+                    // ⭐ 2. اگر پیدا نشد، patient_id خود fee
+                    if (!$patient && !empty($fee->patient_id)) {
+                        $patient = Patient::find($fee->patient_id);
+                    }
+
+                    // ساخت نام از first_name + last_name
+                    if ($patient) {
+                        $computed = trim(($patient->first_name ?? '') . ' ' . ($patient->last_name ?? ''));
+                        if ($computed !== '') {
+                            $patientName = $computed;
+                        }
+                        $tazkira       = $tazkira ?? ($patient->national_id ?? null);
+                        $patientPhone  = $patientPhone ?? ($patient->phone ?? null);
+                    }
+
+                    // ⭐ 3. Fallback از registration.full_name
+                    if (empty($patientName) && $reg && !empty($reg->full_name)) {
+                        $patientName = $reg->full_name;
+                    }
+
+                    // ⭐ 4. Fallback از fee.patient_name (اگر قبلاً ذخیره شده)
+                    if (empty($patientName) && !empty($fee->patient_name)) {
+                        $patientName = $fee->patient_name;
+                    }
+
+                    // تذکره از registration
+                    if (empty($tazkira) && $reg && !empty($reg->tazkira_number)) {
+                        $tazkira = $reg->tazkira_number;
+                    }
+
+                    /* ---------- نام داکتر از جدول users ---------- */
+                    if (empty($doctorName) && $reg) {
+                        // ⭐ 1. doctor_id → User
+                        if (!empty($reg->doctor_id)) {
+                            $doc = User::find($reg->doctor_id);
+                            if ($doc) {
+                                $doctorName = !empty($doc->name)
+                                    ? $doc->name
+                                    : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
+                            }
+                        }
+                        // ⭐ 2. اگر doctor_id نبود، doc_id را امتحان کن
+                        if (empty($doctorName) && !empty($reg->doc_id)) {
+                            $doc = User::find($reg->doc_id);
+                            if ($doc) {
+                                $doctorName = !empty($doc->name)
+                                    ? $doc->name
+                                    : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
+                            }
+                        }
+                        // ⭐ 3. Fallback: doctor_name مستقیم ذخیره شده
+                        if (empty($doctorName) && !empty($reg->doctor_name)) {
+                            $doctorName = $reg->doctor_name;
+                        }
+                    }
+
+                    $receiptNumber = 'FEE-' . $fee->id;
+                }
+
+                /* =============================================
+                 * Fallback نهایی
+                 * ============================================= */
+                if (empty($patientName)) {
+                    if (!empty($fee->patient_name)) {
+                        $patientName = $fee->patient_name;
+                    } elseif (!empty($fee->registration_id)) {
+                        $patientName = 'مریض #' . $fee->registration_id;
+                    } else {
+                        $patientName = '-';
+                    }
+                }
+
+                $source = $isExternal ? 'external' : 'internal';
+                $status = $fee->payment_status;
+
+                return [
+                    'id'             => $fee->id,
+                    'fee_id'         => $fee->id,
+                    'ref_id'         => $fee->ref_id,
+                    'source'         => $source,
+                    'source_label'   => $isExternal ? 'نسخه بیرونی' : 'نسخه داخلی',
+                    'pres_id'        => null,
+                    'reg_id'         => $fee->registration_id,
+                    'patient_id'     => $fee->patient_id,
+                    'patient_name'   => $patientName,
+                    'patient_age'    => $patientAge,
+                    'patient_gender' => $patientGender,
+                    'patient_phone'  => $patientPhone,
+                    'tazkira_number' => $tazkira,
+                    'doctor_name'    => $doctorName ?? '-',
+                    'total_amount'   => (float) $fee->total_amount,
+                    'discount'       => (float) ($fee->discount ?? 0),
+                    'paid_amount'    => (float) ($fee->paid_amount ?? 0),
+                    'remaining_amount' => (float) ($fee->remaining_amount ?? 0),
+                    'status'         => $status,
+                    'payment_method' => $fee->payment_method,
+                    'payment_date'   => $fee->payment_date,
+                    'receipt_number' => $receiptNumber ?? ('FEE-' . $fee->id),
+                    'items'          => $items,
+                    'description'    => $fee->description,
+                    'note'           => $fee->note,
+                    'created_at'     => $fee->created_at,
+                    'is_paid'        => in_array($status, ['paid'], true),
+                    'is_history'     => true,
+                ];
+            });
+
+            $all = $all->concat($fees);
+
+            /* ====================================================
+             * 2. نسخه‌های داخلی در انتظار (PharmacyExecution)
+             * ==================================================== */
+            $shouldIncludePending = !$request->filled('payment_status')
+                || in_array($request->payment_status, ['pending', 'sent_to_registration']);
+
+            if ($shouldIncludePending) {
+                $internalPending = PharmacyExecution::where('status', 'sent_to_registration')
+                    ->with('items')
+                    ->orderByDesc('created_at')
+                    ->get()
+                    ->map(function ($ex) {
+                        $alreadyExists = PrescriptionFee::where('ref_type', 'prescription_fee')
+                            ->where('ref_id', $ex->id)
+                            ->exists();
+
+                        if ($alreadyExists) return null;
+
+                        $patientName   = $ex->patient_name;
+                        $tazkira       = $ex->tazkira_number;
+                        $doctorName    = $ex->doctor_name;
+                        $patientAge    = $ex->patient_age;
+                        $patientGender = $ex->patient_gender;
+                        $patientPhone  = $ex->patient_phone;
+
+                        /* ---------- تکمیل از registration + patient + user ---------- */
+                        if ($ex->reg_id) {
+                            $reg = Registrations::where('reg_id', $ex->reg_id)->first();
+
+                            // نام بیمار
+                            if (empty($patientName)) {
+                                $p = null;
+                                if ($reg && !empty($reg->patient_id)) {
+                                    $p = Patient::find($reg->patient_id);
+                                }
+                                if (!$p && !empty($ex->patient_id)) {
+                                    $p = Patient::find($ex->patient_id);
+                                }
+                                if ($p) {
+                                    $computed = trim(($p->first_name ?? '') . ' ' . ($p->last_name ?? ''));
+                                    if ($computed !== '') $patientName = $computed;
+                                    if (empty($tazkira)) $tazkira = $p->national_id ?? null;
+                                    if (empty($patientPhone)) $patientPhone = $p->phone ?? null;
+                                }
+                                if (empty($patientName) && $reg && !empty($reg->full_name)) {
+                                    $patientName = $reg->full_name;
+                                }
+                            }
+
+                            // نام داکتر از جدول users
+                            if (empty($doctorName) && $reg) {
+                                if (!empty($reg->doctor_id)) {
+                                    $doc = User::find($reg->doctor_id);
+                                    if ($doc) {
+                                        $doctorName = !empty($doc->name)
+                                            ? $doc->name
+                                            : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
+                                    }
+                                }
+                                if (empty($doctorName) && !empty($reg->doc_id)) {
+                                    $doc = User::find($reg->doc_id);
+                                    if ($doc) {
+                                        $doctorName = !empty($doc->name)
+                                            ? $doc->name
+                                            : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
+                                    }
+                                }
+                                if (empty($doctorName) && !empty($reg->doctor_name)) {
+                                    $doctorName = $reg->doctor_name;
+                                }
+                            }
+                        }
+
+                        return [
+                            'id'             => $ex->id,
+                            'fee_id'         => null,
+                            'ref_id'         => $ex->id,
+                            'source'         => 'internal',
+                            'source_label'   => 'نسخه داخلی',
+                            'pres_id'        => $ex->pres_id,
+                            'reg_id'         => $ex->reg_id,
+                            'patient_id'     => $ex->patient_id,
+                            'patient_name'   => $patientName ?? ($ex->reg_id ? 'مریض #' . $ex->reg_id : '-'),
+                            'patient_age'    => $patientAge,
+                            'patient_gender' => $patientGender,
+                            'patient_phone'  => $patientPhone,
+                            'tazkira_number' => $tazkira,
+                            'doctor_name'    => $doctorName ?? '-',
+                            'total_amount'   => (float) $ex->total_amount,
+                            'discount'       => (float) ($ex->discount ?? 0),
+                            'paid_amount'    => (float) ($ex->paid_amount ?? 0),
+                            'remaining_amount' => (float) $ex->total_amount,
+                            'status'         => 'sent_to_registration',
+                            'payment_method' => null,
+                            'payment_date'   => null,
+                            'receipt_number' => $ex->receipt_number ?? ('INT-' . $ex->id),
+                            'items'          => $ex->items,
+                            'description'    => null,
+                            'note'           => null,
+                            'created_at'     => $ex->created_at,
+                            'is_paid'        => false,
+                            'is_history'     => false,
+                        ];
+                    })
+                    ->filter();
+
+                $all = $all->concat($internalPending);
+
+                /* ================================================
+                 * 3. نسخه‌های بیرونی در انتظار
+                 * ================================================ */
+                $externalPending = ExternalPrescription::where('status', 'sent_to_registration')
+                    ->with('items')
+                    ->orderByDesc('created_at')
+                    ->get()
+                    ->map(function ($ex) {
+                        $alreadyExists = PrescriptionFee::where('ref_type', 'external_prescription')
+                            ->where('ref_id', $ex->id)
+                            ->exists();
+
+                        if ($alreadyExists) return null;
+
+                        return [
+                            'id'             => $ex->id,
+                            'fee_id'         => null,
+                            'ref_id'         => $ex->id,
+                            'source'         => 'external',
+                            'source_label'   => 'نسخه بیرونی',
+                            'pres_id'        => null,
+                            'reg_id'         => null,
+                            'patient_id'     => null,
+                            'patient_name'   => $ex->patient_name ?? '-',
+                            'patient_age'    => $ex->patient_age,
+                            'patient_gender' => $ex->patient_gender,
+                            'patient_phone'  => $ex->patient_phone,
+                            'tazkira_number' => $ex->tazkira_number,
+                            'doctor_name'    => $ex->doctor_name ?? '-',
+                            'total_amount'   => (float) $ex->total_amount,
+                            'discount'       => (float) ($ex->discount ?? 0),
+                            'paid_amount'    => 0,
+                            'remaining_amount' => (float) $ex->total_amount,
+                            'status'         => 'sent_to_registration',
+                            'payment_method' => null,
+                            'payment_date'   => null,
+                            'receipt_number' => $ex->receipt_number ?? ('EXT-' . $ex->id),
+                            'items'          => $ex->items,
+                            'description'    => null,
+                            'note'           => null,
+                            'created_at'     => $ex->created_at,
+                            'is_paid'        => false,
+                            'is_history'     => false,
+                        ];
+                    })
+                    ->filter();
+
+                $all = $all->concat($externalPending);
+            }
+
+            $sorted = $all
+                ->sortByDesc(function ($item) {
+                    return $item['created_at'] instanceof \Carbon\Carbon
+                        ? $item['created_at']->timestamp
+                        : strtotime($item['created_at']);
+                })
+                ->values();
+
+            return response()->json([
+                'success' => true,
+                'data'    => $sorted,
+                'counts'  => [
+                    'total'    => $sorted->count(),
+                    'paid'     => $sorted->where('is_paid', true)->count(),
+                    'pending'  => $sorted->where('is_paid', false)->count(),
+                    'internal' => $sorted->where('source', 'internal')->count(),
+                    'external' => $sorted->where('source', 'external')->count(),
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('allFees error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در دریافت لیست: ' . $e->getMessage()
+                'message' => 'خطا در دریافت لیست: ' . $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * ============================================================
-     * ⭐ اخذ فیس (داخلی یا بیرونی)
+     * اخذ فیس (داخلی یا بیرونی)
      * ============================================================
-     * 
-     * @param  string  $source  internal | external
-     * @param  int     $id
      */
     public function collectFee(Request $request, $source, $id)
     {
@@ -577,10 +840,7 @@ class PrescriptionFeeController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors'  => $validator->errors()
-            ], 422);
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
 
         try {
@@ -590,35 +850,25 @@ class PrescriptionFeeController extends Controller
             $discount   = (float) ($request->discount ?? 0);
             $method     = $request->payment_method ?? 'cash';
 
-            // ==========================================
-            // ⭐ نسخه داخلی
-            // ==========================================
+            /* ==========================================
+             * نسخه داخلی
+             * ========================================== */
             if ($source === 'internal') {
                 $execution = PharmacyExecution::find($id);
 
                 if (!$execution) {
                     DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'نسخه یافت نشد'
-                    ], 404);
+                    return response()->json(['success' => false, 'message' => 'نسخه یافت نشد'], 404);
                 }
 
                 if ($execution->status === 'paid') {
                     DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'این نسخه قبلاً پرداخت شده است'
-                    ], 422);
+                    return response()->json(['success' => false, 'message' => 'این نسخه قبلاً پرداخت شده است'], 422);
                 }
 
-                // بروزرسانی وضعیت
-                $execution->update([
-                    'status' => 'paid',
-                ]);
+                $execution->update(['status' => 'paid']);
 
-                // ثبت در فیس نسخه (برای ژورنال و آمار)
-                $fee = PrescriptionFee::create([
+                $feeData = [
                     'registration_id'  => $execution->reg_id,
                     'patient_id'       => $execution->patient_id,
                     'total_amount'     => (float) $execution->total_amount,
@@ -635,11 +885,22 @@ class PrescriptionFeeController extends Controller
                     'ref_type'         => 'prescription_fee',
                     'ref_id'           => $execution->id,
                     'source_type'      => 'internal',
-                ]);
+                ];
+
+                if (\Schema::hasColumn('prescription_fees', 'patient_name') && !empty($execution->patient_name)) {
+                    $feeData['patient_name'] = $execution->patient_name;
+                }
+                if (\Schema::hasColumn('prescription_fees', 'tazkira_number') && !empty($execution->tazkira_number)) {
+                    $feeData['tazkira_number'] = $execution->tazkira_number;
+                }
+                if (\Schema::hasColumn('prescription_fees', 'doctor_name') && !empty($execution->doctor_name)) {
+                    $feeData['doctor_name'] = $execution->doctor_name;
+                }
+
+                $fee = PrescriptionFee::create($feeData);
 
                 DB::commit();
 
-                // ✅ ژورنال جدید
                 $this->journalSync->syncFee([
                     'reg_id'           => $execution->reg_id,
                     'patient_id'       => $execution->patient_id,
@@ -657,15 +918,8 @@ class PrescriptionFeeController extends Controller
                     'tazkira_number'   => $execution->tazkira_number ?? null,
                 ]);
 
-                // لاگ
                 try {
-                    LogService::create(
-                        'create',
-                        'prescription_fees',
-                        $fee->id,
-                        'Internal prescription fee collected',
-                        $fee->toArray()
-                    );
+                    LogService::create('create', 'prescription_fees', $fee->id, 'Internal prescription fee collected', $fee->toArray());
                 } catch (\Exception $e) {
                     Log::error("Internal fee log failed: " . $e->getMessage());
                 }
@@ -677,44 +931,34 @@ class PrescriptionFeeController extends Controller
                 ]);
             }
 
-            // ==========================================
-            // ⭐ نسخه بیرونی
-            // ==========================================
+            /* ==========================================
+             * نسخه بیرونی
+             * ========================================== */
             if ($source === 'external') {
                 $external = ExternalPrescription::find($id);
 
                 if (!$external) {
                     DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'نسخه بیرونی یافت نشد'
-                    ], 404);
+                    return response()->json(['success' => false, 'message' => 'نسخه بیرونی یافت نشد'], 404);
                 }
 
                 if ($external->status === 'paid') {
                     DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'این نسخه قبلاً پرداخت شده است'
-                    ], 422);
+                    return response()->json(['success' => false, 'message' => 'این نسخه قبلاً پرداخت شده است'], 422);
                 }
 
                 if ($external->status === 'cancelled') {
                     DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'این نسخه لغو شده است'
-                    ], 422);
+                    return response()->json(['success' => false, 'message' => 'این نسخه لغو شده است'], 422);
                 }
 
-                // ✅ اگر قبلاً فیس برای این نسخه ثبت شده، همان را بروزرسانی کن
                 $fee = PrescriptionFee::where('ref_type', 'external_prescription')
                     ->where('ref_id', $external->id)
                     ->first();
 
                 $feeData = [
-                    'registration_id'  => null,           // نسخه بیرونی reg_id ندارد
-                    'patient_id'       => null,           // بیمار ثبت‌نام‌شده نیست
+                    'registration_id'  => null,
+                    'patient_id'       => null,
                     'total_amount'     => (float) $external->total_amount,
                     'paid_amount'      => $paidAmount,
                     'discount'         => $discount,
@@ -725,12 +969,11 @@ class PrescriptionFeeController extends Controller
                     'medication_items' => $external->items,
                     'description'      => 'فیس نسخه بیرونی - ' . ($external->receipt_number ?? $external->id),
                     'note'             => $request->note,
-                    'ref_type'         => 'external_prescription',   // ✅ نوع مرجع
-                    'ref_id'           => $external->id,             // ✅ شناسه نسخه بیرونی
-                    'source_type'      => 'external',                // ✅ تفکیک منبع
+                    'ref_type'         => 'external_prescription',
+                    'ref_id'           => $external->id,
+                    'source_type'      => 'external',
                 ];
 
-                // ✅ اضافه کردن فیلدهای اختیاری اگر در جدول وجود دارند
                 if (\Schema::hasColumn('prescription_fees', 'patient_name')) {
                     $feeData['patient_name'] = $external->patient_name;
                 }
@@ -752,7 +995,6 @@ class PrescriptionFeeController extends Controller
                     $fee = PrescriptionFee::create($feeData);
                 }
 
-                // بروزرسانی وضعیت نسخه بیرونی
                 $external->update([
                     'status'  => 'paid',
                     'paid_by' => Auth::id(),
@@ -761,7 +1003,6 @@ class PrescriptionFeeController extends Controller
 
                 DB::commit();
 
-                // ✅ ثبت در ژورنال جدید با ref_type = 'external_prescription'
                 $this->journalSync->syncFee([
                     'reg_id'           => null,
                     'patient_id'       => null,
@@ -779,15 +1020,8 @@ class PrescriptionFeeController extends Controller
                     'tazkira_number'   => $external->tazkira_number ?? null,
                 ]);
 
-                // لاگ
                 try {
-                    LogService::create(
-                        'create',
-                        'prescription_fees',
-                        $fee->id,
-                        'External prescription fee collected',
-                        $fee->toArray()
-                    );
+                    LogService::create('create', 'prescription_fees', $fee->id, 'External prescription fee collected', $fee->toArray());
                 } catch (\Exception $e) {
                     Log::error("External fee log failed: " . $e->getMessage());
                 }
@@ -799,20 +1033,13 @@ class PrescriptionFeeController extends Controller
                 ]);
             }
 
-            // منبع نامعتبر
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'نوع منبع نامعتبر است (باید internal یا external باشد)'
-            ], 400);
+            return response()->json(['success' => false, 'message' => 'نوع منبع نامعتبر است'], 400);
 
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('collectFee error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در اخذ فیس: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'خطا در اخذ فیس: ' . $e->getMessage()], 500);
         }
     }
 }

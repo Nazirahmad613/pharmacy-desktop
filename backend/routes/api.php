@@ -491,6 +491,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('prescription-fees')->group(function () {
         // ⭐ روت‌های ترکیبی جدید (باید قبل از /{id} باشند)
         Route::get('/pending',  [PrescriptionFeeController::class, 'pendingFees']);
+        Route::get('/all',      [PrescriptionFeeController::class, 'allFees']);   // ⬅️ جدید
         Route::post('/collect/{source}/{id}', [PrescriptionFeeController::class, 'collectFee'])
             ->where('source', 'internal|external')
             ->where('id', '[0-9]+');
@@ -702,7 +703,7 @@ Route::get('/sales-report', function (Request $request) {
     $type = $request->get('type', 'daily');
     $query = DB::table('view_sales_summary');
     if ($type) {
-        $query->where('report_type', $type);
+        $query->where('type', $type);
     }
     return $query->get();
 });

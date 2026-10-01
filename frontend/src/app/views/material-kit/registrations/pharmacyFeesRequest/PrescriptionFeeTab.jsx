@@ -46,7 +46,7 @@ export default function PharmacyFeeTab({ api }) {
     setLoading(true);
     try {
       // ⭐ استفاده از endpoint ترکیبی جدید
-      const response = await api.get("/prescription-fees/pending");
+      const response = await api.get("/prescription-fees/all");
       const data = response?.data?.data || [];
       const list = Array.isArray(data) ? data : [];
       setExecutions(list);
