@@ -8,13 +8,6 @@ return new class extends Migration
 {
     /**
      * جدول فیس‌های نسخه (داخلی + بیرونی)
-     *
-     * این جدول برای ذخیره فیس‌های اخذ شده از دواخانه استفاده می‌شود:
-     * - نسخه‌های داخلی (pharmacy_executions)
-     * - نسخه‌های بیرونی (external_prescriptions)
-     *
-     * فیلدهای registration_id و patient_id برای نسخه‌های بیرونی null هستند
-     * چون بیمار در سیستم ثبت‌نام نشده است.
      */
     public function up(): void
     {
@@ -30,6 +23,30 @@ return new class extends Migration
                 ->comment('شناسه بیمار - برای نسخه بیرونی null');
 
             // ============================================================
+            // ⭐ جدید: ارتباط چندریختی با منبع (نسخه داخلی/بیرونی)
+            // ============================================================
+            $table->string('ref_type')->nullable()
+                ->comment('prescription_fee (داخلی) | external_prescription (بیرونی)');
+            $table->unsignedBigInteger('ref_id')->nullable()
+                ->comment('شناسه رکورد مرجع (PharmacyExecution.id یا ExternalPrescription.id)');
+            $table->string('source_type')->nullable()
+                ->comment('internal | external');
+
+            // ============================================================
+            // ⭐ جدید: فیلدهای denormalized برای نمایش سریع
+            // ============================================================
+            $table->string('patient_name')->nullable()
+                ->comment('نام کامل بیمار (cache)');
+            $table->string('patient_phone')->nullable()
+                ->comment('شماره تماس بیمار (cache)');
+            $table->string('tazkira_number')->nullable()
+                ->comment('شماره تذکره (cache)');
+            $table->string('doctor_name')->nullable()
+                ->comment('نام داکتر (cache)');
+            $table->string('receipt_number')->nullable()
+                ->comment('شماره رسید');
+
+            // ============================================================
             // مبالغ مالی
             // ============================================================
             $table->decimal('total_amount', 15, 2)->default(0)
@@ -37,7 +54,7 @@ return new class extends Migration
             $table->decimal('paid_amount', 15, 2)->default(0)
                 ->comment('مبلغ پرداخت شده');
             $table->decimal('discount', 15, 2)->default(0)
-                ->comment('تخفیف');
+                ->comment('تخفیف (مبلغ ثابت یا درصد؟ معمولاً مبلغ)');
             $table->decimal('remaining_amount', 15, 2)->default(0)
                 ->comment('باقی‌مانده قابل پرداخت');
 
@@ -75,7 +92,7 @@ return new class extends Migration
             $table->timestamps();
 
             // ============================================================
-            // ایندکس‌ها (برای جستجوی سریع)
+            // ایندکس‌ها
             // ============================================================
             $table->index('registration_id', 'pf_registration_idx');
             $table->index('patient_id', 'pf_patient_idx');
@@ -84,15 +101,16 @@ return new class extends Migration
             $table->index('payment_date', 'pf_payment_date_idx');
             $table->index('created_at', 'pf_created_at_idx');
 
-            // ایندکس ترکیبی برای فیلترهای رایج
+            // ⭐ ایندکس‌های جدید برای ref
+            $table->index(['ref_type', 'ref_id'], 'pf_ref_idx');
+            $table->index('source_type', 'pf_source_idx');
+
+            // ایندکس ترکیبی
             $table->index(['payment_status', 'created_at'], 'pf_status_created_idx');
             $table->index(['patient_id', 'payment_status'], 'pf_patient_status_idx');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('prescription_fees');

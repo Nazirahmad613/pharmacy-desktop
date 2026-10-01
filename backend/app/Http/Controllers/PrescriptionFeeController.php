@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use App\Services\LogService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class PrescriptionFeeController extends Controller
 {
@@ -25,6 +26,108 @@ class PrescriptionFeeController extends Controller
     public function __construct(JournalSyncService $journalSync)
     {
         $this->journalSync = $journalSync;
+    }
+
+    /* ============================================================
+     * Helper: استخراج اطلاعات بیمار و داکتر از PharmacyExecution
+     * ============================================================ */
+    private function extractInternalNames(PharmacyExecution $execution): array
+    {
+        $patientName   = $execution->patient_name;
+        $tazkira       = $execution->tazkira_number;
+        $patientPhone  = $execution->patient_phone;
+        $patientAge    = $execution->patient_age;
+        $patientGender = $execution->patient_gender;
+        $doctorName    = $execution->doctor_name;
+
+        // ⭐ از patient_id خود execution
+        if (!empty($execution->patient_id) && (empty($patientName) || empty($tazkira) || empty($patientPhone))) {
+            $p = Patient::find($execution->patient_id);
+            if ($p) {
+                if (empty($patientName)) {
+                    $computed = trim(($p->first_name ?? '') . ' ' . ($p->last_name ?? ''));
+                    if ($computed !== '') $patientName = $computed;
+                }
+                if (empty($tazkira))       $tazkira = $p->national_id ?? null;
+                if (empty($patientPhone))  $patientPhone = $p->phone ?? $p->mobile ?? null;
+                if (empty($patientAge))    $patientAge = $p->age ?? null;
+                if (empty($patientGender)) $patientGender = $p->gender ?? null;
+            }
+        }
+
+        // ⭐ از doctor_id خود execution
+        if (empty($doctorName) && !empty($execution->doctor_id)) {
+            $doc = User::find($execution->doctor_id);
+            if ($doc) {
+                $n = !empty($doc->name)
+                    ? $doc->name
+                    : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
+                if ($n !== '') $doctorName = $n;
+            }
+        }
+
+        // ⭐ Fallback: از registration
+        if ($execution->reg_id) {
+            $reg = Registrations::where('reg_id', $execution->reg_id)->first();
+            if ($reg) {
+                if (empty($patientName) && !empty($reg->patient_id)) {
+                    $p = Patient::find($reg->patient_id);
+                    if ($p) {
+                        $computed = trim(($p->first_name ?? '') . ' ' . ($p->last_name ?? ''));
+                        if ($computed !== '') $patientName = $computed;
+                        if (empty($tazkira))      $tazkira = $p->national_id ?? null;
+                        if (empty($patientPhone)) $patientPhone = $p->phone ?? $p->mobile ?? null;
+                    }
+                }
+                if (empty($patientName) && !empty($reg->full_name)) {
+                    $patientName = $reg->full_name;
+                }
+                if (empty($tazkira) && !empty($reg->tazkira_number)) {
+                    $tazkira = $reg->tazkira_number;
+                }
+
+                if (empty($doctorName)) {
+                    foreach (['doctor_id', 'doc_id'] as $field) {
+                        if (!empty($reg->{$field})) {
+                            $doc = User::find($reg->{$field});
+                            if ($doc) {
+                                $n = !empty($doc->name)
+                                    ? $doc->name
+                                    : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
+                                if ($n !== '') { $doctorName = $n; break; }
+                            }
+                        }
+                    }
+                }
+                if (empty($doctorName) && !empty($reg->doctor_name)) {
+                    $doctorName = $reg->doctor_name;
+                }
+            }
+        }
+
+        return [
+            'patient_name'   => $patientName,
+            'patient_phone'  => $patientPhone,
+            'tazkira_number' => $tazkira,
+            'patient_age'    => $patientAge,
+            'patient_gender' => $patientGender,
+            'doctor_name'    => $doctorName,
+        ];
+    }
+
+    /* ============================================================
+     * Helper: استخراج اطلاعات از ExternalPrescription
+     * ============================================================ */
+    private function extractExternalNames(ExternalPrescription $external): array
+    {
+        return [
+            'patient_name'   => $external->patient_name,
+            'patient_phone'  => $external->patient_phone ?? null,
+            'tazkira_number' => $external->tazkira_number ?? null,
+            'patient_age'    => $external->patient_age ?? null,
+            'patient_gender' => $external->patient_gender ?? null,
+            'doctor_name'    => $external->doctor_name ?? null,
+        ];
     }
 
     /**
@@ -36,56 +139,99 @@ class PrescriptionFeeController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'registration_id' => 'required|exists:registrations,reg_id',
-            'patient_id' => 'required|exists:patients,id',
-            'total_amount' => 'required|numeric|min:0',
-            'paid_amount' => 'nullable|numeric|min:0',
-            'discount' => 'nullable|numeric|min:0|max:100',
-            'payment_method' => 'nullable|string|in:cash,card,online,insurance',
+            'patient_id'      => 'required|exists:patients,id',
+            'total_amount'    => 'required|numeric|min:0',
+            'paid_amount'     => 'nullable|numeric|min:0',
+            'discount'        => 'nullable|numeric|min:0|max:100',
+            'payment_method'  => 'nullable|string|in:cash,card,online,insurance',
             'medication_items' => 'nullable|array',
-            'description' => 'nullable|string',
-            'note' => 'nullable|string',
+            'description'     => 'nullable|string',
+            'note'            => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
 
         try {
             DB::beginTransaction();
 
-            $totalAmount = $request->total_amount;
-            $discount = $request->discount ?? 0;
-            $paidAmount = $request->paid_amount ?? 0;
+            $totalAmount     = (float) $request->total_amount;
+            $discount        = (float) ($request->discount ?? 0);
+            $paidAmount      = (float) ($request->paid_amount ?? 0);
             $remainingAmount = $totalAmount - $discount - $paidAmount;
 
+            $patientName   = null;
+            $patientPhone  = null;
+            $tazkiraNumber = null;
+            $doctorName    = null;
+
+            $patient = Patient::find($request->patient_id);
+            if ($patient) {
+                $patientName  = trim(($patient->first_name ?? '') . ' ' . ($patient->last_name ?? ''));
+                $patientPhone = $patient->phone ?? $patient->mobile ?? null;
+                $tazkiraNumber = $patient->national_id ?? null;
+            }
+
+            $reg = Registrations::where('reg_id', $request->registration_id)->first();
+            if ($reg) {
+                if (empty($patientName) && !empty($reg->full_name)) {
+                    $patientName = $reg->full_name;
+                }
+                if (empty($tazkiraNumber) && !empty($reg->tazkira_number)) {
+                    $tazkiraNumber = $reg->tazkira_number;
+                }
+                if (empty($doctorName)) {
+                    foreach (['doctor_id', 'doc_id'] as $field) {
+                        if (!empty($reg->{$field})) {
+                            $doc = User::find($reg->{$field});
+                            if ($doc) {
+                                $doctorName = !empty($doc->name)
+                                    ? $doc->name
+                                    : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
+                                if (!empty($doctorName)) break;
+                            }
+                        }
+                    }
+                    if (empty($doctorName) && !empty($reg->doctor_name)) {
+                        $doctorName = $reg->doctor_name;
+                    }
+                }
+            }
+
             $fee = PrescriptionFee::create([
-                'registration_id' => $request->registration_id,
-                'patient_id' => $request->patient_id,
-                'total_amount' => $totalAmount,
-                'paid_amount' => $paidAmount,
-                'discount' => $discount,
+                'registration_id'  => $request->registration_id,
+                'patient_id'       => $request->patient_id,
+                'ref_type'         => 'prescription_fee',
+                'ref_id'           => $request->ref_id ?? null,
+                'source_type'      => 'internal',
+                'patient_name'     => $patientName,
+                'patient_phone'    => $patientPhone,
+                'tazkira_number'   => $tazkiraNumber,
+                'doctor_name'      => $doctorName,
+                'receipt_number'   => $request->receipt_number ?? ('FEE-' . now()->format('YmdHis')),
+                'total_amount'     => $totalAmount,
+                'paid_amount'      => $paidAmount,
+                'discount'         => $discount,
                 'remaining_amount' => $remainingAmount,
-                'payment_status' => $remainingAmount <= 0 ? 'paid' : ($paidAmount > 0 ? 'partial' : 'pending'),
-                'payment_method' => $request->payment_method,
-                'payment_date' => $paidAmount > 0 ? now() : null,
+                'payment_status'   => $remainingAmount <= 0 ? 'paid' : ($paidAmount > 0 ? 'partial' : 'pending'),
+                'payment_method'   => $request->payment_method,
+                'payment_date'     => $paidAmount > 0 ? now() : null,
                 'medication_items' => $request->medication_items,
-                'description' => $request->description,
-                'note' => $request->note,
-                'created_by' => Auth::id(),
+                'description'      => $request->description,
+                'note'             => $request->note,
+                'created_by'       => Auth::id(),
             ]);
 
             if ($paidAmount > 0) {
                 $journal = Journal::create([
                     'journal_date' => now(),
-                    'description' => "فیس نسخه - مراجعه #{$request->registration_id} - مریض ID: {$request->patient_id}",
-                    'entry_type' => 'debit',
-                    'amount' => $paidAmount,
-                    'ref_type' => 'prescription_fee',
-                    'ref_id' => $fee->id,
-                    'user_id' => Auth::id(),
+                    'description'  => "فیس نسخه - مراجعه #{$request->registration_id} - مریض: " . ($patientName ?? $request->patient_id),
+                    'entry_type'   => 'debit',
+                    'amount'       => $paidAmount,
+                    'ref_type'     => 'prescription_fee',
+                    'ref_id'       => $fee->id,
+                    'user_id'      => Auth::id(),
                 ]);
 
                 try {
@@ -100,15 +246,18 @@ class PrescriptionFeeController extends Controller
             $this->journalSync->syncFee([
                 'reg_id'           => $request->registration_id,
                 'patient_id'       => $request->patient_id,
-                'source_type'      => 'prescription_fee',
+                'source_type'      => 'internal',
                 'ref_type'         => 'prescription_fee',
-                'ref_id'           => $fee->id,
+                'ref_id'           => $fee->ref_id ?? $fee->id,
+                'fee_id'           => $fee->id,
                 'amount'           => (float) $fee->total_amount,
                 'paid_amount'      => (float) $fee->paid_amount,
                 'discount'         => (float) ($fee->discount ?? 0),
                 'remaining_amount' => (float) $fee->remaining_amount,
                 'payment_status'   => $fee->payment_status,
                 'description'      => 'فیس نسخه - مراجعه #' . $request->registration_id,
+                'patient_name'     => $fee->patient_name,
+                'tazkira_number'   => $fee->tazkira_number,
             ]);
 
             try {
@@ -120,7 +269,7 @@ class PrescriptionFeeController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'فیس نسخه با موفقیت ثبت شد',
-                'data' => $fee->load(['patient', 'registration'])
+                'data'    => $fee->load(['patient', 'registration']),
             ], 201);
 
         } catch (\Exception $e) {
@@ -128,7 +277,7 @@ class PrescriptionFeeController extends Controller
             Log::error('Prescription fee store error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در ثبت فیس نسخه: ' . $e->getMessage()
+                'message' => 'خطا در ثبت فیس نسخه: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -141,11 +290,11 @@ class PrescriptionFeeController extends Controller
     public function update(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
-            'paid_amount' => 'nullable|numeric|min:0',
-            'discount' => 'nullable|numeric|min:0|max:100',
+            'paid_amount'    => 'nullable|numeric|min:0',
+            'discount'       => 'nullable|numeric|min:0|max:100',
             'payment_method' => 'nullable|string|in:cash,card,online,insurance',
             'payment_status' => 'nullable|string|in:pending,partial,paid,refunded,cancelled',
-            'note' => 'nullable|string',
+            'note'           => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -161,19 +310,19 @@ class PrescriptionFeeController extends Controller
             }
 
             $oldPaidAmount = $fee->paid_amount;
-            $oldDiscount = $fee->discount;
-            $oldStatus = $fee->payment_status;
+            $oldDiscount   = $fee->discount;
+            $oldStatus     = $fee->payment_status;
 
             $refType = $fee->ref_type ?? 'prescription_fee';
             $refId   = $fee->ref_id   ?? $fee->id;
 
             $fee->update([
-                'paid_amount' => $request->paid_amount ?? $fee->paid_amount,
-                'discount' => $request->discount ?? $fee->discount,
+                'paid_amount'    => $request->paid_amount ?? $fee->paid_amount,
+                'discount'       => $request->discount ?? $fee->discount,
                 'payment_method' => $request->payment_method ?? $fee->payment_method,
                 'payment_status' => $request->payment_status ?? $fee->payment_status,
-                'note' => $request->note ?? $fee->note,
-                'updated_by' => Auth::id(),
+                'note'           => $request->note ?? $fee->note,
+                'updated_by'     => Auth::id(),
             ]);
 
             $fee->remaining_amount = $fee->total_amount - $fee->discount - $fee->paid_amount;
@@ -184,19 +333,19 @@ class PrescriptionFeeController extends Controller
             if ($journal) {
                 if ($fee->paid_amount != $oldPaidAmount) {
                     $journal->update([
-                        'amount' => $fee->paid_amount,
-                        'description' => "فیس نسخه - مراجعه #{$fee->registration_id} (به‌روزرسانی)"
+                        'amount'      => $fee->paid_amount,
+                        'description' => "فیس نسخه - مراجعه #{$fee->registration_id} (به‌روزرسانی)",
                     ]);
                 }
             } elseif ($fee->paid_amount > 0) {
                 $journal = Journal::create([
                     'journal_date' => now(),
-                    'description' => "فیس نسخه - مراجعه #{$fee->registration_id}",
-                    'entry_type' => 'debit',
-                    'amount' => $fee->paid_amount,
-                    'ref_type' => $refType,
-                    'ref_id' => $refId,
-                    'user_id' => Auth::id(),
+                    'description'  => "فیس نسخه - مراجعه #{$fee->registration_id}",
+                    'entry_type'   => 'debit',
+                    'amount'       => $fee->paid_amount,
+                    'ref_type'     => $refType,
+                    'ref_id'       => $refId,
+                    'user_id'      => Auth::id(),
                 ]);
             }
 
@@ -209,7 +358,7 @@ class PrescriptionFeeController extends Controller
             $this->journalSync->syncFee([
                 'reg_id'           => $fee->registration_id,
                 'patient_id'       => $fee->patient_id,
-                'source_type'      => $fee->source_type ?? 'prescription_fee',
+                'source_type'      => $fee->source_type ?? 'internal',
                 'ref_type'         => $refType,
                 'ref_id'           => $refId,
                 'fee_id'           => $fee->id,
@@ -226,7 +375,7 @@ class PrescriptionFeeController extends Controller
             try {
                 LogService::create('update', 'prescription_fees', $fee->id, 'Prescription fee updated', [
                     'old' => ['paid_amount' => $oldPaidAmount, 'discount' => $oldDiscount, 'status' => $oldStatus],
-                    'new' => $fee->toArray()
+                    'new' => $fee->toArray(),
                 ]);
             } catch (\Exception $e) {
                 Log::error("Prescription fee update log failed: " . $e->getMessage());
@@ -235,7 +384,7 @@ class PrescriptionFeeController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'فیس نسخه با موفقیت بروزرسانی شد',
-                'data' => $fee->fresh()
+                'data'    => $fee->fresh(),
             ]);
 
         } catch (\Exception $e) {
@@ -297,13 +446,26 @@ class PrescriptionFeeController extends Controller
         try {
             $query = PrescriptionFee::with(['patient', 'registration']);
 
-            if ($request->payment_status) $query->where('payment_status', $request->payment_status);
-            if ($request->patient_id) $query->where('patient_id', $request->patient_id);
+            if ($request->payment_status)  $query->where('payment_status', $request->payment_status);
+            if ($request->patient_id)      $query->where('patient_id', $request->patient_id);
             if ($request->registration_id) $query->where('registration_id', $request->registration_id);
-            if ($request->from_date) $query->whereDate('created_at', '>=', $request->from_date);
-            if ($request->to_date) $query->whereDate('created_at', '<=', $request->to_date);
+            if ($request->source_type)     $query->where('source_type', $request->source_type);
+            if ($request->from_date)       $query->whereDate('created_at', '>=', $request->from_date);
+            if ($request->to_date)         $query->whereDate('created_at', '<=', $request->to_date);
 
             $fees = $query->orderBy('created_at', 'desc')->paginate($request->per_page ?? 20);
+
+            $fees->getCollection()->transform(function ($fee) {
+                $fee->append([
+                    'display_patient_name',
+                    'display_doctor_name',
+                    'display_tazkira',
+                    'display_patient_phone',
+                    'source_label',
+                    'is_paid',
+                ]);
+                return $fee;
+            });
 
             return response()->json(['success' => true, 'data' => $fees]);
 
@@ -325,6 +487,16 @@ class PrescriptionFeeController extends Controller
             if (!$fee) {
                 return response()->json(['success' => false, 'message' => 'فیس نسخه یافت نشد'], 404);
             }
+
+            $fee->append([
+                'display_patient_name',
+                'display_doctor_name',
+                'display_tazkira',
+                'display_patient_phone',
+                'source_label',
+                'is_paid',
+            ]);
+
             return response()->json(['success' => true, 'data' => $fee]);
 
         } catch (\Exception $e) {
@@ -342,15 +514,17 @@ class PrescriptionFeeController extends Controller
     {
         try {
             $stats = [
-                'total' => PrescriptionFee::count(),
-                'pending' => PrescriptionFee::where('payment_status', 'pending')->count(),
-                'partial' => PrescriptionFee::where('payment_status', 'partial')->count(),
-                'paid' => PrescriptionFee::where('payment_status', 'paid')->count(),
-                'total_amount' => PrescriptionFee::sum('total_amount'),
-                'total_paid' => PrescriptionFee::sum('paid_amount'),
+                'total'           => PrescriptionFee::count(),
+                'pending'         => PrescriptionFee::where('payment_status', 'pending')->count(),
+                'partial'         => PrescriptionFee::where('payment_status', 'partial')->count(),
+                'paid'            => PrescriptionFee::where('payment_status', 'paid')->count(),
+                'total_amount'    => PrescriptionFee::sum('total_amount'),
+                'total_paid'      => PrescriptionFee::sum('paid_amount'),
                 'total_remaining' => PrescriptionFee::sum('remaining_amount'),
-                'today' => PrescriptionFee::whereDate('created_at', today())->count(),
-                'today_amount' => PrescriptionFee::whereDate('created_at', today())->sum('total_amount'),
+                'today'           => PrescriptionFee::whereDate('created_at', today())->count(),
+                'today_amount'    => PrescriptionFee::whereDate('created_at', today())->sum('total_amount'),
+                'internal'        => PrescriptionFee::where('source_type', 'internal')->count(),
+                'external'        => PrescriptionFee::where('source_type', 'external')->count(),
             ];
             return response()->json(['success' => true, 'data' => $stats]);
 
@@ -368,11 +542,14 @@ class PrescriptionFeeController extends Controller
     public function pendingFees(Request $request)
     {
         try {
-            $internalFees = PharmacyExecution::where('status', 'sent_to_registration')
+            // ✅ تغییر ۱: whereIn به‌جای where — تا هم pending و هم sent_to_registration بیایند
+            $internalFees = PharmacyExecution::whereIn('status', ['pending', 'sent_to_registration'])
                 ->with('items')
                 ->orderByDesc('created_at')
                 ->get()
                 ->map(function ($ex) {
+                    $info = $this->extractInternalNames($ex);
+
                     return [
                         'id'             => $ex->id,
                         'source'         => 'internal',
@@ -380,12 +557,12 @@ class PrescriptionFeeController extends Controller
                         'pres_id'        => $ex->pres_id,
                         'reg_id'         => $ex->reg_id,
                         'patient_id'     => $ex->patient_id,
-                        'patient_name'   => $ex->patient_name,
-                        'patient_age'    => $ex->patient_age,
-                        'patient_gender' => $ex->patient_gender,
-                        'patient_phone'  => $ex->patient_phone,
-                        'tazkira_number' => $ex->tazkira_number,
-                        'doctor_name'    => $ex->doctor_name,
+                        'patient_name'   => $info['patient_name'] ?? ($ex->reg_id ? 'مریض #' . $ex->reg_id : '-'),
+                        'patient_age'    => $info['patient_age'],
+                        'patient_gender' => $info['patient_gender'],
+                        'patient_phone'  => $info['patient_phone'],
+                        'tazkira_number' => $info['tazkira_number'],
+                        'doctor_name'    => $info['doctor_name'] ?? '-',
                         'total_amount'   => (float) $ex->total_amount,
                         'discount'       => (float) ($ex->discount ?? 0),
                         'paid_amount'    => (float) ($ex->paid_amount ?? 0),
@@ -449,10 +626,6 @@ class PrescriptionFeeController extends Controller
      * ============================================================
      * ⭐⭐ دریافت همه فیس‌ها (تاریخچه کامل + در انتظار)
      * ============================================================
-     *
-     * ✅ نام بیمار داخلی: از جدول patients (از طریق registrations.patient_id)
-     * ✅ نام بیمار بیرونی: از جدول external_prescriptions
-     * ✅ نام داکتر: از جدول users (از طریق registrations.doctor_id)
      */
     public function allFees(Request $request)
     {
@@ -460,22 +633,22 @@ class PrescriptionFeeController extends Controller
             $all = collect();
 
             /* ====================================================
-             * 1. رکوردهای پرداخت‌شده / partial از جدول fees
+             * 1. رکوردهای جدول prescription_fees
              * ==================================================== */
-            $feeQuery = PrescriptionFee::query()->orderByDesc('created_at');
+            $feeQuery = PrescriptionFee::with(['patient', 'registration'])
+                ->orderByDesc('created_at');
 
             if ($request->filled('source')) {
                 if ($request->source === 'internal') {
-                    $feeQuery->where('ref_type', 'prescription_fee');
+                    $feeQuery->where('source_type', 'internal');
                 } elseif ($request->source === 'external') {
-                    $feeQuery->where('ref_type', 'external_prescription');
+                    $feeQuery->where('source_type', 'external');
                 }
             }
 
             if ($request->filled('payment_status')) {
                 $feeQuery->where('payment_status', $request->payment_status);
             }
-
             if ($request->filled('from_date')) {
                 $feeQuery->whereDate('created_at', '>=', $request->from_date);
             }
@@ -484,155 +657,79 @@ class PrescriptionFeeController extends Controller
             }
 
             $fees = $feeQuery->get()->map(function ($fee) {
-                $isExternal = ($fee->ref_type === 'external_prescription');
+                $isExternal = ($fee->ref_type === 'external_prescription' || $fee->source_type === 'external');
 
-                $patientName   = null;
+                $patientName   = $fee->display_patient_name;
+                $patientPhone  = $fee->display_patient_phone;
+                $tazkira       = $fee->display_tazkira;
+                $doctorName    = $fee->display_doctor_name;
                 $patientAge    = null;
                 $patientGender = null;
-                $patientPhone  = null;
-                $tazkira       = $fee->tazkira_number ?? null;
-                $doctorName    = $fee->doctor_name ?? null;
-                $receiptNumber = null;
                 $items         = $fee->medication_items ?? [];
 
-                /* =============================================
-                 * ✅ نسخه بیرونی — از ExternalPrescription
-                 * ============================================= */
                 if ($isExternal && $fee->ref_id) {
                     $external = ExternalPrescription::find($fee->ref_id);
                     if ($external) {
-                        $patientName   = $external->patient_name;
                         $patientAge    = $external->patient_age;
                         $patientGender = $external->patient_gender;
-                        $patientPhone  = $external->patient_phone;
-                        $tazkira       = $tazkira ?? $external->tazkira_number;
-                        $doctorName    = $doctorName ?? $external->doctor_name;
-                        $receiptNumber = $external->receipt_number ?? ('EXT-' . $external->id);
                         if (empty($items)) {
                             $items = $external->items ?? [];
                         }
                     }
-                }
-                /* =============================================
-                 * ✅ نسخه داخلی — از Registration + Patient + User (داکتر)
-                 * ============================================= */
-                else {
-                    $reg = null;
-                    if ($fee->registration_id) {
-                        $reg = Registrations::where('reg_id', $fee->registration_id)->first();
-                    }
-
-                    /* ---------- نام بیمار ---------- */
-                    // ⭐ 1. patient_id موجود در registration
-                    $patient = null;
-                    if ($reg && !empty($reg->patient_id)) {
-                        $patient = Patient::find($reg->patient_id);
-                    }
-
-                    // ⭐ 2. اگر پیدا نشد، patient_id خود fee
-                    if (!$patient && !empty($fee->patient_id)) {
-                        $patient = Patient::find($fee->patient_id);
-                    }
-
-                    // ساخت نام از first_name + last_name
-                    if ($patient) {
-                        $computed = trim(($patient->first_name ?? '') . ' ' . ($patient->last_name ?? ''));
-                        if ($computed !== '') {
-                            $patientName = $computed;
+                } else {
+                    $execution = $fee->ref_id ? PharmacyExecution::find($fee->ref_id) : null;
+                    if ($execution) {
+                        $patientAge    = $execution->patient_age;
+                        $patientGender = $execution->patient_gender;
+                        if (empty($items)) {
+                            $items = $execution->items ?? [];
                         }
-                        $tazkira       = $tazkira ?? ($patient->national_id ?? null);
-                        $patientPhone  = $patientPhone ?? ($patient->phone ?? null);
-                    }
-
-                    // ⭐ 3. Fallback از registration.full_name
-                    if (empty($patientName) && $reg && !empty($reg->full_name)) {
-                        $patientName = $reg->full_name;
-                    }
-
-                    // ⭐ 4. Fallback از fee.patient_name (اگر قبلاً ذخیره شده)
-                    if (empty($patientName) && !empty($fee->patient_name)) {
-                        $patientName = $fee->patient_name;
-                    }
-
-                    // تذکره از registration
-                    if (empty($tazkira) && $reg && !empty($reg->tazkira_number)) {
-                        $tazkira = $reg->tazkira_number;
-                    }
-
-                    /* ---------- نام داکتر از جدول users ---------- */
-                    if (empty($doctorName) && $reg) {
-                        // ⭐ 1. doctor_id → User
-                        if (!empty($reg->doctor_id)) {
-                            $doc = User::find($reg->doctor_id);
-                            if ($doc) {
-                                $doctorName = !empty($doc->name)
-                                    ? $doc->name
-                                    : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
-                            }
-                        }
-                        // ⭐ 2. اگر doctor_id نبود، doc_id را امتحان کن
-                        if (empty($doctorName) && !empty($reg->doc_id)) {
-                            $doc = User::find($reg->doc_id);
-                            if ($doc) {
-                                $doctorName = !empty($doc->name)
-                                    ? $doc->name
-                                    : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
-                            }
-                        }
-                        // ⭐ 3. Fallback: doctor_name مستقیم ذخیره شده
-                        if (empty($doctorName) && !empty($reg->doctor_name)) {
-                            $doctorName = $reg->doctor_name;
-                        }
-                    }
-
-                    $receiptNumber = 'FEE-' . $fee->id;
-                }
-
-                /* =============================================
-                 * Fallback نهایی
-                 * ============================================= */
-                if (empty($patientName)) {
-                    if (!empty($fee->patient_name)) {
-                        $patientName = $fee->patient_name;
-                    } elseif (!empty($fee->registration_id)) {
-                        $patientName = 'مریض #' . $fee->registration_id;
                     } else {
-                        $patientName = '-';
+                        $reg = $fee->registration_id
+                            ? Registrations::where('reg_id', $fee->registration_id)->first()
+                            : null;
+                        if ($reg) {
+                            $patientAge    = $reg->age ?? null;
+                            $patientGender = $reg->gender ?? null;
+                        }
                     }
                 }
 
-                $source = $isExternal ? 'external' : 'internal';
-                $status = $fee->payment_status;
+                if (empty($patientName)) {
+                    $patientName = $fee->registration_id
+                        ? 'مریض #' . $fee->registration_id
+                        : '-';
+                }
 
                 return [
-                    'id'             => $fee->id,
-                    'fee_id'         => $fee->id,
-                    'ref_id'         => $fee->ref_id,
-                    'source'         => $source,
-                    'source_label'   => $isExternal ? 'نسخه بیرونی' : 'نسخه داخلی',
-                    'pres_id'        => null,
-                    'reg_id'         => $fee->registration_id,
-                    'patient_id'     => $fee->patient_id,
-                    'patient_name'   => $patientName,
-                    'patient_age'    => $patientAge,
-                    'patient_gender' => $patientGender,
-                    'patient_phone'  => $patientPhone,
-                    'tazkira_number' => $tazkira,
-                    'doctor_name'    => $doctorName ?? '-',
-                    'total_amount'   => (float) $fee->total_amount,
-                    'discount'       => (float) ($fee->discount ?? 0),
-                    'paid_amount'    => (float) ($fee->paid_amount ?? 0),
+                    'id'               => $fee->id,
+                    'fee_id'           => $fee->id,
+                    'ref_id'           => $fee->ref_id,
+                    'source'           => $isExternal ? 'external' : 'internal',
+                    'source_label'     => $isExternal ? 'نسخه بیرونی' : 'نسخه داخلی',
+                    'pres_id'          => null,
+                    'reg_id'           => $fee->registration_id,
+                    'patient_id'       => $fee->patient_id,
+                    'patient_name'     => $patientName,
+                    'patient_age'      => $patientAge,
+                    'patient_gender'   => $patientGender,
+                    'patient_phone'    => $patientPhone,
+                    'tazkira_number'   => $tazkira,
+                    'doctor_name'      => $doctorName ?? '-',
+                    'total_amount'     => (float) $fee->total_amount,
+                    'discount'         => (float) ($fee->discount ?? 0),
+                    'paid_amount'      => (float) ($fee->paid_amount ?? 0),
                     'remaining_amount' => (float) ($fee->remaining_amount ?? 0),
-                    'status'         => $status,
-                    'payment_method' => $fee->payment_method,
-                    'payment_date'   => $fee->payment_date,
-                    'receipt_number' => $receiptNumber ?? ('FEE-' . $fee->id),
-                    'items'          => $items,
-                    'description'    => $fee->description,
-                    'note'           => $fee->note,
-                    'created_at'     => $fee->created_at,
-                    'is_paid'        => in_array($status, ['paid'], true),
-                    'is_history'     => true,
+                    'status'           => $fee->payment_status,
+                    'payment_method'   => $fee->payment_method,
+                    'payment_date'     => $fee->payment_date,
+                    'receipt_number'   => $fee->receipt_number ?? ('FEE-' . $fee->id),
+                    'items'            => $items,
+                    'description'      => $fee->description,
+                    'note'             => $fee->note,
+                    'created_at'       => $fee->created_at,
+                    'is_paid'          => in_array($fee->payment_status, ['paid'], true),
+                    'is_history'       => true,
                 ];
             });
 
@@ -644,8 +741,12 @@ class PrescriptionFeeController extends Controller
             $shouldIncludePending = !$request->filled('payment_status')
                 || in_array($request->payment_status, ['pending', 'sent_to_registration']);
 
-            if ($shouldIncludePending) {
-                $internalPending = PharmacyExecution::where('status', 'sent_to_registration')
+            $shouldIncludeInternal = !$request->filled('source') || $request->source === 'internal';
+            $shouldIncludeExternal = !$request->filled('source') || $request->source === 'external';
+
+            if ($shouldIncludePending && $shouldIncludeInternal) {
+                // ✅ تغییر ۲: whereIn به‌جای where — تا هم pending و هم sent_to_registration بیایند
+                $internalPending = PharmacyExecution::whereIn('status', ['pending', 'sent_to_registration'])
                     ->with('items')
                     ->orderByDesc('created_at')
                     ->get()
@@ -653,102 +754,51 @@ class PrescriptionFeeController extends Controller
                         $alreadyExists = PrescriptionFee::where('ref_type', 'prescription_fee')
                             ->where('ref_id', $ex->id)
                             ->exists();
-
                         if ($alreadyExists) return null;
 
-                        $patientName   = $ex->patient_name;
-                        $tazkira       = $ex->tazkira_number;
-                        $doctorName    = $ex->doctor_name;
-                        $patientAge    = $ex->patient_age;
-                        $patientGender = $ex->patient_gender;
-                        $patientPhone  = $ex->patient_phone;
-
-                        /* ---------- تکمیل از registration + patient + user ---------- */
-                        if ($ex->reg_id) {
-                            $reg = Registrations::where('reg_id', $ex->reg_id)->first();
-
-                            // نام بیمار
-                            if (empty($patientName)) {
-                                $p = null;
-                                if ($reg && !empty($reg->patient_id)) {
-                                    $p = Patient::find($reg->patient_id);
-                                }
-                                if (!$p && !empty($ex->patient_id)) {
-                                    $p = Patient::find($ex->patient_id);
-                                }
-                                if ($p) {
-                                    $computed = trim(($p->first_name ?? '') . ' ' . ($p->last_name ?? ''));
-                                    if ($computed !== '') $patientName = $computed;
-                                    if (empty($tazkira)) $tazkira = $p->national_id ?? null;
-                                    if (empty($patientPhone)) $patientPhone = $p->phone ?? null;
-                                }
-                                if (empty($patientName) && $reg && !empty($reg->full_name)) {
-                                    $patientName = $reg->full_name;
-                                }
-                            }
-
-                            // نام داکتر از جدول users
-                            if (empty($doctorName) && $reg) {
-                                if (!empty($reg->doctor_id)) {
-                                    $doc = User::find($reg->doctor_id);
-                                    if ($doc) {
-                                        $doctorName = !empty($doc->name)
-                                            ? $doc->name
-                                            : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
-                                    }
-                                }
-                                if (empty($doctorName) && !empty($reg->doc_id)) {
-                                    $doc = User::find($reg->doc_id);
-                                    if ($doc) {
-                                        $doctorName = !empty($doc->name)
-                                            ? $doc->name
-                                            : trim(($doc->first_name ?? '') . ' ' . ($doc->last_name ?? ''));
-                                    }
-                                }
-                                if (empty($doctorName) && !empty($reg->doctor_name)) {
-                                    $doctorName = $reg->doctor_name;
-                                }
-                            }
-                        }
+                        $info = $this->extractInternalNames($ex);
 
                         return [
-                            'id'             => $ex->id,
-                            'fee_id'         => null,
-                            'ref_id'         => $ex->id,
-                            'source'         => 'internal',
-                            'source_label'   => 'نسخه داخلی',
-                            'pres_id'        => $ex->pres_id,
-                            'reg_id'         => $ex->reg_id,
-                            'patient_id'     => $ex->patient_id,
-                            'patient_name'   => $patientName ?? ($ex->reg_id ? 'مریض #' . $ex->reg_id : '-'),
-                            'patient_age'    => $patientAge,
-                            'patient_gender' => $patientGender,
-                            'patient_phone'  => $patientPhone,
-                            'tazkira_number' => $tazkira,
-                            'doctor_name'    => $doctorName ?? '-',
-                            'total_amount'   => (float) $ex->total_amount,
-                            'discount'       => (float) ($ex->discount ?? 0),
-                            'paid_amount'    => (float) ($ex->paid_amount ?? 0),
+                            'id'               => $ex->id,
+                            'fee_id'           => null,
+                            'ref_id'           => $ex->id,
+                            'source'           => 'internal',
+                            'source_label'     => 'نسخه داخلی',
+                            'pres_id'          => $ex->pres_id,
+                            'reg_id'           => $ex->reg_id,
+                            'patient_id'       => $ex->patient_id,
+                            'patient_name'     => $info['patient_name'] ?? ($ex->reg_id ? 'مریض #' . $ex->reg_id : '-'),
+                            'patient_age'      => $info['patient_age'],
+                            'patient_gender'   => $info['patient_gender'],
+                            'patient_phone'    => $info['patient_phone'],
+                            'tazkira_number'   => $info['tazkira_number'],
+                            'doctor_name'      => $info['doctor_name'] ?? '-',
+                            'total_amount'     => (float) $ex->total_amount,
+                            'discount'         => (float) ($ex->discount ?? 0),
+                            'paid_amount'      => (float) ($ex->paid_amount ?? 0),
                             'remaining_amount' => (float) $ex->total_amount,
-                            'status'         => 'sent_to_registration',
-                            'payment_method' => null,
-                            'payment_date'   => null,
-                            'receipt_number' => $ex->receipt_number ?? ('INT-' . $ex->id),
-                            'items'          => $ex->items,
-                            'description'    => null,
-                            'note'           => null,
-                            'created_at'     => $ex->created_at,
-                            'is_paid'        => false,
-                            'is_history'     => false,
+                            // ✅ وضعیت واقعی رکورد را برگردان (pending یا sent_to_registration)
+                            'status'           => $ex->status,
+                            'payment_method'   => null,
+                            'payment_date'     => null,
+                            'receipt_number'   => $ex->receipt_number ?? ('INT-' . $ex->id),
+                            'items'            => $ex->items,
+                            'description'      => null,
+                            'note'             => null,
+                            'created_at'       => $ex->created_at,
+                            'is_paid'          => false,
+                            'is_history'       => false,
                         ];
                     })
                     ->filter();
 
                 $all = $all->concat($internalPending);
+            }
 
-                /* ================================================
-                 * 3. نسخه‌های بیرونی در انتظار
-                 * ================================================ */
+            /* ====================================================
+             * 3. نسخه‌های بیرونی در انتظار
+             * ==================================================== */
+            if ($shouldIncludePending && $shouldIncludeExternal) {
                 $externalPending = ExternalPrescription::where('status', 'sent_to_registration')
                     ->with('items')
                     ->orderByDesc('created_at')
@@ -757,38 +807,37 @@ class PrescriptionFeeController extends Controller
                         $alreadyExists = PrescriptionFee::where('ref_type', 'external_prescription')
                             ->where('ref_id', $ex->id)
                             ->exists();
-
                         if ($alreadyExists) return null;
 
                         return [
-                            'id'             => $ex->id,
-                            'fee_id'         => null,
-                            'ref_id'         => $ex->id,
-                            'source'         => 'external',
-                            'source_label'   => 'نسخه بیرونی',
-                            'pres_id'        => null,
-                            'reg_id'         => null,
-                            'patient_id'     => null,
-                            'patient_name'   => $ex->patient_name ?? '-',
-                            'patient_age'    => $ex->patient_age,
-                            'patient_gender' => $ex->patient_gender,
-                            'patient_phone'  => $ex->patient_phone,
-                            'tazkira_number' => $ex->tazkira_number,
-                            'doctor_name'    => $ex->doctor_name ?? '-',
-                            'total_amount'   => (float) $ex->total_amount,
-                            'discount'       => (float) ($ex->discount ?? 0),
-                            'paid_amount'    => 0,
+                            'id'               => $ex->id,
+                            'fee_id'           => null,
+                            'ref_id'           => $ex->id,
+                            'source'           => 'external',
+                            'source_label'     => 'نسخه بیرونی',
+                            'pres_id'          => null,
+                            'reg_id'           => null,
+                            'patient_id'       => null,
+                            'patient_name'     => $ex->patient_name ?? '-',
+                            'patient_age'      => $ex->patient_age,
+                            'patient_gender'   => $ex->patient_gender,
+                            'patient_phone'    => $ex->patient_phone,
+                            'tazkira_number'   => $ex->tazkira_number,
+                            'doctor_name'      => $ex->doctor_name ?? '-',
+                            'total_amount'     => (float) $ex->total_amount,
+                            'discount'         => (float) ($ex->discount ?? 0),
+                            'paid_amount'      => 0,
                             'remaining_amount' => (float) $ex->total_amount,
-                            'status'         => 'sent_to_registration',
-                            'payment_method' => null,
-                            'payment_date'   => null,
-                            'receipt_number' => $ex->receipt_number ?? ('EXT-' . $ex->id),
-                            'items'          => $ex->items,
-                            'description'    => null,
-                            'note'           => null,
-                            'created_at'     => $ex->created_at,
-                            'is_paid'        => false,
-                            'is_history'     => false,
+                            'status'           => 'sent_to_registration',
+                            'payment_method'   => null,
+                            'payment_date'     => null,
+                            'receipt_number'   => $ex->receipt_number ?? ('EXT-' . $ex->id),
+                            'items'            => $ex->items,
+                            'description'      => null,
+                            'note'             => null,
+                            'created_at'       => $ex->created_at,
+                            'is_paid'          => false,
+                            'is_history'       => false,
                         ];
                     })
                     ->filter();
@@ -866,11 +915,21 @@ class PrescriptionFeeController extends Controller
                     return response()->json(['success' => false, 'message' => 'این نسخه قبلاً پرداخت شده است'], 422);
                 }
 
+                $info = $this->extractInternalNames($execution);
+
                 $execution->update(['status' => 'paid']);
 
                 $feeData = [
                     'registration_id'  => $execution->reg_id,
                     'patient_id'       => $execution->patient_id,
+                    'ref_type'         => 'prescription_fee',
+                    'ref_id'           => $execution->id,
+                    'source_type'      => 'internal',
+                    'patient_name'     => $info['patient_name'],
+                    'patient_phone'    => $info['patient_phone'],
+                    'tazkira_number'   => $info['tazkira_number'],
+                    'doctor_name'      => $info['doctor_name'],
+                    'receipt_number'   => $execution->receipt_number ?? ('INT-' . $execution->id),
                     'total_amount'     => (float) $execution->total_amount,
                     'paid_amount'      => $paidAmount,
                     'discount'         => $discount,
@@ -882,20 +941,7 @@ class PrescriptionFeeController extends Controller
                     'description'      => 'فیس نسخه داخلی #' . $execution->pres_id,
                     'note'             => $request->note,
                     'created_by'       => Auth::id(),
-                    'ref_type'         => 'prescription_fee',
-                    'ref_id'           => $execution->id,
-                    'source_type'      => 'internal',
                 ];
-
-                if (\Schema::hasColumn('prescription_fees', 'patient_name') && !empty($execution->patient_name)) {
-                    $feeData['patient_name'] = $execution->patient_name;
-                }
-                if (\Schema::hasColumn('prescription_fees', 'tazkira_number') && !empty($execution->tazkira_number)) {
-                    $feeData['tazkira_number'] = $execution->tazkira_number;
-                }
-                if (\Schema::hasColumn('prescription_fees', 'doctor_name') && !empty($execution->doctor_name)) {
-                    $feeData['doctor_name'] = $execution->doctor_name;
-                }
 
                 $fee = PrescriptionFee::create($feeData);
 
@@ -914,8 +960,8 @@ class PrescriptionFeeController extends Controller
                     'remaining_amount' => (float) $fee->remaining_amount,
                     'payment_status'   => $fee->payment_status,
                     'description'      => 'فیس نسخه داخلی #' . $execution->pres_id,
-                    'patient_name'     => $execution->patient_name ?? null,
-                    'tazkira_number'   => $execution->tazkira_number ?? null,
+                    'patient_name'     => $info['patient_name'],
+                    'tazkira_number'   => $info['tazkira_number'],
                 ]);
 
                 try {
@@ -959,6 +1005,14 @@ class PrescriptionFeeController extends Controller
                 $feeData = [
                     'registration_id'  => null,
                     'patient_id'       => null,
+                    'ref_type'         => 'external_prescription',
+                    'ref_id'           => $external->id,
+                    'source_type'      => 'external',
+                    'patient_name'     => $external->patient_name,
+                    'patient_phone'    => $external->patient_phone,
+                    'tazkira_number'   => $external->tazkira_number,
+                    'doctor_name'      => $external->doctor_name,
+                    'receipt_number'   => $external->receipt_number ?? ('EXT-' . $external->id),
                     'total_amount'     => (float) $external->total_amount,
                     'paid_amount'      => $paidAmount,
                     'discount'         => $discount,
@@ -969,23 +1023,7 @@ class PrescriptionFeeController extends Controller
                     'medication_items' => $external->items,
                     'description'      => 'فیس نسخه بیرونی - ' . ($external->receipt_number ?? $external->id),
                     'note'             => $request->note,
-                    'ref_type'         => 'external_prescription',
-                    'ref_id'           => $external->id,
-                    'source_type'      => 'external',
                 ];
-
-                if (\Schema::hasColumn('prescription_fees', 'patient_name')) {
-                    $feeData['patient_name'] = $external->patient_name;
-                }
-                if (\Schema::hasColumn('prescription_fees', 'patient_phone')) {
-                    $feeData['patient_phone'] = $external->patient_phone;
-                }
-                if (\Schema::hasColumn('prescription_fees', 'tazkira_number')) {
-                    $feeData['tazkira_number'] = $external->tazkira_number;
-                }
-                if (\Schema::hasColumn('prescription_fees', 'doctor_name')) {
-                    $feeData['doctor_name'] = $external->doctor_name;
-                }
 
                 if ($fee) {
                     $feeData['updated_by'] = Auth::id();
