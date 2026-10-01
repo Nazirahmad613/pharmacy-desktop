@@ -44,6 +44,16 @@ const REF_TYPE_FA = {
   other: "سایر",
   sale: "فروش",
   parchase: "خرید",
+  // ✅ فیس‌ها
+  prescription_fee: "فیس نسخه",
+  external_prescription: "نسخه بیرونی",
+  pharmacy_fee: "فیس دواخانه",
+  laboratory_fee: "فیس لابراتوار",
+  radiology_fee: "فیس رادیولوژی",
+  operation_fee: "فیس عملیات",
+  admission_fee: "فیس بستری",
+  registration_fee: "فیس مراجعه",
+  consultation_fee: "فیس مشاوره",
 };
 
 const REF_TYPE_GROUPS = [
@@ -76,6 +86,21 @@ const REF_TYPE_GROUPS = [
     options: [
       { value: "sale", label: "فروش" },
       { value: "parchase", label: "خرید" },
+    ],
+  },
+  // ✅ گروه جدید: فیس‌ها
+  {
+    label: "فیس‌ها",
+    options: [
+      { value: "external_prescription", label: "نسخه بیرونی (دواخانه)" },
+      { value: "prescription_fee", label: "فیس نسخه داخلی" },
+      { value: "pharmacy_fee", label: "فیس دواخانه" },
+      { value: "laboratory_fee", label: "فیس لابراتوار" },
+      { value: "radiology_fee", label: "فیس رادیولوژی" },
+      { value: "operation_fee", label: "فیس عملیات" },
+      { value: "admission_fee", label: "فیس بستری" },
+      { value: "registration_fee", label: "فیس مراجعه" },
+      { value: "consultation_fee", label: "فیس مشاوره" },
     ],
   },
   {
@@ -216,7 +241,6 @@ export default function JournalPage() {
         const list = res.data?.data ?? [];
         setRefSources(Array.isArray(list) ? list : []);
 
-        // ✅ اگر خالی بود، پیام هشدار
         if (list.length === 0) {
           console.warn(`منبعی برای type=${form.ref_type} یافت نشد`);
         }
@@ -251,6 +275,7 @@ export default function JournalPage() {
         updated.reg_id = "";
         updated.tazkira_number = "";
         updated.description = "";
+        updated.amount = "";
       }
 
       if (name === "ref_id") {
@@ -265,8 +290,28 @@ export default function JournalPage() {
             updated.tazkira_number = found.national_id;
           }
 
-          if (!updated.description && found.name) {
-            updated.description = found.name;
+          // ✅ برای نسخه بیرونی: توضیحات و مبلغ را از منبع پر کن
+          if (form.ref_type === "external_prescription") {
+            if (found.name) {
+              updated.description = `فیس نسخه بیرونی - ${found.name}`;
+            }
+
+            // ✅ اگر مبلغ پرداختی باقی‌مانده دارد، آن را پر کن
+            if (found.total_amount !== undefined) {
+              const total = Number(found.total_amount || 0);
+              const discount = Number(found.discount || 0);
+              // اگر قبلاً پرداختی داشته، باقی‌مانده را نشان بده
+              const paid = Number(found.paid_amount || 0);
+              const remaining = Math.max(0, total - discount - paid);
+              updated.amount = remaining > 0 ? remaining : total - discount;
+            }
+          } else {
+            if (!updated.description && found.name) {
+              updated.description = found.name;
+            }
+            if (!updated.amount && found.total_amount) {
+              updated.amount = found.total_amount;
+            }
           }
         }
       }
@@ -392,6 +437,12 @@ export default function JournalPage() {
           description = `فروش شماره ${j.ref_id}`;
         } else if (j.ref_type === "parchase") {
           description = `خرید شماره ${j.ref_id}`;
+        } else if (j.ref_type === "external_prescription") {
+          // ✅ برای نسخه بیرونی، توضیحات را از نام بیمار بساز
+          const patientName = j.source_name || j.full_name || j.display_name;
+          description = patientName
+            ? `فیس نسخه بیرونی - ${patientName}`
+            : `نسخه بیرونی #${j.ref_id}`;
         } else if (
           j.ref_type === "patient" &&
           typeof description === "string" &&
@@ -447,6 +498,20 @@ export default function JournalPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterType, fromDate, toDate]);
+
+  /* ============================================================
+   *  رنگ ردیف بر اساس نوع منبع
+   * ============================================================ */
+  const getRowColor = (sourceType) => {
+    switch (sourceType) {
+      case "sale":                    return "#1a4a70";
+      case "parchase":                return "#701a1a";
+      case "patient":                 return "#1a701a";
+      case "external_prescription":   return "#6b3fa0"; // ✅ بنفش
+      case "prescription_fee":        return "#1a701a";
+      default:                        return "#1a1a1a";
+    }
+  };
 
   /* ============================================================
    *  رندر
@@ -644,10 +709,7 @@ export default function JournalPage() {
           <tbody>
             {currentRows.length ? (
               currentRows.map((row) => {
-                let bgColor = "#1a1a1a";
-                if (row.source_type === "sale") bgColor = "#1a4a70";
-                else if (row.source_type === "parchase") bgColor = "#701a1a";
-                else if (row.source_type === "patient") bgColor = "#1a701a";
+                const bgColor = getRowColor(row.source_type);
 
                 return (
                   <tr

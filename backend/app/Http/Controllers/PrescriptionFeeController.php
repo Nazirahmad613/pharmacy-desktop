@@ -185,6 +185,10 @@ class PrescriptionFeeController extends Controller
             $oldDiscount = $fee->discount;
             $oldStatus = $fee->payment_status;
 
+            // ✅ تشخیص نوع فیس (داخلی / بیرونی)
+            $refType = $fee->ref_type ?? 'prescription_fee';
+            $refId   = $fee->ref_id   ?? $fee->id;
+
             // به‌روزرسانی
             $fee->update([
                 'paid_amount' => $request->paid_amount ?? $fee->paid_amount,
@@ -200,8 +204,8 @@ class PrescriptionFeeController extends Controller
             $fee->save();
 
             // به‌روزرسانی ژورنال (روش قدیمی)
-            $journal = Journal::where('ref_type', 'prescription_fee')
-                ->where('ref_id', $fee->id)
+            $journal = Journal::where('ref_type', $refType)
+                ->where('ref_id', $refId)
                 ->first();
 
             if ($journal) {
@@ -217,8 +221,8 @@ class PrescriptionFeeController extends Controller
                     'description' => "فیس نسخه - مراجعه #{$fee->registration_id}",
                     'entry_type' => 'debit',
                     'amount' => $fee->paid_amount,
-                    'ref_type' => 'prescription_fee',
-                    'ref_id' => $fee->id,
+                    'ref_type' => $refType,
+                    'ref_id' => $refId,
                     'user_id' => Auth::id(),
                 ]);
             }
@@ -233,15 +237,18 @@ class PrescriptionFeeController extends Controller
             $this->journalSync->syncFee([
                 'reg_id'           => $fee->registration_id,
                 'patient_id'       => $fee->patient_id,
-                'source_type'      => 'prescription_fee',
-                'ref_type'         => 'prescription_fee',
-                'ref_id'           => $fee->id,
+                'source_type'      => $fee->source_type ?? 'prescription_fee',
+                'ref_type'         => $refType,
+                'ref_id'           => $refId,
+                'fee_id'           => $fee->id,
                 'amount'           => (float) $fee->total_amount,
                 'paid_amount'      => (float) $fee->paid_amount,
                 'discount'         => (float) ($fee->discount ?? 0),
                 'remaining_amount' => (float) $fee->remaining_amount,
                 'payment_status'   => $fee->payment_status,
-                'description'      => 'فیس نسخه (ویرایش) - مراجعه #' . $fee->registration_id,
+                'description'      => 'فیس نسخه (ویرایش) - ' . $refType . ' #' . $refId,
+                'patient_name'     => $fee->patient_name ?? null,
+                'tazkira_number'   => $fee->tazkira_number ?? null,
             ]);
 
             // ثبت لاگ
@@ -299,9 +306,13 @@ class PrescriptionFeeController extends Controller
                 ], 404);
             }
 
+            // ✅ تشخیص نوع فیس (داخلی / بیرونی)
+            $refType = $fee->ref_type ?? 'prescription_fee';
+            $refId   = $fee->ref_id   ?? $fee->id;
+
             // حذف ژورنال مرتبط (روش قدیمی)
-            Journal::where('ref_type', 'prescription_fee')
-                ->where('ref_id', $fee->id)
+            Journal::where('ref_type', $refType)
+                ->where('ref_id', $refId)
                 ->delete();
 
             $feeData = $fee->toArray();
@@ -311,7 +322,7 @@ class PrescriptionFeeController extends Controller
             DB::commit();
 
             // ✅ حذف از ژورنال جدید (اتوماتیک)
-            $this->journalSync->deleteFee('prescription_fee', $feeId);
+            $this->journalSync->deleteFee($refType, $refId);
 
             // ثبت لاگ
             try {
@@ -621,6 +632,9 @@ class PrescriptionFeeController extends Controller
                     'description'      => 'فیس نسخه داخلی #' . $execution->pres_id,
                     'note'             => $request->note,
                     'created_by'       => Auth::id(),
+                    'ref_type'         => 'prescription_fee',
+                    'ref_id'           => $execution->id,
+                    'source_type'      => 'internal',
                 ]);
 
                 DB::commit();
@@ -629,15 +643,18 @@ class PrescriptionFeeController extends Controller
                 $this->journalSync->syncFee([
                     'reg_id'           => $execution->reg_id,
                     'patient_id'       => $execution->patient_id,
-                    'source_type'      => 'prescription_fee',
+                    'source_type'      => 'internal',
                     'ref_type'         => 'prescription_fee',
-                    'ref_id'           => $fee->id,
+                    'ref_id'           => $execution->id,
+                    'fee_id'           => $fee->id,
                     'amount'           => (float) $execution->total_amount,
                     'paid_amount'      => $paidAmount,
                     'discount'         => $discount,
                     'remaining_amount' => (float) $fee->remaining_amount,
                     'payment_status'   => $fee->payment_status,
                     'description'      => 'فیس نسخه داخلی #' . $execution->pres_id,
+                    'patient_name'     => $execution->patient_name ?? null,
+                    'tazkira_number'   => $execution->tazkira_number ?? null,
                 ]);
 
                 // لاگ
@@ -690,15 +707,12 @@ class PrescriptionFeeController extends Controller
                     ], 422);
                 }
 
-                // بروزرسانی وضعیت
-                $external->update([
-                    'status'  => 'paid',
-                    'paid_by' => Auth::id(),
-                    'paid_at' => now(),
-                ]);
+                // ✅ اگر قبلاً فیس برای این نسخه ثبت شده، همان را بروزرسانی کن
+                $fee = PrescriptionFee::where('ref_type', 'external_prescription')
+                    ->where('ref_id', $external->id)
+                    ->first();
 
-                // ثبت در فیس نسخه (برای ژورنال و آمار)
-                $fee = PrescriptionFee::create([
+                $feeData = [
                     'registration_id'  => null,           // نسخه بیرونی reg_id ندارد
                     'patient_id'       => null,           // بیمار ثبت‌نام‌شده نیست
                     'total_amount'     => (float) $external->total_amount,
@@ -711,24 +725,58 @@ class PrescriptionFeeController extends Controller
                     'medication_items' => $external->items,
                     'description'      => 'فیس نسخه بیرونی - ' . ($external->receipt_number ?? $external->id),
                     'note'             => $request->note,
-                    'created_by'       => Auth::id(),
+                    'ref_type'         => 'external_prescription',   // ✅ نوع مرجع
+                    'ref_id'           => $external->id,             // ✅ شناسه نسخه بیرونی
+                    'source_type'      => 'external',                // ✅ تفکیک منبع
+                ];
+
+                // ✅ اضافه کردن فیلدهای اختیاری اگر در جدول وجود دارند
+                if (\Schema::hasColumn('prescription_fees', 'patient_name')) {
+                    $feeData['patient_name'] = $external->patient_name;
+                }
+                if (\Schema::hasColumn('prescription_fees', 'patient_phone')) {
+                    $feeData['patient_phone'] = $external->patient_phone;
+                }
+                if (\Schema::hasColumn('prescription_fees', 'tazkira_number')) {
+                    $feeData['tazkira_number'] = $external->tazkira_number;
+                }
+                if (\Schema::hasColumn('prescription_fees', 'doctor_name')) {
+                    $feeData['doctor_name'] = $external->doctor_name;
+                }
+
+                if ($fee) {
+                    $feeData['updated_by'] = Auth::id();
+                    $fee->update($feeData);
+                } else {
+                    $feeData['created_by'] = Auth::id();
+                    $fee = PrescriptionFee::create($feeData);
+                }
+
+                // بروزرسانی وضعیت نسخه بیرونی
+                $external->update([
+                    'status'  => 'paid',
+                    'paid_by' => Auth::id(),
+                    'paid_at' => now(),
                 ]);
 
                 DB::commit();
 
-                // ✅ ژورنال جدید
+                // ✅ ثبت در ژورنال جدید با ref_type = 'external_prescription'
                 $this->journalSync->syncFee([
                     'reg_id'           => null,
                     'patient_id'       => null,
-                    'source_type'      => 'external_prescription_fee',
-                    'ref_type'         => 'external_prescription_fee',
-                    'ref_id'           => $fee->id,
+                    'source_type'      => 'external',
+                    'ref_type'         => 'external_prescription',
+                    'ref_id'           => $external->id,
+                    'fee_id'           => $fee->id,
                     'amount'           => (float) $external->total_amount,
                     'paid_amount'      => $paidAmount,
                     'discount'         => $discount,
                     'remaining_amount' => (float) $fee->remaining_amount,
                     'payment_status'   => $fee->payment_status,
                     'description'      => 'فیس نسخه بیرونی - ' . ($external->receipt_number ?? $external->id),
+                    'patient_name'     => $external->patient_name ?? null,
+                    'tazkira_number'   => $external->tazkira_number ?? null,
                 ]);
 
                 // لاگ

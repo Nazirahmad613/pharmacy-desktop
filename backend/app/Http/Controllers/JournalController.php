@@ -8,6 +8,7 @@ use App\Models\Registrations;
 use App\Models\Sales;
 use App\Models\Parchase;
 use App\Models\Prescription;
+use App\Models\ExternalPrescription;
 use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -42,6 +43,50 @@ class JournalController extends Controller
             $j->paid_amount  = null;
             $j->due_amount   = null;
             $j->source_name  = null;
+
+            /* ====================================================
+             * 0) ✅ external_prescription → فیس نسخه بیرونی
+             * ==================================================== */
+            if ($j->ref_type === 'external_prescription') {
+                $external = ExternalPrescription::find($j->ref_id);
+
+                if ($external) {
+                    $patientName = $external->patient_name
+                        ?: "نسخه بیرونی #{$j->ref_id}";
+
+                    $j->full_name      = $patientName;
+                    $j->display_name   = $patientName;
+                    $j->source_name    = $patientName;
+                    $j->tazkira_number = $external->tazkira_number ?? $j->tazkira_number;
+                    $j->total_amount   = $external->total_amount;
+                    $j->paid_amount    = $j->amount;    // مبلغ پرداخت‌شده = amount ژورنال
+                    $j->due_amount     = max(
+                        0,
+                        (float) $external->total_amount
+                            - (float) ($external->discount ?? 0)
+                            - (float) $j->amount
+                    );
+                    $j->reg_type = 'external_prescription';
+                } else {
+                    $j->source_name = "نسخه بیرونی #{$j->ref_id}";
+                }
+
+                // Fallback: اگر description حاوی نام بیمار است، استخراج کن
+                if (empty($j->source_name) || $j->source_name === "نسخه بیرونی #{$j->ref_id}") {
+                    $extracted = $this->extractNameFromDescription($j->description);
+                    if (!empty($extracted)) {
+                        $j->full_name    = $extracted;
+                        $j->display_name = $extracted;
+                        $j->source_name  = $extracted;
+                    }
+                }
+
+                if (empty($j->source_name)) {
+                    $j->source_name = $j->description ?: "نسخه بیرونی #{$j->ref_id}";
+                }
+
+                return $j;
+            }
 
             /* ====================================================
              * 1) sale
@@ -579,7 +624,7 @@ class JournalController extends Controller
             return Registrations::where('reg_id', $validated['reg_id'])->first();
         }
 
-        if (in_array($validated['ref_type'], ['sale', 'parchase', 'patient'])) {
+        if (in_array($validated['ref_type'], ['sale', 'parchase', 'patient', 'external_prescription'])) {
             return null;
         }
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import MainLayoutjur from "../../../../components/MainLayoutjur";
+import MatxLoading from "../../../components/MatxLogo"; // ✅ اضافه شد
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useAuth } from "app/contexts/AuthContext";
@@ -2130,9 +2131,13 @@ export default function RegistrationForm() {
                     border: "none",
                     cursor: searching || editingId ? "not-allowed" : "pointer",
                     opacity: searching || editingId ? 0.6 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: "110px",
                   }}
                 >
-                  {searching ? "در حال جستجو..." : "جستجو"}
+                  {searching ? <MatxLoading inline text="..." /> : "جستجو"}
                 </button>
                 <button
                   type="button"
@@ -2555,14 +2560,22 @@ export default function RegistrationForm() {
               <button
                 type="submit"
                 className="edit"
-                style={{ backgroundColor: editingId ? "#ffc107" : "#2563eb" }}
+                style={{
+                  backgroundColor: editingId ? "#ffc107" : "#2563eb",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: "160px",
+                }}
                 disabled={isSubmitting}
               >
-                {isSubmitting
-                  ? "در حال ثبت..."
-                  : editingId
-                  ? "تصحیح مراجعه و مریض"
-                  : "ثبت مراجعه"}
+                {isSubmitting ? (
+                  <MatxLoading inline text="..." />
+                ) : editingId ? (
+                  "تصحیح مراجعه و مریض"
+                ) : (
+                  "ثبت مراجعه"
+                )}
               </button>
 
               {editingId && (
@@ -2701,9 +2714,18 @@ export default function RegistrationForm() {
                   <tr>
                     <td
                       colSpan="12"
-                      style={{ textAlign: "center", padding: "20px" }}
+                      style={{ padding: "0", position: "relative" }}
                     >
-                      در حال بارگذاری...
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          minHeight: "200px",
+                        }}
+                      >
+                        <MatxLoading isSmall text="..." />
+                      </div>
                     </td>
                   </tr>
                 ) : currentRows.length > 0 ? (
