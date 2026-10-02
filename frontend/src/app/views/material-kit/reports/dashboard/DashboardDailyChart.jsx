@@ -8,7 +8,6 @@ import {
   MenuItem,
   CircularProgress,
   Alert,
-  Grid,
   Paper,
 } from "@mui/material";
 import { Line } from "react-chartjs-2";
@@ -34,12 +33,11 @@ ChartJS.register(
 
 const DashboardDailyChart = () => {
   const { api, user, loading: authLoading } = useAuth();
-  const [rawData, setRawData] = useState([]);      // داده‌های روزانه از API
+  const [rawData, setRawData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [period, setPeriod] = useState("daily");   // daily, monthly, yearly
+  const [period, setPeriod] = useState("daily");
 
-  // 1. دریافت داده‌های روزانه (مانند جدول)
   useEffect(() => {
     if (authLoading || !user) return;
 
@@ -61,13 +59,14 @@ const DashboardDailyChart = () => {
     fetchData();
   }, [user, authLoading, api]);
 
-  // 2. گروه‌بندی داده‌ها بر اساس دوره (روزانه، ماهانه، سالانه)
   const aggregatedData = useMemo(() => {
     if (!rawData.length) return [];
 
-    // کمکی: تبدیل تاریخ شمسی به عدد سال و ماه (فرض کنید report_date به صورت "1403-01-01" است)
+    // تاریخ شمسی به صورت "1403/01/01" یا "1403-01-01"
     const parseDate = (dateStr) => {
-      const parts = dateStr.split("-");
+      if (!dateStr) return { year: 0, month: 0, day: 0 };
+      const normalized = String(dateStr).replace(/\//g, "-");
+      const parts = normalized.split("-");
       if (parts.length !== 3) return { year: 0, month: 0, day: 0 };
       return {
         year: parseInt(parts[0], 10),
@@ -77,36 +76,36 @@ const DashboardDailyChart = () => {
     };
 
     if (period === "daily") {
-      // همان داده‌های روزانه، فقط مرتب شده
-      return [...rawData].sort((a, b) => (a.report_date > b.report_date ? 1 : -1));
+      return [...rawData].sort((a, b) =>
+        String(a.report_date).localeCompare(String(b.report_date))
+      );
     }
 
     if (period === "monthly") {
-      // گروه‌بندی بر اساس سال و ماه
       const groups = new Map();
       rawData.forEach((item) => {
         const { year, month } = parseDate(item.report_date);
         if (!year || !month) return;
-        const key = `${year}-${month}`;
+        const key = `${year}-${String(month).padStart(2, "0")}`;
         if (!groups.has(key)) {
           groups.set(key, {
-            label: `${year}/${month}`,
+            label: `${year}/${String(month).padStart(2, "0")}`,
             total_patients: 0,
             total_prescriptions: 0,
             total_sales: 0,
           });
         }
-        const group = groups.get(key);
-        group.total_patients += item.total_patients || 0;
-        group.total_prescriptions += item.total_prescriptions || 0;
-        group.total_sales += item.total_sales || 0;
+        const g = groups.get(key);
+        g.total_patients += Number(item.total_patients) || 0;
+        g.total_prescriptions += Number(item.total_prescriptions) || 0;
+        g.total_sales += Number(item.total_sales) || 0;
       });
-      // تبدیل به آرایه و مرتب‌سازی بر اساس سال و ماه
-      return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
+      return Array.from(groups.values()).sort((a, b) =>
+        a.label.localeCompare(b.label)
+      );
     }
 
     if (period === "yearly") {
-      // گروه‌بندی بر اساس سال
       const groups = new Map();
       rawData.forEach((item) => {
         const { year } = parseDate(item.report_date);
@@ -120,25 +119,30 @@ const DashboardDailyChart = () => {
             total_sales: 0,
           });
         }
-        const group = groups.get(key);
-        group.total_patients += item.total_patients || 0;
-        group.total_prescriptions += item.total_prescriptions || 0;
-        group.total_sales += item.total_sales || 0;
+        const g = groups.get(key);
+        g.total_patients += Number(item.total_patients) || 0;
+        g.total_prescriptions += Number(item.total_prescriptions) || 0;
+        g.total_sales += Number(item.total_sales) || 0;
       });
-      return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
+      return Array.from(groups.values()).sort((a, b) =>
+        a.label.localeCompare(b.label)
+      );
     }
 
     return [];
   }, [rawData, period]);
 
-  // 3. آماده‌سازی داده‌های نمودار (سه خط)
   const chartData = useMemo(() => {
     if (!aggregatedData.length) return null;
 
-    const labels = aggregatedData.map((item) => item.label);
-    const patientsData = aggregatedData.map((item) => item.total_patients);
-    const prescriptionsData = aggregatedData.map((item) => item.total_prescriptions);
-    const salesData = aggregatedData.map((item) => item.total_sales);
+    const labels = aggregatedData.map((item) =>
+      period === "daily" ? item.report_date : item.label
+    );
+    const patientsData = aggregatedData.map((i) => Number(i.total_patients) || 0);
+    const prescriptionsData = aggregatedData.map(
+      (i) => Number(i.total_prescriptions) || 0
+    );
+    const salesData = aggregatedData.map((i) => Number(i.total_sales) || 0);
 
     return {
       labels,
@@ -152,7 +156,7 @@ const DashboardDailyChart = () => {
           tension: 0.2,
           fill: false,
           pointRadius: 3,
-          yAxisID: "y", // محور چپ
+          yAxisID: "y",
         },
         {
           label: "تعداد نسخه‌ها",
@@ -174,29 +178,28 @@ const DashboardDailyChart = () => {
           tension: 0.2,
           fill: false,
           pointRadius: 3,
-          yAxisID: "y1", // محور راست برای فروش (مقیاس متفاوت)
+          yAxisID: "y1",
         },
       ],
     };
-  }, [aggregatedData]);
+  }, [aggregatedData, period]);
 
-  // 4. تنظیمات نمودار با دو محور Y (چپ برای تعداد، راست برای مبلغ فروش)
   const options = {
     responsive: true,
     maintainAspectRatio: false,
     interaction: { mode: "index", intersect: false },
     plugins: {
-      legend: { position: "top", rtl: true, labels: { font: { family: "Vazirmatn" } } },
+      legend: { position: "top", rtl: true },
       tooltip: {
         rtl: true,
         callbacks: {
           label: (context) => {
-            let label = context.dataset.label || "";
+            const label = context.dataset.label || "";
             let value = context.raw;
-            if (context.dataset.label.includes("فروش")) {
-              value = value.toLocaleString("fa-IR") + " افغانی";
+            if (String(label).includes("فروش")) {
+              value = Number(value).toLocaleString("fa-IR") + " افغانی";
             } else {
-              value = value.toLocaleString("fa-IR");
+              value = Number(value).toLocaleString("fa-IR");
             }
             return `${label}: ${value}`;
           },
@@ -208,25 +211,27 @@ const DashboardDailyChart = () => {
         type: "linear",
         display: true,
         position: "left",
-        title: { display: true, text: "تعداد (مریض / نسخه)", font: { family: "Vazirmatn" } },
-        ticks: { callback: (val) => val.toLocaleString("fa-IR") },
+        title: { display: true, text: "تعداد (مریض / نسخه)" },
+        ticks: { callback: (val) => Number(val).toLocaleString("fa-IR") },
       },
       y1: {
         type: "linear",
         display: true,
         position: "right",
-        title: { display: true, text: "فروش (افغانی)", font: { family: "Vazirmatn" } },
-        ticks: { callback: (val) => val.toLocaleString("fa-IR") },
-        grid: { drawOnChartArea: false }, // خطوط شبکه را فقط برای محور چپ نشان بده
+        title: { display: true, text: "فروش (افغانی)" },
+        ticks: { callback: (val) => Number(val).toLocaleString("fa-IR") },
+        grid: { drawOnChartArea: false },
       },
       x: {
         ticks: { autoSkip: true, maxRotation: 45, minRotation: 45 },
-        title: { display: true, text: period === "daily" ? "تاریخ" : period === "monthly" ? "ماه" : "سال", font: { family: "Vazirmatn" } },
+        title: {
+          display: true,
+          text: period === "daily" ? "تاریخ" : period === "monthly" ? "ماه" : "سال",
+        },
       },
     },
   };
 
-  // وضعیت‌های لودینگ و خطا
   if (authLoading || loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight={300}>
@@ -258,7 +263,11 @@ const DashboardDailyChart = () => {
       <Box display="flex" justifyContent="flex-end" mb={2}>
         <FormControl size="small" sx={{ minWidth: 150 }}>
           <InputLabel>نوع گزارش</InputLabel>
-          <Select value={period} label="نوع گزارش" onChange={(e) => setPeriod(e.target.value)}>
+          <Select
+            value={period}
+            label="نوع گزارش"
+            onChange={(e) => setPeriod(e.target.value)}
+          >
             <MenuItem value="daily">روزانه</MenuItem>
             <MenuItem value="monthly">ماهانه</MenuItem>
             <MenuItem value="yearly">سالانه</MenuItem>

@@ -89,7 +89,10 @@ Route::prefix('stock')->group(function () {
     Route::get('/suppliers/{medId}', [StockController::class, 'getSuppliersByMedication']);
     Route::get('/details/{medId}', [StockController::class, 'getStockDetails']);
     Route::get('/types/{medId}', [StockController::class, 'getTypesByMedication']);
-    Route::get('/reports/medication-stock', [StockReportController::class, 'medicationStock']);
+
+    // ✅ گزارش کمبود موجودی (Public)
+    Route::get('/reports/medication-stock',         [StockReportController::class, 'medicationStock']);
+    Route::get('/reports/medication-stock/summary', [StockReportController::class, 'summary']);
 });
 
 Route::post('/sales/check-stock', [SalesController::class, 'checkStockBeforeSale']);
@@ -687,7 +690,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/account-summary', [AccountSummaryController::class, 'index']);
     Route::get('/view-profit-loss', [ViewProfitLossController::class, 'index']);
     Route::get('/hospital-reports', [HospitalReportController::class, 'index']);
-    Route::get('/reports/medication-stock', [StockReportController::class, 'medicationStock']);
+
+    // ✅ گزارش کمبود موجودی (Protected)
+    Route::get('/reports/medication-stock',         [StockReportController::class, 'medicationStock']);
+    Route::get('/reports/medication-stock/summary', [StockReportController::class, 'summary']);
+
     Route::get('/dashboard-daily', function () {
         return DB::table('view_dashboard_daily')->get();
     });

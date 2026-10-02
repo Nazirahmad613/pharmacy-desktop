@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import ReportLayout from "../../../../components/ReportLayout";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -7,7 +7,7 @@ import AdminRoute from "../AdminRoute";
 import "../../../../components/ReportLayout";
 
 // ============================================================
-// ✅ دیکشنری لیبل فارسی (پشتیبان، اگر Backend نفرستاد)
+// ✅ دیکشنری لیبل فارسی رول‌ها
 // ============================================================
 const ROLE_LABELS = {
   ADMIN: "مدیر سیستم",
@@ -42,74 +42,94 @@ const ROLE_LABELS = {
   USER: "کاربر عادی",
 };
 
+// ============================================================
+// ✅ دیکشنری کامل لیبل پرمیشن‌ها
+// ============================================================
 const PERMISSION_LABELS = {
+  // کاربران
   "VIEW-USERS": "مشاهده کاربران",
   "CREATE-USERS": "ایجاد کاربر",
   "EDIT-USERS": "ویرایش کاربر",
   "DELETE-USERS": "حذف کاربر",
+  // رول‌ها
   "VIEW-ROLES": "مشاهده رول‌ها",
   "CREATE-ROLES": "ایجاد رول",
   "EDIT-ROLES": "ویرایش رول",
   "DELETE-ROLES": "حذف رول",
+  // مجوزها
   "VIEW-PERMISSIONS": "مشاهده مجوزها",
   "CREATE-PERMISSIONS": "ایجاد مجوز",
   "EDIT-PERMISSIONS": "ویرایش مجوز",
   "DELETE-PERMISSIONS": "حذف مجوز",
+  // داروها
   "VIEW-MEDICATIONS": "مشاهده داروها",
   "CREATE-MEDICATIONS": "ایجاد دارو",
   "EDIT-MEDICATIONS": "ویرایش دارو",
   "DELETE-MEDICATIONS": "حذف دارو",
+  // ثبت‌نام
   "VIEW-REGISTRATIONS": "مشاهده ثبت‌نام‌ها",
   "CREATE-REGISTRATIONS": "ایجاد ثبت‌نام",
   "EDIT-REGISTRATIONS": "ویرایش ثبت‌نام",
   "DELETE-REGISTRATIONS": "حذف ثبت‌نام",
+  // معالجات
   "VIEW-EXAMINATIONS": "مشاهده معالجات",
   "CREATE-EXAMINATIONS": "ایجاد معالجه",
   "EDIT-EXAMINATIONS": "ویرایش معالجه",
   "DELETE-EXAMINATIONS": "حذف معالجه",
+  // لابراتوار
   "VIEW-LAB": "مشاهده لابراتوار",
   "CREATE-LAB": "ایجاد آزمایش",
   "EDIT-LAB": "ویرایش آزمایش",
   "DELETE-LAB": "حذف آزمایش",
   "APPROVE-LAB-RESULTS": "تأیید نتایج لابراتوار",
+  // رادیولوژی
   "VIEW-RADIOLOGY": "مشاهده رادیولوژی",
   "CREATE-RADIOLOGY": "ایجاد تصویربرداری",
   "EDIT-RADIOLOGY": "ویرایش تصویربرداری",
   "DELETE-RADIOLOGY": "حذف تصویربرداری",
   "APPROVE-RADIOLOGY": "تأیید نتایج رادیولوژی",
+  // دواخانه
   "VIEW-PHARMACY": "مشاهده دواخانه",
   "CREATE-PHARMACY": "ایجاد نسخه دواخانه",
   "EDIT-PHARMACY": "ویرایش نسخه دواخانه",
   "DELETE-PHARMACY": "حذف نسخه دواخانه",
   "DISPENSE-MEDICINE": "تحویل دارو",
+  // نسخه‌ها
   "VIEW-PRESCRIPTIONS": "مشاهده نسخه‌ها",
   "CREATE-PRESCRIPTIONS": "ایجاد نسخه",
   "EDIT-PRESCRIPTIONS": "ویرایش نسخه",
   "DELETE-PRESCRIPTIONS": "حذف نسخه",
+  // گدام
   "VIEW-STOCK": "مشاهده گدام",
   "CREATE-STOCK": "افزودن به گدام",
   "EDIT-STOCK": "ویرایش گدام",
   "DELETE-STOCK": "حذف از گدام",
+  // حساب‌ها
   "VIEW-ACCOUNTS": "مشاهده حساب‌ها",
   "CREATE-ACCOUNTS": "ایجاد حساب",
   "EDIT-ACCOUNTS": "ویرایش حساب",
   "DELETE-ACCOUNTS": "حذف حساب",
+  // فروشات
   "VIEW-SALES": "مشاهده فروشات",
   "CREATE-SALES": "ایجاد فروش",
   "EDIT-SALES": "ویرایش فروش",
   "DELETE-SALES": "حذف فروش",
+  // خریدها
   "VIEW-PURCHASES": "مشاهده خریدها",
   "CREATE-PURCHASES": "ایجاد خرید",
   "EDIT-PURCHASES": "ویرایش خرید",
   "DELETE-PURCHASES": "حذف خرید",
+  // پرداخت‌ها
   "VIEW-PAYMENT": "مشاهده پرداخت‌ها",
   "CREATE-PAYMENT": "ایجاد پرداخت",
   "EDIT-PAYMENT": "ویرایش پرداخت",
   "DELETE-PAYMENT": "حذف پرداخت",
+  // تبدیلی‌ها
   "VIEW-CHANGES": "مشاهده تبدیلی‌ها",
   "CREATE-CHANGES": "ایجاد تبدیلی",
   "EDIT-CHANGES": "ویرایش تبدیلی",
   "DELETE-CHANGES": "حذف تبدیلی",
+  // گزارشات
   "VIEW-REPORTS": "مشاهده گزارشات",
   "VIEW-FINANCIAL-REPORTS": "مشاهده گزارشات مالی",
   "VIEW-STOCK-REPORTS": "مشاهده گزارشات گدام",
@@ -117,42 +137,91 @@ const PERMISSION_LABELS = {
   "VIEW-HR-REPORTS": "مشاهده گزارشات منابع بشری",
   "VIEW-MEDICAL-REPORTS": "مشاهده گزارشات طبی",
   "EXPORT-REPORTS": "صادر کردن گزارشات",
+  // بخش‌ها
   "VIEW-DEPARTMENTS": "مشاهده بخش‌ها",
   "CREATE-DEPARTMENTS": "ایجاد بخش",
   "EDIT-DEPARTMENTS": "ویرایش بخش",
   "DELETE-DEPARTMENTS": "حذف بخش",
+  // دسته‌بندی‌ها
   "VIEW-CATEGORIES": "مشاهده دسته‌بندی‌ها",
   "CREATE-CATEGORIES": "ایجاد دسته‌بندی",
   "EDIT-CATEGORIES": "ویرایش دسته‌بندی",
   "DELETE-CATEGORIES": "حذف دسته‌بندی",
+  // لاگ‌ها
   "VIEW-LOGS": "مشاهده لاگ‌ها",
   "DELETE-LOGS": "حذف لاگ‌ها",
+  // تنظیمات
   "VIEW-SETTINGS": "مشاهده تنظیمات",
   "EDIT-SETTINGS": "ویرایش تنظیمات",
+  // کارمندان
   "VIEW-EMPLOYEES": "مشاهده کارمندان",
   "CREATE-EMPLOYEES": "ایجاد کارمند",
   "EDIT-EMPLOYEES": "ویرایش کارمند",
   "DELETE-EMPLOYEES": "حذف کارمند",
+  // حاضری
   "VIEW-ATTENDANCE": "مشاهده حاضری",
   "MANAGE-ATTENDANCE": "مدیریت حاضری",
+  // معاشات
   "VIEW-PAYROLL": "مشاهده معاشات",
   "MANAGE-PAYROLL": "مدیریت معاشات",
+  // ژورنال
+  "VIEW-JOURNAL": "مشاهده ژورنال",
+  "CREATE-JOURNAL": "ایجاد ژورنال",
+  "EDIT-JOURNAL": "ویرایش ژورنال",
+  "DELETE-JOURNAL": "حذف ژورنال",
+  // داشبورد
+  "VIEW-DASHBOARD": "مشاهده داشبورد",
+  "VIEW-DASHBOARD-DAILY": "مشاهده گزارش روزانه",
+  // مریضان
+  "VIEW-PATIENTS": "مشاهده مریضان",
+  "CREATE-PATIENTS": "ایجاد مریض",
+  "EDIT-PATIENTS": "ویرایش مریض",
+  "DELETE-PATIENTS": "حذف مریض",
+  // داکتران
+  "VIEW-DOCTORS": "مشاهده داکتران",
+  "CREATE-DOCTORS": "ایجاد داکتر",
+  "EDIT-DOCTORS": "ویرایش داکتر",
+  "DELETE-DOCTORS": "حذف داکتر",
+  // نرس‌ها
+  "VIEW-NURSES": "مشاهده نرس‌ها",
+  "CREATE-NURSES": "ایجاد نرس",
+  "EDIT-NURSES": "ویرایش نرس",
+  "DELETE-NURSES": "حذف نرس",
+  // تدارکات
+  "VIEW-SUPPLIERS": "مشاهده تأمین‌کنندگان",
+  "CREATE-SUPPLIERS": "ایجاد تأمین‌کننده",
+  "EDIT-SUPPLIERS": "ویرایش تأمین‌کننده",
+  "DELETE-SUPPLIERS": "حذف تأمین‌کننده",
+  // تنظیمات پیشرفته
+  "VIEW-SYSTEM": "مشاهده سیستم",
+  "MANAGE-SYSTEM": "مدیریت سیستم",
+  "VIEW-BACKUP": "مشاهده پشتیبان",
+  "CREATE-BACKUP": "ایجاد پشتیبان",
+  "RESTORE-BACKUP": "بازگردانی پشتیبان",
 };
 
 // ============================================================
-// تابع کمک برای گرفتن لیبل
+// توابع کمک برای گرفتن لیبل
 // ============================================================
 const getRoleLabel = (role) => {
-  // اگر Backend display_name فرستاد، از آن استفاده کن
-  if (role.display_name) return role.display_name;
-  // وگرنه از دیکشنری محلی
-  return ROLE_LABELS[role.name] || role.name;
+  if (role?.display_name) return role.display_name;
+  return ROLE_LABELS[role?.name] || role?.name || "-";
 };
 
 const getPermissionLabel = (perm) => {
+  if (!perm) return "-";
   if (perm.display_name) return perm.display_name;
-  return PERMISSION_LABELS[perm.name] || perm.name;
+  return PERMISSION_LABELS[perm.name] || perm.name || "-";
 };
+
+// نرمال‌سازی برای جستجوی فارسی/انگلیسی
+const normalize = (str) =>
+  String(str ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/ي/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\u200c/g, " "); // نیم‌فاصله
 
 // ============================================================
 // کامپوننت اصلی
@@ -167,6 +236,7 @@ export default function RolesPermissionsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage] = useState(10);
   const [searchQuery, setSearchQuery] = useState("");
+  const [roleSearchQuery, setRoleSearchQuery] = useState("");
 
   const [rolesCurrentPage, setRolesCurrentPage] = useState(1);
   const [rolesPerPage] = useState(5);
@@ -213,6 +283,15 @@ export default function RolesPermissionsPage() {
     fetchPermissions();
   }, [fetchRoles, fetchPermissions]);
 
+  // ✅ ریست صفحه هنگام تغییر جستجو
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setRolesCurrentPage(1);
+  }, [roleSearchQuery]);
+
   const handleAddRole = async () => {
     if (!newRole.trim()) {
       toast.warning("نام رول را وارد کنید");
@@ -227,8 +306,7 @@ export default function RolesPermissionsPage() {
       await fetchRoles();
     } catch (err) {
       console.error("Error adding role:", err);
-      const errorMessage =
-        err.response?.data?.error || "خطا در ایجاد رول جدید";
+      const errorMessage = err.response?.data?.error || "خطا در ایجاد رول جدید";
       toast.error(errorMessage);
     } finally {
       setLoading((prev) => ({ ...prev, addRole: false }));
@@ -236,9 +314,7 @@ export default function RolesPermissionsPage() {
   };
 
   const handleDeleteRole = async (roleId) => {
-    if (!window.confirm("آیا از حذف این رول اطمینان دارید؟")) {
-      return;
-    }
+    if (!window.confirm("آیا از حذف این رول اطمینان دارید؟")) return;
 
     setLoading((prev) => ({ ...prev, deleteRole: roleId }));
     try {
@@ -279,9 +355,7 @@ export default function RolesPermissionsPage() {
   };
 
   const handleDeletePermission = async (permId) => {
-    if (!window.confirm("آیا از حذف این پرمیشن اطمینان دارید؟")) {
-      return;
-    }
+    if (!window.confirm("آیا از حذف این پرمیشن اطمینان دارید؟")) return;
 
     setLoading((prev) => ({ ...prev, deletePermission: permId }));
     try {
@@ -324,11 +398,7 @@ export default function RolesPermissionsPage() {
         response.data.message || "پرمیشن‌ها با موفقیت اختصاص داده شدند"
       );
 
-      setSelectedPermissions((prev) => ({
-        ...prev,
-        [roleId]: [],
-      }));
-
+      setSelectedPermissions((prev) => ({ ...prev, [roleId]: [] }));
       await fetchRoles();
     } catch (err) {
       console.error("Error assigning permissions:", err);
@@ -345,8 +415,12 @@ export default function RolesPermissionsPage() {
     permissionId,
     permissionName
   ) => {
-    const label = PERMISSION_LABELS[permissionName] || permissionName;
-    if (!window.confirm(`آیا از حذف پرمیشن "${label}" از این رول اطمینان دارید؟`)) {
+    const label = getPermissionLabel({ name: permissionName });
+    if (
+      !window.confirm(
+        `آیا از حذف پرمیشن "${label}" از این رول اطمینان دارید؟`
+      )
+    ) {
       return;
     }
 
@@ -379,20 +453,39 @@ export default function RolesPermissionsPage() {
         ? currentSelected.filter((id) => id !== permissionId)
         : [...currentSelected, permissionId];
 
-      return {
-        ...prev,
-        [roleId]: newSelected,
-      };
+      return { ...prev, [roleId]: newSelected };
     });
   };
 
-  // ✅ فیلتر بر اساس نام یا لیبل
-  const filteredPermissions = permissions.filter((perm) => {
-    const q = searchQuery.toLowerCase();
-    const label = getPermissionLabel(perm).toLowerCase();
-    return perm.name.toLowerCase().includes(q) || label.includes(q);
-  });
+  // ============================================================
+  // ✅ فیلتر پرمیشن‌ها (توسط نام انگلیسی یا لیبل فارسی)
+  // ============================================================
+  const filteredPermissions = useMemo(() => {
+    const q = normalize(searchQuery);
+    if (!q) return permissions;
 
+    return permissions.filter((perm) => {
+      const label = normalize(getPermissionLabel(perm));
+      const name = normalize(perm.name);
+      return label.includes(q) || name.includes(q);
+    });
+  }, [permissions, searchQuery]);
+
+  // ============================================================
+  // ✅ فیلتر رول‌ها
+  // ============================================================
+  const filteredRoles = useMemo(() => {
+    const q = normalize(roleSearchQuery);
+    if (!q) return roles;
+
+    return roles.filter((role) => {
+      const label = normalize(getRoleLabel(role));
+      const name = normalize(role.name);
+      return label.includes(q) || name.includes(q);
+    });
+  }, [roles, roleSearchQuery]);
+
+  // ✅ صفحه‌بندی پرمیشن‌ها
   const permIndexOfLast = currentPage * perPage;
   const permIndexOfFirst = permIndexOfLast - perPage;
   const currentPermissions = filteredPermissions.slice(
@@ -401,10 +494,11 @@ export default function RolesPermissionsPage() {
   );
   const permTotalPages = Math.ceil(filteredPermissions.length / perPage);
 
+  // ✅ صفحه‌بندی رول‌ها
   const rolesIndexOfLast = rolesCurrentPage * rolesPerPage;
   const rolesIndexOfFirst = rolesIndexOfLast - rolesPerPage;
-  const currentRoles = roles.slice(rolesIndexOfFirst, rolesIndexOfLast);
-  const rolesTotalPages = Math.ceil(roles.length / rolesPerPage);
+  const currentRoles = filteredRoles.slice(rolesIndexOfFirst, rolesIndexOfLast);
+  const rolesTotalPages = Math.ceil(filteredRoles.length / rolesPerPage);
 
   return (
     <ReportLayout>
@@ -470,15 +564,6 @@ export default function RolesPermissionsPage() {
                   : "اضافه کردن پرمیشن"}
               </button>
             </div>
-
-            <div>
-              <input
-                type="text"
-                placeholder="جستجوی پرمیشن‌ها (فارسی یا انگلیسی)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
           </div>
 
           {/* ============================================================ */}
@@ -492,8 +577,25 @@ export default function RolesPermissionsPage() {
                 marginBottom: "15px",
               }}
             >
-              لیست رول‌ها ({roles.length})
+              لیست رول‌ها ({filteredRoles.length})
             </h2>
+
+            <div style={{ marginBottom: "10px" }}>
+              <input
+                type="text"
+                placeholder="جستجوی رول‌ها (فارسی یا انگلیسی)"
+                value={roleSearchQuery}
+                onChange={(e) => setRoleSearchQuery(e.target.value)}
+                style={{
+                  padding: "10px",
+                  width: "100%",
+                  maxWidth: "400px",
+                  borderRadius: "8px",
+                  border: "1px solid #ddd",
+                }}
+              />
+            </div>
+
             {loading.roles ? (
               <div className="loading-box">در حال بارگذاری رول‌ها...</div>
             ) : (
@@ -510,49 +612,11 @@ export default function RolesPermissionsPage() {
                 >
                   <thead style={{ backgroundColor: "#f5f5f5" }}>
                     <tr>
-                      <th
-                        style={{
-                          borderBottom: "1px solid #ddd",
-                          padding: "12px",
-                          textAlign: "right",
-                        }}
-                      >
-                        نام رول
-                      </th>
-                      <th
-                        style={{
-                          borderBottom: "1px solid #ddd",
-                          padding: "12px",
-                          textAlign: "right",
-                        }}
-                      >
-                        نام سیستمی
-                      </th>
-                      <th
-                        style={{
-                          borderBottom: "1px solid #ddd",
-                          padding: "12px",
-                          textAlign: "right",
-                        }}
-                      >
-                        پرمیشن‌های فعلی
-                      </th>
-                      <th
-                        style={{
-                          borderBottom: "1px solid #ddd",
-                          padding: "12px",
-                          textAlign: "right",
-                        }}
-                      >
-                        انتخاب پرمیشن جدید
-                      </th>
-                      <th
-                        style={{
-                          borderBottom: "1px solid #ddd",
-                          padding: "12px",
-                          textAlign: "center",
-                        }}
-                      >
+                      <th style={thStyle}>نام رول</th>
+                      <th style={thStyle}>نام سیستمی</th>
+                      <th style={thStyle}>پرمیشن‌های فعلی</th>
+                      <th style={thStyle}>انتخاب پرمیشن جدید</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>
                         عملیات
                       </th>
                     </tr>
@@ -564,7 +628,6 @@ export default function RolesPermissionsPage() {
                           key={role.id}
                           style={{ borderBottom: "1px solid #eee" }}
                         >
-                          {/* لیبل فارسی */}
                           <td
                             style={{
                               padding: "12px",
@@ -575,7 +638,6 @@ export default function RolesPermissionsPage() {
                             {getRoleLabel(role)}
                           </td>
 
-                          {/* نام سیستمی */}
                           <td
                             style={{
                               padding: "12px",
@@ -595,8 +657,7 @@ export default function RolesPermissionsPage() {
                                 gap: "5px",
                               }}
                             >
-                              {role.permissions &&
-                              role.permissions.length > 0 ? (
+                              {role.permissions && role.permissions.length > 0 ? (
                                 role.permissions.map((perm) => (
                                   <span
                                     key={perm.id}
@@ -641,9 +702,7 @@ export default function RolesPermissionsPage() {
                                   </span>
                                 ))
                               ) : (
-                                <span
-                                  style={{ color: "#999", fontSize: "13px" }}
-                                >
+                                <span style={{ color: "#999", fontSize: "13px" }}>
                                   بدون پرمیشن
                                 </span>
                               )}
@@ -711,9 +770,7 @@ export default function RolesPermissionsPage() {
                             </div>
                           </td>
 
-                          <td
-                            style={{ padding: "12px", textAlign: "center" }}
-                          >
+                          <td style={{ padding: "12px", textAlign: "center" }}>
                             <div
                               style={{
                                 display: "flex",
@@ -835,8 +892,25 @@ export default function RolesPermissionsPage() {
                 marginBottom: "15px",
               }}
             >
-              لیست پرمیشن‌ها ({permissions.length})
+              لیست پرمیشن‌ها ({filteredPermissions.length})
             </h2>
+
+            <div style={{ marginBottom: "10px" }}>
+              <input
+                type="text"
+                placeholder="جستجوی پرمیشن‌ها (فارسی یا انگلیسی)"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  padding: "10px",
+                  width: "100%",
+                  maxWidth: "400px",
+                  borderRadius: "8px",
+                  border: "1px solid #ddd",
+                }}
+              />
+            </div>
+
             {loading.permissions ? (
               <div className="loading-box">در حال بارگذاری پرمیشن‌ها...</div>
             ) : (
@@ -853,31 +927,9 @@ export default function RolesPermissionsPage() {
                 >
                   <thead style={{ backgroundColor: "#f5f5f5" }}>
                     <tr>
-                      <th
-                        style={{
-                          borderBottom: "1px solid #ddd",
-                          padding: "12px",
-                          textAlign: "right",
-                        }}
-                      >
-                        نام پرمیشن
-                      </th>
-                      <th
-                        style={{
-                          borderBottom: "1px solid #ddd",
-                          padding: "12px",
-                          textAlign: "right",
-                        }}
-                      >
-                        نام سیستمی
-                      </th>
-                      <th
-                        style={{
-                          borderBottom: "1px solid #ddd",
-                          padding: "12px",
-                          textAlign: "center",
-                        }}
-                      >
+                      <th style={thStyle}>نام پرمیشن</th>
+                      <th style={thStyle}>نام سیستمی</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>
                         عملیات
                       </th>
                     </tr>
@@ -889,7 +941,6 @@ export default function RolesPermissionsPage() {
                           key={perm.id}
                           style={{ borderBottom: "1px solid #eee" }}
                         >
-                          {/* لیبل فارسی */}
                           <td
                             style={{
                               padding: "12px",
@@ -900,7 +951,6 @@ export default function RolesPermissionsPage() {
                             {getPermissionLabel(perm)}
                           </td>
 
-                          {/* نام سیستمی */}
                           <td
                             style={{
                               padding: "12px",
@@ -912,9 +962,7 @@ export default function RolesPermissionsPage() {
                             {perm.name}
                           </td>
 
-                          <td
-                            style={{ padding: "12px", textAlign: "center" }}
-                          >
+                          <td style={{ padding: "12px", textAlign: "center" }}>
                             <button
                               onClick={() => handleDeletePermission(perm.id)}
                               disabled={loading.deletePermission === perm.id}
@@ -1003,10 +1051,7 @@ export default function RolesPermissionsPage() {
             draggable
             pauseOnFocusLoss
             limit={3}
-            style={{
-              zIndex: 9999,
-              marginTop: "60px",
-            }}
+            style={{ zIndex: 9999, marginTop: "60px" }}
             toastStyle={{
               backgroundColor: "#fff",
               color: "#333",
@@ -1020,3 +1065,12 @@ export default function RolesPermissionsPage() {
     </ReportLayout>
   );
 }
+
+// ============================================================
+// استایل مشترک هدر جدول
+// ============================================================
+const thStyle = {
+  borderBottom: "1px solid #ddd",
+  padding: "12px",
+  textAlign: "right",
+};

@@ -65,8 +65,6 @@ return new class extends Migration {
                 FROM journals
                 GROUP BY DATE(journal_date)
             ) j ON j.report_date = d.report_date
-
-            ORDER BY d.report_date DESC
         ");
     }
 
