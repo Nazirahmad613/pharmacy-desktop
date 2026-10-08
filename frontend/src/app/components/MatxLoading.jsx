@@ -32,79 +32,61 @@ const MatxLoading = ({
           
           <svg viewBox="0 0 240 100" className="car-svg-small">
             <defs>
-              {/* گرادیان بدنه سفید سه‌بعدی */}
+              {/* گرادیان بدنه سفید لندکروزر آمبولانس */}
               <linearGradient id="ambulanceBody" x1="0%" y1="0%" x2="0%" y2="100%">
                 <stop offset="0%" stopColor="#ffffff" />
-                <stop offset="45%" stopColor="#f1f5f9" />
-                <stop offset="80%" stopColor="#cbd5e1" />
-                <stop offset="100%" stopColor="#94a3b8" />
+                <stop offset="65%" stopColor="#f8fafc" />
+                <stop offset="88%" stopColor="#e2e8f0" />
+                <stop offset="100%" stopColor="#cbd5e1" />
               </linearGradient>
 
-              {/* گرادیان نوار آبی بالای بدنه */}
-              <linearGradient id="blueStripe" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#60a5fa" />
-                <stop offset="100%" stopColor="#1d4ed8" />
-              </linearGradient>
-
-              {/* گرادیان نوار قرمز پایین */}
+              {/* گرادیان نوار نارنجی-سرخ کابل آمبولانس */}
               <linearGradient id="redStripe" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#ef4444" />
-                <stop offset="100%" stopColor="#b91c1c" />
+                <stop offset="0%" stopColor="#ff5722" />
+                <stop offset="50%" stopColor="#ea580c" />
+                <stop offset="100%" stopColor="#dc2626" />
               </linearGradient>
 
-              {/* گرادیان کابین و شیشه */}
-              <linearGradient id="glassGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#e0f2fe" stopOpacity="0.95" />
-                <stop offset="50%" stopColor="#7dd3fc" stopOpacity="0.8" />
-                <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.9" />
+              {/* گرادیان شیشه‌های دودی آمبولانس */}
+              <linearGradient id="darkWindow" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#334155" />
+                <stop offset="45%" stopColor="#1e293b" />
+                <stop offset="100%" stopColor="#0f172a" />
               </linearGradient>
 
-              {/* گرادیان چرخ */}
+              {/* گرادیان تایرهای آفرود */}
               <radialGradient id="wheelGradient" cx="35%" cy="35%" r="70%">
-                <stop offset="0%" stopColor="#64748b" />
-                <stop offset="50%" stopColor="#1e293b" />
-                <stop offset="100%" stopColor="#020617" />
+                <stop offset="0%" stopColor="#475569" />
+                <stop offset="55%" stopColor="#1e293b" />
+                <stop offset="100%" stopColor="#090d16" />
               </radialGradient>
 
-              {/* گرادیان رینگ */}
+              {/* گرادیان رینگ فولادی نقره‌ای */}
               <radialGradient id="rimGradient" cx="40%" cy="40%" r="65%">
-                <stop offset="0%" stopColor="#ffffff" />
-                <stop offset="40%" stopColor="#cbd5e1" />
-                <stop offset="100%" stopColor="#64748b" />
+                <stop offset="0%" stopColor="#f8fafc" />
+                <stop offset="55%" stopColor="#cbd5e1" />
+                <stop offset="85%" stopColor="#64748b" />
+                <stop offset="100%" stopColor="#334155" />
               </radialGradient>
 
               {/* درخشش چراغ جلو */}
               <radialGradient id="headlightGlow" cx="50%" cy="50%" r="50%">
                 <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
-                <stop offset="40%" stopColor="#fef3c7" stopOpacity="0.9" />
-                <stop offset="100%" stopColor="#fbbf24" stopOpacity="0" />
+                <stop offset="40%" stopColor="#fef08a" stopOpacity="0.9" />
+                <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
               </radialGradient>
 
-              {/* درخشش چراغ عقب قرمز */}
-              <radialGradient id="taillightGlow" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
-                <stop offset="40%" stopColor="#ef4444" stopOpacity="0.9" />
-                <stop offset="100%" stopColor="#b91c1c" stopOpacity="0" />
-              </radialGradient>
-
-              {/* درخشش چراغ هشدار آبی */}
-              <radialGradient id="sirenBlue" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
-                <stop offset="35%" stopColor="#60a5fa" stopOpacity="1" />
-                <stop offset="100%" stopColor="#1d4ed8" stopOpacity="0" />
-              </radialGradient>
-
-              {/* درخشش چراغ هشدار قرمز */}
+              {/* درخشش چراغ خطر سقفی */}
               <radialGradient id="sirenRed" cx="50%" cy="50%" r="50%">
                 <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
-                <stop offset="35%" stopColor="#f87171" stopOpacity="1" />
-                <stop offset="100%" stopColor="#b91c1c" stopOpacity="0" />
+                <stop offset="30%" stopColor="#ef4444" stopOpacity="1" />
+                <stop offset="100%" stopColor="#991b1b" stopOpacity="0" />
               </radialGradient>
 
-              {/* سایه بدنه */}
-              <linearGradient id="bodyShadow" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#475569" stopOpacity="0.9" />
-                <stop offset="100%" stopColor="#0f172a" stopOpacity="1" />
+              {/* سایه شاسی زیرین */}
+              <linearGradient id="chassisShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#334155" />
+                <stop offset="100%" stopColor="#0f172a" />
               </linearGradient>
 
               <filter id="glowFilter" x="-50%" y="-50%" width="200%" height="200%">
@@ -115,8 +97,8 @@ const MatxLoading = ({
                 </feMerge>
               </filter>
 
-              <filter id="sirenGlow" x="-100%" y="-100%" width="300%" height="300%">
-                <feGaussianBlur stdDeviation="4" result="blur" />
+              <filter id="sirenGlow" x="-120%" y="-120%" width="340%" height="340%">
+                <feGaussianBlur stdDeviation="4.5" result="blur" />
                 <feMerge>
                   <feMergeNode in="blur" />
                   <feMergeNode in="SourceGraphic" />
@@ -124,130 +106,246 @@ const MatxLoading = ({
               </filter>
             </defs>
 
-            {/* سایه زیر آمبولانس */}
-            <ellipse cx="120" cy="92" rx="105" ry="5" fill="rgba(0,0,0,0.35)" />
+            {/* سایه روی زمین */}
+            <ellipse cx="122" cy="92" rx="102" ry="4.5" fill="rgba(0,0,0,0.38)" />
 
-            {/* === بدنه اصلی - لایه سایه === */}
-            <path
-              d="M14 62 L38 62 L44 40 L84 34 L172 34 L200 62 L228 62 L228 76 L14 76 Z"
-              fill="url(#bodyShadow)"
-            />
-
-            {/* === بدنه اصلی - لایه سفید === */}
-            <path
-              d="M16 60 L38 60 L44 38 L84 32 L172 32 L198 60 L226 60 L226 72 L16 72 Z"
-              fill="url(#ambulanceBody)"
-              stroke="#64748b"
-              strokeWidth="0.8"
-            />
-
-            {/* === کابین (بخش جلو) === */}
-            <path
-              d="M160 34 L178 18 L212 18 L226 60 L160 60 Z"
-              fill="url(#ambulanceBody)"
-              stroke="#64748b"
-              strokeWidth="0.8"
-            />
-
-            {/* === شیشه جلو === */}
-            <path
-              d="M164 36 L180 21 L208 21 L218 58 L164 58 Z"
-              fill="url(#glassGradient)"
-              stroke="rgba(255,255,255,0.7)"
-              strokeWidth="0.6"
-            />
-            {/* بازتاب شیشه جلو */}
-            <path
-              d="M168 38 L182 24 L194 24 L190 38 Z"
-              fill="rgba(255,255,255,0.45)"
-            />
-
-            {/* === شیشه کناری کابین === */}
-            <path
-              d="M150 40 L158 38 L158 52 L150 52 Z"
-              fill="url(#glassGradient)"
-              opacity="0.85"
-              stroke="rgba(255,255,255,0.6)"
-              strokeWidth="0.5"
-            />
-
-            {/* === نوار آبی بالای بدنه === */}
-            <rect x="18" y="42" width="140" height="5" fill="url(#blueStripe)" opacity="0.9" />
-
-            {/* === نوار قرمز پایین بدنه === */}
-            <rect x="18" y="58" width="206" height="4" fill="url(#redStripe)" opacity="0.95" />
-
-            {/* === صلیب سرخ روی بدنه === */}
-            <g transform="translate(85, 47)">
-              <rect x="-2" y="-9" width="4" height="18" fill="#dc2626" />
-              <rect x="-9" y="-2" width="18" height="4" fill="#dc2626" />
+            {/* === دود اگزوز عقب === */}
+            <g className="smoke-group-small">
+              <circle cx="18" cy="75" r="4" fill="rgba(148,163,184,0.65)" className="smoke-puff-small puff1-small" />
+              <circle cx="10" cy="70" r="5" fill="rgba(148,163,184,0.5)" className="smoke-puff-small puff2-small" />
+              <circle cx="2" cy="64" r="6" fill="rgba(100,116,139,0.4)" className="smoke-puff-small puff3-small" />
+              <circle cx="-6" cy="58" r="7" fill="rgba(100,116,139,0.25)" className="smoke-puff-small puff4-small" />
             </g>
 
-            {/* === نوشته AMBULANCE (نمادین) === */}
-            <text x="115" y="55" fontSize="6" fontWeight="bold" fill="#1d4ed8" fontFamily="Arial">
-              AMBULANCE
-            </text>
+            {/* === تایر زاپاس عقب (نصب شده روی دروازه پشت) === */}
+            <g>
+              {/* براکت نگهدارنده زاپاس */}
+              <rect x="21" y="47" width="7" height="18" fill="#1e293b" />
+              {/* تایر زاپاس */}
+              <rect x="13" y="38" width="11" height="31" rx="3.5" fill="url(#wheelGradient)" stroke="#0f172a" strokeWidth="1" />
+              {/* آج‌های تایر زاپاس */}
+              <line x1="13" y1="43" x2="16" y2="43" stroke="#090d16" strokeWidth="1.2" />
+              <line x1="13" y1="48" x2="16" y2="48" stroke="#090d16" strokeWidth="1.2" />
+              <line x1="13" y1="53" x2="16" y2="53" stroke="#090d16" strokeWidth="1.2" />
+              <line x1="13" y1="58" x2="16" y2="58" stroke="#090d16" strokeWidth="1.2" />
+              <line x1="13" y1="63" x2="16" y2="63" stroke="#090d16" strokeWidth="1.2" />
+              {/* رینگ زاپاس */}
+              <ellipse cx="18" cy="53.5" rx="2" ry="8" fill="#94a3b8" />
+            </g>
 
-            {/* === خط درخشش روی سقف === */}
+            {/* === شاسی، دیفرانسیل و رکاب زیر موتر === */}
             <path
-              d="M20 40 L42 40 L48 36 L84 32 L172 32 L198 58"
-              fill="none"
-              stroke="rgba(255,255,255,0.7)"
-              strokeWidth="1.2"
-              strokeLinecap="round"
+              d="M28 70 L215 70 L212 76 L158 76 L142 78 L92 78 L40 75 Z"
+              fill="url(#chassisShadow)"
+            />
+            {/* رکاب پله زیر دروازه */}
+            <rect x="98" y="73" width="60" height="2.8" rx="1" fill="#334155" stroke="#0f172a" strokeWidth="0.5" />
+            {/* گل‌پخش‌کن (Mudflap) عقب و جلو */}
+            <polygon points="36,71 41,71 39,82 34,82" fill="#0f172a" />
+            <polygon points="168,71 173,71 171,81 166,81" fill="#0f172a" />
+
+            {/* === بدنه اصلی تویوتا لندکروزر شاسی‌بلند (رو به راست) === */}
+            <path
+              d="M24 71 
+                 L31 20 
+                 Q32 16 37 16 
+                 L145 16 
+                 Q151 16 154 20 
+                 L173 45 
+                 L219 49 
+                 Q223 50 223 54 
+                 L223 71 
+                 L208 71 
+                 L201 60 
+                 L175 60 
+                 L168 71 
+                 L84 71 
+                 L77 59 
+                 L49 59 
+                 L42 71 
+                 Z"
+              fill="url(#ambulanceBody)"
+              stroke="#64748b"
+              strokeWidth="0.9"
             />
 
-            {/* === چراغ هشدار سقف (آبی و قرمز) === */}
-            <rect x="100" y="24" width="34" height="8" rx="2" fill="#1e293b" stroke="#0f172a" strokeWidth="0.6" />
-            {/* چراغ آبی */}
-            <ellipse cx="110" cy="28" rx="6" ry="3.5" fill="url(#sirenBlue)" filter="url(#sirenGlow)" className="siren-blue" />
-            <ellipse cx="110" cy="28" rx="3" ry="2" fill="#60a5fa" />
-            {/* چراغ قرمز */}
-            <ellipse cx="124" cy="28" rx="6" ry="3.5" fill="url(#sirenRed)" filter="url(#sirenGlow)" className="siren-red" />
-            <ellipse cx="124" cy="28" rx="3" ry="2" fill="#f87171" />
+            {/* سقف برجسته سفید لندکروزر */}
+            <path
+              d="M32 19 Q34 14.5 40 14.5 L143 14.5 Q148 14.5 152 19 Z"
+              fill="#ffffff"
+              stroke="#94a3b8"
+              strokeWidth="0.6"
+            />
+            {/* خط ناودانی سقف */}
+            <line x1="31" y1="19.5" x2="154" y2="19.5" stroke="#94a3b8" strokeWidth="1" />
 
-            {/* === چراغ جلو === */}
-            <ellipse cx="228" cy="56" rx="9" ry="7" fill="url(#headlightGlow)" filter="url(#glowFilter)" />
-            <ellipse cx="228" cy="56" rx="5" ry="4" fill="#ffffff" />
-            <ellipse cx="228" cy="56" rx="2.5" ry="2" fill="#fef3c7" />
+            {/* === چراغ گردان تکی سرخ روی سقف (مشابه عکس کابل آمبولانس) === */}
+            {/* پایه فلزی چراغ */}
+            <rect x="122" y="13" width="11" height="2.2" rx="0.6" fill="#334155" stroke="#0f172a" strokeWidth="0.4" />
+            {/* هاله نورانی چشمک‌زن */}
+            <ellipse cx="127.5" cy="9.5" rx="9" ry="7" fill="url(#sirenRed)" filter="url(#sirenGlow)" className="siren-red" />
+            {/* حباب استوانه‌ای سرخ چراغ خطر */}
+            <path d="M123.5 13 L124.5 6.5 Q127.5 5.5 130.5 6.5 L131.5 13 Z" fill="#dc2626" stroke="#7f1d1d" strokeWidth="0.5" />
+            <path d="M125 12 L125.6 7.5 L127.2 7.5 L127 12 Z" fill="#fca5a5" opacity="0.85" />
 
-            {/* === چراغ عقب قرمز === */}
-            <ellipse cx="14" cy="56" rx="7" ry="6" fill="url(#taillightGlow)" filter="url(#glowFilter)" />
-            <ellipse cx="14" cy="56" rx="4" ry="3.5" fill="#ef4444" />
-            <ellipse cx="14" cy="56" rx="2" ry="1.8" fill="#ffffff" opacity="0.8" />
+            {/* === پنجره‌های عقب و جلو (شیشه‌های دودی) === */}
+            {/* پنجره دوتکه عقب */}
+            <rect x="36" y="22" width="38" height="19" rx="2.5" fill="url(#darkWindow)" stroke="#0f172a" strokeWidth="1.2" />
+            <line x1="55" y1="22" x2="55" y2="41" stroke="#0f172a" strokeWidth="1.4" />
+            {/* بازتاب نور روی شیشه عقب */}
+            <polygon points="39,24 46,24 41,39 37,39" fill="rgba(255,255,255,0.12)" />
 
-            {/* === چرخ جلو === */}
-            <ellipse cx="60" cy="76" rx="17" ry="16" fill="url(#wheelGradient)" />
-            <ellipse cx="60" cy="76" rx="17" ry="16" fill="none" stroke="#0f172a" strokeWidth="1.2" />
-            <ellipse cx="60" cy="76" rx="10" ry="9.5" fill="url(#rimGradient)" />
-            <ellipse cx="60" cy="76" rx="10" ry="9.5" fill="none" stroke="#94a3b8" strokeWidth="0.8" />
-            <circle cx="60" cy="76" r="3" fill="#475569" />
-            <circle cx="60" cy="76" r="1.5" fill="#e2e8f0" />
-            <line x1="60" y1="67" x2="60" y2="61" stroke="#cbd5e1" strokeWidth="1.3" strokeLinecap="round" />
-            <line x1="60" y1="85" x2="60" y2="91" stroke="#cbd5e1" strokeWidth="1.3" strokeLinecap="round" />
-            <line x1="51" y1="76" x2="45" y2="76" stroke="#cbd5e1" strokeWidth="1.3" strokeLinecap="round" />
-            <line x1="69" y1="76" x2="75" y2="76" stroke="#cbd5e1" strokeWidth="1.3" strokeLinecap="round" />
-            <ellipse cx="56" cy="72" rx="3" ry="2" fill="rgba(255,255,255,0.5)" />
+            {/* پنجره دوتکه وسط */}
+            <rect x="79" y="22" width="38" height="19" rx="2.5" fill="url(#darkWindow)" stroke="#0f172a" strokeWidth="1.2" />
+            <line x1="98" y1="22" x2="98" y2="41" stroke="#0f172a" strokeWidth="1.4" />
+            {/* بازتاب نور روی شیشه وسط */}
+            <polygon points="82,24 89,24 84,39 80,39" fill="rgba(255,255,255,0.12)" />
 
-            {/* === چرخ عقب === */}
-            <ellipse cx="178" cy="76" rx="17" ry="16" fill="url(#wheelGradient)" />
-            <ellipse cx="178" cy="76" rx="17" ry="16" fill="none" stroke="#0f172a" strokeWidth="1.2" />
-            <ellipse cx="178" cy="76" rx="10" ry="9.5" fill="url(#rimGradient)" />
-            <ellipse cx="178" cy="76" rx="10" ry="9.5" fill="none" stroke="#94a3b8" strokeWidth="0.8" />
-            <circle cx="178" cy="76" r="3" fill="#475569" />
-            <circle cx="178" cy="76" r="1.5" fill="#e2e8f0" />
-            <line x1="178" y1="67" x2="178" y2="61" stroke="#cbd5e1" strokeWidth="1.3" strokeLinecap="round" />
-            <line x1="178" y1="85" x2="178" y2="91" stroke="#cbd5e1" strokeWidth="1.3" strokeLinecap="round" />
-            <line x1="169" y1="76" x2="163" y2="76" stroke="#cbd5e1" strokeWidth="1.3" strokeLinecap="round" />
-            <line x1="187" y1="76" x2="193" y2="76" stroke="#cbd5e1" strokeWidth="1.3" strokeLinecap="round" />
-            <ellipse cx="174" cy="72" rx="3" ry="2" fill="rgba(255,255,255,0.5)" />
+            {/* پنجره کابین راننده (جلو) */}
+            <path
+              d="M123 22 L149 22 L166 43 L123 43 Z"
+              fill="url(#darkWindow)"
+              stroke="#0f172a"
+              strokeWidth="1.2"
+              strokeLinejoin="round"
+            />
+            {/* بازتاب شیشه کابین */}
+            <path d="M127 24 L138 24 L132 41 L125 41 Z" fill="rgba(255,255,255,0.16)" />
 
-            {/* === دود آبی روشن === */}
-            <g className="smoke-group-small">
-              <circle cx="14" cy="62" r="4" fill="rgba(96,165,250,0.65)" className="smoke-puff-small puff1-small" />
-              <circle cx="6" cy="56" r="5" fill="rgba(96,165,250,0.55)" className="smoke-puff-small puff2-small" />
-              <circle cx="0" cy="50" r="6" fill="rgba(59,130,246,0.45)" className="smoke-puff-small puff3-small" />
-              <circle cx="-8" cy="44" r="7" fill="rgba(59,130,246,0.3)" className="smoke-puff-small puff4-small" />
+            {/* شیشه جلو (Windshield) */}
+            <path
+              d="M153 20 L172 44 L168 44 L150 21 Z"
+              fill="#bae6fd"
+              opacity="0.7"
+            />
+
+            {/* آیینه بغل سیاه */}
+            <rect x="161" y="37" width="4.5" height="7.5" rx="1" fill="#0f172a" stroke="#334155" strokeWidth="0.5" />
+            <line x1="161" y1="43" x2="158" y2="44.5" stroke="#0f172a" strokeWidth="1.2" />
+
+            {/* خطوط دروازه کابین و دستگیره‌ها */}
+            <line x1="120" y1="20" x2="120" y2="69" stroke="#94a3b8" strokeWidth="0.8" />
+            <line x1="168" y1="44" x2="165" y2="69" stroke="#94a3b8" strokeWidth="0.8" />
+            {/* دستگیره دروازه جلو */}
+            <rect x="123" y="48.5" width="6" height="2" rx="0.6" fill="#1e293b" />
+            {/* هواکش سیاه عقب */}
+            <rect x="40" y="50" width="9" height="3.2" rx="0.6" fill="#1e293b" />
+
+            {/* === نوار سرخ/نارنجی مشخصه آمبولانس کابل و نوشته‌های روی بدنه === */}
+            {/* نوار عقب */}
+            <rect x="25.5" y="45" width="9" height="3.8" fill="url(#redStripe)" />
+            {/* نوار ممتد جلو تا کاپوت */}
+            <path
+              d="M119 45 L173 45 L221 49.5 L221 52.5 L173 48.8 L119 48.8 Z"
+              fill="url(#redStripe)"
+            />
+
+            {/* نوشته: خدمات رایگان ۲۴ ساعته کابل آمبولانس */}
+            <text
+              x="77"
+              y="48.2"
+              fontSize="5.4"
+              fontWeight="900"
+              fill="#dc2626"
+              textAnchor="middle"
+              fontFamily="Tahoma, Arial, sans-serif"
+            >
+              خدمات رایگان ۲۴ ساعته کابل آمبولانس
+            </text>
+
+            {/* شماره تماس بزرگ: ۱۰۲ */}
+            <text
+              x="104"
+              y="60"
+              fontSize="10.5"
+              fontWeight="900"
+              fill="#dc2626"
+              textAnchor="middle"
+              fontFamily="Arial Black, Tahoma, sans-serif"
+            >
+              ۱۰۲
+            </text>
+
+            {/* === لوگوی دایره‌ای روی دروازه جلو (وزارت صحت عامه / کابل آمبولانس) === */}
+            <g transform="translate(143, 57)">
+              <circle cx="0" cy="0" r="8" fill="#ffffff" stroke="#dc2626" strokeWidth="0.9" />
+              <circle cx="0" cy="0" r="6.4" fill="none" stroke="#1e293b" strokeWidth="0.35" strokeDasharray="1.5,0.8" />
+              {/* نماد عصای طبی / هلال در مرکز لوگو */}
+              <line x1="0" y1="-4.2" x2="0" y2="4.2" stroke="#dc2626" strokeWidth="1.2" strokeLinecap="round" />
+              <path d="M-2.2 -1.8 Q0 -3.8 2.2 -1.8 Q0 0.2 -2.2 1.8 Q0 3.8 2.2 1.8" fill="none" stroke="#dc2626" strokeWidth="0.8" />
+            </g>
+
+            {/* گلگیرهای برجسته بالای چرخ‌ها */}
+            <path
+              d="M40 71 L47 57 L79 57 L86 71"
+              fill="none"
+              stroke="#cbd5e1"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M166 71 L173 58 L203 58 L210 71"
+              fill="none"
+              stroke="#cbd5e1"
+              strokeWidth="1.5"
+            />
+
+            {/* === سپرهای آفرود سیاه (عقب و جلو) === */}
+            {/* سپر عقب */}
+            <rect x="17" y="67" width="14" height="5.5" rx="1" fill="#1e293b" stroke="#0f172a" strokeWidth="0.6" />
+            {/* سپر جلو فلزی سیاه */}
+            <path
+              d="M217 65 L228 65 Q230 65 230 67.5 L230 72.5 Q230 74 228 74 L217 74 Z"
+              fill="#1e293b"
+              stroke="#0f172a"
+              strokeWidth="0.7"
+            />
+
+            {/* === چراغ‌های جلو و عقب === */}
+            {/* چراغ عقب عمودی (سرخ و نارنجی) */}
+            <rect x="25" y="56" width="3.8" height="9.5" rx="0.8" fill="#dc2626" stroke="#7f1d1d" strokeWidth="0.5" />
+            <rect x="25" y="61.5" width="3.8" height="4" fill="#f59e0b" />
+
+            {/* چراغ جلو و راهنما (نارنجی و سفید درخشان) */}
+            <ellipse cx="225" cy="56" rx="9" ry="6.5" fill="url(#headlightGlow)" filter="url(#glowFilter)" />
+            <polygon points="218,52 223,53 223,60 218,60" fill="#ffffff" stroke="#94a3b8" strokeWidth="0.4" />
+            <polygon points="216,52 219.5,52.5 219.5,57 216,56.5" fill="#f97316" />
+
+            {/* === چرخ عقب (تایر آفرود بزرگ با رینگ فولادی سوراخ‌دار) === */}
+            <g>
+              <circle cx="63" cy="76" r="16.5" fill="url(#wheelGradient)" stroke="#090d16" strokeWidth="1.2" />
+              <circle cx="63" cy="76" r="13.5" fill="none" stroke="#334155" strokeWidth="0.6" strokeDasharray="3,2" />
+              <circle cx="63" cy="76" r="9.5" fill="url(#rimGradient)" stroke="#475569" strokeWidth="0.8" />
+              {/* سوراخ‌های رینگ فولادی لندکروزر */}
+              <circle cx="63" cy="69.2" r="1.1" fill="#1e293b" />
+              <circle cx="63" cy="82.8" r="1.1" fill="#1e293b" />
+              <circle cx="56.2" cy="76" r="1.1" fill="#1e293b" />
+              <circle cx="69.8" cy="76" r="1.1" fill="#1e293b" />
+              <circle cx="58.2" cy="71.2" r="1.1" fill="#1e293b" />
+              <circle cx="67.8" cy="80.8" r="1.1" fill="#1e293b" />
+              <circle cx="67.8" cy="71.2" r="1.1" fill="#1e293b" />
+              <circle cx="58.2" cy="80.8" r="1.1" fill="#1e293b" />
+              {/* توپی وسط چرخ */}
+              <circle cx="63" cy="76" r="3.5" fill="#334155" stroke="#0f172a" strokeWidth="0.6" />
+              <circle cx="63" cy="76" r="1.5" fill="#94a3b8" />
+            </g>
+
+            {/* === چرخ جلو (تایر آفرود بزرگ با رینگ فولادی سوراخ‌دار) === */}
+            <g>
+              <circle cx="188" cy="76" r="16.5" fill="url(#wheelGradient)" stroke="#090d16" strokeWidth="1.2" />
+              <circle cx="188" cy="76" r="13.5" fill="none" stroke="#334155" strokeWidth="0.6" strokeDasharray="3,2" />
+              <circle cx="188" cy="76" r="9.5" fill="url(#rimGradient)" stroke="#475569" strokeWidth="0.8" />
+              {/* سوراخ‌های رینگ فولادی لندکروزر */}
+              <circle cx="188" cy="69.2" r="1.1" fill="#1e293b" />
+              <circle cx="188" cy="82.8" r="1.1" fill="#1e293b" />
+              <circle cx="181.2" cy="76" r="1.1" fill="#1e293b" />
+              <circle cx="194.8" cy="76" r="1.1" fill="#1e293b" />
+              <circle cx="183.2" cy="71.2" r="1.1" fill="#1e293b" />
+              <circle cx="192.8" cy="80.8" r="1.1" fill="#1e293b" />
+              <circle cx="192.8" cy="71.2" r="1.1" fill="#1e293b" />
+              <circle cx="183.2" cy="80.8" r="1.1" fill="#1e293b" />
+              {/* توپی وسط چرخ */}
+              <circle cx="188" cy="76" r="3.5" fill="#334155" stroke="#0f172a" strokeWidth="0.6" />
+              <circle cx="188" cy="76" r="1.5" fill="#94a3b8" />
             </g>
           </svg>
           

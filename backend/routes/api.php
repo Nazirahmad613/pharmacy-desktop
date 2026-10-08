@@ -688,6 +688,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/view-inventory', [ViewInventoryController::class, 'index']);
     Route::get('/view-medications', [ViewMedicationsController::class, 'index']);
     Route::get('/account-summary', [AccountSummaryController::class, 'index']);
+    Route::get('/account-summary/types',          [AccountSummaryController::class, 'types']);        // ← اضافه شد
+    Route::get('/account-summary/{key}/journals', [AccountSummaryController::class, 'journals']);     // ← اضافه شد
     Route::get('/view-profit-loss', [ViewProfitLossController::class, 'index']);
     Route::get('/hospital-reports', [HospitalReportController::class, 'index']);
 

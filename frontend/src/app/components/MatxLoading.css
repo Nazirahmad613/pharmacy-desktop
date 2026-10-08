@@ -115,7 +115,9 @@
 }
 
 .siren-red {
-  animation: sirenFlashRed 0.8s ease-in-out infinite alternate;
+  animation: sirenFlashRed 0.4s ease-in-out infinite alternate;
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 /* متن لودینگ با افکت سه‌بعدی */
@@ -159,7 +161,7 @@
     transform: rotateX(8deg) rotateY(-4deg) translateY(0px);
   }
   50% {
-    transform: rotateX(6deg) rotateY(-3deg) translateY(-6px);
+    transform: rotateX(6deg) rotateY(-3deg) translateY(-5px);
   }
 }
 
@@ -234,11 +236,11 @@
 
 @keyframes sirenFlashRed {
   0% {
-    opacity: 0.4;
-    transform: scale(1.15);
+    opacity: 0.35;
+    transform: scale(0.95);
   }
   100% {
     opacity: 1;
-    transform: scale(1);
+    transform: scale(1.2);
   }
 }
