@@ -1,5 +1,5 @@
 // app/components/NavigationHub.jsx
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,13 +10,15 @@ import {
   Alert,
   Button,
   Chip,
+  Breadcrumbs,
+  Link as MuiLink,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import HomeIcon from "@mui/icons-material/Home";
 import navigationsData from "app/navigations";
 import { useAuth } from "app/contexts/AuthContext";
+import { useNavigation } from "app/contexts/NavigationContext";
 
-// ============================================================
-// رندر آیکون
 // ============================================================
 const renderIcon = (icon, size = 48) => {
   if (!icon) return null;
@@ -45,71 +47,56 @@ const renderIcon = (icon, size = 48) => {
   return null;
 };
 
-// ============================================================
-// نرمال‌سازی نام رول
-// ============================================================
 const normalizeRole = (role) => {
   if (!role) return "";
-  if (typeof role === "object") {
-    role = role.name || role.role || "";
-  }
+  if (typeof role === "object") role = role.name || role.role || "";
   return String(role).trim().toLowerCase();
 };
 
-// ============================================================
-// کامپوننت اصلی
 // ============================================================
 export default function NavigationHub() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, loading } = useAuth();
-
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [navigationStack, setNavigationStack] = useState([]);
+  const {
+    breadcrumb,
+    pushGroup,
+    popGroup,
+    resetToTop,
+  } = useNavigation();
 
   // ============================================================
-  // استخراج رول‌های کاربر
+  // رول‌ها
   // ============================================================
   const userRoles = useMemo(() => {
     if (!user) return [];
-    const rolesSet = new Set();
-
-    if (Array.isArray(user.role_names)) {
-      user.role_names.forEach((r) => {
-        const n = normalizeRole(r);
-        if (n) rolesSet.add(n);
-      });
-    }
-
-    if (Array.isArray(user.roles)) {
-      user.roles.forEach((r) => {
-        const n = normalizeRole(r);
-        if (n) rolesSet.add(n);
-      });
-    }
-
+    const set = new Set();
+    (user.role_names || []).forEach((r) => {
+      const n = normalizeRole(r);
+      if (n) set.add(n);
+    });
+    (user.roles || []).forEach((r) => {
+      const n = normalizeRole(r);
+      if (n) set.add(n);
+    });
     if (user.role) {
       const n = normalizeRole(user.role);
-      if (n) rolesSet.add(n);
+      if (n) set.add(n);
     }
-
-    return Array.from(rolesSet);
+    return Array.from(set);
   }, [user]);
 
-  // ============================================================
-  // چک ادمین بودن
-  // ============================================================
-  const isAdminUser = useMemo(() => {
-    return (
+  const isAdminUser = useMemo(
+    () =>
       user?.isAdmin === true ||
       user?.isSuperAdmin === true ||
       userRoles.includes("admin") ||
-      userRoles.includes("super_admin")
-    );
-  }, [user, userRoles]);
+      userRoles.includes("super_admin"),
+    [user, userRoles]
+  );
 
   // ============================================================
-  // فیلتر و ترجمه منو (label ها کاملاً حذف می‌شوند)
+  // فیلتر و ترجمه منو
   // ============================================================
   const navigations = useMemo(() => {
     if (!Array.isArray(navigationsData)) return [];
@@ -118,49 +105,37 @@ export default function NavigationHub() {
     const hasAccess = (item) => {
       if (!item.roles || item.roles.length === 0) return true;
       if (isAdminUser) return true;
-      const itemRolesNorm = item.roles.map(normalizeRole);
-      return itemRolesNorm.some((r) => userRoles.includes(r));
+      return item.roles.map(normalizeRole).some((r) => userRoles.includes(r));
     };
 
-    const translateItems = (items) => {
-      const result = [];
-
+    const translate = (items) => {
+      const out = [];
       for (const item of items) {
         if (!hasAccess(item)) continue;
-
-        // ✅ label ها را کاملاً نادیده بگیر
-        if (item.type === "label") continue;
-
         const translated = {
           ...item,
           name: item.name ? t(item.name) : undefined,
           label: item.label ? t(item.label) : undefined,
-          iconText: item.iconText ? t(item.iconText) : undefined,
           children: Array.isArray(item.children)
-            ? translateItems(item.children)
+            ? translate(item.children)
             : undefined,
         };
-
-        // حذف گروه خالی
         if (
           translated.children &&
           translated.children.length === 0 &&
           !translated.path
-        ) {
+        )
           continue;
-        }
-
-        result.push(translated);
+        out.push(translated);
       }
-
-      return result;
+      return out;
     };
 
-    return translateItems(navigationsData);
+    return translate(navigationsData);
   }, [t, user, userRoles, isAdminUser]);
 
   // ============================================================
-  // آیتم‌های سطح بالا (بدون label)
+  // topLevelItems
   // ============================================================
   const topLevelItems = useMemo(() => {
     const items = [];
@@ -174,78 +149,49 @@ export default function NavigationHub() {
   }, [navigations]);
 
   // ============================================================
-  // هندلرها
+  // آیتم‌های نمایش‌داده‌شده بر اساس آخرین گروه breadcrumb
   // ============================================================
-  const handleGroupClick = (group) => {
-    const groupName = group.name || "";
-
-    // لابراتوار → مستقیم به صفحه
-    if (groupName === "لابراتوار" || groupName === "Laboratory") {
-      if (group.path) {
-        navigate(group.path);
-        return;
-      }
+  const currentItems = useMemo(() => {
+    if (breadcrumb.length === 0) return topLevelItems;
+    const current = breadcrumb[breadcrumb.length - 1];
+    if (current && Array.isArray(current.children)) {
+      return current.children.filter((c) => c.type !== "label");
     }
+    return topLevelItems;
+  }, [breadcrumb, topLevelItems]);
 
-    // رادیولوژی → مستقیم به صفحه
-    if (groupName === "رادیولوژی" || groupName === "Radiology") {
-      if (group.path) {
-        navigate(group.path);
-        return;
-      }
-    }
-
-    // گروه با فرزند → ورود به زیرمجموعه
-    if (group.children && group.children.length > 0) {
-      setNavigationStack([...navigationStack, selectedGroup].filter(Boolean));
-      setSelectedGroup(group);
-      return;
-    }
-
-    // لینک مستقیم
-    if (group.path) {
-      navigate(group.path);
+  // ============================================================
+  // کلیک روی کارت
+  // ============================================================
+  const handleItemClick = (item) => {
+    const hasChildren = item.children && item.children.length > 0;
+    if (hasChildren) {
+      // فقط پشته را زیاد کن — سایدبار خودکار هم‌گام می‌شود
+      pushGroup(item);
+    } else if (item.path) {
+      // صفحه را عوض کن — Context با useEffect خودش هم‌گام می‌شود
+      navigate(item.path);
     }
   };
 
-  const handleBack = () => {
-    const prevGroup = navigationStack.pop();
-    setSelectedGroup(prevGroup || null);
-    setNavigationStack([...navigationStack]);
-  };
-
-  const handleBackToTop = () => {
-    setSelectedGroup(null);
-    setNavigationStack([]);
-  };
-
   // ============================================================
-  // آیتم‌های نمایش‌داده‌شده
+  // Loading / No user
   // ============================================================
-  const currentItems = selectedGroup
-    ? (selectedGroup.children || []).filter((item) => item.type !== "label")
-    : topLevelItems;
-
-  // ============================================================
-  // Loading / No user / Empty
-  // ============================================================
-  if (loading) {
+  if (loading)
     return (
       <Box sx={{ p: 3 }}>
         <Alert severity="info">در حال بارگذاری...</Alert>
       </Box>
     );
-  }
 
-  if (!user) {
+  if (!user)
     return (
       <Box sx={{ p: 3 }}>
         <Alert severity="warning">لطفاً وارد شوید.</Alert>
       </Box>
     );
-  }
 
-  if (currentItems.length === 0) {
+  if (currentItems.length === 0)
     return (
       <Box sx={{ p: 3, direction: "rtl" }}>
         <Alert severity="warning">
@@ -255,15 +201,66 @@ export default function NavigationHub() {
         </Alert>
       </Box>
     );
-  }
 
   // ============================================================
-  // ✅ رندر: همه کارت‌ها در یک Grid وسط‌چین
+  // رندر
   // ============================================================
   return (
     <Box sx={{ p: 3, direction: "rtl" }}>
+      {/* ===== Breadcrumb ===== */}
+      <Breadcrumbs
+        separator="›"
+        sx={{ mb: 2, direction: "rtl", fontSize: "0.9rem" }}
+      >
+        <MuiLink
+          component="button"
+          underline="hover"
+          color="inherit"
+          onClick={resetToTop}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            cursor: "pointer",
+            background: "none",
+            border: "none",
+            font: "inherit",
+          }}
+        >
+          <HomeIcon fontSize="small" />
+          خانه
+        </MuiLink>
+        {breadcrumb.map((grp, idx) => {
+          const isLast = idx === breadcrumb.length - 1;
+          return isLast ? (
+            <Typography key={idx} color="text.primary">
+              {grp.name}
+            </Typography>
+          ) : (
+            <MuiLink
+              key={idx}
+              component="button"
+              underline="hover"
+              color="inherit"
+              onClick={() => {
+                const stepsBack = breadcrumb.length - 1 - idx;
+                for (let i = 0; i < stepsBack; i++) popGroup();
+              }}
+              sx={{
+                cursor: "pointer",
+                background: "none",
+                border: "none",
+                font: "inherit",
+              }}
+            >
+              {grp.name}
+            </MuiLink>
+          );
+        })}
+      </Breadcrumbs>
+
       {/* ===== نوار بازگشت ===== */}
-      {(selectedGroup || navigationStack.length > 0) && (
+      {breadcrumb.length > 0 && (
         <Box
           sx={{
             display: "flex",
@@ -275,23 +272,21 @@ export default function NavigationHub() {
         >
           <Button
             startIcon={<ArrowBackIcon />}
-            onClick={handleBack}
+            onClick={popGroup}
             variant="outlined"
           >
             بازگشت
           </Button>
-          {navigationStack.length > 0 && (
-            <Button onClick={handleBackToTop} variant="text">
-              بازگشت به ابتدا
-            </Button>
-          )}
+          <Button onClick={resetToTop} variant="text">
+            بازگشت به ابتدا
+          </Button>
           <Typography variant="h5" sx={{ mr: 2, fontWeight: "bold" }}>
-            {selectedGroup ? selectedGroup.name : "دسته‌بندی اصلی"}
+            {breadcrumb[breadcrumb.length - 1]?.name || "دسته‌بندی اصلی"}
           </Typography>
         </Box>
       )}
 
-      {/* ===== همه کارت‌ها در یک Grid وسط‌چین ===== */}
+      {/* ===== کارت‌ها ===== */}
       <Grid
         container
         spacing={2}
@@ -306,137 +301,71 @@ export default function NavigationHub() {
           const isLink = item.path && !hasChildren;
           const key = item.path || item.name || `item-${index}`;
 
-          // ===== لینک مستقیم =====
-          if (isLink) {
-            return (
-              <Grid
-                item
-                xs={6}
-                sm={4}
-                md={3}
-                lg={2}
-                key={key}
-                sx={{ display: "flex" }}
+          return (
+            <Grid
+              item
+              xs={6}
+              sm={4}
+              md={3}
+              lg={2}
+              key={key}
+              sx={{ display: "flex" }}
+            >
+              <Card
+                {...(isLink
+                  ? { component: Link, to: item.path }
+                  : { onClick: () => handleItemClick(item) })}
+                sx={{
+                  textDecoration: "none",
+                  transition: "0.2s",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow: 4,
+                  },
+                  width: "100%",
+                  height: 140,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  textAlign: "center",
+                  cursor: "pointer",
+                  p: 1.5,
+                }}
               >
-                <Card
-                  component={Link}
-                  to={item.path}
+                <Box
                   sx={{
-                    textDecoration: "none",
-                    transition: "0.2s",
-                    "&:hover": {
-                      transform: "translateY(-4px)",
-                      boxShadow: 4,
-                    },
-                    width: "100%",
-                    height: 140,
+                    fontSize: 40,
+                    mb: 1,
+                    color: hasChildren ? "primary.main" : "secondary.main",
                     display: "flex",
-                    flexDirection: "column",
                     justifyContent: "center",
                     alignItems: "center",
-                    textAlign: "center",
-                    cursor: "pointer",
-                    p: 1.5,
                   }}
                 >
-                  <Box
-                    sx={{
-                      fontSize: 40,
-                      mb: 1,
-                      color: "secondary.main",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
-                  >
-                    {renderIcon(item.icon, 40)}
-                  </Box>
-                  <Typography
-                    variant="body1"
-                    fontWeight="bold"
-                    sx={{
-                      fontSize: "0.95rem",
-                      textAlign: "center",
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    {item.name}
-                  </Typography>
-                </Card>
-              </Grid>
-            );
-          }
-
-          // ===== کارت گروه =====
-          if (hasChildren) {
-            return (
-              <Grid
-                item
-                xs={6}
-                sm={4}
-                md={3}
-                lg={2}
-                key={key}
-                sx={{ display: "flex" }}
-              >
-                <Card
-                  onClick={() => handleGroupClick(item)}
+                  {renderIcon(item.icon, 40)}
+                </Box>
+                <Typography
+                  variant="body1"
+                  fontWeight="bold"
                   sx={{
-                    textDecoration: "none",
-                    transition: "0.2s",
-                    "&:hover": {
-                      transform: "translateY(-4px)",
-                      boxShadow: 4,
-                    },
-                    width: "100%",
-                    height: 140,
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    alignItems: "center",
+                    fontSize: "0.95rem",
                     textAlign: "center",
-                    cursor: "pointer",
-                    p: 1.5,
+                    lineHeight: 1.3,
                   }}
                 >
-                  <Box
-                    sx={{
-                      fontSize: 40,
-                      mb: 1,
-                      color: "primary.main",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
-                  >
-                    {renderIcon(item.icon, 40)}
-                  </Box>
-                  <Typography
-                    variant="body1"
-                    fontWeight="bold"
-                    sx={{
-                      fontSize: "0.95rem",
-                      textAlign: "center",
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    {item.name}
-                  </Typography>
+                  {item.name}
+                </Typography>
+                {hasChildren && (
                   <Chip
                     label={`${item.children.length} زیرمجموعه`}
                     size="small"
-                    sx={{
-                      mt: 0.5,
-                      fontSize: "0.7rem",
-                      height: 20,
-                    }}
+                    sx={{ mt: 0.5, fontSize: "0.7rem", height: 20 }}
                   />
-                </Card>
-              </Grid>
-            );
-          }
-
-          return null;
+                )}
+              </Card>
+            </Grid>
+          );
         })}
       </Grid>
     </Box>

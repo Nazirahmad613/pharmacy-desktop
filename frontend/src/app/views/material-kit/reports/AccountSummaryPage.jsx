@@ -13,7 +13,7 @@ import {
   CircularProgress,
   Button,
   InputAdornment,
-  Divider,
+  Chip,
 } from "@mui/material";
 
 /* ✅ RTL MUI */
@@ -29,12 +29,16 @@ import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import PaymentsIcon from "@mui/icons-material/Payments";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import BadgeIcon from "@mui/icons-material/Badge";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import HourglassBottomIcon from "@mui/icons-material/HourglassBottom";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 /* ============================================================
  *  کش RTL برای MUI
@@ -45,7 +49,10 @@ const cacheRtl = createCache({
 });
 
 /* ============================================================
- *  پالت رنگ
+ *  ✅ پالت رنگ با تفکیک منطقی:
+ *  - باقی‌مانده روی مریض (balance > 0) → سرخ
+ *  - تسویه (balance === 0)             → سبز
+ *  - شفاخانه قرضدار است (balance < 0) → زرد
  * ============================================================ */
 const COLORS = {
   bg: "#f1f5f9",
@@ -57,10 +64,26 @@ const COLORS = {
   primary: "#4f46e5",
   primaryDark: "#3730a3",
   primaryLight: "#eef2ff",
-  success: "#059669",
-  successBg: "#ecfdf5",
-  danger: "#dc2626",
-  dangerBg: "#fef2f2",
+
+  /* ✅ سرخ — باقی روی مریض */
+  red: "#dc2626",
+  redDark: "#991b1b",
+  redBg: "#fef2f2",
+
+  /* ✅ سبز — تسویه */
+  green: "#059669",
+  greenDark: "#065f46",
+  greenBg: "#ecfdf5",
+
+  /* ✅ زرد — شفاخانه قرضدار است */
+  yellow: "#d97706",
+  yellowDark: "#92400e",
+  yellowBg: "#fffbeb",
+
+  /* ✅ آبی — اطلاعات عمومی */
+  info: "#0284c7",
+  infoDark: "#075985",
+  infoBg: "#f0f9ff",
 };
 
 /* ============================================================
@@ -101,12 +124,12 @@ const rtlMenuProps = {
 };
 
 /* ============================================================
- *  استایل‌ها — کاملاً RTL
+ *  استایل‌ها
  * ============================================================ */
 const styles = {
   page: {
     padding: { xs: "16px 12px", sm: "28px 24px" },
-    maxWidth: 1440,
+    maxWidth: 1600,
     margin: "0 auto",
     background: `linear-gradient(180deg, #f8fafc 0%, ${COLORS.bg} 100%)`,
     minHeight: "100vh",
@@ -162,12 +185,55 @@ const styles = {
     gap: 1.5,
     flexWrap: "wrap",
     padding: "16px 20px",
-    marginBottom: 3,
+    marginBottom: 2,
     borderRadius: "16px",
     background: COLORS.cardBg,
     border: `1px solid ${COLORS.cardBorder}`,
     boxShadow: "0 4px 16px -4px rgba(15, 23, 42, 0.04)",
   },
+
+  quickFilterBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: 1,
+    flexWrap: "wrap",
+    padding: "12px 16px",
+    marginBottom: 3,
+    borderRadius: "14px",
+    background: `linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)`,
+    border: `1px solid ${COLORS.cardBorder}`,
+    boxShadow: "0 2px 8px -2px rgba(15, 23, 42, 0.05)",
+  },
+  quickFilterLabel: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: COLORS.textSecondary,
+    display: "flex",
+    alignItems: "center",
+    gap: 0.6,
+    ml: 1,
+  },
+  quickFilterChip: (active, color = COLORS.primary) => ({
+    fontFamily: "inherit",
+    fontSize: 12.5,
+    fontWeight: 700,
+    height: 34,
+    borderRadius: "10px",
+    border: `1.5px solid ${active ? color : COLORS.cardBorder}`,
+    background: active ? `${color}15` : "#ffffff",
+    color: active ? color : COLORS.textSecondary,
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    "&:hover": {
+      background: `${color}10`,
+      borderColor: color,
+      transform: "translateY(-1px)",
+    },
+    "& .MuiChip-icon": {
+      color: active ? color : COLORS.textMuted,
+    },
+  }),
+
   searchBox: {
     flex: 1,
     minWidth: { xs: "100%", sm: 260 },
@@ -263,56 +329,66 @@ const styles = {
     border: `2px dashed ${COLORS.cardBorder}`,
   },
 
-  /* ===== گرید ===== */
-  cardsGrid: {
-    display: "grid",
-    gridTemplateColumns: {
-      xs: "1fr",
-      sm: "repeat(2, 1fr)",
-      md: "repeat(3, 1fr)",
-      lg: "repeat(4, 1fr)",
-    },
-    gap: 2.2,
-    alignItems: "stretch",
-  },
-
-  /* ===== کارت ===== */
-  card: {
-    position: "relative",
-    overflow: "hidden",
-    padding: "20px 18px 16px",
-    borderRadius: "16px",
-    background: COLORS.cardBg,
-    border: `1px solid ${COLORS.cardBorder}`,
-    boxShadow: "0 2px 8px -2px rgba(15, 23, 42, 0.05)",
-    transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+  /* ============================================================
+   *  ✅ نمایش هر حساب در یک ردیف
+   * ============================================================ */
+  cardsList: {
     display: "flex",
     flexDirection: "column",
     gap: 1.5,
-    "&::before": {
-      content: '""',
-      position: "absolute",
-      top: 0,
-      right: 0,
-      left: 0,
-      height: "4px",
-      background: `linear-gradient(270deg, ${COLORS.primary} 0%, #8b5cf6 100%)`,
-      opacity: 0.85,
-      transition: "opacity 0.25s ease",
-    },
-    "&:hover": {
-      borderColor: "#c7d2fe",
-      transform: "translateY(-4px)",
-      boxShadow: "0 14px 28px -6px rgba(79, 70, 229, 0.14)",
-      "&::before": { opacity: 1 },
-    },
   },
 
-  cardHeader: {
+  /* ✅ رنگ نوار کناری بر اساس وضعیت */
+  rowCard: (variant = "info") => {
+    const palette = {
+      red: `linear-gradient(180deg, ${COLORS.red} 0%, #b91c1c 100%)`,
+      green: `linear-gradient(180deg, ${COLORS.green} 0%, #047857 100%)`,
+      yellow: `linear-gradient(180deg, ${COLORS.yellow} 0%, #b45309 100%)`,
+      info: `linear-gradient(180deg, ${COLORS.primary} 0%, #8b5cf6 100%)`,
+    };
+    const sidebar = palette[variant] ?? palette.info;
+
+    return {
+      position: "relative",
+      overflow: "hidden",
+      padding: "14px 20px",
+      borderRadius: "14px",
+      background: COLORS.cardBg,
+      border: `1px solid ${COLORS.cardBorder}`,
+      boxShadow: "0 2px 8px -2px rgba(15, 23, 42, 0.05)",
+      transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+      display: "grid",
+      gridTemplateColumns: {
+        xs: "1fr",
+        sm: "minmax(180px, 1.3fr) minmax(130px, 0.9fr) minmax(130px, 0.9fr) minmax(160px, 1.1fr) minmax(160px, 1.1fr)",
+      },
+      alignItems: "center",
+      gap: { xs: 1.5, sm: 2.5 },
+      "&::before": {
+        content: '""',
+        position: "absolute",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: "6px",
+        background: sidebar,
+        opacity: 0.95,
+        transition: "opacity 0.25s ease",
+      },
+      "&:hover": {
+        borderColor: "#c7d2fe",
+        transform: "translateY(-2px)",
+        boxShadow: "0 10px 24px -8px rgba(79, 70, 229, 0.16)",
+      },
+    };
+  },
+
+  /* ✅ ستون اول: هویت */
+  colIdentity: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 1,
+    flexDirection: "column",
+    gap: 0.5,
+    minWidth: 0,
   },
   accountName: {
     fontSize: 15.5,
@@ -321,109 +397,143 @@ const styles = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    flex: 1,
-    lineHeight: 1.5,
+    lineHeight: 1.4,
+  },
+  identityMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: 0.8,
+    flexWrap: "wrap",
   },
   typeBadge: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 0.6,
-    padding: "4px 10px",
-    borderRadius: "8px",
-    fontSize: 11.5,
+    gap: 0.5,
+    padding: "3px 9px",
+    borderRadius: "7px",
+    fontSize: 11,
     fontWeight: 700,
     background: "#f1f5f9",
     color: COLORS.primaryDark,
     border: "1px solid #e2e8f0",
-    flexShrink: 0,
+    whiteSpace: "nowrap",
   },
-
-  divider: {
-    borderColor: "#f1f5f9",
-    margin: "2px 0",
-  },
-
-  statsRow: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 1,
-    background: "#f8fafc",
-    padding: "10px 12px",
-    borderRadius: "12px",
-    border: "1px solid #f1f5f9",
-  },
-  statRow: {
-    display: "flex",
+  tazkiraChip: {
+    display: "inline-flex",
     alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: 13,
-  },
-  statLabel: {
-    color: COLORS.textSecondary,
-    fontSize: 12.5,
-    fontWeight: 600,
-    display: "flex",
-    alignItems: "center",
-    gap: 0.6,
-  },
-  statValue: {
-    fontSize: 14,
-    fontWeight: 800,
-    color: COLORS.textPrimary,
-    fontVariantNumeric: "tabular-nums",
-  },
-  statValueSuccess: {
-    color: COLORS.success,
-  },
-
-  balanceBox: (positive) => ({
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "11px 14px",
-    borderRadius: "12px",
-    background: positive
-      ? "linear-gradient(270deg, #ecfdf5 0%, #d1fae5 100%)"
-      : "linear-gradient(270deg, #fef2f2 0%, #fee2e2 100%)",
-    border: `1px solid ${positive ? "#6ee7b7" : "#fca5a5"}`,
-    marginTop: "auto",
-  }),
-  balanceLabel: (positive) => ({
-    fontSize: 12.5,
-    fontWeight: 700,
-    color: positive ? "#065f46" : "#991b1b",
-    display: "flex",
-    alignItems: "center",
-    gap: 0.6,
-  }),
-  balanceValue: (positive) => ({
-    display: "flex",
-    alignItems: "center",
-    gap: 0.6,
-    fontSize: 15.5,
-    fontWeight: 900,
-    color: positive ? "#047857" : "#b91c1c",
-    fontVariantNumeric: "tabular-nums",
-  }),
-
-  tazkiraRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: 12,
-    paddingTop: 1,
-    marginTop: 0.2,
-    borderTop: `1px dashed ${COLORS.cardBorder}`,
-  },
-  tazkiraValue: {
-    fontSize: 12,
+    gap: 0.4,
+    fontSize: 11,
     fontWeight: 700,
     color: COLORS.textSecondary,
     background: "#f1f5f9",
-    padding: "2px 8px",
+    padding: "3px 8px",
     borderRadius: "6px",
     fontFamily: "monospace",
     direction: "ltr",
+    border: "1px solid #e2e8f0",
+  },
+
+  /* ✅ ستون‌های آماری */
+  colStat: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 0.4,
+    padding: "0 4px",
+    borderRight: { sm: `1px solid ${COLORS.cardBorder}` },
+    paddingRight: { sm: 2 },
+  },
+  colStatLabel: {
+    fontSize: 11.5,
+    fontWeight: 700,
+    color: COLORS.textSecondary,
+    display: "flex",
+    alignItems: "center",
+    gap: 0.5,
+  },
+  colStatValue: {
+    fontSize: 16,
+    fontWeight: 900,
+    color: COLORS.textPrimary,
+    fontVariantNumeric: "tabular-nums",
+    lineHeight: 1.3,
+    letterSpacing: "-0.2px",
+  },
+  colStatValuePrimary: {
+    color: COLORS.primaryDark,
+  },
+  colStatValueGreen: {
+    color: COLORS.greenDark,
+  },
+  colStatValueRed: {
+    color: COLORS.redDark,
+  },
+  colStatValueYellow: {
+    color: COLORS.yellowDark,
+  },
+
+  /* ✅ ستون آخر: وضعیت */
+  colStatus: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 0.5,
+    paddingRight: { sm: 2 },
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: COLORS.textSecondary,
+  },
+
+  /* ✅ بج‌های وضعیت با رنگ‌بندی واضح */
+  statusBadge: (variant) => {
+    const palette = {
+      /* ✅ سرخ — باقی روی مریض */
+      red: {
+        bg: `linear-gradient(135deg, ${COLORS.redBg} 0%, #fee2e2 100%)`,
+        border: "#fca5a5",
+        color: COLORS.redDark,
+        icon: COLORS.red,
+      },
+      /* ✅ سبز — تسویه */
+      green: {
+        bg: `linear-gradient(135deg, ${COLORS.greenBg} 0%, #d1fae5 100%)`,
+        border: "#6ee7b7",
+        color: COLORS.greenDark,
+        icon: COLORS.green,
+      },
+      /* ✅ زرد — شفاخانه قرضدار است */
+      yellow: {
+        bg: `linear-gradient(135deg, ${COLORS.yellowBg} 0%, #fef3c7 100%)`,
+        border: "#fcd34d",
+        color: COLORS.yellowDark,
+        icon: COLORS.yellow,
+      },
+      /* ✅ آبی — اطلاعات عمومی */
+      info: {
+        bg: `linear-gradient(135deg, ${COLORS.infoBg} 0%, #e0f2fe 100%)`,
+        border: "#7dd3fc",
+        color: COLORS.infoDark,
+        icon: COLORS.info,
+      },
+    };
+    const p = palette[variant] ?? palette.info;
+
+    return {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 0.6,
+      padding: "7px 14px",
+      borderRadius: "10px",
+      fontSize: 13,
+      fontWeight: 900,
+      background: p.bg,
+      border: `1.5px solid ${p.border}`,
+      color: p.color,
+      fontVariantNumeric: "tabular-nums",
+      whiteSpace: "nowrap",
+      boxShadow: `0 2px 6px -1px ${p.border}40`,
+    };
   },
 
   paginationWrapper: {
@@ -510,7 +620,7 @@ const styles = {
  *  نقشه نوع حساب → آیکون
  * ============================================================ */
 const getTypeIcon = (type) => {
-  const iconProps = { sx: { fontSize: 14 } };
+  const iconProps = { sx: { fontSize: 13 } };
   switch (type) {
     case "patient":
       return <LocalHospitalIcon {...iconProps} />;
@@ -565,11 +675,113 @@ const TYPE_MAP = {
   expense: "مصرف عمومی",
   income: "درآمد",
   other: "سایر",
+  external_prescription: "نسخه بیرونی",
+  prescription_fee: "فیس نسخه",
+  sale: "فروش",
+  parchase: "خرید",
 };
 const translateAccountType = (type) => TYPE_MAP[type] || type;
 
 /* ============================================================
- *  محتوای اصلی (داخل CacheProvider)
+ *  فیلترهای سریع
+ * ============================================================ */
+const QUICK_FILTERS = [
+  {
+    key: "all",
+    label: "همه حساب‌ها",
+    icon: <AccountBalanceIcon sx={{ fontSize: 16 }} />,
+    color: COLORS.primary,
+  },
+  {
+    key: "top_debtors",
+    label: "بیشترین قرض‌دهنده‌ها",
+    hint: "کسانی که بیشترین قرض را از شفاخانه دارند",
+    icon: <ArrowUpwardIcon sx={{ fontSize: 16 }} />,
+    color: COLORS.red,
+  },
+  {
+    key: "top_creditors",
+    label: "بیشترین قرض‌داران شفاخانه",
+    hint: "حساب‌هایی که شفاخانه از آن‌ها بیشتر قرضدار است",
+    icon: <ArrowDownwardIcon sx={{ fontSize: 16 }} />,
+    color: COLORS.yellow,
+  },
+  {
+    key: "old_debts",
+    label: "قرض‌های طولانی‌مدت",
+    hint: "حساب‌هایی که مدتی طولانی است قرض خود را پرداخت نکرده‌اند",
+    icon: <HourglassBottomIcon sx={{ fontSize: 16 }} />,
+    color: COLORS.red,
+  },
+];
+
+const OLD_DEBT_DAYS = 30;
+
+/* ============================================================
+ *  ✅ محاسبه وضعیت برای هر ردیف
+ *  - balance > 0  → red    (باقی روی مریض)
+ *  - balance = 0  → green  (تسویه)
+ *  - balance < 0  → yellow (شفاخانه قرضدار است)
+ * ============================================================ */
+const getRowStatus = (item) => {
+  const balance = Number(item.balance || 0);
+
+  /* ✅ سرخ — باقی روی مریض */
+  if (balance > 0) {
+    const daysSince = item.last_journal_date
+      ? Math.floor(
+          (Date.now() - new Date(item.last_journal_date).getTime()) /
+            (1000 * 60 * 60 * 24)
+        )
+      : null;
+
+    if (daysSince !== null && daysSince >= OLD_DEBT_DAYS) {
+      return {
+        variant: "red",
+        label: `بدهی معوق ${daysSince.toLocaleString("fa-IR")} روز`,
+        icon: <WarningAmberIcon sx={{ fontSize: 15 }} />,
+        hasOldDebt: true,
+      };
+    }
+
+    if (daysSince !== null && daysSince >= 15) {
+      return {
+        variant: "red",
+        label: `باقی ${daysSince.toLocaleString("fa-IR")} روز`,
+        icon: <HourglassBottomIcon sx={{ fontSize: 15 }} />,
+        hasOldDebt: false,
+      };
+    }
+
+    return {
+      variant: "red",
+      label: "باقی روی مریض",
+      icon: <WarningAmberIcon sx={{ fontSize: 15 }} />,
+      hasOldDebt: false,
+    };
+  }
+
+  /* ✅ سبز — تسویه */
+  if (balance === 0) {
+    return {
+      variant: "green",
+      label: "تسویه",
+      icon: <CheckCircleIcon sx={{ fontSize: 15 }} />,
+      hasOldDebt: false,
+    };
+  }
+
+  /* ✅ زرد — شفاخانه قرضدار است */
+  return {
+    variant: "yellow",
+    label: "شفاخانه قرضدار است",
+    icon: <TrendingUpIcon sx={{ fontSize: 15 }} />,
+    hasOldDebt: false,
+  };
+};
+
+/* ============================================================
+ *  محتوای اصلی
  * ============================================================ */
 function AccountSummaryContent() {
   const { api, user, loading: authLoading } = useAuth();
@@ -577,6 +789,7 @@ function AccountSummaryContent() {
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("");
+  const [quickFilter, setQuickFilter] = useState("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -620,11 +833,13 @@ function AccountSummaryContent() {
     fetchData();
   }, [api, user, authLoading]);
 
-  /* ===== فیلتر ===== */
+  /* ===== فیلترها ===== */
   const filteredData = useMemo(() => {
     let temp = [...data];
 
-    if (filterType) temp = temp.filter((i) => i.account_type === filterType);
+    if (filterType) {
+      temp = temp.filter((i) => i.account_type === filterType);
+    }
 
     if (search.trim()) {
       const term = search.toLowerCase().trim();
@@ -633,14 +848,33 @@ function AccountSummaryContent() {
       );
     }
 
-    return temp.sort((a, b) => {
-      if (a.account_type < b.account_type) return -1;
-      if (a.account_type > b.account_type) return 1;
-      if (a.account_name < b.account_name) return -1;
-      if (a.account_name > b.account_name) return 1;
-      return 0;
-    });
-  }, [search, filterType, data]);
+    if (quickFilter === "top_debtors") {
+      temp = temp
+        .filter((i) => Number(i.balance || 0) > 0)
+        .sort((a, b) => Number(b.balance) - Number(a.balance));
+    } else if (quickFilter === "top_creditors") {
+      temp = temp
+        .filter((i) => Number(i.balance || 0) < 0)
+        .sort((a, b) => Number(a.balance) - Number(b.balance));
+    } else if (quickFilter === "old_debts") {
+      temp = temp
+        .filter((i) => {
+          const status = getRowStatus(i);
+          return status.hasOldDebt;
+        })
+        .sort((a, b) => Number(b.balance) - Number(a.balance));
+    } else {
+      temp = temp.sort((a, b) => {
+        if (a.account_type < b.account_type) return -1;
+        if (a.account_type > b.account_type) return 1;
+        if (a.account_name < b.account_name) return -1;
+        if (a.account_name > b.account_name) return 1;
+        return 0;
+      });
+    }
+
+    return temp;
+  }, [search, filterType, data, quickFilter]);
 
   /* ===== صفحه‌بندی ===== */
   const currentItems = filteredData.slice(
@@ -651,9 +885,9 @@ function AccountSummaryContent() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, filterType]);
+  }, [search, filterType, quickFilter]);
 
-  /* ===== Loading ===== */
+  /* ===== Loading اولیه ===== */
   if (authLoading) {
     return (
       <Box sx={styles.loading}>
@@ -711,14 +945,18 @@ function AccountSummaryContent() {
             <MenuItem value="patient">مریض</MenuItem>
             <MenuItem value="customer">مشتری</MenuItem>
             <MenuItem value="supplier">تأمین‌کننده</MenuItem>
+            <MenuItem value="rent">کرایه</MenuItem>
+            <MenuItem value="salary">معاش</MenuItem>
+            <MenuItem value="expense">مصرف عمومی</MenuItem>
           </Select>
         </FormControl>
 
-        {(search || filterType) && (
+        {(search || filterType || quickFilter !== "all") && (
           <Button
             onClick={() => {
               setSearch("");
               setFilterType("");
+              setQuickFilter("all");
             }}
             startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
             sx={styles.clearBtn}
@@ -726,6 +964,25 @@ function AccountSummaryContent() {
             پاک کردن
           </Button>
         )}
+      </Box>
+
+      {/* ========== فیلترهای سریع ========== */}
+      <Box sx={styles.quickFilterBar}>
+        <Typography sx={styles.quickFilterLabel}>
+          <WarningAmberIcon sx={{ fontSize: 16 }} />
+          فیلترهای ویژه:
+        </Typography>
+
+        {QUICK_FILTERS.map((f) => (
+          <Chip
+            key={f.key}
+            icon={f.icon}
+            label={f.label}
+            title={f.hint}
+            onClick={() => setQuickFilter(f.key)}
+            sx={styles.quickFilterChip(quickFilter === f.key, f.color)}
+          />
+        ))}
       </Box>
 
       {/* ========== Loading ========== */}
@@ -741,84 +998,117 @@ function AccountSummaryContent() {
       {/* ========== خطا ========== */}
       {!loading && error && <Box sx={styles.errorBox}>{error}</Box>}
 
-      {/* ========== کارت‌ها ========== */}
+      {/* ========== ردیف‌ها ========== */}
       {!loading && !error && currentItems.length > 0 && (
-        <Box sx={styles.cardsGrid}>
+        <Box sx={styles.cardsList}>
           {currentItems.map((item) => {
             const balance = Number(item.balance || 0);
-            const positive = balance >= 0;
+            const totalCredit = Number(item.total_credit || 0);
+            const totalDebit = Number(item.total_debit || 0);
             const key =
               item.account_key || `${item.account_type}_${item.account_id}`;
+            const status = getRowStatus(item);
+
+            /* ✅ رنگ باقی‌مانده بر اساس وضعیت */
+            let balanceColorSx;
+            if (balance > 0) {
+              /* ✅ سرخ — باقی روی مریض */
+              balanceColorSx = {
+                ...styles.colStatValue,
+                ...styles.colStatValueRed,
+              };
+            } else if (balance < 0) {
+              /* ✅ زرد — شفاخانه قرضدار است */
+              balanceColorSx = {
+                ...styles.colStatValue,
+                ...styles.colStatValueYellow,
+              };
+            } else {
+              /* ✅ سبز — تسویه */
+              balanceColorSx = {
+                ...styles.colStatValue,
+                ...styles.colStatValueGreen,
+              };
+            }
 
             return (
-              <Box key={key} sx={styles.card}>
-                {/* هدر */}
-                <Box sx={styles.cardHeader}>
-                  <Typography sx={styles.accountName} title={item.account_name}>
+              <Box key={key} sx={styles.rowCard(status.variant)}>
+                {/* ========== ستون ۱: هویت ========== */}
+                <Box sx={styles.colIdentity}>
+                  <Typography
+                    sx={styles.accountName}
+                    title={item.account_name}
+                  >
                     {item.account_name || "—"}
                   </Typography>
 
-                  <Box sx={styles.typeBadge}>
-                    {getTypeIcon(item.account_type)}
-                    {translateAccountType(item.account_type)}
+                  <Box sx={styles.identityMeta}>
+                    <Box sx={styles.typeBadge}>
+                      {getTypeIcon(item.account_type)}
+                      {translateAccountType(item.account_type)}
+                    </Box>
+
+                    {item.tazkira_number && (
+                      <Box sx={styles.tazkiraChip}>
+                        <BadgeIcon sx={{ fontSize: 12 }} />
+                        {item.tazkira_number}
+                      </Box>
+                    )}
                   </Box>
                 </Box>
 
-                <Divider sx={styles.divider} />
-
-                {/* آمار */}
-                <Box sx={styles.statsRow}>
-                  <Box sx={styles.statRow}>
-                    <Typography sx={styles.statLabel}>
-                      <ReceiptLongIcon sx={{ fontSize: 14 }} />
-                      مجموع حساب
-                    </Typography>
-                    <Typography sx={styles.statValue}>
-                      {Number(item.total_credit || 0).toLocaleString("fa-IR")}
-                    </Typography>
-                  </Box>
-
-                  <Box sx={styles.statRow}>
-                    <Typography sx={styles.statLabel}>
-                      <PaymentsIcon sx={{ fontSize: 14 }} />
-                      پرداخت شده
-                    </Typography>
-                    <Typography
-                      sx={{ ...styles.statValue, ...styles.statValueSuccess }}
-                    >
-                      {Number(item.total_debit || 0).toLocaleString("fa-IR")}
-                    </Typography>
-                  </Box>
+                {/* ========== ستون ۲: مجموع حساب ========== */}
+                <Box sx={styles.colStat}>
+                  <Typography sx={styles.colStatLabel}>
+                    <ReceiptLongIcon sx={{ fontSize: 13 }} />
+                    مجموع حساب
+                  </Typography>
+                  <Typography
+                    sx={{
+                      ...styles.colStatValue,
+                      ...styles.colStatValuePrimary,
+                    }}
+                  >
+                    {totalCredit.toLocaleString("fa-IR")}
+                  </Typography>
                 </Box>
 
-                {/* باقی‌مانده */}
-                <Box sx={styles.balanceBox(positive)}>
-                  <Typography sx={styles.balanceLabel(positive)}>
-                    <AccountBalanceWalletIcon sx={{ fontSize: 15 }} />
+                {/* ========== ستون ۳: پرداخت شده ========== */}
+                <Box sx={styles.colStat}>
+                  <Typography sx={styles.colStatLabel}>
+                    <PaymentsIcon sx={{ fontSize: 13 }} />
+                    پرداخت شده
+                  </Typography>
+                  <Typography
+                    sx={{
+                      ...styles.colStatValue,
+                      ...styles.colStatValueGreen,
+                    }}
+                  >
+                    {totalDebit.toLocaleString("fa-IR")}
+                  </Typography>
+                </Box>
+
+                {/* ========== ستون ۴: باقی‌مانده ========== */}
+                <Box sx={styles.colStat}>
+                  <Typography sx={styles.colStatLabel}>
+                    <AccountBalanceWalletIcon sx={{ fontSize: 13 }} />
                     باقی‌مانده
                   </Typography>
-                  <Typography sx={styles.balanceValue(positive)}>
-                    {positive ? (
-                      <TrendingUpIcon sx={{ fontSize: 18 }} />
-                    ) : (
-                      <TrendingDownIcon sx={{ fontSize: 18 }} />
-                    )}
+                  <Typography sx={balanceColorSx}>
+                    {balance > 0 ? "+" : balance < 0 ? "−" : ""}
                     {Math.abs(balance).toLocaleString("fa-IR")}
                   </Typography>
                 </Box>
 
-                {/* تذکره */}
-                {item.tazkira_number && (
-                  <Box sx={styles.tazkiraRow}>
-                    <Typography sx={styles.statLabel}>
-                      <BadgeIcon sx={{ fontSize: 14 }} />
-                      شماره تذکره
-                    </Typography>
-                    <Typography sx={styles.tazkiraValue}>
-                      {item.tazkira_number}
-                    </Typography>
+                {/* ========== ستون ۵: وضعیت ========== */}
+                <Box sx={styles.colStatus}>
+                  <Typography sx={styles.statusLabel}>وضعیت</Typography>
+                  <Box sx={styles.statusBadge(status.variant)}>
+                    {status.icon}
+                    {status.label}
                   </Box>
-                )}
+                </Box>
               </Box>
             );
           })}
@@ -885,7 +1175,7 @@ function AccountSummaryContent() {
 }
 
 /* ============================================================
- *  export اصلی با CacheProvider
+ *  export اصلی
  * ============================================================ */
 export default function AccountSummaryText() {
   return (

@@ -4,6 +4,7 @@ import routes from "./routes";
 import { MatxTheme } from "./components";
 import SettingsProvider from "./contexts/SettingsContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { NavigationProvider } from "./contexts/NavigationContext";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import NavigationHub from "../modules/NavigationHub";
@@ -11,7 +12,7 @@ import NavigationHub from "../modules/NavigationHub";
 import {
   HashRouter,
   useRoutes,
-  Navigate
+  Navigate,
 } from "react-router-dom";
 
 import "react-toastify/dist/ReactToastify.css";
@@ -19,64 +20,54 @@ import "./i18n";
 
 const DebugAuth = () => {
   const { user, loading } = useAuth();
-
   if (loading) return null;
   if (!user) return null;
-
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: 0,
-      right: 0,
-      background: '#333',
-      color: 'white',
-      padding: '8px 12px',
-      fontSize: 11,
-      zIndex: 9999,
-      borderRadius: '8px 0 0 0',
-      fontFamily: 'monospace',
-      opacity: 0.8,
-      pointerEvents: 'none'
-    }}>
+    <div
+      style={{
+        position: "fixed",
+        bottom: 0,
+        right: 0,
+        background: "#333",
+        color: "white",
+        padding: "8px 12px",
+        fontSize: 11,
+        zIndex: 9999,
+        borderRadius: "8px 0 0 0",
+        fontFamily: "monospace",
+        opacity: 0.8,
+        pointerEvents: "none",
+      }}
+    >
       <div>👤 {user.name}</div>
-      <div>🎭 Roles: {user.role_names?.join(', ') || 'none'}</div>
+      <div>🎭 Roles: {user.role_names?.join(", ") || "none"}</div>
       <div>🔑 Permissions: {user.all_permissions?.length || 0}</div>
-      <div>👑 Is Admin: {user.isAdmin ? '✅ Yes' : '❌ No'}</div>
+      <div>👑 Is Admin: {user.isAdmin ? "✅ Yes" : "❌ No"}</div>
     </div>
   );
 };
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth();
-
   if (loading) return null;
-
-  if (!user) {
-    return <Navigate to="/session/signin" replace />;
-  }
-
+  if (!user) return <Navigate to="/session/signin" replace />;
   if (
     allowedRoles &&
-    !user.roles?.some((r) =>
-      allowedRoles.includes(r.name)
-    )
+    !user.roles?.some((r) => allowedRoles.includes(r.name))
   ) {
     return <Navigate to="/dashboard/default" replace />;
   }
-
   return children;
 }
 
 function AppRouter() {
   const element = useRoutes([
     ...routes,
-
     {
       path: "/navigation-hub",
       element: <NavigationHub />,
-    }
+    },
   ]);
-
   return element;
 }
 
@@ -85,40 +76,33 @@ export default function App() {
 
   useEffect(() => {
     const savedLanguage = localStorage.getItem("i18nextLng") || "fa";
-
     i18n.changeLanguage(savedLanguage);
-
     document.documentElement.setAttribute(
       "dir",
       savedLanguage === "fa" ? "rtl" : "ltr"
     );
-
-    document.documentElement.setAttribute(
-      "lang",
-      savedLanguage
-    );
+    document.documentElement.setAttribute("lang", savedLanguage);
   }, [i18n]);
 
   return (
     <HashRouter>
       <SettingsProvider>
         <AuthProvider>
-          <MatxTheme>
-            <CssBaseline />
-
-            <div
-              style={{
-                direction:
-                  i18n.language === "fa" ? "rtl" : "ltr"
-              }}
-            >
-              <AnimatedBackground>
-                <AppRouter />
-                <DebugAuth />
-              </AnimatedBackground>
-            </div>
-
-          </MatxTheme>
+          <NavigationProvider>
+            <MatxTheme>
+              <CssBaseline />
+              <div
+                style={{
+                  direction: i18n.language === "fa" ? "rtl" : "ltr",
+                }}
+              >
+                <AnimatedBackground>
+                  <AppRouter />
+                  <DebugAuth />
+                </AnimatedBackground>
+              </div>
+            </MatxTheme>
+          </NavigationProvider>
         </AuthProvider>
       </SettingsProvider>
     </HashRouter>

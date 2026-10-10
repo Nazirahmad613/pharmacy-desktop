@@ -11,7 +11,27 @@ import persian from "react-date-object/calendars/persian";
 import persian_fa from "react-date-object/locales/persian_fa";
 
 /* ============================================================
- *  ✅ Locale سفارشی افغانستان — نام ماه‌های افغانی
+ *  ✅ تبدیل ایمن هر مقدار به رشته
+ * ============================================================ */
+const safeStr = (v, fallback = "-") => {
+  if (v === null || v === undefined) return fallback;
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "object") {
+    return (
+      v.name ??
+      v.full_name ??
+      v.account_name ??
+      v.patient_name ??
+      v.title ??
+      fallback
+    );
+  }
+  return fallback;
+};
+
+/* ============================================================
+ *  ✅ Locale سفارشی افغانستان
  * ============================================================ */
 const afghanistanLocale = {
   ...persian_fa,
@@ -94,6 +114,44 @@ const REF_TYPE_FA = {
   admission_fee: "فیس بستری",
   registration_fee: "فیس مراجعه",
   consultation_fee: "فیس مشاوره",
+};
+
+/* ============================================================
+ *  ✅ انواع منبعی که "نیاز به ref_id ندارند" (مصارف مستقیم)
+ *  برای این‌ها کاربر فقط مبلغ و توضیحات را وارد می‌کند
+ * ============================================================ */
+const NO_REF_TYPES = [
+  "rent",
+  "electricity",
+  "water",
+  "internet",
+  "salary",
+  "fuel",
+  "maintenance",
+  "transport",
+  "expense",
+  "income",
+  "other",
+];
+
+/* ============================================================
+ *  ✅ بررسی نیاز به ref_id
+ * ============================================================ */
+const needsRefId = (refType) => {
+  if (!refType) return false;
+  return !NO_REF_TYPES.includes(refType);
+};
+
+/* ============================================================
+ *  ✅ بررسی نیاز به مبلغ دستی (کاربر خودش وارد کند)
+ *  این حالت معمولاً وقتی است که:
+ *  - entry_type = credit (پرداخت پول)
+ *  - یا ref_type در NO_REF_TYPES باشد
+ * ============================================================ */
+const needsManualAmount = (entryType, refType) => {
+  if (entryType === "credit") return true;
+  if (NO_REF_TYPES.includes(refType)) return true;
+  return false;
 };
 
 const REF_TYPE_GROUPS = [
@@ -235,16 +293,12 @@ const btnStyle = {
 /* ============================================================
  *  توابع کمکی تاریخ
  * ============================================================ */
-
-/** تبدیل DateObject فارسی به رشته YYYY-MM-DD میلادی برای ارسال به بک‌اند */
 const dateObjectToISO = (dateObj) => {
   if (!dateObj) return "";
   try {
-    // اگر DateObject باشد (از DatePicker)
     if (typeof dateObj?.toDate === "function") {
       return dateObj.toDate().toISOString().split("T")[0];
     }
-    // اگر Date معمولی باشد
     if (dateObj instanceof Date) {
       return dateObj.toISOString().split("T")[0];
     }
@@ -254,7 +308,6 @@ const dateObjectToISO = (dateObj) => {
   }
 };
 
-/** تبدیل رشته میلادی YYYY-MM-DD به Date برای DatePicker */
 const isoToDateObject = (iso) => {
   if (!iso) return "";
   try {
@@ -281,6 +334,12 @@ export default function JournalPage() {
   const [toDate, setToDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+
+  /* ✅ آیا این ref_type نیاز به ref_id دارد؟ */
+  const refIdRequired = needsRefId(form.ref_type);
+
+  /* ✅ آیا مبلغ باید دستی وارد شود؟ */
+  const manualAmount = needsManualAmount(form.entry_type, form.ref_type);
 
   /* ============================================================
    *  دریافت ژورنال‌ها
@@ -309,13 +368,14 @@ export default function JournalPage() {
   }, [fetchJournals]);
 
   /* ============================================================
-   *  دریافت منابع بر اساس نوع
+   *  دریافت منابع بر اساس نوع (فقط اگر ref_type نیاز داشته باشد)
    * ============================================================ */
   useEffect(() => {
     let isMounted = true;
 
     const loadSources = async () => {
-      if (!form.ref_type) {
+      /* ✅ اگر این ref_type نیاز به منبع ندارد، چیزی بارگذاری نکن */
+      if (!form.ref_type || !needsRefId(form.ref_type)) {
         setRefSources([]);
         return;
       }
@@ -330,10 +390,6 @@ export default function JournalPage() {
 
         const list = res.data?.data ?? [];
         setRefSources(Array.isArray(list) ? list : []);
-
-        if (list.length === 0) {
-          console.warn(`منبعی برای type=${form.ref_type} یافت نشد`);
-        }
       } catch (err) {
         if (!isMounted) return;
         console.error("خطا در دریافت منابع:", err);
@@ -360,14 +416,32 @@ export default function JournalPage() {
     setForm((prev) => {
       const updated = { ...prev, [name]: value };
 
+      /* ============================================================
+       *  ✅ entry_type عوض شد → فقط فیلدهای وابسته به منبع را ریست کن
+       *  ⚠️ amount و description را دست نزن
+       * ============================================================ */
+      if (name === "entry_type") {
+        updated.ref_id = "";
+        updated.reg_id = "";
+        updated.tazkira_number = "";
+        // amount و description را دست نزن
+      }
+
+      /* ============================================================
+       *  ✅ ref_type عوض شد → فیلدهای وابسته به منبع را ریست کن
+       *  ⚠️ amount را دست نزن!
+       * ============================================================ */
       if (name === "ref_type") {
         updated.ref_id = "";
         updated.reg_id = "";
         updated.tazkira_number = "";
-        updated.description = "";
-        updated.amount = "";
+        // 🚨 amount را پاک نکن!
+        // description را هم پاک نکن (اگر کاربر خودش وارد کرده)
       }
 
+      /* ============================================================
+       *  ✅ ref_id انتخاب شد
+       * ============================================================ */
       if (name === "ref_id") {
         const found = refSources.find(
           (r) => String(r.id) === String(value)
@@ -377,27 +451,40 @@ export default function JournalPage() {
           updated.reg_id = found.reg_id ?? "";
 
           if (found.national_id) {
-            updated.tazkira_number = found.national_id;
+            updated.tazkira_number = safeStr(found.national_id, "");
           }
 
-          if (form.ref_type === "external_prescription") {
-            if (found.name) {
-              updated.description = `فیس نسخه بیرونی - ${found.name}`;
-            }
+          const foundName = safeStr(found.name, "");
 
-            if (found.total_amount !== undefined) {
-              const total = Number(found.total_amount || 0);
-              const discount = Number(found.discount || 0);
-              const paid = Number(found.paid_amount || 0);
-              const remaining = Math.max(0, total - discount - paid);
-              updated.amount = remaining > 0 ? remaining : total - discount;
+          /* debit → مبلغ از منبع خوانده می‌شود */
+          if (form.entry_type === "debit") {
+            if (form.ref_type === "external_prescription") {
+              if (foundName) {
+                updated.description = `فیس نسخه بیرونی - ${foundName}`;
+              }
+
+              if (found.total_amount !== undefined) {
+                const total = Number(found.total_amount || 0);
+                const discount = Number(found.discount || 0);
+                const paid = Number(found.paid_amount || 0);
+                const remaining = Math.max(0, total - discount - paid);
+                updated.amount =
+                  remaining > 0 ? remaining : total - discount;
+              }
+            } else {
+              if (!updated.description && foundName) {
+                updated.description = foundName;
+              }
+              if (!updated.amount && found.total_amount) {
+                updated.amount = found.total_amount;
+              }
             }
-          } else {
-            if (!updated.description && found.name) {
-              updated.description = found.name;
-            }
-            if (!updated.amount && found.total_amount) {
-              updated.amount = found.total_amount;
+          }
+
+          /* credit → مبلغ دست نمی‌خورد */
+          else {
+            if (!updated.description && foundName) {
+              updated.description = foundName;
             }
           }
         }
@@ -437,8 +524,11 @@ export default function JournalPage() {
       return toast.error("مبلغ باید بزرگتر از صفر باشد");
     if (!form.ref_type)
       return toast.error("نوع منبع الزامی است");
-    if (!form.ref_id)
+
+    /* ✅ فقط اگر ref_type نیاز به منبع دارد، ref_id را چک کن */
+    if (needsRefId(form.ref_type) && !form.ref_id) {
       return toast.error("نام منبع الزامی است");
+    }
 
     try {
       const url = editingId
@@ -448,7 +538,8 @@ export default function JournalPage() {
       const payload = {
         ...form,
         amount: Number(form.amount),
-        ref_id: Number(form.ref_id),
+        // ✅ اگر ref_id خالی است، مقدار پیش‌فرض 0 بگذار
+        ref_id: form.ref_id ? Number(form.ref_id) : 0,
         reg_id: form.reg_id ? Number(form.reg_id) : null,
       };
 
@@ -470,12 +561,12 @@ export default function JournalPage() {
 
     setForm({
       journal_date: journal.journal_date ?? "",
-      description: journal.description ?? "",
+      description: safeStr(journal.description, ""),
       entry_type: journal.entry_type ?? "debit",
       amount: journal.amount ?? journal.total_amount ?? "",
       ref_type: journal.ref_type ?? "",
       ref_id: journal.ref_id ?? "",
-      tazkira_number: journal.tazkira_number ?? "",
+      tazkira_number: safeStr(journal.tazkira_number, ""),
       reg_id: journal.reg_id ?? "",
     });
 
@@ -488,7 +579,7 @@ export default function JournalPage() {
     printWindow.document.write(`
       <html dir="rtl">
         <head>
-          <title>ژورنال شماره ${row.id}</title>
+          <title>ژورنال شماره ${safeStr(row.id)}</title>
           <style>
             body { font-family: Tahoma, sans-serif; padding: 20px; }
             h3 { text-align: center; }
@@ -496,16 +587,16 @@ export default function JournalPage() {
           </style>
         </head>
         <body>
-          <h3>ژورنال شماره ${row.id}</h3>
-          <p>تاریخ: ${row.date}</p>
+          <h3>ژورنال شماره ${safeStr(row.id)}</h3>
+          <p>تاریخ: ${safeStr(row.date)}</p>
           <p>نوع: ${ENTRY_TYPE_FA[row.entry_type] || "-"}</p>
-          <p>توضیحات: ${row.description}</p>
-          <p>مبلغ کل: ${row.amount}</p>
-          <p>پرداخت شده: ${row.paid}</p>
-          <p>باقی‌مانده: ${row.remaining}</p>
-          <p>منبع: ${REF_TYPE_FA[row.source_type] || row.source_type || "-"}</p>
-          <p>نام منبع: ${row.source_name}</p>
-          <p>شماره تذکره: ${row.tazkira_number}</p>
+          <p>توضیحات: ${safeStr(row.description)}</p>
+          <p>مبلغ کل: ${safeStr(row.amount)}</p>
+          <p>پرداخت شده: ${safeStr(row.paid)}</p>
+          <p>باقی‌مانده: ${safeStr(row.remaining)}</p>
+          <p>منبع: ${REF_TYPE_FA[row.source_type] || safeStr(row.source_type)}</p>
+          <p>نام منبع: ${safeStr(row.source_name)}</p>
+          <p>شماره تذکره: ${safeStr(row.tazkira_number)}</p>
         </body>
       </html>
     `);
@@ -533,17 +624,20 @@ export default function JournalPage() {
           remaining = Number(j.due_amount);
         }
 
-        let description = j.description ?? "-";
+        let description = safeStr(j.description);
 
         if (j.ref_type === "sale") {
-          description = `فروش شماره ${j.ref_id}`;
+          description = `فروش شماره ${safeStr(j.ref_id)}`;
         } else if (j.ref_type === "parchase") {
-          description = `خرید شماره ${j.ref_id}`;
+          description = `خرید شماره ${safeStr(j.ref_id)}`;
         } else if (j.ref_type === "external_prescription") {
-          const patientName = j.source_name || j.full_name || j.display_name;
+          const patientName = safeStr(
+            j.source_name || j.full_name || j.display_name,
+            ""
+          );
           description = patientName
             ? `فیس نسخه بیرونی - ${patientName}`
-            : `نسخه بیرونی #${j.ref_id}`;
+            : `نسخه بیرونی #${safeStr(j.ref_id)}`;
         } else if (
           j.ref_type === "patient" &&
           typeof description === "string" &&
@@ -551,7 +645,7 @@ export default function JournalPage() {
         ) {
           const match = description.match(/نسخه شماره (\d+)/);
           const presNum = match ? match[1] : j.ref_id;
-          description = `نسخه شماره ${presNum}`;
+          description = `نسخه شماره ${safeStr(presNum)}`;
           remaining = 0;
           paid = amount;
         }
@@ -561,14 +655,15 @@ export default function JournalPage() {
           raw_date: j.journal_date,
           date: j.journal_date ? formatDateToFa(j.journal_date) : "-",
           entry_type: j.entry_type,
-          description,
+          description: safeStr(description),
           amount,
           paid,
           remaining,
-          source_type: j.ref_type,
-          source_name:
-            j.source_name || j.full_name || j.display_name || "-",
-          tazkira_number: j.tazkira_number ?? "-",
+          source_type: safeStr(j.ref_type),
+          source_name: safeStr(
+            j.source_name || j.full_name || j.display_name
+          ),
+          tazkira_number: safeStr(j.tazkira_number),
           reg_id: j.reg_id ?? null,
         };
       })
@@ -601,7 +696,7 @@ export default function JournalPage() {
   }, [searchTerm, filterType, fromDate, toDate]);
 
   /* ============================================================
-   *  رنگ ردیف بر اساس نوع منبع (بدون تغییر)
+   *  رنگ ردیف
    * ============================================================ */
   const getRowColor = (sourceType) => {
     switch (sourceType) {
@@ -661,7 +756,6 @@ export default function JournalPage() {
             ))}
           </select>
 
-          {/* ✅ فیلتر از تاریخ — تقویم افغانستان */}
           <DatePicker
             value={isoToDateObject(fromDate)}
             onChange={handleFromDateChange}
@@ -673,7 +767,6 @@ export default function JournalPage() {
             containerClassName="inline-block"
           />
 
-          {/* ✅ فیلتر تا تاریخ — تقویم افغانستان */}
           <DatePicker
             value={isoToDateObject(toDate)}
             onChange={handleToDateChange}
@@ -728,7 +821,6 @@ export default function JournalPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="form-grid gap-3">
-            {/* ✅ تاریخ ژورنال — تقویم افغانستان */}
             <DatePicker
               value={isoToDateObject(form.journal_date)}
               onChange={handleJournalDateChange}
@@ -754,12 +846,17 @@ export default function JournalPage() {
               ))}
             </select>
 
+            {/* ==================== مبلغ ==================== */}
             <input
               type="number"
               name="amount"
               value={form.amount}
               onChange={handleChange}
-              placeholder="مبلغ"
+              placeholder={
+                manualAmount
+                  ? "مبلغ (خودتان وارد کنید)"
+                  : "مبلغ (از منبع خوانده می‌شود)"
+              }
               className={inputClass}
               required
             />
@@ -801,31 +898,42 @@ export default function JournalPage() {
               ))}
             </select>
 
-            <select
-              name="ref_id"
-              value={form.ref_id}
-              onChange={handleChange}
-              disabled={!form.ref_type || loadingSources}
-              className={`${inputClass} disabled:opacity-50 disabled:cursor-not-allowed`}
-              required
-            >
-              <option value="">
-                {loadingSources
-                  ? "در حال بارگذاری..."
-                  : refSources.length
-                  ? "نام منبع را انتخاب کنید"
-                  : form.ref_type
-                  ? "منبعی یافت نشد"
-                  : "ابتدا نوع منبع را انتخاب کنید"}
-              </option>
-              {refSources.map((r) => (
-                <option key={`src-${r.id}-${r.reg_id ?? "x"}`} value={r.id}>
-                  {r.name}
-                  {r.code ? ` (${r.code})` : ""}
-                  {r.national_id ? ` - ${r.national_id}` : ""}
+            {/* ==================== نام منبع (فقط اگر نیاز باشد) ==================== */}
+            {refIdRequired && (
+              <select
+                name="ref_id"
+                value={form.ref_id}
+                onChange={handleChange}
+                disabled={!form.ref_type || loadingSources}
+                className={`${inputClass} disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <option value="">
+                  {loadingSources
+                    ? "در حال بارگذاری..."
+                    : refSources.length
+                    ? "نام منبع را انتخاب کنید"
+                    : form.ref_type
+                    ? "منبعی یافت نشد"
+                    : "ابتدا نوع منبع را انتخاب کنید"}
                 </option>
-              ))}
-            </select>
+                {refSources.map((r, idx) => {
+                  const nameStr = safeStr(r.name, "");
+                  const codeStr = safeStr(r.code, "");
+                  const natStr = safeStr(r.national_id, "");
+
+                  return (
+                    <option
+                      key={`src-${safeStr(r.id, idx)}-${safeStr(r.reg_id, "x")}`}
+                      value={r.id}
+                    >
+                      {nameStr}
+                      {codeStr ? ` (${codeStr})` : ""}
+                      {natStr ? ` - ${natStr}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
 
             <div style={{ display: "flex", gap: "10px" }}>
               <button
@@ -914,7 +1022,7 @@ export default function JournalPage() {
                           </div>
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-[12px]">
-                          {row.date || "-"}
+                          {safeStr(row.date)}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <span
@@ -934,7 +1042,7 @@ export default function JournalPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2 max-w-xs truncate text-[12px]">
-                          {row.description || "-"}
+                          {safeStr(row.description)}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap font-mono text-[12px]">
                           {Number(row.amount || 0).toLocaleString("fa-IR")}
@@ -947,14 +1055,13 @@ export default function JournalPage() {
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-[12px]">
                           {REF_TYPE_FA[row.source_type] ||
-                            row.source_type ||
-                            "-"}
+                            safeStr(row.source_type)}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-[12px]">
-                          {row.source_name || "-"}
+                          {safeStr(row.source_name)}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-[12px]">
-                          {row.tazkira_number || "-"}
+                          {safeStr(row.tazkira_number)}
                         </td>
                       </tr>
                     );
