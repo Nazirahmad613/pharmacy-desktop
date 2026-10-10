@@ -76,8 +76,8 @@ export default function Footer() {
   const hospitalInfo = {
     name: "شفاخانهٔ معالجوی الفلاح",
     address: "کابل_افعانستان",
-    phones: ["+93 78 123 4567", "+93 79 987 6543"],
-    whatsapp: "+93 78 123 4567",
+    phones: ["+93770940550", "+93 799321458"],
+    whatsapp: "+93 77000000",
     email: "info@al-falahhospital.af"
   };
 

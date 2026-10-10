@@ -118,6 +118,7 @@ const CATEGORY_LABELS = {
   other_services_income: "درآمد سایر خدمات",
   non_operating_income: "درآمد غیرعملیاتی",
   rent_income: "درآمد کرایه",
+  customers_income: "درآمد از مشتریان",       // ✅ جدید
   other_income: "سایر درآمدها",
   // Expense
   salary_expense: "مصرف معاشات",
@@ -149,6 +150,7 @@ const CATEGORY_LABELS = {
   contracting_institutions: "مؤسسات قراردادی",
   companies: "شرکت‌ها",
   corporate_customers: "مشتریان شرکتی",
+  customers: "مشتریان",                        // ✅ جدید
   miscellaneous_receivables: "مطالبات متفرقه",
   other_receivables: "سایر مطالبات",
   // Payable
@@ -220,6 +222,7 @@ const STATIC_CATEGORIES = {
     "other_services_income",
     "non_operating_income",
     "rent_income",
+    "customers_income",                        // ✅ جدید
     "other_income",
   ],
   expense: [
@@ -253,6 +256,7 @@ const STATIC_CATEGORIES = {
     "contracting_institutions",
     "companies",
     "corporate_customers",
+    "customers",                               // ✅ جدید
     "miscellaneous_receivables",
     "other_receivables",
   ],

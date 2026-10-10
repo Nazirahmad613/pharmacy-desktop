@@ -1,4 +1,3 @@
-```php
 <?php
 
 use Illuminate\Database\Migrations\Migration;
@@ -121,6 +120,7 @@ return new class extends Migration
                 'other_services_income',      // درآمد سایر خدمات
                 'non_operating_income',      // درآمد غیرعملیاتی
                 'rent_income',               // درآمد کرایه
+                'customers_income',          // ✅ درآمد از مشتریان (جدید)
                 'other_income',              // سایر درآمدها
 
                 // Expense - مصارف / هزینه‌ها
@@ -154,6 +154,7 @@ return new class extends Migration
                 'contracting_institutions',         // مؤسسات قراردادی
                 'companies',                        // شرکت‌ها
                 'corporate_customers',              // مشتریان حقوقی / سازمانی
+                'customers',                        // ✅ مشتریان (جدید)
                 'miscellaneous_receivables',        // سایر دریافتنی‌ها
                 'other_receivables',                // سایر حساب‌های دریافتنی
 
@@ -195,9 +196,6 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | مانده طبیعی حساب
             |--------------------------------------------------------------------------
-            |
-            | مشخص می‌کند که ماهیت طبیعی حساب بدهکار است یا بستانکار.
-            |
             */
 
             $table->enum('normal_balance', [
@@ -209,9 +207,6 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | موجودی ابتدایی
             |--------------------------------------------------------------------------
-            |
-            | مانده حساب در زمان ایجاد حساب.
-            |
             */
 
             $table->decimal('opening_balance', 15, 2)->default(0);
@@ -337,28 +332,134 @@ return new class extends Migration
 
             /*
             |--------------------------------------------------------------------------
-            | Indexes - ایندکس‌ها
+            | Indexes - ایندکس‌ها (بهینه‌شده برای فیلتر)
+            |--------------------------------------------------------------------------
+            |
+            | این ایندکس‌ها برای سرعت بخشیدن به فیلتر در بخش‌های مختلف سیستم
+            | طراحی شده‌اند:
+            |
+            | - فیلتر بر اساس نوع حساب
+            | - فیلتر بر اساس دسته‌بندی
+            | - فیلتر بر اساس نام حساب
+            | - فیلتر بر اساس کد حساب
+            | - فیلتر بر اساس ترکیب (نوع + دسته‌بندی)
+            | - فیلتر بر اساس ترکیب (نوع + فعال)
+            | - فیلتر بر اساس ترکیب (دسته‌بندی + فعال)
+            | - جستجو در نام و کد
+            | - فیلتر مشتریان
+            | - فیلتر تأمین‌کنندگان
+            |
+            */
+
+            /*
+            |--------------------------------------------------------------------------
+            | 1) ایندکس‌های تک‌ستونی
             |--------------------------------------------------------------------------
             */
 
-            $table->index('account_type');
+            $table->index('account_type', 'idx_accounts_type');
+            $table->index('account_category', 'idx_accounts_category');
+            $table->index('parent_id', 'idx_accounts_parent');
+            $table->index('is_active', 'idx_accounts_active');
+            $table->index('is_system', 'idx_accounts_system');
+            $table->index('normal_balance', 'idx_accounts_normal_balance');
+            $table->index('currency', 'idx_accounts_currency');
+            $table->index('account_name', 'idx_accounts_name');
+            $table->index('account_code', 'idx_accounts_code');
+            $table->index('phone', 'idx_accounts_phone');
+            $table->index('mobile', 'idx_accounts_mobile');
+            $table->index('email', 'idx_accounts_email');
+            $table->index('created_by', 'idx_accounts_created_by');
+            $table->index('updated_by', 'idx_accounts_updated_by');
+            $table->index('created_at', 'idx_accounts_created_at');
 
-            $table->index('account_category');
+            /*
+            |--------------------------------------------------------------------------
+            | 2) ایندکس‌های ترکیبی (Composite Indexes)
+            |--------------------------------------------------------------------------
+            |
+            | این ایندکس‌ها برای فیلترهای ترکیبی بسیار مؤثرتر هستند.
+            | مثلاً فیلتر «درآمد از مشتریان فعال» → (type + category + active)
+            |
+            */
 
-            $table->index('parent_id');
+            // فیلتر ترکیبی: نوع + دسته‌بندی + فعال
+            $table->index(
+                ['account_type', 'account_category', 'is_active'],
+                'idx_accounts_type_category_active'
+            );
 
-            $table->index('is_active');
+            // فیلتر ترکیبی: نوع + فعال
+            $table->index(
+                ['account_type', 'is_active'],
+                'idx_accounts_type_active'
+            );
 
-            $table->index('account_name');
+            // فیلتر ترکیبی: دسته‌بندی + فعال
+            $table->index(
+                ['account_category', 'is_active'],
+                'idx_accounts_category_active'
+            );
 
-            $table->index('phone');
+            // فیلتر ترکیبی: والد + فعال
+            $table->index(
+                ['parent_id', 'is_active'],
+                'idx_accounts_parent_active'
+            );
+
+            // فیلتر ترکیبی: نوع + دسته‌بندی + والد
+            $table->index(
+                ['account_type', 'account_category', 'parent_id'],
+                'idx_accounts_type_category_parent'
+            );
+
+            // فیلتر ترکیبی: نوع + والد
+            $table->index(
+                ['account_type', 'parent_id'],
+                'idx_accounts_type_parent'
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | 3) ایندکس‌های ویژه (Special Filter Indexes)
+            |--------------------------------------------------------------------------
+            */
+
+            // فیلتر مشتریان: (category + type + active)
+            // چون همیشه مشتریان با این ترکیب فیلتر می‌شوند
+            $table->index(
+                ['account_category', 'account_type', 'is_active'],
+                'idx_accounts_customers_filter'
+            );
+
+            // فیلتر تأمین‌کنندگان: (category + active)
+            $table->index(
+                ['account_category', 'is_active'],
+                'idx_accounts_suppliers_filter'
+            );
+
+            // فیلتر حساب‌های سیستمی بر اساس نوع
+            $table->index(
+                ['is_system', 'account_type'],
+                'idx_accounts_system_type'
+            );
+
+            // فیلتر حساب‌های قابل تراکنش
+            $table->index(
+                ['is_active', 'allow_transactions'],
+                'idx_accounts_transaction_accounts'
+            );
+
+            // فیلتر حساب‌های کنترلی
+            $table->index(
+                ['is_control_account', 'is_active'],
+                'idx_accounts_control_active'
+            );
         });
     }
 
     /**
      * حذف جدول هنگام rollback
-     *
-     * این متد زمانی اجرا می‌شود که Migration برگشت داده شود.
      */
     public function down(): void
     {
