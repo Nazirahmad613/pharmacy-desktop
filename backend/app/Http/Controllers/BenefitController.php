@@ -11,12 +11,8 @@ class BenefitController extends Controller
 {
     /*
     |--------------------------------------------------------------------------
-    | نام View در SQLite
+    | نام View
     |--------------------------------------------------------------------------
-    |
-    | View ساخته‌شده: v_benefits
-    | شامل سه نوع گزارش: daily، monthly، yearly
-    |
     */
 
     private string $viewName = 'v_benefits';
@@ -41,105 +37,59 @@ class BenefitController extends Controller
     {
         try {
 
-            /*
-            |--------------------------------------------------------------------------
-            | بررسی وجود View
-            |--------------------------------------------------------------------------
-            */
-
             if (!$this->viewExists()) {
                 return response()->json([
                     'success' => false,
-                    'error' => "View '{$this->viewName}' وجود ندارد. ابتدا Migration را اجرا کنید.",
-                    'data' => [],
+                    'error'   => "View '{$this->viewName}' وجود ندارد. ابتدا Migration را اجرا کنید.",
+                    'data'    => [],
                 ], 500);
             }
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | اعتبارسنجی نوع گزارش
-            |--------------------------------------------------------------------------
-            */
-
+            /* ---------- اعتبارسنجی نوع گزارش ---------- */
             $type = $request->get('type', 'daily');
 
             if (!in_array($type, ['daily', 'monthly', 'yearly'], true)) {
                 return response()->json([
                     'success' => false,
-                    'error' => "نوع گزارش نامعتبر است. مقادیر مجاز: daily, monthly, yearly",
-                    'data' => [],
+                    'error'   => "نوع گزارش نامعتبر است. مقادیر مجاز: daily, monthly, yearly",
+                    'data'    => [],
                 ], 422);
             }
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | Query پایه
-            |--------------------------------------------------------------------------
-            */
-
+            /* ---------- Query پایه ---------- */
             $query = DB::table($this->viewName)
                 ->where('report_type', $type);
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | فیلتر روزانه
-            |--------------------------------------------------------------------------
-            */
-
+            /* ---------- فیلتر روزانه ---------- */
             if ($type === 'daily' && $request->filled('date')) {
                 $query->where('journal_date', $request->date);
             }
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | فیلتر ماهانه
-            |--------------------------------------------------------------------------
-            */
-
+            /* ---------- فیلتر ماهانه ---------- */
             if ($type === 'monthly') {
-
                 if ($request->filled('year')) {
                     $query->where('year', (int) $request->year);
                 }
-
                 if ($request->filled('month')) {
                     $query->where('month', (int) $request->month);
                 }
             }
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | فیلتر سالانه
-            |--------------------------------------------------------------------------
-            */
-
+            /* ---------- فیلتر سالانه ---------- */
             if ($type === 'yearly' && $request->filled('year')) {
                 $query->where('year', (int) $request->year);
             }
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | مرتب‌سازی و نتیجه
-            |--------------------------------------------------------------------------
-            */
-
+            /* ---------- مرتب‌سازی و نتیجه ---------- */
             $result = $query
                 ->orderBy('journal_date', 'desc')
                 ->get();
 
-
             Log::info('[BenefitController] گزارش دریافت شد', [
-                'type'  => $type,
-                'count' => $result->count(),
+                'type'    => $type,
+                'count'   => $result->count(),
                 'filters' => $request->only(['date', 'month', 'year']),
             ]);
-
 
             return response()->json($result);
 
@@ -165,144 +115,65 @@ class BenefitController extends Controller
     |--------------------------------------------------------------------------
     | CHART
     |--------------------------------------------------------------------------
-    | داده‌های نمودار
-    |
-    | پارامترها:
-    | - type : daily | monthly | yearly
-    |
-    |--------------------------------------------------------------------------
     */
 
-    public function chart(Request $request)
-    {
-        try {
+  public function chart(Request $request)
+{
+    try {
 
-            /*
-            |--------------------------------------------------------------------------
-            | بررسی وجود View
-            |--------------------------------------------------------------------------
-            */
-
-            if (!$this->viewExists()) {
-                return response()->json([], 200);
-            }
-
-
-            $type = $request->get('type', 'monthly');
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | گزارش روزانه: 30 روز اخیر
-            |--------------------------------------------------------------------------
-            */
-
-            if ($type === 'daily') {
-
-                $data = DB::table($this->viewName)
-                    ->where('report_type', 'daily')
-                    ->select('journal_date as date', 'net_benefit')
-                    ->orderBy('journal_date', 'desc')
-                    ->limit(30)
-                    ->get();
-
-                return response()->json($data);
-            }
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | گزارش ماهانه: همه ماه‌ها
-            |--------------------------------------------------------------------------
-            */
-
-            if ($type === 'monthly') {
-
-                $data = DB::table($this->viewName)
-                    ->where('report_type', 'monthly')
-                    ->select(
-                        'year',
-                        'month',
-                        DB::raw('SUM(net_benefit) as net_benefit'),
-                        DB::raw('SUM(total_credit) as total_credit'),
-                        DB::raw('SUM(total_debit) as total_debit')
-                    )
-                    ->groupBy('year', 'month')
-                    ->orderBy('year', 'desc')
-                    ->orderBy('month', 'desc')
-                    ->get();
-
-                return response()->json($data);
-            }
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | گزارش سالانه: همه سال‌ها
-            |--------------------------------------------------------------------------
-            */
-
-            if ($type === 'yearly') {
-
-                $data = DB::table($this->viewName)
-                    ->where('report_type', 'yearly')
-                    ->select(
-                        'year',
-                        DB::raw('SUM(net_benefit) as net_benefit'),
-                        DB::raw('SUM(total_credit) as total_credit'),
-                        DB::raw('SUM(total_debit) as total_debit')
-                    )
-                    ->groupBy('year')
-                    ->orderBy('year', 'desc')
-                    ->get();
-
-                return response()->json($data);
-            }
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | پیش‌فرض: ماه جاری
-            |--------------------------------------------------------------------------
-            */
-
-            $data = DB::table($this->viewName)
-                ->where('report_type', 'monthly')
-                ->where('year', (int) date('Y'))
-                ->where('month', (int) date('m'))
-                ->select(
-                    'year',
-                    'month',
-                    DB::raw('SUM(net_benefit) as net_benefit'),
-                    DB::raw('SUM(total_credit) as total_credit'),
-                    DB::raw('SUM(total_debit) as total_debit')
-                )
-                ->groupBy('year', 'month')
-                ->get();
-
-            return response()->json($data);
-
-        } catch (\Exception $e) {
-
-            Log::error('[BenefitController] chart error', [
-                'message' => $e->getMessage(),
-                'file'    => $e->getFile(),
-                'line'    => $e->getLine(),
-            ]);
-
+        if (!$this->viewExists()) {
             return response()->json([], 200);
         }
+
+        /* ---------- اعتبارسنجی نوع گزارش ---------- */
+        $type = $request->get('type', 'daily');
+
+        if (!in_array($type, ['daily', 'monthly', 'yearly'], true)) {
+            return response()->json([], 200);
+        }
+
+        /* ---------- Query پایه (مثل index) ---------- */
+        $query = DB::table($this->viewName)
+            ->where('report_type', $type);
+
+        /* ---------- فیلترهای اختیاری (مثل index) ---------- */
+        if ($type === 'daily' && $request->filled('date')) {
+            $query->where('journal_date', $request->date);
+        }
+
+        if ($type === 'monthly') {
+            if ($request->filled('year'))  $query->where('year', (int) $request->year);
+            if ($request->filled('month')) $query->where('month', (int) $request->month);
+        }
+
+        if ($type === 'yearly' && $request->filled('year')) {
+            $query->where('year', (int) $request->year);
+        }
+
+        /* ---------- خروجی: همان ساختار index ---------- */
+        $data = $query
+            ->orderBy('journal_date', 'asc')   // برای نمودار: از قدیم به جدید
+            ->limit(60)                         // حداکثر ۶۰ نقطه
+            ->get();
+
+        return response()->json($data);
+
+    } catch (\Exception $e) {
+
+        Log::error('[BenefitController] chart error', [
+            'message' => $e->getMessage(),
+            'file'    => $e->getFile(),
+            'line'    => $e->getLine(),
+        ]);
+
+        return response()->json([], 200);
     }
+} 
 
 
     /*
     |--------------------------------------------------------------------------
     | SUMMARY
-    |--------------------------------------------------------------------------
-    | خلاصه گزارش سود و زیان
-    |
-    | برای نمایش کارت‌های بالای صفحه استفاده می‌شود.
-    |
     |--------------------------------------------------------------------------
     */
 
@@ -312,26 +183,20 @@ class BenefitController extends Controller
 
             if (!$this->viewExists()) {
                 return response()->json([
+                    'type'         => $request->get('type', 'monthly'),
                     'total_credit' => 0,
                     'total_debit'  => 0,
                     'net_benefit'  => 0,
+                    'period_count' => 0,
                 ]);
             }
 
-
             $type = $request->get('type', 'monthly');
-
 
             $query = DB::table($this->viewName)
                 ->where('report_type', $type);
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | فیلترهای اختیاری
-            |--------------------------------------------------------------------------
-            */
-
+            /* ---------- فیلترهای اختیاری ---------- */
             if ($type === 'daily' && $request->filled('date')) {
                 $query->where('journal_date', $request->date);
             }
@@ -349,21 +214,19 @@ class BenefitController extends Controller
                 $query->where('year', (int) $request->year);
             }
 
-
             $summary = $query->select(
                 DB::raw('COALESCE(SUM(total_credit), 0) as total_credit'),
-                DB::raw('COALESCE(SUM(total_debit), 0) as total_debit'),
-                DB::raw('COALESCE(SUM(net_benefit), 0) as net_benefit'),
+                DB::raw('COALESCE(SUM(total_debit),  0) as total_debit'),
+                DB::raw('COALESCE(SUM(net_benefit),  0) as net_benefit'),
                 DB::raw('COUNT(*) as period_count')
             )->first();
 
-
             return response()->json([
-                'type'          => $type,
-                'total_credit'  => (float) $summary->total_credit,
-                'total_debit'   => (float) $summary->total_debit,
-                'net_benefit'   => (float) $summary->net_benefit,
-                'period_count'  => (int)   $summary->period_count,
+                'type'         => $type,
+                'total_credit' => (float) ($summary->total_credit ?? 0),
+                'total_debit'  => (float) ($summary->total_debit  ?? 0),
+                'net_benefit'  => (float) ($summary->net_benefit  ?? 0),
+                'period_count' => (int)   ($summary->period_count ?? 0),
             ]);
 
         } catch (\Exception $e) {
@@ -375,9 +238,11 @@ class BenefitController extends Controller
             ]);
 
             return response()->json([
+                'type'         => $request->get('type', 'monthly'),
                 'total_credit' => 0,
                 'total_debit'  => 0,
                 'net_benefit'  => 0,
+                'period_count' => 0,
             ], 200);
         }
     }
@@ -393,28 +258,42 @@ class BenefitController extends Controller
     {
         try {
 
-            /*
-            |--------------------------------------------------------------------------
-            | SQLite: بررسی از طریق sqlite_master
-            |--------------------------------------------------------------------------
-            */
+            $driver = DB::getDriverName();
 
-            if (DB::getDriverName() === 'sqlite') {
-
+            /* ---------- SQLite ---------- */
+            if ($driver === 'sqlite') {
                 $result = DB::selectOne(
                     "SELECT name FROM sqlite_master WHERE type = 'view' AND name = ?",
                     [$this->viewName]
                 );
-
                 return !is_null($result);
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | MySQL / PostgreSQL: بررسی از طریق information_schema
-            |--------------------------------------------------------------------------
-            */
+            /* ---------- MySQL ---------- */
+            if ($driver === 'mysql') {
+                $result = DB::selectOne(
+                    "SELECT TABLE_NAME
+                     FROM information_schema.VIEWS
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = ?",
+                    [$this->viewName]
+                );
+                return !is_null($result);
+            }
 
+            /* ---------- PostgreSQL ---------- */
+            if ($driver === 'pgsql') {
+                $result = DB::selectOne(
+                    "SELECT table_name
+                     FROM information_schema.views
+                     WHERE table_schema = 'public'
+                       AND table_name = ?",
+                    [$this->viewName]
+                );
+                return !is_null($result);
+            }
+
+            /* ---------- Fallback ---------- */
             return Schema::hasTable($this->viewName);
 
         } catch (\Exception $e) {
@@ -426,4 +305,4 @@ class BenefitController extends Controller
             return false;
         }
     }
-};
+}

@@ -700,7 +700,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard-daily', function () {
         return DB::table('view_dashboard_daily')->get();
     });
-    Route::get('/benefits', [BenefitController::class, 'index']);
+
+    // ============================================================
+    // ✅ Benefits (گزارش سود و زیان)
+    // ============================================================
+    Route::prefix('benefits')->group(function () {
+        Route::get('/',        [BenefitController::class, 'index']);
+        Route::get('/chart',   [BenefitController::class, 'chart']);
+        Route::get('/summary', [BenefitController::class, 'summary']);
+    });
 });
 
 /*
@@ -716,5 +724,3 @@ Route::get('/sales-report', function (Request $request) {
     }
     return $query->get();
 });
-
-Route::get('/benefits-chart', [BenefitController::class, 'chart']);

@@ -25,14 +25,22 @@ ChartJS.register(
   Legend
 );
 
+/* نام ماه‌های افغانی (ترتیب صحیح) */
+const AFGHAN_MONTHS = [
+  'حمل', 'ثور', 'جوزا', 'سرطان', 'اسد', 'سنبله',
+  'میزان', 'عقرب', 'قوس', 'جدی', 'دلو', 'حوت',
+];
+
 const BenefitsChart = () => {
   const { api } = useAuth();
-  const [chartType, setChartType] = useState('line');
-  const [reportType, setReportType] = useState('monthly');
-  const [chartData, setChartData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
+  const [chartType, setChartType]   = useState('line');     // line | bar
+  const [reportType, setReportType] = useState('daily');    // daily | monthly | yearly
+  const [chartData, setChartData]   = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
+
+  /* ---------- دریافت داده از همان کنترلر گزارش ---------- */
   useEffect(() => {
     fetchData();
   }, [reportType]);
@@ -40,37 +48,21 @@ const BenefitsChart = () => {
   const fetchData = async () => {
     setLoading(true);
     setError(null);
+
     try {
       const response = await api.get('/benefits/chart', {
-        params: { type: reportType }
+        params: { type: reportType },
       });
-      
-      console.log('API Response:', response.data); // برای دیباگ
-      
-      // بررسی اینکه response.data آرایه است یا خیر
-      let responseData = response.data;
-      
-      // اگر response.data یک شیء است و دارای خاصیت data است
-      if (responseData && typeof responseData === 'object' && !Array.isArray(responseData)) {
-        if (responseData.data && Array.isArray(responseData.data)) {
-          responseData = responseData.data;
-        } else if (responseData.benefits && Array.isArray(responseData.benefits)) {
-          responseData = responseData.benefits;
-        } else {
-          responseData = [];
-        }
-      }
-      
-      // اطمینان از اینکه responseData آرایه است
-      if (!Array.isArray(responseData)) {
-        console.warn('Response data is not an array:', responseData);
-        responseData = [];
-      }
-      
+
+      console.log('Chart API Response:', response.data);
+
+      /* پاسخ مستقیماً آرایه است (مثل index) */
+      const responseData = Array.isArray(response.data) ? response.data : [];
+
       prepareChartData(responseData);
-      
-    } catch (error) {
-      console.error('Error fetching benefits chart data:', error);
+
+    } catch (err) {
+      console.error('Error fetching benefits chart data:', err);
       setError('خطا در دریافت داده‌های چارت');
       setChartData(null);
     } finally {
@@ -78,49 +70,68 @@ const BenefitsChart = () => {
     }
   };
 
+  /* ---------- آماده‌سازی داده‌های نمودار ---------- */
   const prepareChartData = (data) => {
-    if (!data || data.length === 0) {
+    if (!Array.isArray(data) || data.length === 0) {
       setChartData(null);
       return;
     }
 
-    let labels = [];
-    let values = [];
+    let labels  = [];
+    let values  = [];   // مفاد خالص
+    let credits = [];   // درآمد
+    let debits  = [];   // مصارف
 
+    /* ---------- برچسب محور X ---------- */
     if (reportType === 'monthly') {
-      const months = ['حمل', 'ثور', 'جوزا', 'سرطان', 'اسد', 'سنبله', 
-                      'میزان', 'عقرب', 'عقرب', 'قوس', 'جدی', 'حوت'];
-      
-      labels = data.map(item => {
-        const monthIndex = parseInt(item.month) - 1;
-        return months[monthIndex] + ' ' + item.year;
+      labels = data.map((item) => {
+        const idx  = parseInt(item.month, 10) - 1;
+        const name = AFGHAN_MONTHS[idx] || `ماه ${item.month}`;
+        return `${name} ${item.year}`;
       });
-      values = data.map(item => item.net_benefit || item.net_benefit === 0 ? item.net_benefit : 0);
-    } 
-    else if (reportType === 'daily') {
-      labels = data.map(item => item.date || item.journal_date);
-      values = data.map(item => item.net_benefit || 0);
+    } else if (reportType === 'daily') {
+      labels = data.map((item) => item.journal_date || item.date || '');
+    } else if (reportType === 'yearly') {
+      labels = data.map((item) => String(item.year));
     }
-    else if (reportType === 'yearly') {
-      labels = data.map(item => item.year);
-      values = data.map(item => item.net_benefit || 0);
-    }
+
+    /* ---------- مقادیر ---------- */
+    values  = data.map((item) => Number(item.net_benefit)  || 0);
+    credits = data.map((item) => Number(item.total_credit) || 0);
+    debits  = data.map((item) => Number(item.total_debit)  || 0);
 
     setChartData({
-      labels: labels,
+      labels,
       datasets: [
         {
-          label: 'سود خالص (افغانی)',
+          label: 'مفاد خالص (افغانی)',
           data: values,
           borderColor: 'rgb(53, 162, 235)',
-          backgroundColor: 'rgba(53, 162, 235, 0.5)',
+          backgroundColor: 'rgba(53, 162, 235, 0.4)',
           tension: 0.3,
           fill: true,
+        },
+        {
+          label: 'درآمد (افغانی)',
+          data: credits,
+          borderColor: 'rgb(75, 192, 75)',
+          backgroundColor: 'rgba(75, 192, 75, 0.3)',
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          label: 'مصارف (افغانی)',
+          data: debits,
+          borderColor: 'rgb(255, 99, 132)',
+          backgroundColor: 'rgba(255, 99, 132, 0.3)',
+          tension: 0.3,
+          fill: false,
         },
       ],
     });
   };
 
+  /* ---------- گزینه‌های نمودار ---------- */
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -128,59 +139,48 @@ const BenefitsChart = () => {
       legend: {
         position: 'top',
         rtl: true,
-        labels: {
-          font: {
-            size: 12,
-          },
-        },
+        labels: { font: { size: 12 } },
       },
       title: {
         display: true,
-        text: 'چارت سود و زیان',
-        font: {
-          size: 16,
-        },
+        text: 'چارت مفاد و زیان',
+        font: { size: 16 },
       },
       tooltip: {
+        rtl: true,
         callbacks: {
-          label: function(context) {
-            let label = context.dataset.label || '';
-            if (label) {
-              label += ': ';
-            }
+          label: function (context) {
+            const label = context.dataset.label || '';
             const value = context.raw || 0;
-            label += new Intl.NumberFormat('fa-IR').format(value) + ' ا';
-            return label;
-          }
-        }
-      }
+            return `${label}: ${new Intl.NumberFormat('fa-IR').format(value)} افغانی`;
+          },
+        },
+      },
     },
     scales: {
       y: {
         beginAtZero: true,
-        title: {
-          display: true,
-          text: 'مبلغ (افغانی)',
-        },
+        title: { display: true, text: 'مبلغ (افغانی)' },
         ticks: {
-          callback: function(value) {
-            return new Intl.NumberFormat('fa-IR').format(value);
-          }
-        }
+          callback: (value) => new Intl.NumberFormat('fa-IR').format(value),
+        },
       },
       x: {
         title: {
           display: true,
-          text: reportType === 'daily' ? 'تاریخ' : (reportType === 'monthly' ? 'ماه' : 'سال'),
+          text:
+            reportType === 'daily'
+              ? 'تاریخ'
+              : reportType === 'monthly'
+              ? 'ماه'
+              : 'سال',
         },
-        ticks: {
-          maxRotation: 45,
-          minRotation: 45,
-        }
-      }
-    }
+        ticks: { maxRotation: 45, minRotation: 45 },
+      },
+    },
   };
 
+  /* ---------- حالت بارگذاری ---------- */
   if (loading) {
     return (
       <div style={{ padding: 20, textAlign: 'center' }}>
@@ -189,12 +189,13 @@ const BenefitsChart = () => {
     );
   }
 
+  /* ---------- حالت خطا ---------- */
   if (error) {
     return (
       <div style={{ padding: 20, textAlign: 'center', color: 'red' }}>
         <div>{error}</div>
-        <button 
-          onClick={fetchData} 
+        <button
+          onClick={fetchData}
           style={{ marginTop: 10, padding: '5px 10px', cursor: 'pointer' }}
         >
           تلاش مجدد
@@ -203,21 +204,46 @@ const BenefitsChart = () => {
     );
   }
 
+  /* ---------- حالت بدون داده ---------- */
   if (!chartData) {
     return (
       <div style={{ padding: 20, textAlign: 'center' }}>
-        <div>هیچ داده‌ای برای نمایش وجود ندارد</div>
+        <div style={{ marginBottom: 10 }}>هیچ داده‌ای برای نمایش وجود ندارد</div>
+        <button
+          onClick={fetchData}
+          style={{ padding: '5px 10px', cursor: 'pointer' }}
+        >
+          بروزرسانی
+        </button>
       </div>
     );
   }
 
+  /* ---------- محاسبات خلاصه (فقط روی مفاد خالص) ---------- */
+  const netValues = chartData.datasets[0]?.data || [];
+  const maxNet    = netValues.length ? Math.max(...netValues) : 0;
+  const minNet    = netValues.length ? Math.min(...netValues) : 0;
+  const sumNet    = netValues.reduce((a, b) => a + b, 0);
+  const avgNet    = netValues.length ? sumNet / netValues.length : 0;
+
+  /* ---------- رندر ---------- */
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ marginBottom: 20, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+
+      {/* ---------- نوار ابزار ---------- */}
+      <div
+        style={{
+          marginBottom: 20,
+          display: 'flex',
+          gap: 10,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
+      >
         <div>
           <label style={{ marginLeft: 8 }}>نوع گزارش:</label>
-          <select 
-            value={reportType} 
+          <select
+            value={reportType}
             onChange={(e) => setReportType(e.target.value)}
             style={{ padding: 8, borderRadius: 5, border: '1px solid #ccc' }}
           >
@@ -226,11 +252,11 @@ const BenefitsChart = () => {
             <option value="yearly">سالانه</option>
           </select>
         </div>
-        
+
         <div>
           <label style={{ marginLeft: 8 }}>نوع چارت:</label>
-          <select 
-            value={chartType} 
+          <select
+            value={chartType}
             onChange={(e) => setChartType(e.target.value)}
             style={{ padding: 8, borderRadius: 5, border: '1px solid #ccc' }}
           >
@@ -239,50 +265,56 @@ const BenefitsChart = () => {
           </select>
         </div>
 
-        <button 
+        <button
           onClick={fetchData}
-          style={{ padding: '8px 16px', backgroundColor: '#0d47a1', color: 'white', border: 'none', borderRadius: 5, cursor: 'pointer' }}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#0d47a1',
+            color: 'white',
+            border: 'none',
+            borderRadius: 5,
+            cursor: 'pointer',
+          }}
         >
           بروزرسانی
         </button>
       </div>
 
+      {/* ---------- نمودار ---------- */}
       <div style={{ height: 400 }}>
         {chartType === 'line' && <Line data={chartData} options={chartOptions} />}
-        {chartType === 'bar' && <Bar data={chartData} options={chartOptions} />}
+        {chartType === 'bar'  && <Bar  data={chartData} options={chartOptions} />}
       </div>
 
-      {/* نمایش خلاصه آمار */}
-      {chartData && chartData.datasets[0]?.data?.length > 0 && (
-        <div style={{ 
-          marginTop: 20, 
-          padding: 15, 
-          backgroundColor: '#f5f5f5', 
-          borderRadius: 8,
-          display: 'flex',
-          justifyContent: 'space-around',
-          flexWrap: 'wrap',
-          gap: 10
-        }}>
+      {/* ---------- خلاصه آمار ---------- */}
+      {netValues.length > 0 && (
+        <div
+          style={{
+            marginTop: 20,
+            padding: 15,
+            backgroundColor: '#f5f5f5',
+            borderRadius: 8,
+            display: 'flex',
+            justifyContent: 'space-around',
+            flexWrap: 'wrap',
+            gap: 10,
+          }}
+        >
           <div>
-            <strong>بیشترین سود:</strong>{' '}
-            {new Intl.NumberFormat('fa-IR').format(Math.max(...chartData.datasets[0].data))} ریال
+            <strong>بیشترین مفاد:</strong>{' '}
+            {new Intl.NumberFormat('fa-IR').format(maxNet)} افغانی
           </div>
           <div>
-            <strong>کمترین سود:</strong>{' '}
-            {new Intl.NumberFormat('fa-IR').format(Math.min(...chartData.datasets[0].data))} ریال
+            <strong>کمترین مفاد:</strong>{' '}
+            {new Intl.NumberFormat('fa-IR').format(minNet)} افغانی
           </div>
           <div>
-            <strong>میانگین سود:</strong>{' '}
-            {new Intl.NumberFormat('fa-IR').format(
-              chartData.datasets[0].data.reduce((a, b) => a + b, 0) / chartData.datasets[0].data.length
-            )} ریال
+            <strong>میانگین مفاد:</strong>{' '}
+            {new Intl.NumberFormat('fa-IR').format(avgNet.toFixed(0))} افغانی
           </div>
           <div>
-            <strong>مجموع سود:</strong>{' '}
-            {new Intl.NumberFormat('fa-IR').format(
-              chartData.datasets[0].data.reduce((a, b) => a + b, 0)
-            )} ریال
+            <strong>مجموع مفاد:</strong>{' '}
+            {new Intl.NumberFormat('fa-IR').format(sumNet)} افغانی
           </div>
         </div>
       )}
