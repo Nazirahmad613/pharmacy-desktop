@@ -114,11 +114,19 @@ const REF_TYPE_FA = {
   admission_fee: "فیس بستری",
   registration_fee: "فیس مراجعه",
   consultation_fee: "فیس مشاوره",
+
+  /* ✅ جدید: انواع حساب‌محور */
+  customer_account: "مشتری (حساب)",
+  corporate_customer: "مشتری شرکتی",
+  insurance_company: "شرکت بیمه",
+  supplier_account: "تأمین‌کننده (حساب)",
+  medicine_supplier: "تأمین‌کننده ادویه",
+  equipment_supplier: "تأمین‌کننده تجهیزات",
+  customer_income: "درآمد از مشتریان",
 };
 
 /* ============================================================
  *  ✅ انواع منبعی که "نیاز به ref_id ندارند" (مصارف مستقیم)
- *  برای این‌ها کاربر فقط مبلغ و توضیحات را وارد می‌کند
  * ============================================================ */
 const NO_REF_TYPES = [
   "rent",
@@ -135,6 +143,20 @@ const NO_REF_TYPES = [
 ];
 
 /* ============================================================
+ *  ✅ انواع منبعی که از جدول accounts می‌آیند (حساب‌محور)
+ *  این‌ها ref_id = account.id دارند
+ * ============================================================ */
+const ACCOUNT_REF_TYPES = [
+  "customer_account",
+  "corporate_customer",
+  "insurance_company",
+  "supplier_account",
+  "medicine_supplier",
+  "equipment_supplier",
+  "customer_income",
+];
+
+/* ============================================================
  *  ✅ بررسی نیاز به ref_id
  * ============================================================ */
 const needsRefId = (refType) => {
@@ -143,16 +165,48 @@ const needsRefId = (refType) => {
 };
 
 /* ============================================================
- *  ✅ بررسی نیاز به مبلغ دستی (کاربر خودش وارد کند)
- *  این حالت معمولاً وقتی است که:
- *  - entry_type = credit (پرداخت پول)
- *  - یا ref_type در NO_REF_TYPES باشد
+ *  ✅ بررسی اینکه این ref_type از accounts می‌آید یا نه
+ * ============================================================ */
+const isAccountRefType = (refType) => {
+  return ACCOUNT_REF_TYPES.includes(refType);
+};
+
+/* ============================================================
+ *  ✅ بررسی نیاز به مبلغ دستی
  * ============================================================ */
 const needsManualAmount = (entryType, refType) => {
   if (entryType === "credit") return true;
   if (NO_REF_TYPES.includes(refType)) return true;
   return false;
 };
+
+/* ============================================================
+ *  ✅ گروه‌های حساب‌محور (از جدول accounts)
+ * ============================================================ */
+const ACCOUNT_REF_GROUPS = [
+  {
+    label: "👥 مشتریان و مطالبات (از حسابات)",
+    options: [
+      { value: "customer_account", label: "مشتری" },
+      { value: "corporate_customer", label: "مشتری شرکتی" },
+      { value: "insurance_company", label: "شرکت بیمه" },
+    ],
+  },
+  {
+    label: "📦 تأمین‌کنندگان و بدهی‌ها (از حسابات)",
+    options: [
+      { value: "supplier_account", label: "تأمین‌کننده" },
+      { value: "medicine_supplier", label: "تأمین‌کننده ادویه" },
+      { value: "equipment_supplier", label: "تأمین‌کننده تجهیزات" },
+    ],
+  },
+  {
+    label: "💰 درآمدها (از حسابات)",
+    options: [
+      { value: "customer_income", label: "درآمد از مشتریان" },
+    ],
+  },
+];
 
 const REF_TYPE_GROUPS = [
   {
@@ -341,6 +395,9 @@ export default function JournalPage() {
   /* ✅ آیا مبلغ باید دستی وارد شود؟ */
   const manualAmount = needsManualAmount(form.entry_type, form.ref_type);
 
+  /* ✅ آیا این ref_type از accounts می‌آید؟ */
+  const isAccountSource = isAccountRefType(form.ref_type);
+
   /* ============================================================
    *  دریافت ژورنال‌ها
    * ============================================================ */
@@ -418,25 +475,20 @@ export default function JournalPage() {
 
       /* ============================================================
        *  ✅ entry_type عوض شد → فقط فیلدهای وابسته به منبع را ریست کن
-       *  ⚠️ amount و description را دست نزن
        * ============================================================ */
       if (name === "entry_type") {
         updated.ref_id = "";
         updated.reg_id = "";
         updated.tazkira_number = "";
-        // amount و description را دست نزن
       }
 
       /* ============================================================
        *  ✅ ref_type عوض شد → فیلدهای وابسته به منبع را ریست کن
-       *  ⚠️ amount را دست نزن!
        * ============================================================ */
       if (name === "ref_type") {
         updated.ref_id = "";
         updated.reg_id = "";
         updated.tazkira_number = "";
-        // 🚨 amount را پاک نکن!
-        // description را هم پاک نکن (اگر کاربر خودش وارد کرده)
       }
 
       /* ============================================================
@@ -456,7 +508,9 @@ export default function JournalPage() {
 
           const foundName = safeStr(found.name, "");
 
-          /* debit → مبلغ از منبع خوانده می‌شود */
+          /* ============================================================
+           *  ✅ debit → مبلغ از منبع خوانده می‌شود
+           * ============================================================ */
           if (form.entry_type === "debit") {
             if (form.ref_type === "external_prescription") {
               if (foundName) {
@@ -481,7 +535,9 @@ export default function JournalPage() {
             }
           }
 
-          /* credit → مبلغ دست نمی‌خورد */
+          /* ============================================================
+           *  ✅ credit → مبلغ دست نمی‌خورد
+           * ============================================================ */
           else {
             if (!updated.description && foundName) {
               updated.description = foundName;
@@ -538,9 +594,12 @@ export default function JournalPage() {
       const payload = {
         ...form,
         amount: Number(form.amount),
-        // ✅ اگر ref_id خالی است، مقدار پیش‌فرض 0 بگذار
         ref_id: form.ref_id ? Number(form.ref_id) : 0,
         reg_id: form.reg_id ? Number(form.reg_id) : null,
+        /* ✅ اگر حساب‌محور است، account_id را هم بفرست */
+        account_id: isAccountSource && form.ref_id
+          ? Number(form.ref_id)
+          : undefined,
       };
 
       await api.post(url, payload);
@@ -705,6 +764,9 @@ export default function JournalPage() {
       case "patient":               return "#1a701a";
       case "external_prescription": return "#6b3fa0";
       case "prescription_fee":      return "#1a701a";
+      case "customer_account":      return "#0d5c4a";
+      case "supplier_account":      return "#5c0d3a";
+      case "customer_income":       return "#0d4a5c";
       default:                      return "#1a1a1a";
     }
   };
@@ -887,6 +949,17 @@ export default function JournalPage() {
               required
             >
               <option value="">نوع منبع</option>
+              {/* ✅ گروه‌های حساب‌محور اول */}
+              {ACCOUNT_REF_GROUPS.map((group) => (
+                <optgroup key={`acc-group-${group.label}`} label={group.label}>
+                  {group.options.map((opt) => (
+                    <option key={`acc-opt-${opt.value}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+              {/* گروه‌های معمولی */}
               {REF_TYPE_GROUPS.map((group) => (
                 <optgroup key={`group-${group.label}`} label={group.label}>
                   {group.options.map((opt) => (
