@@ -12,6 +12,12 @@ return new class extends Migration
      * نکته مهم:
      * supplier_id در جدول parchases باید به accounts.id
      * متصل شود، نه به registrations.reg_id.
+     *
+     * ✅ تغییرات جدید:
+     * - اضافه شدن دسته‌های کارمندان (employees, employees_salary_payable,
+     *   daily_wage_workers, external_employees) به account_category
+     * - استفاده از string به جای enum برای سازگاری کامل با SQLite
+     *   (SQLite از ENUM پشتیبانی نمی‌کند و Laravel آن را به VARCHAR تبدیل می‌کند)
      */
     public function up(): void
     {
@@ -42,134 +48,76 @@ return new class extends Migration
             | account_type     = payable
             | account_category = medicine_suppliers
             |
+            | ⚠️ نکته: از string استفاده شده به جای enum چون SQLite
+            | از ENUM پشتیبانی نمی‌کند. مقادیر مجاز در کامنت مشخص شده‌اند.
+            |
             */
 
-            $table->enum('account_type', [
-                // دارایی
-                'asset',
+            $table->string('account_type', 30);
+            /*
+            مقادیر مجاز:
+            - asset        → دارایی
+            - liability    → بدهی
+            - equity       → سرمایه / حقوق مالکانه
+            - income       → درآمد
+            - expense      → مصارف / هزینه
+            - receivable   → حساب‌های دریافتنی
+            - payable      → حساب‌های پرداختنی
+            */
 
-                // بدهی
-                'liability',
+            $table->string('account_category', 60);
+            /*
+            مقادیر مجاز:
 
-                // سرمایه / حقوق مالکانه
-                'equity',
+            ==================== Asset - دارایی‌ها ====================
+            cash, bank, medicine_inventory, laboratory_inventory,
+            consumable_inventory, medical_equipment, office_equipment,
+            tools_and_supplies, building, land, vehicle, furniture,
+            prepayments, deposits, other_assets
 
-                // درآمد
-                'income',
+            ==================== Liability - بدهی‌ها ====================
+            suppliers, medicine_purchase_payable, equipment_purchase_payable,
+            laboratory_material_payable, salary_payable, tax_payable,
+            loans, bank_loans, contractual_liabilities, other_liabilities
 
-                // مصارف / هزینه
-                'expense',
+            ==================== Equity - سرمایه ====================
+            initial_capital, owner_capital, partners_capital,
+            retained_earnings, retained_losses, owner_drawings, other_equity
 
-                // حساب‌های دریافتنی
-                'receivable',
+            ==================== Income - درآمدها ====================
+            medical_services_income, consultation_income, laboratory_income,
+            radiology_income, operation_income, admission_income, pharmacy_income,
+            goods_sales_income, operation_room_income, other_services_income,
+            non_operating_income, rent_income, customers_income, other_income
 
-                // حساب‌های پرداختنی
-                'payable',
-            ]);
+            ==================== Expense - مصارف ====================
+            salary_expense, rent_expense, electricity_expense, water_expense,
+            internet_expense, telephone_expense, transportation_expense,
+            consumable_material_expense, medical_material_expense,
+            laboratory_material_expense, cleaning_material_expense,
+            repair_expense, medical_equipment_repair_expense,
+            building_repair_expense, fuel_expense, stationery_expense,
+            administrative_expense, marketing_expense, legal_expense,
+            tax_and_duty_expense, insurance_expense, bank_charge_expense,
+            depreciation_expense, other_expense
 
-            $table->enum('account_category', [
+            ==================== Receivable - دریافتنی ====================
+            insurance_companies, contracting_institutions, companies,
+            corporate_customers, customers, miscellaneous_receivables,
+            other_receivables
 
-                // Asset - دارایی‌ها
-                'cash',                         // نقد / پول نقد
-                'bank',                         // بانک
-                'medicine_inventory',          // موجودی دارو
-                'laboratory_inventory',        // موجودی مواد لابراتوار
-                'consumable_inventory',        // موجودی مواد مصرفی
-                'medical_equipment',           // تجهیزات طبی
-                'office_equipment',            // تجهیزات اداری
-                'tools_and_supplies',          // ابزار و لوازم
-                'building',                    // ساختمان
-                'land',                        // زمین
-                'vehicle',                     // وسایط نقلیه
-                'furniture',                   // اثاثیه و مبلمان
-                'prepayments',                 // پیش‌پرداخت‌ها
-                'deposits',                    // سپرده‌ها
-                'other_assets',               // سایر دارایی‌ها
+            ==================== Payable - پرداختنی ====================
+            medicine_suppliers, medical_equipment_suppliers,
+            laboratory_material_suppliers, consumable_material_suppliers,
+            vendors, contractors, salary_payables, tax_payables,
+            bank_payables, other_creditors
 
-                // Liability - بدهی‌ها
-                'suppliers',                         // تأمین‌کنندگان
-                'medicine_purchase_payable',         // بدهی خرید دارو
-                'equipment_purchase_payable',        // بدهی خرید تجهیزات
-                'laboratory_material_payable',      // بدهی مواد لابراتواری
-                'salary_payable',                    // حقوق پرداختنی
-                'tax_payable',                       // مالیات پرداختنی
-                'loans',                             // قرض‌ها
-                'bank_loans',                        // قرض‌های بانکی
-                'contractual_liabilities',           // تعهدات قراردادی
-                'other_liabilities',                 // سایر بدهی‌ها
-
-                // Equity - سرمایه / حقوق مالکانه
-                'initial_capital',             // سرمایه اولیه
-                'owner_capital',               // سرمایه مالک
-                'partners_capital',            // سرمایه شرکا
-                'retained_earnings',           // سود انباشته
-                'retained_losses',             // زیان انباشته
-                'owner_drawings',              // برداشت مالک
-                'other_equity',                // سایر حقوق مالکانه
-
-                // Income - درآمدها
-                'medical_services_income',    // درآمد خدمات طبی
-                'consultation_income',        // درآمد معاینه / مشاوره
-                'laboratory_income',          // درآمد لابراتوار
-                'radiology_income',           // درآمد رادیولوژی
-                'operation_income',           // درآمد عملیات
-                'admission_income',           // درآمد بستری
-                'pharmacy_income',            // درآمد دواخانه
-                'goods_sales_income',        // درآمد فروش کالا
-                'operation_room_income',      // درآمد اتاق عملیات
-                'other_services_income',      // درآمد سایر خدمات
-                'non_operating_income',      // درآمد غیرعملیاتی
-                'rent_income',               // درآمد کرایه
-                'customers_income',          // ✅ درآمد از مشتریان (جدید)
-                'other_income',              // سایر درآمدها
-
-                // Expense - مصارف / هزینه‌ها
-                'salary_expense',                    // هزینه معاش / حقوق
-                'rent_expense',                      // هزینه کرایه
-                'electricity_expense',               // هزینه برق
-                'water_expense',                     // هزینه آب
-                'internet_expense',                  // هزینه اینترنت
-                'telephone_expense',                 // هزینه تلفن
-                'transportation_expense',            // هزینه ترانسپورت
-                'consumable_material_expense',       // هزینه مواد مصرفی
-                'medical_material_expense',          // هزینه مواد طبی
-                'laboratory_material_expense',       // هزینه مواد لابراتواری
-                'cleaning_material_expense',         // هزینه مواد تنظیف
-                'repair_expense',                    // هزینه ترمیم
-                'medical_equipment_repair_expense',  // هزینه ترمیم تجهیزات طبی
-                'building_repair_expense',           // هزینه ترمیم ساختمان
-                'fuel_expense',                      // هزینه سوخت
-                'stationery_expense',                // هزینه قرطاسیه
-                'administrative_expense',            // هزینه اداری
-                'marketing_expense',                 // هزینه بازاریابی
-                'legal_expense',                     // هزینه حقوقی
-                'tax_and_duty_expense',              // هزینه مالیات و گمرک
-                'insurance_expense',                 // هزینه بیمه
-                'bank_charge_expense',               // هزینه کارمزد بانکی
-                'depreciation_expense',              // هزینه استهلاک
-                'other_expense',                     // سایر هزینه‌ها
-
-                // Receivable - حساب‌های دریافتنی
-                'insurance_companies',              // شرکت‌های بیمه
-                'contracting_institutions',         // مؤسسات قراردادی
-                'companies',                        // شرکت‌ها
-                'corporate_customers',              // مشتریان حقوقی / سازمانی
-                'customers',                        // ✅ مشتریان (جدید)
-                'miscellaneous_receivables',        // سایر دریافتنی‌ها
-                'other_receivables',                // سایر حساب‌های دریافتنی
-
-                // Payable - حساب‌های پرداختنی
-                'medicine_suppliers',               // تأمین‌کنندگان دارو
-                'medical_equipment_suppliers',      // تأمین‌کنندگان تجهیزات طبی
-                'laboratory_material_suppliers',    // تأمین‌کنندگان مواد لابراتواری
-                'consumable_material_suppliers',    // تأمین‌کنندگان مواد مصرفی
-                'vendors',                           // فروشندگان
-                'contractors',                      // قراردادی‌ها / پیمانکاران
-                'salary_payables',                  // معاش‌های پرداختنی
-                'tax_payables',                     // مالیات‌های پرداختنی
-                'bank_payables',                    // بدهی‌های بانکی
-                'other_creditors',                  // سایر بستانکاران
-            ]);
+            ==================== ✅ NEW: Employees - کارمندان ====================
+            employees,                  → کارمندان (برای معاش)
+            employees_salary_payable,   → معاش پرداختنی کارمندان
+            daily_wage_workers,         → کارگران روزمزد
+            external_employees          → کارمندان خارجی / قراردادی
+            */
 
             /*
             |--------------------------------------------------------------------------
@@ -198,10 +146,12 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             */
 
-            $table->enum('normal_balance', [
-                'debit',   // بدهکار
-                'credit',  // بستانکار
-            ]);
+            $table->string('normal_balance', 10);
+            /*
+            مقادیر مجاز:
+            - debit    → بدهکار
+            - credit   → بستانکار
+            */
 
             /*
             |--------------------------------------------------------------------------
@@ -211,10 +161,13 @@ return new class extends Migration
 
             $table->decimal('opening_balance', 15, 2)->default(0);
 
-            $table->enum('opening_balance_type', [
-                'debit',   // بدهکار
-                'credit',  // بستانکار
-            ])->nullable();
+            $table->string('opening_balance_type', 10)->nullable();
+            /*
+            مقادیر مجاز:
+            - debit    → بدهکار
+            - credit   → بستانکار
+            - null     → بدون موجودی ابتدایی
+            */
 
             /*
             |--------------------------------------------------------------------------
@@ -222,14 +175,16 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             */
 
-            $table->enum('currency', [
-                'AFN', // افغانی
-                'USD', // دالر امریکایی
-                'EUR', // یورو
-                'PKR', // روپیه پاکستان
-                'IRR', // ریال ایران
-                'AED', // درهم امارات
-            ])->default('AFN');
+            $table->string('currency', 10)->default('AFN');
+            /*
+            مقادیر مجاز:
+            - AFN  → افغانی
+            - USD  → دالر امریکایی
+            - EUR  → یورو
+            - PKR  → روپیه پاکستان
+            - IRR  → ریال ایران
+            - AED  → درهم امارات
+            */
 
             /*
             |--------------------------------------------------------------------------
@@ -238,11 +193,8 @@ return new class extends Migration
             */
 
             $table->string('contact_person')->nullable(); // شخص تماس
-
             $table->string('phone', 30)->nullable();       // شماره تلفن
-
             $table->string('mobile', 30)->nullable();      // شماره موبایل
-
             $table->string('email')->nullable();           // ایمیل
 
             /*
@@ -252,7 +204,6 @@ return new class extends Migration
             */
 
             $table->string('tazkira_number', 30)->nullable(); // شماره تذکره
-
             $table->string('tax_number', 50)->nullable();     // شماره مالیاتی
 
             /*
@@ -262,11 +213,8 @@ return new class extends Migration
             */
 
             $table->string('country')->default('Afghanistan'); // کشور
-
             $table->string('province')->nullable();             // ولایت
-
             $table->string('district')->nullable();             // ولسوالی / ناحیه
-
             $table->text('address')->nullable();                // آدرس کامل
 
             /*
@@ -334,21 +282,6 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | Indexes - ایندکس‌ها (بهینه‌شده برای فیلتر)
             |--------------------------------------------------------------------------
-            |
-            | این ایندکس‌ها برای سرعت بخشیدن به فیلتر در بخش‌های مختلف سیستم
-            | طراحی شده‌اند:
-            |
-            | - فیلتر بر اساس نوع حساب
-            | - فیلتر بر اساس دسته‌بندی
-            | - فیلتر بر اساس نام حساب
-            | - فیلتر بر اساس کد حساب
-            | - فیلتر بر اساس ترکیب (نوع + دسته‌بندی)
-            | - فیلتر بر اساس ترکیب (نوع + فعال)
-            | - فیلتر بر اساس ترکیب (دسته‌بندی + فعال)
-            | - جستجو در نام و کد
-            | - فیلتر مشتریان
-            | - فیلتر تأمین‌کنندگان
-            |
             */
 
             /*
@@ -377,10 +310,6 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | 2) ایندکس‌های ترکیبی (Composite Indexes)
             |--------------------------------------------------------------------------
-            |
-            | این ایندکس‌ها برای فیلترهای ترکیبی بسیار مؤثرتر هستند.
-            | مثلاً فیلتر «درآمد از مشتریان فعال» → (type + category + active)
-            |
             */
 
             // فیلتر ترکیبی: نوع + دسته‌بندی + فعال
@@ -426,7 +355,6 @@ return new class extends Migration
             */
 
             // فیلتر مشتریان: (category + type + active)
-            // چون همیشه مشتریان با این ترکیب فیلتر می‌شوند
             $table->index(
                 ['account_category', 'account_type', 'is_active'],
                 'idx_accounts_customers_filter'
@@ -436,6 +364,13 @@ return new class extends Migration
             $table->index(
                 ['account_category', 'is_active'],
                 'idx_accounts_suppliers_filter'
+            );
+
+            // ✅ فیلتر کارمندان: (category + active)
+            // برای پیدا کردن سریع کارمندانی که باید معاش بگیرند
+            $table->index(
+                ['account_category', 'is_active', 'allow_transactions'],
+                'idx_accounts_employees_filter'
             );
 
             // فیلتر حساب‌های سیستمی بر اساس نوع

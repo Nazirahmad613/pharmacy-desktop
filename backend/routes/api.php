@@ -671,48 +671,28 @@ Route::middleware('auth:sanctum')->group(function () {
     // ============================================================
     // ✅ PAYROLL (مدیریت معاشات)
     // ============================================================
-    Route::prefix('payroll')->name('payroll.')->group(function () {
+    Route::prefix('payroll')->group(function () {
+    Route::get('/dashboard', [PayrollModelController::class, 'getDashboard']);
+    Route::get('/employees', [PayrollModelController::class, 'getEmployees']);
+    Route::get('/employees/{id}', [PayrollModelController::class, 'getEmployee']);
+    Route::post('/employees', [PayrollModelController::class, 'createEmployee']);
+    Route::put('/employees/{id}', [PayrollModelController::class, 'updateEmployee']);
+    Route::delete('/employees/{id}', [PayrollModelController::class, 'deleteEmployee']);
 
-        // ===== داشبورد معاشات =====
-        Route::get('/dashboard', [PayrollModelController::class, 'getDashboard'])
-            ->name('dashboard');
+    Route::get('/salaries', [PayrollModelController::class, 'getSalaries']);
+    Route::post('/salaries/generate', [PayrollModelController::class, 'generateSalaries']);
+    Route::post('/salaries/pay-bulk', [PayrollModelController::class, 'paySalariesBulk']);
 
-        // ===== کارمندان (از users) =====
-        Route::prefix('employees')->name('employees.')->group(function () {
-            Route::get('/',       [PayrollModelController::class, 'getEmployees'])->name('index');
-            Route::post('/',      [PayrollModelController::class, 'createEmployee'])->name('store');
-            Route::get('/{id}',   [PayrollModelController::class, 'getEmployee'])
-                ->where('id', '[0-9]+')->name('show');
-            Route::put('/{id}',   [PayrollModelController::class, 'updateEmployee'])
-                ->where('id', '[0-9]+')->name('update');
-            Route::delete('/{id}', [PayrollModelController::class, 'deleteEmployee'])
-                ->where('id', '[0-9]+')->name('destroy');
-        });
+    Route::get('/advances', [PayrollModelController::class, 'getAdvances']);
+    Route::post('/advances', [PayrollModelController::class, 'createAdvance']);
+    Route::patch('/advances/{id}/approve', [PayrollModelController::class, 'approveAdvance']);
+    Route::patch('/advances/{id}/reject', [PayrollModelController::class, 'rejectAdvance']);
 
-        // ===== معاشات ماهانه =====
-        Route::prefix('salaries')->name('salaries.')->group(function () {
-            Route::get('/',                [PayrollModelController::class, 'getSalaries'])->name('index');
-            Route::post('/generate',       [PayrollModelController::class, 'generateSalaries'])->name('generate');
-            Route::post('/pay-bulk',       [PayrollModelController::class, 'paySalariesBulk'])->name('pay-bulk');
-        });
+    Route::get('/reports', [PayrollModelController::class, 'getReports']);
 
-        // ===== پیش‌پرداخت‌ها =====
-        Route::prefix('advances')->name('advances.')->group(function () {
-            Route::get('/',       [PayrollModelController::class, 'getAdvances'])->name('index');
-            Route::post('/',      [PayrollModelController::class, 'createAdvance'])->name('store');
-            Route::patch('/{id}/approve', [PayrollModelController::class, 'approveAdvance'])
-                ->where('id', '[0-9]+')->name('approve');
-            Route::patch('/{id}/reject',  [PayrollModelController::class, 'rejectAdvance'])
-                ->where('id', '[0-9]+')->name('reject');
-        });
-
-        // ===== گزارشات =====
-        Route::get('/reports', [PayrollModelController::class, 'getReports'])->name('reports');
-
-        // ===== تنظیمات =====
-        Route::get('/settings', [PayrollModelController::class, 'getSettings'])->name('settings.get');
-        Route::put('/settings', [PayrollModelController::class, 'updateSettings'])->name('settings.update');
-    });
+    Route::get('/settings', [PayrollModelController::class, 'getSettings']);
+    Route::put('/settings', [PayrollModelController::class, 'updateSettings']);
+});
 });
 
 /*

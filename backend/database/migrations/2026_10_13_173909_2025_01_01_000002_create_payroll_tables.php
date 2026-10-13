@@ -7,14 +7,10 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     * ✅ سازگار با MySQL و SQLite
-     */
     public function up(): void
     {
         // ============================================================
-        // 1. اطلاعات معاش هر کاربر (1:1 با users)
+        // 1) اطلاعات معاش هر کاربر (1:1 با users)
         // ============================================================
         Schema::create('employee_salary_info', function (Blueprint $table) {
             $table->id();
@@ -22,25 +18,21 @@ return new class extends Migration
             $table->unsignedBigInteger('user_id')->unique();
             $table->foreign('user_id')
                   ->references('id')->on('users')
-                  ->cascadeOnDelete()
-                  ->cascadeOnUpdate();
+                  ->cascadeOnDelete();
 
             $table->string('employee_code', 50)->nullable()->unique();
-
             $table->decimal('base_salary', 15, 2)->default(0);
             $table->decimal('allowances', 15, 2)->default(0);
             $table->decimal('deductions', 15, 2)->default(0);
 
             $table->unsignedBigInteger('bank_account_id')->nullable();
             $table->string('bank_account_number', 100)->nullable();
-
             $table->string('hire_date', 20)->nullable();
 
-            $table->enum('salary_status', ['active', 'suspended', 'terminated'])
-                  ->default('active');
+            $table->string('salary_status', 20)->default('active');
+            // active | suspended | terminated
 
             $table->text('notes')->nullable();
-
             $table->timestamps();
 
             $table->index('salary_status', 'idx_salary_info_status');
@@ -48,7 +40,7 @@ return new class extends Migration
         });
 
         // ============================================================
-        // 2. دوره‌های معاش
+        // 2) دوره‌های معاش
         // ============================================================
         Schema::create('payroll_periods', function (Blueprint $table) {
             $table->id();
@@ -56,71 +48,91 @@ return new class extends Migration
             $table->string('period_month', 20);
             $table->string('period_year', 10);
 
-            $table->enum('status', ['open', 'processing', 'closed', 'paid'])
-                  ->default('open');
+            $table->string('status', 20)->default('open');
+            // open | processing | closed | paid
 
             $table->decimal('total_amount', 18, 2)->default(0);
             $table->decimal('paid_amount', 18, 2)->default(0);
-
             $table->timestamps();
 
             $table->unique(['period_month', 'period_year'], 'uk_period');
         });
 
         // ============================================================
-        // 3. معاشات ماهانه کارمندان
+        // 3) معاشات ماهانه کارمندان (users + accounts)
         // ============================================================
         Schema::create('employee_salaries', function (Blueprint $table) {
             $table->id();
 
-            $table->unsignedBigInteger('user_id');
+            // ✅ کارمند از users
+            $table->unsignedBigInteger('user_id')->nullable();
             $table->foreign('user_id')
                   ->references('id')->on('users')
-                  ->cascadeOnDelete()
-                  ->cascadeOnUpdate();
+                  ->nullOnDelete();
 
+            // ✅ کارمند از accounts
+            $table->unsignedBigInteger('account_id')->nullable();
+            $table->foreign('account_id')
+                  ->references('id')->on('accounts')
+                  ->nullOnDelete();
+
+            // دوره معاش
             $table->unsignedBigInteger('period_id');
             $table->foreign('period_id')
                   ->references('id')->on('payroll_periods')
-                  ->cascadeOnDelete()
-                  ->cascadeOnUpdate();
+                  ->cascadeOnDelete();
 
+            // اطلاعات معاش کاربر
             $table->unsignedBigInteger('salary_info_id')->nullable();
             $table->foreign('salary_info_id')
                   ->references('id')->on('employee_salary_info')
-                  ->nullOnDelete()
-                  ->cascadeOnUpdate();
+                  ->nullOnDelete();
 
+            // اجزای معاش
             $table->decimal('base_salary', 15, 2)->default(0);
             $table->decimal('allowances', 15, 2)->default(0);
             $table->decimal('deductions', 15, 2)->default(0);
             $table->decimal('advance_deduction', 15, 2)->default(0);
             $table->decimal('net_salary', 15, 2)->default(0);
+            $table->decimal('paid_amount', 15, 2)->default(0);
 
-            $table->enum('payment_status', ['pending', 'paid', 'cancelled'])
-                  ->default('pending');
+            // وضعیت پرداخت
+            $table->string('payment_status', 20)->default('pending');
+            // pending | partial | paid | cancelled
 
             $table->date('payment_date')->nullable();
-
-            $table->enum('payment_method', ['cash', 'bank_transfer', 'cheque'])
-                  ->default('bank_transfer');
+            $table->string('payment_method', 30)->default('bank_transfer');
+            // cash | bank_transfer | cheque
 
             $table->unsignedBigInteger('payment_account_id')->nullable();
+            $table->unsignedBigInteger('paid_from_account_id')->nullable();
+            $table->foreign('paid_from_account_id')
+                  ->references('id')->on('accounts')
+                  ->nullOnDelete();
 
             $table->string('receipt_number', 80)->nullable();
             $table->text('notes')->nullable();
 
+            // ثبت کننده
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+
             $table->timestamps();
 
-            $table->unique(['user_id', 'period_id'], 'uk_user_period');
+            // Indexes
             $table->index('payment_status', 'idx_salaries_status');
             $table->index('period_id', 'idx_salaries_period');
             $table->index('user_id', 'idx_salaries_user');
+            $table->index('account_id', 'idx_salaries_account_id');
             $table->index('payment_account_id', 'idx_salaries_account');
+            $table->index('paid_from_account_id', 'idx_salaries_paid_from');
+
+            // Unique
+            $table->unique(['user_id', 'period_id'], 'uk_user_period');
         });
 
         // ============================================================
-        // 4. پیش‌پرداخت معاش
+        // 4) پیش‌پرداخت معاش
         // ============================================================
         Schema::create('salary_advances', function (Blueprint $table) {
             $table->id();
@@ -128,8 +140,7 @@ return new class extends Migration
             $table->unsignedBigInteger('user_id');
             $table->foreign('user_id')
                   ->references('id')->on('users')
-                  ->cascadeOnDelete()
-                  ->cascadeOnUpdate();
+                  ->cascadeOnDelete();
 
             $table->decimal('amount', 15, 2)->default(0);
             $table->text('reason')->nullable();
@@ -139,17 +150,11 @@ return new class extends Migration
             $table->unsignedBigInteger('approved_by')->nullable();
             $table->unsignedBigInteger('payment_account_id')->nullable();
 
-            $table->enum('status', [
-                'pending',
-                'approved',
-                'rejected',
-                'repaid',
-                'partially_repaid',
-            ])->default('pending');
+            $table->string('status', 30)->default('pending');
+            // pending | approved | rejected | repaid | partially_repaid
 
             $table->decimal('repaid_amount', 15, 2)->default(0);
             $table->decimal('remaining_amount', 15, 2)->default(0);
-
             $table->integer('repayment_months')->default(1);
             $table->decimal('monthly_deduction', 15, 2)->default(0);
 
@@ -161,23 +166,20 @@ return new class extends Migration
         });
 
         // ============================================================
-        // 5. تنظیمات معاشات
+        // 5) تنظیمات معاشات
         // ============================================================
         Schema::create('payroll_settings', function (Blueprint $table) {
             $table->id();
-
             $table->string('setting_key', 100)->unique();
             $table->text('setting_value')->nullable();
-
-            $table->enum('setting_type', ['string', 'number', 'boolean', 'json'])
-                  ->default('string');
-
+            $table->string('setting_type', 20)->default('string');
+            // string | number | boolean | json
             $table->string('description', 255)->nullable();
             $table->timestamp('updated_at')->nullable();
         });
 
         // ============================================================
-        // 6. لاگ تغییرات
+        // 6) لاگ تغییرات
         // ============================================================
         Schema::create('payroll_audit_log', function (Blueprint $table) {
             $table->id();
@@ -198,25 +200,13 @@ return new class extends Migration
         });
 
         // ============================================================
-        // ✅ View: کارمندان فعال (از جدول users)
-        // ============================================================
-        $this->createActiveEmployeesView();
-
-        // ============================================================
-        // ✅ داده اولیه: تنظیمات پیش‌فرض
+        // 7) درج تنظیمات پیش‌فرض
         // ============================================================
         $this->seedDefaultSettings();
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        // حذف View
-        DB::statement('DROP VIEW IF EXISTS v_active_employees');
-
-        // حذف جداول به ترتیب معکوس (به دلیل Foreign Keys)
         Schema::dropIfExists('payroll_audit_log');
         Schema::dropIfExists('payroll_settings');
         Schema::dropIfExists('salary_advances');
@@ -225,50 +215,6 @@ return new class extends Migration
         Schema::dropIfExists('employee_salary_info');
     }
 
-    // ============================================================
-    // Helper: ساخت View کارمندان فعال
-    // ============================================================
-    private function createActiveEmployeesView(): void
-    {
-        $driver = DB::getDriverName();
-
-        // حذف View قدیمی (اگر وجود دارد)
-        if ($driver === 'mysql') {
-            DB::statement('DROP VIEW IF EXISTS v_active_employees');
-        } else {
-            DB::statement('DROP VIEW IF EXISTS v_active_employees');
-        }
-
-        $sql = <<<SQL
-            CREATE VIEW v_active_employees AS
-            SELECT
-                u.id                              AS user_id,
-                u.full_name,
-                u.username,
-                u.email,
-                d.id                              AS department_id,
-                d.name                            AS department_name,
-                si.id                             AS salary_info_id,
-                si.employee_code,
-                COALESCE(si.base_salary, 0)       AS base_salary,
-                COALESCE(si.allowances, 0)        AS allowances,
-                COALESCE(si.deductions, 0)        AS deductions,
-                si.bank_account_id,
-                si.bank_account_number,
-                si.hire_date,
-                si.salary_status
-            FROM users u
-            LEFT JOIN departments d ON u.department_id = d.id
-            LEFT JOIN employee_salary_info si ON si.user_id = u.id
-            WHERE u.is_active = 1
-        SQL;
-
-        DB::statement($sql);
-    }
-
-    // ============================================================
-    // Helper: درج تنظیمات پیش‌فرض
-    // ============================================================
     private function seedDefaultSettings(): void
     {
         $defaults = [
@@ -288,15 +234,9 @@ return new class extends Migration
         ];
 
         foreach ($defaults as $item) {
-            $exists = DB::table('payroll_settings')
-                ->where('setting_key', $item['setting_key'])
-                ->exists();
-
-            if (!$exists) {
-                DB::table('payroll_settings')->insert(array_merge($item, [
-                    'updated_at' => now(),
-                ]));
-            }
+            DB::table('payroll_settings')->insert(array_merge($item, [
+                'updated_at' => now(),
+            ]));
         }
     }
 };

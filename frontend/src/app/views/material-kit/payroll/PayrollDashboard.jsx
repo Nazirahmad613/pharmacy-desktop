@@ -10,7 +10,7 @@ import PaymentIcon from "@mui/icons-material/Payment";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import api from "app/api";
+import api from "../../../../api";
 
 const MONTHS = [
   "حمل", "ثور", "جوزا", "سرطان", "اسد", "سنبله",

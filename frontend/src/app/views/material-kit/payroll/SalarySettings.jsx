@@ -8,7 +8,7 @@ import {
 import SaveIcon from "@mui/icons-material/Save";
 import SettingsIcon from "@mui/icons-material/Settings";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import api from "app/api";
+import api from "../../../../api";
 
 export default function SalarySettings() {
   const [loading, setLoading] = useState(true);

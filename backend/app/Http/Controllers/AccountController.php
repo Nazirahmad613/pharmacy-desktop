@@ -31,6 +31,11 @@ class AccountController extends Controller
     |--------------------------------------------------------------------------
     | دسته‌بندی حساب‌ها
     |--------------------------------------------------------------------------
+    |
+    | ✅ تغییرات جدید:
+    | - اضافه شدن دسته‌های کارمندان به بخش payable:
+    |   employees, employees_salary_payable, daily_wage_workers, external_employees
+    |
     */
 
     private array $categories = [
@@ -141,6 +146,12 @@ class AccountController extends Controller
             'tax_payables',
             'bank_payables',
             'other_creditors',
+
+            // ✅ NEW: Employees - کارمندان (برای معاش)
+            'employees',                  // کارمندان (برای معاش)
+            'employees_salary_payable',   // معاش پرداختنی کارمندان
+            'daily_wage_workers',         // کارگران روزمزد
+            'external_employees',         // کارمندان خارجی / قراردادی
         ],
     ];
 
@@ -1140,6 +1151,14 @@ class AccountController extends Controller
 
         $customersCount = Account::where('account_category', 'customers')->count();
 
+        // ✅ شمارش کارمندان
+        $employeesCount = Account::whereIn('account_category', [
+            'employees',
+            'employees_salary_payable',
+            'daily_wage_workers',
+            'external_employees',
+        ])->count();
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -1148,6 +1167,7 @@ class AccountController extends Controller
                 'inactive' => $inactive,
                 'system' => $system,
                 'customers' => $customersCount,
+                'employees' => $employeesCount,
                 'by_type' => $byType,
             ],
         ]);
@@ -1350,4 +1370,4 @@ class AccountController extends Controller
 
         return false;
     }
-};
+}

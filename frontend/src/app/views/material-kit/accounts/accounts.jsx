@@ -51,6 +51,8 @@ import {
   AccountTree as AccountTreeIcon,
   FilterList as FilterListIcon,
   Close as CloseIcon,
+  Badge as BadgeIcon,
+  People as PeopleIcon,
 } from "@mui/icons-material";
 
 // ============================================================
@@ -118,7 +120,7 @@ const CATEGORY_LABELS = {
   other_services_income: "درآمد سایر خدمات",
   non_operating_income: "درآمد غیرعملیاتی",
   rent_income: "درآمد کرایه",
-  customers_income: "درآمد از مشتریان",       // ✅ جدید
+  customers_income: "درآمد از مشتریان",
   other_income: "سایر درآمدها",
   // Expense
   salary_expense: "مصرف معاشات",
@@ -150,7 +152,7 @@ const CATEGORY_LABELS = {
   contracting_institutions: "مؤسسات قراردادی",
   companies: "شرکت‌ها",
   corporate_customers: "مشتریان شرکتی",
-  customers: "مشتریان",                        // ✅ جدید
+  customers: "مشتریان",
   miscellaneous_receivables: "مطالبات متفرقه",
   other_receivables: "سایر مطالبات",
   // Payable
@@ -164,11 +166,28 @@ const CATEGORY_LABELS = {
   tax_payables: "مالیات قابل پرداخت",
   bank_payables: "بدهی بانکی",
   other_creditors: "سایر طلبکاران",
+  // ✅ Employees - کارمندان
+  employees: "کارمندان",
+  employees_salary_payable: "معاش پرداختنی کارمندان",
+  daily_wage_workers: "کارگران روزمزد",
+  external_employees: "کارمندان قراردادی",
 };
 
 // ============================================================
+// ✅ دسته‌های کارمندی (برای تشخیص سریع)
+// ============================================================
+const EMPLOYEE_CATEGORIES = [
+  "employees",
+  "employees_salary_payable",
+  "daily_wage_workers",
+  "external_employees",
+];
+
+const isEmployeeCategory = (category) =>
+  EMPLOYEE_CATEGORIES.includes(category);
+
+// ============================================================
 // ✅ دسته‌بندی‌های استاتیک بر اساس نوع حساب
-// (مطابق migration جدول accounts)
 // ============================================================
 const STATIC_CATEGORIES = {
   asset: [
@@ -222,7 +241,7 @@ const STATIC_CATEGORIES = {
     "other_services_income",
     "non_operating_income",
     "rent_income",
-    "customers_income",                        // ✅ جدید
+    "customers_income",
     "other_income",
   ],
   expense: [
@@ -256,7 +275,7 @@ const STATIC_CATEGORIES = {
     "contracting_institutions",
     "companies",
     "corporate_customers",
-    "customers",                               // ✅ جدید
+    "customers",
     "miscellaneous_receivables",
     "other_receivables",
   ],
@@ -271,11 +290,17 @@ const STATIC_CATEGORIES = {
     "tax_payables",
     "bank_payables",
     "other_creditors",
+
+    // ✅ Employees - کارمندان
+    "employees",
+    "employees_salary_payable",
+    "daily_wage_workers",
+    "external_employees",
   ],
 };
 
 // ============================================================
-// ✅ تابع کمکی: دریافت دسته‌بندی‌ها بر اساس نوع (استاتیک)
+// ✅ تابع کمکی
 // ============================================================
 const getCategoriesByType = (accountType) => {
   if (!accountType) return [];
@@ -393,7 +418,6 @@ export default function Accounts() {
       setTypes(res.data.data || []);
     } catch (error) {
       console.error("Error loading types:", error);
-      // ✅ در صورت خطا، از ثابت‌های داخلی استفاده کن
       setTypes(Object.keys(ACCOUNT_TYPE_LABELS));
     }
   };
@@ -426,7 +450,7 @@ export default function Accounts() {
     setEditingId(null);
     setFormData(emptyForm);
     setFormErrors({});
-    setCategories([]); // ✅ خالی چون نوع حساب انتخاب نشده
+    setCategories([]);
     loadParents();
     setOpenForm(true);
   };
@@ -449,7 +473,6 @@ export default function Accounts() {
       is_active: account.is_active ?? true,
     });
     setFormErrors({});
-    // ✅ استفاده از دسته‌بندی‌های استاتیک
     setCategories(getCategoriesByType(account.account_type));
     loadParents(account.account_type);
     setOpenForm(true);
@@ -476,9 +499,8 @@ export default function Accounts() {
     const updated = { ...formData, [field]: value };
 
     if (field === "account_type") {
-      updated.account_category = ""; // ریست دسته‌بندی
+      updated.account_category = "";
       updated.parent_id = "";
-      // ✅ استفاده از دسته‌بندی‌های استاتیک
       setCategories(getCategoriesByType(value));
       loadParents(value);
     }
@@ -491,7 +513,6 @@ export default function Accounts() {
   };
 
   const handleSave = async () => {
-    // اعتبارسنجی ساده
     const errors = {};
     if (!formData.account_code?.trim()) errors.account_code = "کد حساب الزامی است";
     if (!formData.account_name?.trim()) errors.account_name = "نام حساب الزامی است";
@@ -587,8 +608,14 @@ export default function Accounts() {
     setPage(1);
   };
 
+  // ✅ فیلتر سریع کارمندان
+  const handleShowOnlyEmployees = () => {
+    setFilterType("payable");
+    setFilterCategory("employees");
+    setPage(1);
+  };
+
   // ========== محاسبات ==========
-  // ✅ دسته‌بندی‌های موجود برای فیلتر (استاتیک)
   const availableCategories = useMemo(() => {
     if (!filterType) return [];
     return STATIC_CATEGORIES[filterType] || [];
@@ -754,6 +781,21 @@ export default function Accounts() {
               }}
             >
               بروزرسانی
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<PeopleIcon />}
+              onClick={handleShowOnlyEmployees}
+              sx={{
+                color: "#a78bfa",
+                borderColor: "#8b5cf6",
+                "&:hover": {
+                  borderColor: "#a78bfa",
+                  background: "rgba(139, 92, 246, 0.1)",
+                },
+              }}
+            >
+              کارمندان
             </Button>
             <Button
               variant="contained"
@@ -968,121 +1010,157 @@ export default function Accounts() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    accounts.map((account, idx) => (
-                      <TableRow
-                        key={account.id}
-                        sx={{
-                          "&:hover": { background: "#0f172a" },
-                          transition: "background 0.2s",
-                        }}
-                      >
-                        <TableCell sx={styles.tableCell}>
-                          {(page - 1) * perPage + idx + 1}
-                        </TableCell>
-                        <TableCell sx={styles.tableCell}>
-                          <Typography sx={{ fontFamily: "monospace", fontWeight: "bold", color: "#fcd34d" }}>
-                            {account.account_code}
-                          </Typography>
-                        </TableCell>
-                        <TableCell sx={styles.tableCell}>
-                          <Box sx={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            {account.is_system && (
-                              <Tooltip title="حساب سیستمی">
-                                <AccountTreeIcon sx={{ fontSize: 16, color: "#8b5cf6" }} />
-                              </Tooltip>
-                            )}
-                            <Typography sx={{ color: "#fff" }}>
-                              {account.account_name}
+                    accounts.map((account, idx) => {
+                      const isEmployee = isEmployeeCategory(account.account_category);
+                      return (
+                        <TableRow
+                          key={account.id}
+                          sx={{
+                            "&:hover": { background: "#0f172a" },
+                            transition: "background 0.2s",
+                            // ✅ رنگ ملایم برای ردیف‌های کارمندی
+                            background: isEmployee ? "rgba(139, 92, 246, 0.05)" : "transparent",
+                          }}
+                        >
+                          <TableCell sx={styles.tableCell}>
+                            {(page - 1) * perPage + idx + 1}
+                          </TableCell>
+                          <TableCell sx={styles.tableCell}>
+                            <Typography sx={{ fontFamily: "monospace", fontWeight: "bold", color: "#fcd34d" }}>
+                              {account.account_code}
                             </Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell sx={styles.tableCell}>
-                          <Chip
-                            label={ACCOUNT_TYPE_LABELS[account.account_type] || account.account_type}
-                            size="small"
-                            sx={styles.typeChip(account.account_type)}
-                          />
-                        </TableCell>
-                        <TableCell sx={styles.tableCell}>
-                          {CATEGORY_LABELS[account.account_category] || account.account_category}
-                        </TableCell>
-                        <TableCell sx={styles.tableCell}>
-                          {account.parent ? (
-                            <Typography sx={{ fontSize: "12px", color: "#60a5fa" }}>
-                              {account.parent.account_name}
-                            </Typography>
-                          ) : (
-                            <Typography sx={{ fontSize: "12px", color: "#64748b" }}>
-                              —
-                            </Typography>
-                          )}
-                        </TableCell>
-                        <TableCell sx={styles.tableCell}>
-                          <Chip
-                            label={account.currency}
-                            size="small"
-                            sx={{ background: "#334155", color: "#e2e8f0" }}
-                          />
-                        </TableCell>
-                        <TableCell sx={styles.tableCell}>
-                          <Chip
-                            label={account.is_active ? "فعال" : "غیرفعال"}
-                            size="small"
-                            sx={styles.statusChip(account.is_active)}
-                          />
-                        </TableCell>
-                        <TableCell sx={styles.tableCell}>
-                          <Box sx={{ display: "flex", gap: "4px" }}>
-                            <Tooltip title="مشاهده">
-                              <IconButton
+                          </TableCell>
+                          <TableCell sx={styles.tableCell}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              {account.is_system && (
+                                <Tooltip title="حساب سیستمی">
+                                  <AccountTreeIcon sx={{ fontSize: 16, color: "#8b5cf6" }} />
+                                </Tooltip>
+                              )}
+                              {/* ✅ نشان کارمند */}
+                              {isEmployee && (
+                                <Tooltip title="کارمند - در لیست معاشات ظاهر می‌شود">
+                                  <Chip
+                                    icon={<BadgeIcon sx={{ fontSize: 14 }} />}
+                                    label="کارمند"
+                                    size="small"
+                                    sx={{
+                                      background: "linear-gradient(135deg, #8b5cf6, #6d28d9)",
+                                      color: "#fff",
+                                      fontWeight: "bold",
+                                      fontSize: "10px",
+                                      height: "22px",
+                                    }}
+                                  />
+                                </Tooltip>
+                              )}
+                              <Typography sx={{ color: "#fff" }}>
+                                {account.account_name}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell sx={styles.tableCell}>
+                            <Chip
+                              label={ACCOUNT_TYPE_LABELS[account.account_type] || account.account_type}
+                              size="small"
+                              sx={styles.typeChip(account.account_type)}
+                            />
+                          </TableCell>
+                          <TableCell sx={styles.tableCell}>
+                            {/* ✅ رنگ مخصوص برای دسته‌های کارمندی */}
+                            {isEmployee ? (
+                              <Chip
+                                label={CATEGORY_LABELS[account.account_category] || account.account_category}
                                 size="small"
-                                onClick={() => handleOpenView(account)}
-                                sx={{ ...styles.actionBtn, color: "#60a5fa", "&:hover": { background: "rgba(59,130,246,0.2)" } }}
-                              >
-                                <VisibilityIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="ویرایش">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleOpenEdit(account)}
-                                sx={{ ...styles.actionBtn, color: "#f59e0b", "&:hover": { background: "rgba(245,158,11,0.2)" } }}
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title={account.is_active ? "غیرفعال کردن" : "فعال کردن"}>
-                              <IconButton
-                                size="small"
-                                onClick={() => handleToggleStatus(account)}
                                 sx={{
-                                  ...styles.actionBtn,
-                                  color: account.is_active ? "#ef4444" : "#10b981",
-                                  "&:hover": {
-                                    background: account.is_active
-                                      ? "rgba(239,68,68,0.2)"
-                                      : "rgba(16,185,129,0.2)",
-                                  },
+                                  background: "#8b5cf6",
+                                  color: "#fff",
+                                  fontWeight: "bold",
+                                  fontSize: "11px",
                                 }}
-                              >
-                                {account.is_active ? <CancelIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
-                              </IconButton>
-                            </Tooltip>
-                            {!account.is_system && (
-                              <Tooltip title="حذف">
+                              />
+                            ) : (
+                              CATEGORY_LABELS[account.account_category] || account.account_category
+                            )}
+                          </TableCell>
+                          <TableCell sx={styles.tableCell}>
+                            {account.parent ? (
+                              <Typography sx={{ fontSize: "12px", color: "#60a5fa" }}>
+                                {account.parent.account_name}
+                              </Typography>
+                            ) : (
+                              <Typography sx={{ fontSize: "12px", color: "#64748b" }}>
+                                —
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell sx={styles.tableCell}>
+                            <Chip
+                              label={account.currency}
+                              size="small"
+                              sx={{ background: "#334155", color: "#e2e8f0" }}
+                            />
+                          </TableCell>
+                          <TableCell sx={styles.tableCell}>
+                            <Chip
+                              label={account.is_active ? "فعال" : "غیرفعال"}
+                              size="small"
+                              sx={styles.statusChip(account.is_active)}
+                            />
+                          </TableCell>
+                          <TableCell sx={styles.tableCell}>
+                            <Box sx={{ display: "flex", gap: "4px" }}>
+                              <Tooltip title="مشاهده">
                                 <IconButton
                                   size="small"
-                                  onClick={() => handleOpenDelete(account)}
-                                  sx={{ ...styles.actionBtn, color: "#ef4444", "&:hover": { background: "rgba(239,68,68,0.2)" } }}
+                                  onClick={() => handleOpenView(account)}
+                                  sx={{ ...styles.actionBtn, color: "#60a5fa", "&:hover": { background: "rgba(59,130,246,0.2)" } }}
                                 >
-                                  <DeleteIcon fontSize="small" />
+                                  <VisibilityIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                            )}
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                              <Tooltip title="ویرایش">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleOpenEdit(account)}
+                                  sx={{ ...styles.actionBtn, color: "#f59e0b", "&:hover": { background: "rgba(245,158,11,0.2)" } }}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title={account.is_active ? "غیرفعال کردن" : "فعال کردن"}>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleToggleStatus(account)}
+                                  sx={{
+                                    ...styles.actionBtn,
+                                    color: account.is_active ? "#ef4444" : "#10b981",
+                                    "&:hover": {
+                                      background: account.is_active
+                                        ? "rgba(239,68,68,0.2)"
+                                        : "rgba(16,185,129,0.2)",
+                                    },
+                                  }}
+                                >
+                                  {account.is_active ? <CancelIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
+                                </IconButton>
+                              </Tooltip>
+                              {!account.is_system && (
+                                <Tooltip title="حذف">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleOpenDelete(account)}
+                                    sx={{ ...styles.actionBtn, color: "#ef4444", "&:hover": { background: "rgba(239,68,68,0.2)" } }}
+                                  >
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -1187,6 +1265,26 @@ export default function Accounts() {
             </Box>
           </DialogTitle>
           <DialogContent sx={styles.dialogContent}>
+            {/* ✅ هشدار برای دسته‌های کارمندی */}
+            {isEmployeeCategory(formData.account_category) && (
+              <Box sx={{
+                background: "rgba(139, 92, 246, 0.15)",
+                border: "1px solid #8b5cf6",
+                borderRadius: "8px",
+                padding: "12px",
+                marginBottom: "15px",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}>
+                <BadgeIcon sx={{ color: "#a78bfa" }} />
+                <Typography sx={{ color: "#e2e8f0", fontSize: "13px" }}>
+                  ✅ این حساب به عنوان <strong style={{ color: "#a78bfa" }}>کارمند</strong> ثبت می‌شود
+                  و در بخش <strong>معاشات کارمندان</strong> نمایش داده خواهد شد.
+                </Typography>
+              </Box>
+            )}
+
             <Grid container spacing={2} sx={{ marginTop: "5px" }}>
               <Grid item xs={12} sm={6}>
                 <TextField
@@ -1249,7 +1347,12 @@ export default function Accounts() {
                     ) : (
                       categories.map((c) => (
                         <MenuItem key={c} value={c}>
-                          {CATEGORY_LABELS[c] || c}
+                          <Box sx={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}>
+                            {isEmployeeCategory(c) && (
+                              <BadgeIcon sx={{ fontSize: 16, color: "#a78bfa" }} />
+                            )}
+                            <span>{CATEGORY_LABELS[c] || c}</span>
+                          </Box>
                         </MenuItem>
                       ))
                     )}
@@ -1433,9 +1536,25 @@ export default function Accounts() {
                   </Grid>
                   <Grid item xs={12}>
                     <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>نام حساب</Typography>
-                    <Typography sx={{ color: "#fff", fontWeight: "bold" }}>
-                      {selectedAccount.account_name}
-                    </Typography>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Typography sx={{ color: "#fff", fontWeight: "bold" }}>
+                        {selectedAccount.account_name}
+                      </Typography>
+                      {isEmployeeCategory(selectedAccount.account_category) && (
+                        <Chip
+                          icon={<BadgeIcon sx={{ fontSize: 14 }} />}
+                          label="کارمند"
+                          size="small"
+                          sx={{
+                            background: "linear-gradient(135deg, #8b5cf6, #6d28d9)",
+                            color: "#fff",
+                            fontWeight: "bold",
+                            fontSize: "10px",
+                            height: "22px",
+                          }}
+                        />
+                      )}
+                    </Box>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>نوع حساب</Typography>
@@ -1509,6 +1628,19 @@ export default function Accounts() {
             <Typography sx={{ color: "#e2e8f0", marginTop: "10px" }}>
               آیا از حذف حساب <strong style={{ color: "#fcd34d" }}>{selectedAccount?.account_name}</strong> مطمئن هستید؟
             </Typography>
+            {isEmployeeCategory(selectedAccount?.account_category) && (
+              <Box sx={{
+                background: "rgba(239, 68, 68, 0.1)",
+                border: "1px solid #ef4444",
+                borderRadius: "8px",
+                padding: "10px",
+                marginTop: "10px",
+              }}>
+                <Typography sx={{ color: "#fca5a5", fontSize: "12px" }}>
+                  ⚠️ این حساب یک <strong>کارمند</strong> است. حذف آن باعث حذف معاشات مرتبط می‌شود.
+                </Typography>
+              </Box>
+            )}
             <Typography sx={{ color: "#94a3b8", fontSize: "12px", marginTop: "10px" }}>
               این عملیات قابل بازگشت نیست.
             </Typography>

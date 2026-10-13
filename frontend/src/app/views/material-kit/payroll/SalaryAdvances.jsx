@@ -10,7 +10,7 @@ import AddIcon from "@mui/icons-material/Add";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import api from "app/api";
+import api from "../../../../api";
 
 export default function SalaryAdvances() {
   const [loading, setLoading] = useState(true);

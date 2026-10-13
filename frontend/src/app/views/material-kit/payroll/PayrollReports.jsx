@@ -50,15 +50,15 @@ export default function PayrollReports() {
   }, [fetchReports]);
 
   const formatCurrency = (n) =>
-    new Intl.NumberFormat("fa-AF").format(n || 0) + " ؋";
+    new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
 
   // ============================================================
   // Totals
   // ============================================================
-  const totalEmployees = reportData.reduce((s, d) => s + (d.employees || 0), 0);
-  const totalSalary = reportData.reduce((s, d) => s + (d.totalSalary || 0), 0);
-  const totalPaid = reportData.reduce((s, d) => s + (d.paid || 0), 0);
-  const totalPending = reportData.reduce((s, d) => s + (d.pending || 0), 0);
+  const totalEmployees = reportData.reduce((s, d) => s + (Number(d.employees) || 0), 0);
+  const totalSalary = reportData.reduce((s, d) => s + (Number(d.totalSalary) || 0), 0);
+  const totalPaid = reportData.reduce((s, d) => s + (Number(d.paid) || 0), 0);
+  const totalPending = reportData.reduce((s, d) => s + (Number(d.pending) || 0), 0);
 
   // ============================================================
   // Export CSV
@@ -69,7 +69,15 @@ export default function PayrollReports() {
       const pct = row.totalSalary
         ? Math.round((row.paid / row.totalSalary) * 100)
         : 0;
-      return [i + 1, row.department, row.employees, row.totalSalary, row.paid, row.pending, `${pct}%`];
+      return [
+        i + 1,
+        row.department,
+        row.employees,
+        row.totalSalary,
+        row.paid,
+        row.pending,
+        `${pct}%`,
+      ];
     });
 
     const csvContent =
@@ -85,9 +93,7 @@ export default function PayrollReports() {
     URL.revokeObjectURL(url);
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => window.print();
 
   if (loading) {
     return (
@@ -112,20 +118,29 @@ export default function PayrollReports() {
         <CardContent>
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} sm={3}>
-              <TextField fullWidth select size="small" label="ماه"
-                value={month} onChange={(e) => setMonth(e.target.value)}>
+              <TextField
+                fullWidth select size="small" label="ماه"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+              >
                 {MONTHS.map((m) => (
                   <MenuItem key={m} value={m}>{m}</MenuItem>
                 ))}
               </TextField>
             </Grid>
             <Grid item xs={12} sm={2}>
-              <TextField fullWidth size="small" label="سال"
-                value={year} onChange={(e) => setYear(e.target.value)} />
+              <TextField
+                fullWidth size="small" label="سال"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+              />
             </Grid>
             <Grid item xs={12} sm={7} sx={{ textAlign: "left" }}>
-              <Button startIcon={<FileDownloadIcon />} sx={{ mr: 1 }}
-                onClick={handleExportCSV}>
+              <Button
+                startIcon={<FileDownloadIcon />}
+                sx={{ mr: 1 }}
+                onClick={handleExportCSV}
+              >
                 خروجی Excel
               </Button>
               <Button startIcon={<PrintIcon />} color="info" onClick={handlePrint}>
@@ -183,8 +198,13 @@ export default function PayrollReports() {
             گزارش معاشات بخش‌ها - {month} {year}
           </Typography>
 
+          <Alert severity="info" sx={{ mb: 2 }}>
+            💡 این گزارش فقط کاربران سیستم را بر اساس دپارتمان نشان می‌دهد.
+            کارمندان طرف‌حساب (حسابات) بدون دپارتمان محاسبه می‌شوند.
+          </Alert>
+
           {reportData.length === 0 ? (
-            <Alert severity="info">
+            <Alert severity="warning">
               هیچ داده‌ای برای این دوره یافت نشد. ابتدا معاشات را از صفحه «پرداخت معاش» تولید کنید.
             </Alert>
           ) : (
@@ -219,8 +239,11 @@ export default function PayrollReports() {
                           {formatCurrency(row.pending)}
                         </TableCell>
                         <TableCell>
-                          <Chip label={`${pct}%`} size="small"
-                            color={pct === 100 ? "success" : pct > 70 ? "info" : "warning"} />
+                          <Chip
+                            label={`${pct}%`}
+                            size="small"
+                            color={pct === 100 ? "success" : pct > 70 ? "info" : "warning"}
+                          />
                         </TableCell>
                       </TableRow>
                     );
