@@ -84,6 +84,26 @@ const AppRadiology = Loadable(lazy(() => import("./radiology/Radiology")));
 // ===== Accounts =====
 const AppAccounts = Loadable(lazy(() => import("./accounts/accounts")));
 
+// ===== ✅ Payroll (مدیریت معاشات) =====
+const AppPayrollDashboard = Loadable(
+  lazy(() => import("./payroll/PayrollDashboard"))
+);
+const AppEmployeeSalaries = Loadable(
+  lazy(() => import("./payroll/EmployeeSalaries"))
+);
+const AppSalaryPayment = Loadable(
+  lazy(() => import("./payroll/SalaryPayment"))
+);
+const AppSalaryAdvances = Loadable(
+  lazy(() => import("./payroll/SalaryAdvances"))
+);
+const AppPayrollReports = Loadable(
+  lazy(() => import("./payroll/PayrollReports"))
+);
+const AppSalarySettings = Loadable(
+  lazy(() => import("./payroll/SalarySettings"))
+);
+
 // ===== Pharmacy =====
 const AppPharmacy = Loadable(lazy(() => import("./pharmacy/pharmacy")));
 const AppPharmacySales = Loadable(
@@ -277,6 +297,58 @@ const materialRoutes = [
       <RoleRoute allowedRoles={[ROLES.ADMIN]}>
         <AppAddlogs />
       </RoleRoute>
+    ),
+  },
+
+  // ============================================================
+  // ===== ✅ Payroll Routes (مدیریت معاشات) =====
+  // ============================================================
+  {
+    path: "/material/payroll",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+        <AppPayrollDashboard />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/payroll/employees",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+        <AppEmployeeSalaries />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/payroll/payment",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+        <AppSalaryPayment />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/payroll/advances",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+        <AppSalaryAdvances />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/payroll/reports",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+        <AppPayrollReports />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/payroll/settings",
+    element: (
+      <AdminRoute>
+        <AppSalarySettings />
+      </AdminRoute>
     ),
   },
 

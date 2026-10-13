@@ -21,6 +21,13 @@ import RadioIcon from "@mui/icons-material/Radio";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import LocalPharmacyIcon from "@mui/icons-material/LocalPharmacy";
 import BusinessIcon from "@mui/icons-material/Business";
+// ===== ✅ آیکون‌های جدید برای مدیریت معاشات =====
+import PaymentsIcon from "@mui/icons-material/Payments";
+import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import SettingsIcon from "@mui/icons-material/Settings";
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
+import MoneyOffIcon from "@mui/icons-material/MoneyOff";
 
 // ============================================================
 // ✅ رول‌ها - نام‌ها باید با دیتابیس شما یکسان باشند
@@ -55,6 +62,11 @@ export const PERMISSIONS = {
   REPORTS_VIEW: "reports.view",
   USERS_MANAGE: "users.manage",
   SETTINGS_MANAGE: "settings.manage",
+  // ✅ Permissions جدید برای معاشات
+  PAYROLL_VIEW: "payroll.view",
+  PAYROLL_MANAGE: "payroll.manage",
+  PAYROLL_PAY: "payroll.pay",
+  PAYROLL_SETTINGS: "payroll.settings",
 };
 
 const navigations = [
@@ -236,6 +248,59 @@ const navigations = [
         path: "/material/payment",
         icon: <PaymentIcon />,
         roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
+      },
+    ],
+  },
+
+  // ============================================================
+  // ✅ مدیریت معاشات (Payroll) - جدید
+  // ============================================================
+  {
+    label: "مدیریت معاشات",
+    type: "label",
+    roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
+  },
+
+  {
+    name: "💰 مدیریت معاشات",
+    icon: <PaymentsIcon />,
+    roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
+    children: [
+      {
+        name: "داشبورد معاشات",
+        path: "/material/payroll",
+        icon: <DashboardIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
+      },
+      {
+        name: "معاشات کارمندان",
+        path: "/material/payroll/employees",
+        icon: <PeopleAltIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
+      },
+      {
+        name: "پرداخت معاش",
+        path: "/material/payroll/payment",
+        icon: <AttachMoneyIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
+      },
+      {
+        name: "پیش‌پرداخت معاش",
+        path: "/material/payroll/advances",
+        icon: <MoneyOffIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
+      },
+      {
+        name: "گزارشات معاشات",
+        path: "/material/payroll/reports",
+        icon: <ReceiptLongIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
+      },
+      {
+        name: "تنظیمات معاشات",
+        path: "/material/payroll/settings",
+        icon: <SettingsIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
       },
     ],
   },

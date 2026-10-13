@@ -53,7 +53,9 @@ use App\Http\Controllers\ExternalPrescriptionController;
 use App\Http\Controllers\TreatmentHistoryController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\FollowUpController;
-use App\Http\Controllers\JournalRefSourceController;   // ✅ جدید
+use App\Http\Controllers\JournalRefSourceController;
+// ✅ جدید
+use App\Http\Controllers\PayrollModelController;
 
 /*
 |--------------------------------------------------------------------------
@@ -664,6 +666,52 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/',        [BenefitController::class, 'index']);
         Route::get('/chart',   [BenefitController::class, 'chart']);
         Route::get('/summary', [BenefitController::class, 'summary']);
+    });
+
+    // ============================================================
+    // ✅ PAYROLL (مدیریت معاشات)
+    // ============================================================
+    Route::prefix('payroll')->name('payroll.')->group(function () {
+
+        // ===== داشبورد معاشات =====
+        Route::get('/dashboard', [PayrollModelController::class, 'getDashboard'])
+            ->name('dashboard');
+
+        // ===== کارمندان (از users) =====
+        Route::prefix('employees')->name('employees.')->group(function () {
+            Route::get('/',       [PayrollModelController::class, 'getEmployees'])->name('index');
+            Route::post('/',      [PayrollModelController::class, 'createEmployee'])->name('store');
+            Route::get('/{id}',   [PayrollModelController::class, 'getEmployee'])
+                ->where('id', '[0-9]+')->name('show');
+            Route::put('/{id}',   [PayrollModelController::class, 'updateEmployee'])
+                ->where('id', '[0-9]+')->name('update');
+            Route::delete('/{id}', [PayrollModelController::class, 'deleteEmployee'])
+                ->where('id', '[0-9]+')->name('destroy');
+        });
+
+        // ===== معاشات ماهانه =====
+        Route::prefix('salaries')->name('salaries.')->group(function () {
+            Route::get('/',                [PayrollModelController::class, 'getSalaries'])->name('index');
+            Route::post('/generate',       [PayrollModelController::class, 'generateSalaries'])->name('generate');
+            Route::post('/pay-bulk',       [PayrollModelController::class, 'paySalariesBulk'])->name('pay-bulk');
+        });
+
+        // ===== پیش‌پرداخت‌ها =====
+        Route::prefix('advances')->name('advances.')->group(function () {
+            Route::get('/',       [PayrollModelController::class, 'getAdvances'])->name('index');
+            Route::post('/',      [PayrollModelController::class, 'createAdvance'])->name('store');
+            Route::patch('/{id}/approve', [PayrollModelController::class, 'approveAdvance'])
+                ->where('id', '[0-9]+')->name('approve');
+            Route::patch('/{id}/reject',  [PayrollModelController::class, 'rejectAdvance'])
+                ->where('id', '[0-9]+')->name('reject');
+        });
+
+        // ===== گزارشات =====
+        Route::get('/reports', [PayrollModelController::class, 'getReports'])->name('reports');
+
+        // ===== تنظیمات =====
+        Route::get('/settings', [PayrollModelController::class, 'getSettings'])->name('settings.get');
+        Route::put('/settings', [PayrollModelController::class, 'updateSettings'])->name('settings.update');
     });
 });
 
