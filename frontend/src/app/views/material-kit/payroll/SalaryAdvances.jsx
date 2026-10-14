@@ -29,11 +29,12 @@ export default function SalaryAdvances() {
   const [employeeLoading, setEmployeeLoading] = useState(false);
 
   const [form, setForm] = useState({
-    employeeId: null,        // user_id
-    accountId: null,         // account_id
+    employeeId: null,
+    userId: null,
+    accountId: null,
     employee: "",
     department: "",
-    source: "",              // "user" | "account"
+    source: "",
     amount: "",
     reason: "",
     date: "",
@@ -65,7 +66,7 @@ export default function SalaryAdvances() {
   }, [fetchAdvances]);
 
   // ============================================================
-  // ✅ دریافت کارمندان (هم users هم accounts) از endpoint payroll
+  // ✅ دریافت کارمندان (هم user هم account)
   // ============================================================
   const fetchEmployees = async (query = "") => {
     try {
@@ -73,9 +74,7 @@ export default function SalaryAdvances() {
       const params = { per_page: 100 };
       if (query) params.search = query;
 
-      // از endpoint خود payroll استفاده می‌کنیم که هر دو منبع را برمی‌گرداند
       const res = await api.get("/payroll/employees", { params });
-
       const list = res.data?.data || [];
       setEmployeeOptions(
         (Array.isArray(list) ? list : []).map((e) => ({
@@ -84,8 +83,8 @@ export default function SalaryAdvances() {
           accountId: e.accountId || null,
           full_name: e.fullName,
           department: e.department || "",
-          source: e.source,           // "user" | "account"
-          sourceLabel: e.sourceLabel, // "کاربر" | "حساب"
+          source: e.source,
+          sourceLabel: e.sourceLabel,
           employeeCode: e.employeeCode || "",
         }))
       );
@@ -115,7 +114,9 @@ export default function SalaryAdvances() {
     try {
       setSaving(true);
       const payload = {
-        employeeId: form.employeeId,        // ✅ همیشه user_id یا account_id کارمند
+        employeeId: form.employeeId,
+        userId: form.userId,
+        accountId: form.accountId,
         amount: Number(form.amount) || 0,
         reason: form.reason,
         date: form.date || new Date().toISOString().slice(0, 10),
@@ -125,12 +126,18 @@ export default function SalaryAdvances() {
       if (res.data?.success) {
         setSnackbar({ open: true, msg: "✅ درخواست ثبت شد", severity: "success" });
         setForm({
-          employeeId: null, accountId: null,
+          employeeId: null, userId: null, accountId: null,
           employee: "", department: "", source: "",
           amount: "", reason: "", date: "", repaymentMonths: 1,
         });
         setOpen(false);
         fetchAdvances();
+      } else {
+        setSnackbar({
+          open: true,
+          msg: res.data?.message || "خطا در ثبت",
+          severity: "error",
+        });
       }
     } catch (err) {
       setSnackbar({
@@ -225,8 +232,11 @@ export default function SalaryAdvances() {
       </Grid>
 
       <Box mb={2}>
-        <Button variant="contained" startIcon={<AddIcon />}
-          onClick={() => { setOpen(true); fetchEmployees(); }}>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => { setOpen(true); fetchEmployees(); }}
+        >
           درخواست پیش‌پرداخت جدید
         </Button>
       </Box>
@@ -266,27 +276,36 @@ export default function SalaryAdvances() {
                   <TableCell align="right">{a.reason}</TableCell>
                   <TableCell align="right">{a.date}</TableCell>
                   <TableCell align="right">
-                    <Chip label={a.status} size="small"
+                    <Chip
+                      label={a.status}
+                      size="small"
                       color={
                         a.statusRaw === "approved" ? "success"
                         : a.statusRaw === "rejected" ? "error"
                         : a.statusRaw === "repaid" ? "info"
                         : "warning"
-                      } />
+                      }
+                    />
                   </TableCell>
                   <TableCell align="right">{formatCurrency(a.repaid)}</TableCell>
                   <TableCell align="right">{formatCurrency(a.remaining)}</TableCell>
                   <TableCell align="right">
                     {a.statusRaw === "pending" && (
                       <>
-                        <Button size="small" color="success"
+                        <Button
+                          size="small"
+                          color="success"
                           startIcon={<CheckCircleIcon />}
-                          onClick={() => handleApprove(a.id)}>
+                          onClick={() => handleApprove(a.id)}
+                        >
                           تأیید
                         </Button>
-                        <Button size="small" color="error"
+                        <Button
+                          size="small"
+                          color="error"
                           startIcon={<CancelIcon />}
-                          onClick={() => handleReject(a.id)}>
+                          onClick={() => handleReject(a.id)}
+                        >
                           رد
                         </Button>
                       </>
@@ -304,12 +323,12 @@ export default function SalaryAdvances() {
         <DialogContent dividers>
           <Grid container spacing={2} mt={0.5}>
             <Grid item xs={12}>
-              {/* ✅ Autocomplete جدید: هم user هم account */}
+              {/* ✅ Autocomplete: هم user هم account */}
               <Autocomplete
                 options={employeeOptions}
                 getOptionLabel={(o) =>
-                  `${o.full_name} ${o.department ? `(${o.department})` : ""} ${
-                    o.employeeCode ? `- ${o.employeeCode}` : ""
+                  `${o.full_name}${o.department ? ` (${o.department})` : ""}${
+                    o.employeeCode ? ` - ${o.employeeCode}` : ""
                   }`
                 }
                 loading={employeeLoading}
@@ -318,7 +337,7 @@ export default function SalaryAdvances() {
                   if (v) {
                     setForm({
                       ...form,
-                      employeeId: v.id,           // id کارمند در payroll
+                      employeeId: v.id,
                       userId: v.userId,
                       accountId: v.accountId,
                       employee: v.full_name,
@@ -355,7 +374,10 @@ export default function SalaryAdvances() {
                   </li>
                 )}
                 renderInput={(params) => (
-                  <TextField {...params} label="انتخاب کارمند (کاربر یا طرف‌حساب) *" required
+                  <TextField
+                    {...params}
+                    label="انتخاب کارمند (کاربر یا طرف‌حساب) *"
+                    required
                     InputProps={{
                       ...params.InputProps,
                       endAdornment: (
@@ -364,7 +386,8 @@ export default function SalaryAdvances() {
                           {params.InputProps.endAdornment}
                         </>
                       ),
-                    }} />
+                    }}
+                  />
                 )}
               />
             </Grid>
@@ -372,27 +395,46 @@ export default function SalaryAdvances() {
               <TextField fullWidth label="بخش" value={form.department} disabled />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth type="number" label="مبلغ *"
+              <TextField
+                fullWidth
+                type="number"
+                label="مبلغ *"
                 value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
                 InputProps={{
                   endAdornment: <InputAdornment position="end">؋</InputAdornment>,
-                }} />
+                }}
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth type="number" label="تعداد اقساط"
+              <TextField
+                fullWidth
+                type="number"
+                label="تعداد اقساط"
                 value={form.repaymentMonths}
-                onChange={(e) => setForm({ ...form, repaymentMonths: e.target.value })} />
+                onChange={(e) =>
+                  setForm({ ...form, repaymentMonths: e.target.value })
+                }
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="تاریخ" placeholder="1403/05/15"
+              <TextField
+                fullWidth
+                label="تاریخ"
+                placeholder="1403/05/15"
                 value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+              />
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth multiline rows={2} label="دلیل"
+              <TextField
+                fullWidth
+                multiline
+                rows={2}
+                label="دلیل"
                 value={form.reason}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+                onChange={(e) => setForm({ ...form, reason: e.target.value })}
+              />
             </Grid>
           </Grid>
         </DialogContent>
@@ -404,9 +446,12 @@ export default function SalaryAdvances() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={snackbar.open} autoHideDuration={4000}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
-        message={snackbar.msg} />
+        message={snackbar.msg}
+      />
     </Box>
   );
 }

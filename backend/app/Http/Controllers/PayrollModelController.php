@@ -24,16 +24,13 @@ class PayrollModelController extends Controller
     public function getDashboard(Request $request)
     {
         try {
-            // 1) آمار کارمندان (users + accounts از View)
             $employeeStats = DB::table('v_active_employees')
                 ->selectRaw('COUNT(*) as total')
                 ->selectRaw('COALESCE(SUM(base_salary + allowances - deductions), 0) as total_salaries')
                 ->first();
 
-            // 2) آخرین دوره
             $period = PayrollPeriod::orderBy('created_at', 'desc')->first();
 
-            // 3) آمار پیش‌پرداخت‌ها
             $advStats = DB::table('salary_advances')
                 ->whereIn('status', ['pending', 'approved', 'partially_repaid'])
                 ->selectRaw('COALESCE(SUM(amount), 0) as total')
@@ -49,7 +46,6 @@ class PayrollModelController extends Controller
                 ? (int) round(($paidThisMonth / $periodTotal) * 100)
                 : 0;
 
-            // 4) آخرین پرداخت‌ها
             $recent = EmployeeSalary::with(['user.department', 'account'])
                 ->orderBy('updated_at', 'desc')
                 ->limit(5)
@@ -96,6 +92,9 @@ class PayrollModelController extends Controller
 
     /**
      * GET /api/payroll/employees?search=&department=&status=&source=
+     *
+     * ✅ id برگشتی همیشه یکتاست: "user-{id}" یا "account-{id}"
+     *    این کار از تداخل بین user_id و account_id جلوگیری می‌کند
      */
     public function getEmployees(Request $request)
     {
@@ -103,7 +102,7 @@ class PayrollModelController extends Controller
             $search     = $request->query('search');
             $department = $request->query('department');
             $status     = $request->query('status');
-            $source     = $request->query('source'); // user | account | all
+            $source     = $request->query('source');
 
             $query = DB::table('v_active_employees');
 
@@ -130,11 +129,16 @@ class PayrollModelController extends Controller
             $rows = $query->orderBy('full_name')->get();
 
             $data = $rows->map(function ($r) {
+                // ✅ id یکتای ترکیبی — برای جلوگیری از تداخل user/account
+                $uniqueId = $r->source . '-' . $r->employee_id;
+
                 return [
-                    'id'            => $r->source === 'user' ? $r->salary_info_id : $r->employee_id,
+                    'id'            => $uniqueId,            // ← کلید حل باگ
+                    'employeeId'    => $r->employee_id,      // id واقعی در users یا accounts
+                    'salaryInfoId'  => $r->salary_info_id,   // id رکورد در employee_salary_info (ممکن است null باشد)
                     'userId'        => $r->source === 'user' ? $r->employee_id : null,
                     'accountId'     => $r->source === 'account' ? $r->employee_id : null,
-                    'source'        => $r->source,       // user | account
+                    'source'        => $r->source,
                     'sourceLabel'   => $r->source === 'user' ? 'کاربر سیستم' : 'کارمند طرف‌حساب',
                     'fullName'      => $r->full_name,
                     'email'         => $r->email,
@@ -160,11 +164,15 @@ class PayrollModelController extends Controller
 
     /**
      * GET /api/payroll/employees/{id}
+     * id می‌تواند:
+     *   - "user-5" یا "account-7" (فرمت جدید)
+     *   - 5 (id عددی: salary_info_id / user_id / account_id)
      */
     public function getEmployee($id)
     {
         try {
-            $info = EmployeeSalaryInfo::with('user.department')->find($id);
+            $info = $this->findSalaryInfo($id);
+
             if (!$info) {
                 return response()->json(['success' => false, 'message' => 'یافت نشد'], 404);
             }
@@ -179,12 +187,13 @@ class PayrollModelController extends Controller
 
     /**
      * POST /api/payroll/employees
-     * افزودن اطلاعات معاش برای یک کاربر موجود
+     * افزودن اطلاعات معاش برای کاربر یا طرف‌حساب
      */
     public function createEmployee(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'userId'       => 'required|integer|exists:users,id',
+            'userId'       => 'nullable|integer|exists:users,id',
+            'accountId'    => 'nullable|integer|exists:accounts,id',
             'baseSalary'   => 'required|numeric|min:0',
             'allowances'   => 'nullable|numeric|min:0',
             'deductions'   => 'nullable|numeric|min:0',
@@ -196,19 +205,32 @@ class PayrollModelController extends Controller
             return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
 
+        if (!$request->userId && !$request->accountId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'باید یکی از userId یا accountId ارسال شود',
+            ], 422);
+        }
+
         try {
-            $exists = EmployeeSalaryInfo::where('user_id', $request->userId)->first();
+            $exists = $request->userId
+                ? EmployeeSalaryInfo::where('user_id', $request->userId)->first()
+                : EmployeeSalaryInfo::where('account_id', $request->accountId)->first();
+
             if ($exists) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'این کاربر قبلاً اطلاعات معاش دارد',
+                    'message' => 'این کارمند قبلاً اطلاعات معاش دارد',
                 ], 409);
             }
 
-            $code = 'EMP-' . str_pad($request->userId, 6, '0', STR_PAD_LEFT);
+            $code = $request->userId
+                ? 'EMP-' . str_pad($request->userId, 6, '0', STR_PAD_LEFT)
+                : 'ACC-' . str_pad($request->accountId, 6, '0', STR_PAD_LEFT);
 
             $info = EmployeeSalaryInfo::create([
-                'user_id'             => $request->userId,
+                'user_id'             => $request->userId ?? null,
+                'account_id'          => $request->accountId ?? null,
                 'employee_code'       => $code,
                 'base_salary'         => $request->baseSalary,
                 'allowances'          => $request->allowances ?? 0,
@@ -220,7 +242,7 @@ class PayrollModelController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => $this->salaryInfoToArray($info->fresh('user.department')),
+                'data'    => $this->salaryInfoToArray($info->fresh(['user.department', 'account'])),
             ], 201);
         } catch (\Throwable $e) {
             Log::error('createEmployee: ' . $e->getMessage());
@@ -230,28 +252,62 @@ class PayrollModelController extends Controller
 
     /**
      * PUT /api/payroll/employees/{id}
+     * id می‌تواند "user-5", "account-7" یا عدد باشد.
+     * اگر رکورد وجود نداشته باشد، ساخته می‌شود (upsert).
      */
     public function updateEmployee(Request $request, $id)
     {
-        $info = EmployeeSalaryInfo::find($id);
-        if (!$info) {
-            return response()->json(['success' => false, 'message' => 'یافت نشد'], 404);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'baseSalary'  => 'nullable|numeric|min:0',
-            'allowances'  => 'nullable|numeric|min:0',
-            'deductions'  => 'nullable|numeric|min:0',
-            'bankAccount' => 'nullable|string|max:100',
-            'hireDate'    => 'nullable|string|max:20',
-            'statusRaw'   => 'nullable|in:active,suspended,terminated',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
-        }
-
         try {
+            // 1) پیدا کردن رکورد
+            $info = $this->findSalaryInfo($id);
+
+            // 2) اگر پیدا نشد، بساز
+            if (!$info) {
+                // پارس id
+                $parsed = $this->parseEmployeeId($id);
+
+                if (!$parsed['userId'] && !$parsed['accountId']) {
+                    return response()->json(['success' => false, 'message' => 'کارمند یافت نشد'], 404);
+                }
+
+                // ✅ از payload هم چک کن (اگر id عددی و نامفهوم بود)
+                $userId    = $request->input('userId')    ?: $parsed['userId'];
+                $accountId = $request->input('accountId') ?: $parsed['accountId'];
+
+                if (!$userId && !$accountId) {
+                    return response()->json(['success' => false, 'message' => 'کارمند یافت نشد'], 404);
+                }
+
+                $code = $userId
+                    ? 'EMP-' . str_pad($userId, 6, '0', STR_PAD_LEFT)
+                    : 'ACC-' . str_pad($accountId, 6, '0', STR_PAD_LEFT);
+
+                $info = EmployeeSalaryInfo::create([
+                    'user_id'       => $userId,
+                    'account_id'    => $accountId,
+                    'employee_code' => $code,
+                    'base_salary'   => 0,
+                    'allowances'    => 0,
+                    'deductions'    => 0,
+                    'salary_status' => 'active',
+                ]);
+            }
+
+            // 3) اعتبارسنجی
+            $validator = Validator::make($request->all(), [
+                'baseSalary'  => 'nullable|numeric|min:0',
+                'allowances'  => 'nullable|numeric|min:0',
+                'deductions'  => 'nullable|numeric|min:0',
+                'bankAccount' => 'nullable|string|max:100',
+                'hireDate'    => 'nullable|string|max:20',
+                'statusRaw'   => 'nullable|in:active,suspended,terminated',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+            }
+
+            // 4) به‌روزرسانی
             $data = [];
             if ($request->has('baseSalary'))  $data['base_salary']         = $request->baseSalary;
             if ($request->has('allowances'))  $data['allowances']          = $request->allowances;
@@ -264,9 +320,10 @@ class PayrollModelController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => $this->salaryInfoToArray($info->fresh('user.department')),
+                'data'    => $this->salaryInfoToArray($info->fresh(['user.department', 'account'])),
             ]);
         } catch (\Throwable $e) {
+            Log::error('updateEmployee: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -277,7 +334,8 @@ class PayrollModelController extends Controller
     public function deleteEmployee($id)
     {
         try {
-            $info = EmployeeSalaryInfo::find($id);
+            $info = $this->findSalaryInfo($id);
+
             if (!$info) {
                 return response()->json(['success' => false, 'message' => 'یافت نشد'], 404);
             }
@@ -292,9 +350,6 @@ class PayrollModelController extends Controller
     // 💵 SALARIES
     // ============================================================
 
-    /**
-     * GET /api/payroll/salaries?month=&year=&department=&status=
-     */
     public function getSalaries(Request $request)
     {
         try {
@@ -342,10 +397,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * POST /api/payroll/salaries/generate
-     * تولید معاشات یک دوره برای تمام کارمندان فعال (users + accounts)
-     */
     public function generateSalaries(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -361,12 +412,10 @@ class PayrollModelController extends Controller
         try {
             $period = PayrollPeriod::findOrCreate($request->month, $request->year);
 
-            // کارمندان فعال (users + accounts) که در این دوره معاش ندارند
             $employees = DB::table('v_active_employees')
                 ->where('salary_status', 'active')
                 ->where(function ($q) use ($period) {
                     $q->where(function ($q2) use ($period) {
-                        // کاربران سیستم
                         $q2->where('source', 'user')
                            ->whereNotExists(function ($sub) use ($period) {
                                $sub->select(DB::raw(1))
@@ -375,7 +424,6 @@ class PayrollModelController extends Controller
                                    ->where('employee_salaries.period_id', $period->id);
                            });
                     })->orWhere(function ($q2) use ($period) {
-                        // کارمندان accounts
                         $q2->where('source', 'account')
                            ->whereNotExists(function ($sub) use ($period) {
                                $sub->select(DB::raw(1))
@@ -404,11 +452,15 @@ class PayrollModelController extends Controller
                 $tax       = $enableTax ? ($gross * $taxRate / 100) : 0;
                 $insurance = $enableIns ? ($gross * $insRate / 100) : 0;
 
-                // پیش‌پرداخت‌های تأییدشده (فقط برای کاربران سیستم)
                 $advanceDeduction = 0;
                 if ($emp->source === 'user') {
                     $advanceDeduction = (float) DB::table('salary_advances')
                         ->where('user_id', $emp->employee_id)
+                        ->whereIn('status', ['approved', 'partially_repaid'])
+                        ->sum('monthly_deduction');
+                } elseif ($emp->source === 'account') {
+                    $advanceDeduction = (float) DB::table('salary_advances')
+                        ->where('account_id', $emp->employee_id)
                         ->whereIn('status', ['approved', 'partially_repaid'])
                         ->sum('monthly_deduction');
                 }
@@ -451,9 +503,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * POST /api/payroll/salaries/pay-bulk
-     */
     public function paySalariesBulk(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -490,7 +539,6 @@ class PayrollModelController extends Controller
             $affectedPeriods = [];
 
             foreach ($salaries as $salary) {
-                // 1) به‌روزرسانی وضعیت
                 $salary->update([
                     'payment_status'       => 'paid',
                     'paid_amount'          => $salary->net_salary,
@@ -501,14 +549,19 @@ class PayrollModelController extends Controller
                     'updated_by'           => $request->user()?->id,
                 ]);
 
-                // 2) به‌روزرسانی پیش‌پرداخت‌ها (فقط برای کاربران سیستم)
-                if ($salary->user_id && $salary->advance_deduction > 0) {
+                if ($salary->advance_deduction > 0) {
                     $remaining = (float) $salary->advance_deduction;
 
-                    $advances = SalaryAdvance::where('user_id', $salary->user_id)
-                        ->whereIn('status', ['approved', 'partially_repaid'])
-                        ->orderBy('created_at', 'asc')
-                        ->get();
+                    $advQuery = SalaryAdvance::whereIn('status', ['approved', 'partially_repaid'])
+                        ->orderBy('created_at', 'asc');
+
+                    if ($salary->user_id) {
+                        $advQuery->where('user_id', $salary->user_id);
+                    } elseif ($salary->account_id) {
+                        $advQuery->where('account_id', $salary->account_id);
+                    }
+
+                    $advances = $advQuery->get();
 
                     foreach ($advances as $adv) {
                         if ($remaining <= 0) break;
@@ -535,7 +588,6 @@ class PayrollModelController extends Controller
                 $affectedPeriods[$salary->period_id] = true;
             }
 
-            // 3) به‌روزرسانی totals
             foreach (array_keys($affectedPeriods) as $pid) {
                 PayrollPeriod::find($pid)?->recalcTotals();
             }
@@ -558,15 +610,13 @@ class PayrollModelController extends Controller
     // 📉 ADVANCES
     // ============================================================
 
-    /**
-     * GET /api/payroll/advances?status=
-     */
     public function getAdvances(Request $request)
     {
         try {
             $status = $request->query('status');
 
-            $query = SalaryAdvance::with(['user.department'])->orderBy('created_at', 'desc');
+            $query = SalaryAdvance::with(['user.department', 'account'])
+                ->orderBy('created_at', 'desc');
 
             if ($status && $status !== 'all') {
                 $query->where('status', $status);
@@ -595,13 +645,12 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * POST /api/payroll/advances
-     */
     public function createAdvance(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'employeeId'      => 'nullable|integer|exists:users,id',
+            'employeeId'      => 'nullable|integer',
+            'userId'          => 'nullable|integer|exists:users,id',
+            'accountId'       => 'nullable|integer|exists:accounts,id',
             'employee'        => 'nullable|string',
             'amount'          => 'required|numeric|min:1',
             'reason'          => 'nullable|string',
@@ -614,26 +663,42 @@ class PayrollModelController extends Controller
         }
 
         try {
-            $userId = $request->employeeId;
+            $userId    = $request->userId;
+            $accountId = $request->accountId;
 
-            if (!$userId && $request->employee) {
-                $user = User::where('name', $request->employee)->first();
-                if (!$user) {
-                    return response()->json(['success' => false, 'message' => 'کارمند یافت نشد'], 404);
+            if (!$userId && !$accountId && $request->employeeId) {
+                $isUser = User::where('id', $request->employeeId)->exists();
+                if ($isUser) {
+                    $userId = $request->employeeId;
+                } else {
+                    $isAccount = Account::where('id', $request->employeeId)->exists();
+                    if ($isAccount) {
+                        $accountId = $request->employeeId;
+                    }
                 }
-                $userId = $user->id;
             }
 
-            if (!$userId) {
-                return response()->json(['success' => false, 'message' => 'employeeId الزامی است'], 422);
+            if (!$userId && !$accountId && $request->employee) {
+                $user = User::where('name', $request->employee)->first();
+                if ($user) {
+                    $userId = $user->id;
+                } else {
+                    $acc = Account::where('account_name', $request->employee)->first();
+                    if ($acc) $accountId = $acc->id;
+                }
             }
 
-            $amount   = (float) $request->amount;
-            $months   = (int) ($request->repaymentMonths ?? 1);
-            $monthly  = $amount / $months;
+            if (!$userId && !$accountId) {
+                return response()->json(['success' => false, 'message' => 'کارمند یافت نشد'], 404);
+            }
+
+            $amount  = (float) $request->amount;
+            $months  = (int) ($request->repaymentMonths ?? 1);
+            $monthly = $amount / $months;
 
             $advance = SalaryAdvance::create([
                 'user_id'           => $userId,
+                'account_id'        => $accountId,
                 'amount'            => $amount,
                 'reason'            => $request->reason,
                 'request_date'      => $request->date,
@@ -645,7 +710,7 @@ class PayrollModelController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => $this->advanceToArray($advance->fresh('user.department')),
+                'data'    => $this->advanceToArray($advance->fresh(['user.department', 'account'])),
             ], 201);
         } catch (\Throwable $e) {
             Log::error('createAdvance: ' . $e->getMessage());
@@ -653,9 +718,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * PATCH /api/payroll/advances/{id}/approve
-     */
     public function approveAdvance(Request $request, $id)
     {
         try {
@@ -667,7 +729,7 @@ class PayrollModelController extends Controller
             if ($advance->status !== 'pending') {
                 return response()->json([
                     'success' => true,
-                    'data'    => $this->advanceToArray($advance->fresh('user.department')),
+                    'data'    => $this->advanceToArray($advance->fresh(['user.department', 'account'])),
                 ]);
             }
 
@@ -679,16 +741,13 @@ class PayrollModelController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => $this->advanceToArray($advance->fresh('user.department')),
+                'data'    => $this->advanceToArray($advance->fresh(['user.department', 'account'])),
             ]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
-    /**
-     * PATCH /api/payroll/advances/{id}/reject
-     */
     public function rejectAdvance(Request $request, $id)
     {
         try {
@@ -701,7 +760,7 @@ class PayrollModelController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => $this->advanceToArray($advance->fresh('user.department')),
+                'data'    => $this->advanceToArray($advance->fresh(['user.department', 'account'])),
             ]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -712,9 +771,6 @@ class PayrollModelController extends Controller
     // 📊 REPORTS
     // ============================================================
 
-    /**
-     * GET /api/payroll/reports?month=&year=
-     */
     public function getReports(Request $request)
     {
         try {
@@ -730,8 +786,7 @@ class PayrollModelController extends Controller
 
             $period = PayrollPeriod::findOrCreate($month, $year);
 
-            // ✅ اصلاح: استفاده از single quote برای SQLite
-            $rows = DB::table('departments as d')
+            $userRows = DB::table('departments as d')
                 ->leftJoin('users as u', function ($join) {
                     $join->on('u.department_id', '=', 'd.id')
                          ->where('u.is_active', '=', 1);
@@ -760,6 +815,29 @@ class PayrollModelController extends Controller
                     ];
                 });
 
+            $accountRow = DB::table('employee_salaries as s')
+                ->whereNotNull('s.account_id')
+                ->where('s.period_id', $period->id)
+                ->selectRaw("
+                    COUNT(DISTINCT s.account_id) as employees,
+                    COALESCE(SUM(s.net_salary), 0) as total_salary,
+                    COALESCE(SUM(CASE WHEN s.payment_status = 'paid' THEN s.net_salary ELSE 0 END), 0) as paid,
+                    COALESCE(SUM(CASE WHEN s.payment_status != 'paid' THEN s.net_salary ELSE 0 END), 0) as pending
+                ")
+                ->first();
+
+            $rows = $userRows->values()->all();
+
+            if ($accountRow && $accountRow->employees > 0) {
+                $rows[] = [
+                    'department'  => 'طرف‌حساب‌ها (کارمندان)',
+                    'employees'   => (int) $accountRow->employees,
+                    'totalSalary' => (float) $accountRow->total_salary,
+                    'paid'        => (float) $accountRow->paid,
+                    'pending'     => (float) $accountRow->pending,
+                ];
+            }
+
             return response()->json([
                 'success' => true,
                 'data'    => $rows,
@@ -779,9 +857,6 @@ class PayrollModelController extends Controller
     // ⚙️ SETTINGS
     // ============================================================
 
-    /**
-     * GET /api/payroll/settings
-     */
     public function getSettings()
     {
         try {
@@ -794,9 +869,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * PUT /api/payroll/settings
-     */
     public function updateSettings(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -834,16 +906,92 @@ class PayrollModelController extends Controller
     }
 
     // ============================================================
-    // 🔧 HELPERS - تبدیل به array برای frontend
+    // 🔧 HELPERS
     // ============================================================
+
+    /**
+     * ✅ پارس کردن id — پشتیبانی از:
+     *    - "user-5"    → userId = 5
+     *    - "account-7" → accountId = 7
+     *    - 12          → salaryInfoId = 12 (یا از payload تشخیص می‌دهد)
+     */
+    private function parseEmployeeId($id): array
+    {
+        $userId        = null;
+        $accountId     = null;
+        $salaryInfoId  = null;
+
+        if (is_string($id) && str_starts_with($id, 'user-')) {
+            $userId = (int) substr($id, 5);
+        } elseif (is_string($id) && str_starts_with($id, 'account-')) {
+            $accountId = (int) substr($id, 8);
+        } elseif (is_numeric($id)) {
+            $salaryInfoId = (int) $id;
+        }
+
+        return [
+            'userId'       => $userId,
+            'accountId'    => $accountId,
+            'salaryInfoId' => $salaryInfoId,
+        ];
+    }
+
+    /**
+     * ✅ پیدا کردن رکورد EmployeeSalaryInfo از id با فرمت‌های مختلف
+     */
+    private function findSalaryInfo($id): ?EmployeeSalaryInfo
+    {
+        $parsed = $this->parseEmployeeId($id);
+
+        // 1) اگر "user-X" بود
+        if ($parsed['userId']) {
+            return EmployeeSalaryInfo::with(['user.department', 'account'])
+                ->where('user_id', $parsed['userId'])
+                ->first();
+        }
+
+        // 2) اگر "account-X" بود
+        if ($parsed['accountId']) {
+            return EmployeeSalaryInfo::with(['user.department', 'account'])
+                ->where('account_id', $parsed['accountId'])
+                ->first();
+        }
+
+        // 3) اگر id عددی بود، چند مسیر را امتحان کن
+        if ($parsed['salaryInfoId']) {
+            $id = $parsed['salaryInfoId'];
+
+            $info = EmployeeSalaryInfo::with(['user.department', 'account'])->find($id);
+            if ($info) return $info;
+
+            $info = EmployeeSalaryInfo::with(['user.department', 'account'])->where('user_id', $id)->first();
+            if ($info) return $info;
+
+            $info = EmployeeSalaryInfo::with(['user.department', 'account'])->where('account_id', $id)->first();
+            if ($info) return $info;
+        }
+
+        return null;
+    }
 
     private function salaryInfoToArray(EmployeeSalaryInfo $info): array
     {
+        $fullName = $info->user->name
+            ?? $info->account->account_name
+            ?? '—';
+
+        $department = $info->user->department->name
+            ?? $info->account->account_code
+            ?? '—';
+
         return [
             'id'            => $info->id,
             'userId'        => $info->user_id,
-            'fullName'      => $info->user->name ?? '—',
-            'department'    => $info->user->department->name ?? '—',
+            'accountId'     => $info->account_id,
+            'source'        => $info->user_id ? 'user' : 'account',
+            'sourceLabel'   => $info->user_id ? 'کاربر سیستم' : 'کارمند طرف‌حساب',
+            'fullName'      => $fullName,
+            'department'    => $department,
             'departmentId'  => $info->user->department_id ?? null,
             'employeeCode'  => $info->employee_code,
             'baseSalary'    => (float) $info->base_salary,
@@ -864,8 +1012,12 @@ class PayrollModelController extends Controller
             'userId'        => $s->user_id,
             'accountId'     => $s->account_id,
             'fullName'      => $s->employee_name,
-            'department'    => $s->user->department->name ?? '—',
-            'employeeCode'  => $s->salaryInfo->employee_code ?? $s->account->account_code ?? null,
+            'department'    => $s->user->department->name
+                ?? $s->account->account_code
+                ?? '—',
+            'employeeCode'  => $s->salaryInfo->employee_code
+                ?? $s->account->account_code
+                ?? null,
             'baseSalary'    => (float) $s->base_salary,
             'allowances'    => (float) $s->allowances,
             'deductions'    => (float) $s->deductions,
@@ -886,8 +1038,15 @@ class PayrollModelController extends Controller
         return [
             'id'               => $a->id,
             'userId'           => $a->user_id,
-            'employee'         => $a->user->name ?? '—',
-            'department'       => $a->user->department->name ?? '—',
+            'accountId'        => $a->account_id,
+            'source'           => $a->user_id ? 'user' : 'account',
+            'sourceLabel'      => $a->user_id ? 'کاربر سیستم' : 'کارمند طرف‌حساب',
+            'employee'         => $a->user->name
+                ?? $a->account->account_name
+                ?? '—',
+            'department'       => $a->user->department->name
+                ?? $a->account->account_code
+                ?? '—',
             'amount'           => (float) $a->amount,
             'reason'           => $a->reason,
             'requestDate'      => $a->request_date,

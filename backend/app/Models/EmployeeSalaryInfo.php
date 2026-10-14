@@ -12,8 +12,10 @@ class EmployeeSalaryInfo extends Model
     protected $table = 'employee_salary_info';
     public $timestamps = true;
 
+    // ✅ account_id اضافه شد
     protected $fillable = [
         'user_id',
+        'account_id',
         'employee_code',
         'base_salary',
         'allowances',
@@ -29,6 +31,8 @@ class EmployeeSalaryInfo extends Model
         'base_salary' => 'float',
         'allowances'  => 'float',
         'deductions'  => 'float',
+        'created_at'  => 'datetime',
+        'updated_at'  => 'datetime',
     ];
 
     // ============================================================
@@ -36,7 +40,7 @@ class EmployeeSalaryInfo extends Model
     // ============================================================
 
     /**
-     * کاربر (کارمند)
+     * کاربر (کارمند از users)
      */
     public function user()
     {
@@ -44,7 +48,16 @@ class EmployeeSalaryInfo extends Model
     }
 
     /**
-     * حساب بانکی (طرف‌حساب)
+     * ✅ طرف‌حساب (کارمند از accounts)
+     * این رابطه کلید حل خطای «Call to undefined relationship [account]» است
+     */
+    public function account()
+    {
+        return $this->belongsTo(\App\Models\Account::class, 'account_id');
+    }
+
+    /**
+     * حساب بانکی (طرف‌حساب بانکی)
      */
     public function bankAccount()
     {
@@ -71,5 +84,49 @@ class EmployeeSalaryInfo extends Model
             'terminated' => 'خاتمه یافته',
             default      => '—',
         };
+    }
+
+    /**
+     * ✅ نام کامل (از user یا account)
+     */
+    public function getFullNameAttribute(): string
+    {
+        if ($this->user_id && $this->user) {
+            return $this->user->name ?? '—';
+        }
+        if ($this->account_id && $this->account) {
+            return $this->account->account_name ?? '—';
+        }
+        return '—';
+    }
+
+    /**
+     * ✅ منبع (user | account)
+     */
+    public function getSourceAttribute(): string
+    {
+        return $this->user_id ? 'user' : 'account';
+    }
+
+    /**
+     * ✅ برچسب منبع
+     */
+    public function getSourceLabelAttribute(): string
+    {
+        return $this->user_id ? 'کاربر سیستم' : 'کارمند طرف‌حساب';
+    }
+
+    /**
+     * ✅ بخش / دیپارتمنت
+     */
+    public function getDepartmentNameAttribute(): string
+    {
+        if ($this->user_id && $this->user) {
+            return $this->user->department->name ?? '—';
+        }
+        if ($this->account_id && $this->account) {
+            return $this->account->account_code ?? '—';
+        }
+        return '—';
     }
 }
