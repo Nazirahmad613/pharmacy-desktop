@@ -5,7 +5,6 @@ import {
   Button, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Paper, Chip, Dialog, DialogTitle, DialogContent,
   DialogActions, Alert, Snackbar, Divider, CircularProgress,
-  Tooltip, IconButton,
 } from "@mui/material";
 import PaymentIcon from "@mui/icons-material/Payment";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -39,14 +38,10 @@ export default function SalaryPayment() {
     open: false, msg: "", severity: "success",
   });
 
-  // ============================================================
-  // ✅ دریافت معاشات
-  // ============================================================
   const fetchSalaries = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-
       const params = { month: selectedMonth, year: selectedYear };
       if (departmentFilter !== "all") params.department = departmentFilter;
       if (statusFilter !== "all") params.status = statusFilter;
@@ -54,10 +49,8 @@ export default function SalaryPayment() {
       const res = await api.get("/payroll/salaries", { params });
 
       if (res.data?.success) {
-        // ✅ backend جدید: source, userId, accountId, employeeCode, paidAmount, remaining
         const list = (res.data.data || []).map((e) => ({
-          ...e,
-          paid: e.paymentStatus === "paid",
+          ...e, paid: e.paymentStatus === "paid",
         }));
         setEmployees(list);
         setPeriodId(res.data.period?.id || null);
@@ -72,13 +65,8 @@ export default function SalaryPayment() {
     }
   }, [selectedMonth, selectedYear, departmentFilter, statusFilter]);
 
-  useEffect(() => {
-    fetchSalaries();
-  }, [fetchSalaries]);
+  useEffect(() => { fetchSalaries(); }, [fetchSalaries]);
 
-  // ============================================================
-  // ✅ تولید معاشات
-  // ============================================================
   const handleGenerate = async () => {
     if (!window.confirm(
       `تولید معاشات برای ${selectedMonth} ${selectedYear}؟\n` +
@@ -88,24 +76,14 @@ export default function SalaryPayment() {
     try {
       setSaving(true);
       const res = await api.post("/payroll/salaries/generate", {
-        month: selectedMonth,
-        year: selectedYear,
+        month: selectedMonth, year: selectedYear,
       });
-
       if (res.data?.success) {
-        setSnackbar({
-          open: true,
-          msg: `✅ ${res.data.generated} معاش تولید شد`,
-          severity: "success",
-        });
+        setSnackbar({ open: true, msg: `✅ ${res.data.generated} معاش تولید شد`, severity: "success" });
         fetchSalaries();
       }
     } catch (err) {
-      setSnackbar({
-        open: true,
-        msg: err.response?.data?.message || "خطا در تولید",
-        severity: "error",
-      });
+      setSnackbar({ open: true, msg: err.response?.data?.message || "خطا در تولید", severity: "error" });
     } finally {
       setSaving(false);
     }
@@ -130,20 +108,14 @@ export default function SalaryPayment() {
 
   const toggleAll = () => {
     const unpaidIds = filtered.filter((e) => !e.paid).map((e) => e.id);
-    if (selectedEmployees.length === unpaidIds.length) {
-      setSelectedEmployees([]);
-    } else {
-      setSelectedEmployees(unpaidIds);
-    }
+    if (selectedEmployees.length === unpaidIds.length) setSelectedEmployees([]);
+    else setSelectedEmployees(unpaidIds);
   };
 
   const totalSelected = filtered
     .filter((e) => selectedEmployees.includes(e.id))
     .reduce((sum, e) => sum + calcNet(e), 0);
 
-  // ============================================================
-  // ✅ پرداخت دسته‌ای
-  // ============================================================
   const handlePayment = async () => {
     try {
       setSaving(true);
@@ -152,7 +124,6 @@ export default function SalaryPayment() {
         paymentDate: new Date().toISOString().slice(0, 10),
         method: "bank_transfer",
       });
-
       if (res.data?.success) {
         setSnackbar({
           open: true,
@@ -163,40 +134,24 @@ export default function SalaryPayment() {
         fetchSalaries();
       }
     } catch (err) {
-      setSnackbar({
-        open: true,
-        msg: err.response?.data?.message || "خطا در پرداخت",
-        severity: "error",
-      });
+      setSnackbar({ open: true, msg: err.response?.data?.message || "خطا در پرداخت", severity: "error" });
     } finally {
       setSaving(false);
       setConfirmDialog(false);
     }
   };
 
-  // ============================================================
-  // ✅ RENDER
-  // ============================================================
   return (
-    <Box sx={{ p: 3, direction: "rtl" }}>
+    <Box sx={{ p: 3 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">💵 پرداخت معاش</Typography>
         <Box>
-          <Button
-            startIcon={<PlayArrowIcon />}
-            variant="outlined"
-            onClick={handleGenerate}
-            disabled={saving}
-            sx={{ mr: 1 }}
-          >
+          <Button startIcon={<PlayArrowIcon />} variant="outlined"
+            onClick={handleGenerate} disabled={saving} sx={{ mr: 1 }}>
             تولید معاشات
           </Button>
-          <Button
-            startIcon={<RefreshIcon />}
-            variant="outlined"
-            onClick={fetchSalaries}
-            disabled={loading}
-          >
+          <Button startIcon={<RefreshIcon />} variant="outlined"
+            onClick={fetchSalaries} disabled={loading}>
             بازخوانی
           </Button>
         </Box>
@@ -208,29 +163,18 @@ export default function SalaryPayment() {
         <CardContent>
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} sm={3}>
-              <TextField
-                fullWidth select size="small" label="ماه"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-              >
-                {MONTHS.map((m) => (
-                  <MenuItem key={m} value={m}>{m}</MenuItem>
-                ))}
+              <TextField fullWidth select size="small" label="ماه"
+                value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
+                {MONTHS.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
               </TextField>
             </Grid>
             <Grid item xs={12} sm={2}>
-              <TextField
-                fullWidth size="small" label="سال"
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-              />
+              <TextField fullWidth size="small" label="سال"
+                value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} />
             </Grid>
             <Grid item xs={12} sm={3}>
-              <TextField
-                fullWidth select size="small" label="بخش"
-                value={departmentFilter}
-                onChange={(e) => setDepartmentFilter(e.target.value)}
-              >
+              <TextField fullWidth select size="small" label="بخش"
+                value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)}>
                 <MenuItem value="all">همه بخش‌ها</MenuItem>
                 {departments.filter((d) => d !== "all").map((d) => (
                   <MenuItem key={d} value={d}>{d}</MenuItem>
@@ -238,11 +182,8 @@ export default function SalaryPayment() {
               </TextField>
             </Grid>
             <Grid item xs={12} sm={2}>
-              <TextField
-                fullWidth select size="small" label="وضعیت"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
+              <TextField fullWidth select size="small" label="وضعیت"
+                value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <MenuItem value="all">همه</MenuItem>
                 <MenuItem value="pending">در انتظار</MenuItem>
                 <MenuItem value="partial">جزئی</MenuItem>
@@ -250,13 +191,9 @@ export default function SalaryPayment() {
               </TextField>
             </Grid>
             <Grid item xs={12} sm={2} sx={{ textAlign: "left" }}>
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={<PaymentIcon />}
+              <Button variant="contained" color="success" startIcon={<PaymentIcon />}
                 disabled={selectedEmployees.length === 0 || saving}
-                onClick={() => setConfirmDialog(true)}
-              >
+                onClick={() => setConfirmDialog(true)}>
                 پرداخت ({selectedEmployees.length})
               </Button>
             </Grid>
@@ -272,36 +209,29 @@ export default function SalaryPayment() {
       )}
 
       {loading ? (
-        <Box display="flex" justifyContent="center" py={4}>
-          <CircularProgress />
-        </Box>
+        <Box display="flex" justifyContent="center" py={4}><CircularProgress /></Box>
       ) : (
         <TableContainer component={Paper}>
-          <Table>
+          <Table dir="rtl">
             <TableHead>
               <TableRow sx={{ bgcolor: "grey.100" }}>
-                <TableCell padding="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={
-                      selectedEmployees.length > 0 &&
-                      selectedEmployees.length ===
-                        filtered.filter((e) => !e.paid).length
-                    }
-                    onChange={toggleAll}
-                  />
+                <TableCell padding="checkbox" align="right">
+                  <input type="checkbox"
+                    checked={selectedEmployees.length > 0 &&
+                      selectedEmployees.length === filtered.filter((e) => !e.paid).length}
+                    onChange={toggleAll} />
                 </TableCell>
-                <TableCell>#</TableCell>
-                <TableCell>نام کارمند</TableCell>
-                <TableCell>منبع</TableCell>
-                <TableCell>کد</TableCell>
-                <TableCell>بخش</TableCell>
-                <TableCell>معاش پایه</TableCell>
-                <TableCell>مزایا</TableCell>
-                <TableCell>کسرات</TableCell>
-                <TableCell>پیش‌پرداخت</TableCell>
-                <TableCell>معاش خالص</TableCell>
-                <TableCell>وضعیت</TableCell>
+                <TableCell align="right">#</TableCell>
+                <TableCell align="right">نام کارمند</TableCell>
+                <TableCell align="right">منبع</TableCell>
+                <TableCell align="right">کد</TableCell>
+                <TableCell align="right">بخش</TableCell>
+                <TableCell align="right">معاش پایه</TableCell>
+                <TableCell align="right">مزایا</TableCell>
+                <TableCell align="right">کسرات</TableCell>
+                <TableCell align="right">پیش‌پرداخت</TableCell>
+                <TableCell align="right">معاش خالص</TableCell>
+                <TableCell align="right">وضعیت</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -315,22 +245,15 @@ export default function SalaryPayment() {
                 </TableRow>
               ) : (
                 filtered.map((e, idx) => (
-                  <TableRow
-                    key={`${e.source}-${e.id}`}
-                    hover
-                    sx={{ opacity: e.paid ? 0.6 : 1 }}
-                  >
-                    <TableCell padding="checkbox">
-                      <input
-                        type="checkbox"
-                        disabled={e.paid}
+                  <TableRow key={`${e.source}-${e.id}`} hover sx={{ opacity: e.paid ? 0.6 : 1 }}>
+                    <TableCell padding="checkbox" align="right">
+                      <input type="checkbox" disabled={e.paid}
                         checked={selectedEmployees.includes(e.id)}
-                        onChange={() => toggleSelect(e.id)}
-                      />
+                        onChange={() => toggleSelect(e.id)} />
                     </TableCell>
-                    <TableCell>{idx + 1}</TableCell>
-                    <TableCell fontWeight="bold">{e.fullName}</TableCell>
-                    <TableCell>
+                    <TableCell align="right">{idx + 1}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
+                    <TableCell align="right">
                       <Chip
                         icon={e.source === "user" ? <PersonIcon /> : <BusinessIcon />}
                         label={e.source === "user" ? "کاربر" : "حساب"}
@@ -339,33 +262,24 @@ export default function SalaryPayment() {
                         variant="outlined"
                       />
                     </TableCell>
-                    <TableCell>
-                      <Typography variant="caption" fontFamily="monospace">
-                        {e.employeeCode || "—"}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{e.department || "—"}</TableCell>
-                    <TableCell>{formatCurrency(e.baseSalary)}</TableCell>
-                    <TableCell sx={{ color: "success.main" }}>
+                    <TableCell align="right">{e.employeeCode || "—"}</TableCell>
+                    <TableCell align="right">{e.department || "—"}</TableCell>
+                    <TableCell align="right">{formatCurrency(e.baseSalary)}</TableCell>
+                    <TableCell align="right" sx={{ color: "success.main" }}>
                       +{formatCurrency(e.allowances)}
                     </TableCell>
-                    <TableCell sx={{ color: "error.main" }}>
+                    <TableCell align="right" sx={{ color: "error.main" }}>
                       -{formatCurrency(e.deductions)}
                     </TableCell>
-                    <TableCell sx={{ color: "warning.main" }}>
+                    <TableCell align="right" sx={{ color: "warning.main" }}>
                       {e.advanceDeduction ? `-${formatCurrency(e.advanceDeduction)}` : "—"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell align="right">
                       <strong>{formatCurrency(calcNet(e))}</strong>
                     </TableCell>
-                    <TableCell>
+                    <TableCell align="right">
                       {e.paid ? (
-                        <Chip
-                          icon={<CheckCircleIcon />}
-                          label="پرداخت شده"
-                          size="small"
-                          color="success"
-                        />
+                        <Chip icon={<CheckCircleIcon />} label="پرداخت شده" size="small" color="success" />
                       ) : e.paymentStatus === "partial" ? (
                         <Chip label="جزئی" size="small" color="info" />
                       ) : (
@@ -393,28 +307,18 @@ export default function SalaryPayment() {
             این عملیات قابل بازگشت نیست.
           </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmDialog(false)} disabled={saving}>
-            انصراف
-          </Button>
-          <Button
-            variant="contained"
-            color="success"
-            startIcon={<CheckCircleIcon />}
-            onClick={handlePayment}
-            disabled={saving}
-          >
+        <DialogActions sx={{ justifyContent: "flex-start", px: 3, pb: 2 }}>
+          <Button onClick={() => setConfirmDialog(false)} disabled={saving}>انصراف</Button>
+          <Button variant="contained" color="success" startIcon={<CheckCircleIcon />}
+            onClick={handlePayment} disabled={saving}>
             {saving ? "در حال پرداخت..." : "تأیید پرداخت"}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
+      <Snackbar open={snackbar.open} autoHideDuration={4000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
-        message={snackbar.msg}
-      />
+        message={snackbar.msg} />
     </Box>
   );
 }

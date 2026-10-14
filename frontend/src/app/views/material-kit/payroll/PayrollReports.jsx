@@ -18,23 +18,15 @@ const MONTHS = [
 export default function PayrollReports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
   const [month, setMonth] = useState(MONTHS[4]);
   const [year, setYear] = useState("1403");
   const [reportData, setReportData] = useState([]);
 
-  // ============================================================
-  // ✅ دریافت گزارش‌ها
-  // ============================================================
   const fetchReports = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-
-      const res = await api.get("/payroll/reports", {
-        params: { month, year },
-      });
-
+      const res = await api.get("/payroll/reports", { params: { month, year } });
       if (res.data?.success) {
         setReportData(res.data.data || []);
       }
@@ -52,37 +44,20 @@ export default function PayrollReports() {
   const formatCurrency = (n) =>
     new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
 
-  // ============================================================
-  // Totals
-  // ============================================================
   const totalEmployees = reportData.reduce((s, d) => s + (Number(d.employees) || 0), 0);
   const totalSalary = reportData.reduce((s, d) => s + (Number(d.totalSalary) || 0), 0);
   const totalPaid = reportData.reduce((s, d) => s + (Number(d.paid) || 0), 0);
   const totalPending = reportData.reduce((s, d) => s + (Number(d.pending) || 0), 0);
 
-  // ============================================================
-  // Export CSV
-  // ============================================================
   const handleExportCSV = () => {
     const headers = ["#", "بخش", "تعداد کارمندان", "مجموع معاش", "پرداخت شده", "باقی‌مانده", "درصد"];
     const rows = reportData.map((row, i) => {
-      const pct = row.totalSalary
-        ? Math.round((row.paid / row.totalSalary) * 100)
-        : 0;
-      return [
-        i + 1,
-        row.department,
-        row.employees,
-        row.totalSalary,
-        row.paid,
-        row.pending,
-        `${pct}%`,
-      ];
+      const pct = row.totalSalary ? Math.round((row.paid / row.totalSalary) * 100) : 0;
+      return [i + 1, row.department, row.employees, row.totalSalary, row.paid, row.pending, `${pct}%`];
     });
 
     const csvContent =
-      "\uFEFF" + // BOM برای UTF-8
-      [headers, ...rows].map((r) => r.join(",")).join("\n");
+      "\uFEFF" + [headers, ...rows].map((r) => r.join(",")).join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -104,7 +79,7 @@ export default function PayrollReports() {
   }
 
   return (
-    <Box sx={{ p: 3, direction: "rtl" }}>
+    <Box sx={{ p: 3 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">📊 گزارشات معاشات</Typography>
         <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchReports}>
@@ -153,7 +128,7 @@ export default function PayrollReports() {
 
       <Grid container spacing={2} mb={3}>
         <Grid item xs={12} sm={3}>
-          <Card sx={{ bgcolor: "primary.50" }}>
+          <Card sx={{ bgcolor: "primary.50", borderRight: "4px solid", borderColor: "primary.main" }}>
             <CardContent>
               <Typography variant="body2">تعداد کل کارمندان</Typography>
               <Typography variant="h5" fontWeight="bold">{totalEmployees} نفر</Typography>
@@ -161,7 +136,7 @@ export default function PayrollReports() {
           </Card>
         </Grid>
         <Grid item xs={12} sm={3}>
-          <Card sx={{ bgcolor: "info.50" }}>
+          <Card sx={{ bgcolor: "info.50", borderRight: "4px solid", borderColor: "info.main" }}>
             <CardContent>
               <Typography variant="body2">مجموع معاشات</Typography>
               <Typography variant="h5" fontWeight="bold" color="info.main">
@@ -171,7 +146,7 @@ export default function PayrollReports() {
           </Card>
         </Grid>
         <Grid item xs={12} sm={3}>
-          <Card sx={{ bgcolor: "success.50" }}>
+          <Card sx={{ bgcolor: "success.50", borderRight: "4px solid", borderColor: "success.main" }}>
             <CardContent>
               <Typography variant="body2">پرداخت شده</Typography>
               <Typography variant="h5" fontWeight="bold" color="success.main">
@@ -181,7 +156,7 @@ export default function PayrollReports() {
           </Card>
         </Grid>
         <Grid item xs={12} sm={3}>
-          <Card sx={{ bgcolor: "warning.50" }}>
+          <Card sx={{ bgcolor: "warning.50", borderRight: "4px solid", borderColor: "warning.main" }}>
             <CardContent>
               <Typography variant="body2">باقی‌مانده</Typography>
               <Typography variant="h5" fontWeight="bold" color="warning.main">
@@ -209,16 +184,17 @@ export default function PayrollReports() {
             </Alert>
           ) : (
             <TableContainer component={Paper} variant="outlined">
-              <Table>
+              {/* ✅ dir="rtl" اینجا کلید حل مشکل است */}
+              <Table dir="rtl">
                 <TableHead>
                   <TableRow sx={{ bgcolor: "grey.100" }}>
-                    <TableCell>#</TableCell>
-                    <TableCell>بخش</TableCell>
-                    <TableCell>تعداد کارمندان</TableCell>
-                    <TableCell>مجموع معاش</TableCell>
-                    <TableCell>پرداخت شده</TableCell>
-                    <TableCell>باقی‌مانده</TableCell>
-                    <TableCell>درصد پرداخت</TableCell>
+                    <TableCell align="right">#</TableCell>
+                    <TableCell align="right">بخش</TableCell>
+                    <TableCell align="right">تعداد کارمندان</TableCell>
+                    <TableCell align="right">مجموع معاش</TableCell>
+                    <TableCell align="right">پرداخت شده</TableCell>
+                    <TableCell align="right">باقی‌مانده</TableCell>
+                    <TableCell align="right">درصد پرداخت</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -228,17 +204,17 @@ export default function PayrollReports() {
                       : 0;
                     return (
                       <TableRow key={idx} hover>
-                        <TableCell>{idx + 1}</TableCell>
-                        <TableCell fontWeight="bold">{row.department}</TableCell>
-                        <TableCell>{row.employees}</TableCell>
-                        <TableCell>{formatCurrency(row.totalSalary)}</TableCell>
-                        <TableCell sx={{ color: "success.main" }}>
+                        <TableCell align="right">{idx + 1}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: "bold" }}>{row.department}</TableCell>
+                        <TableCell align="right">{row.employees}</TableCell>
+                        <TableCell align="right">{formatCurrency(row.totalSalary)}</TableCell>
+                        <TableCell align="right" sx={{ color: "success.main" }}>
                           {formatCurrency(row.paid)}
                         </TableCell>
-                        <TableCell sx={{ color: "warning.main" }}>
+                        <TableCell align="right" sx={{ color: "warning.main" }}>
                           {formatCurrency(row.pending)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell align="right">
                           <Chip
                             label={`${pct}%`}
                             size="small"
@@ -249,12 +225,12 @@ export default function PayrollReports() {
                     );
                   })}
                   <TableRow sx={{ bgcolor: "grey.100", fontWeight: "bold" }}>
-                    <TableCell colSpan={2}>جمع کل</TableCell>
-                    <TableCell>{totalEmployees}</TableCell>
-                    <TableCell>{formatCurrency(totalSalary)}</TableCell>
-                    <TableCell>{formatCurrency(totalPaid)}</TableCell>
-                    <TableCell>{formatCurrency(totalPending)}</TableCell>
-                    <TableCell>
+                    <TableCell align="right" colSpan={2}>جمع کل</TableCell>
+                    <TableCell align="right">{totalEmployees}</TableCell>
+                    <TableCell align="right">{formatCurrency(totalSalary)}</TableCell>
+                    <TableCell align="right">{formatCurrency(totalPaid)}</TableCell>
+                    <TableCell align="right">{formatCurrency(totalPending)}</TableCell>
+                    <TableCell align="right">
                       {totalSalary > 0
                         ? `${Math.round((totalPaid / totalSalary) * 100)}%`
                         : "0%"}

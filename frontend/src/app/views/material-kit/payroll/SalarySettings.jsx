@@ -10,6 +10,13 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import api from "../../../../api";
 
+const rtlStyles = {
+  "& .MuiInputBase-input, & .MuiInputBase-root": { textAlign: "right" },
+  "& .MuiSelect-select": { textAlign: "right" },
+  "& .MuiFormControlLabel-root": { flexDirection: "row-reverse", marginLeft: 0, marginRight: -11 },
+  "& .MuiFormControlLabel-label": { marginRight: 8 },
+};
+
 export default function SalarySettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,15 +42,11 @@ export default function SalarySettings() {
     open: false, msg: "", severity: "success",
   });
 
-  // ============================================================
-  // ✅ دریافت تنظیمات
-  // ============================================================
   const fetchSettings = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const res = await api.get("/payroll/settings");
-
       if (res.data?.success) {
         setSettings((prev) => ({ ...prev, ...res.data.data }));
       }
@@ -62,14 +65,10 @@ export default function SalarySettings() {
     setSettings((prev) => ({ ...prev, [field]: value }));
   };
 
-  // ============================================================
-  // ✅ ذخیره تنظیمات
-  // ============================================================
   const handleSave = async () => {
     try {
       setSaving(true);
       const res = await api.put("/payroll/settings", settings);
-
       if (res.data?.success) {
         setSnackbar({
           open: true,
@@ -100,7 +99,7 @@ export default function SalarySettings() {
   }
 
   return (
-    <Box sx={{ p: 3, direction: "rtl" }}>
+    <Box dir="rtl" sx={{ p: 3, ...rtlStyles }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">⚙️ تنظیمات معاشات</Typography>
         <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchSettings}>
@@ -110,13 +109,12 @@ export default function SalarySettings() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Grid container spacing={3}>
-        {/* تنظیمات عمومی */}
+      <Grid container spacing={3} dir="rtl">
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center" mb={2}>
-                <SettingsIcon color="primary" sx={{ mr: 1 }} />
+                <SettingsIcon color="primary" sx={{ ml: 1 }} />
                 <Typography variant="h6">تنظیمات عمومی</Typography>
               </Box>
               <Divider sx={{ mb: 2 }} />
@@ -155,7 +153,6 @@ export default function SalarySettings() {
           </Card>
         </Grid>
 
-        {/* محاسبات */}
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
@@ -207,7 +204,6 @@ export default function SalarySettings() {
           </Card>
         </Grid>
 
-        {/* گزینه‌های فعال‌سازی */}
         <Grid item xs={12}>
           <Card>
             <CardContent>

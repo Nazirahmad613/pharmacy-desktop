@@ -36,18 +36,12 @@ export default function SalaryPayment() {
     open: false, msg: "", severity: "success",
   });
 
-  // ============================================================
-  // ✅ دریافت معاشات از API
-  // ============================================================
   const fetchSalaries = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const params = {
-        month: selectedMonth,
-        year: selectedYear,
-      };
+      const params = { month: selectedMonth, year: selectedYear };
       if (departmentFilter !== "all") params.department = departmentFilter;
       if (statusFilter !== "all") params.status = statusFilter;
 
@@ -71,9 +65,6 @@ export default function SalaryPayment() {
     fetchSalaries();
   }, [fetchSalaries]);
 
-  // ============================================================
-  // ✅ تولید معاشات برای این دوره
-  // ============================================================
   const handleGenerate = async () => {
     if (!window.confirm(
       `تولید معاشات برای ${selectedMonth} ${selectedYear}؟\n` +
@@ -138,9 +129,6 @@ export default function SalaryPayment() {
     .filter((e) => selectedEmployees.includes(e.id))
     .reduce((sum, e) => sum + calcNet(e), 0);
 
-  // ============================================================
-  // ✅ پرداخت دسته‌ای
-  // ============================================================
   const handlePayment = async () => {
     try {
       setSaving(true);
@@ -172,7 +160,7 @@ export default function SalaryPayment() {
   };
 
   return (
-    <Box sx={{ p: 3, direction: "rtl" }}>
+    <Box sx={{ p: 3 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">💵 پرداخت معاش</Typography>
         <Box>
@@ -250,25 +238,26 @@ export default function SalaryPayment() {
         </Box>
       ) : (
         <TableContainer component={Paper}>
-          <Table>
+          {/* ✅ dir="rtl" اینجا کلید حل مشکل است */}
+          <Table dir="rtl">
             <TableHead>
               <TableRow sx={{ bgcolor: "grey.100" }}>
-                <TableCell padding="checkbox">
+                <TableCell padding="checkbox" align="right">
                   <input type="checkbox"
                     checked={selectedEmployees.length > 0 &&
                       selectedEmployees.length ===
                       filtered.filter((e) => !e.paid).length}
                     onChange={toggleAll} />
                 </TableCell>
-                <TableCell>#</TableCell>
-                <TableCell>نام کارمند</TableCell>
-                <TableCell>بخش</TableCell>
-                <TableCell>معاش پایه</TableCell>
-                <TableCell>مزایا</TableCell>
-                <TableCell>کسرات</TableCell>
-                <TableCell>پیش‌پرداخت</TableCell>
-                <TableCell>معاش خالص</TableCell>
-                <TableCell>وضعیت</TableCell>
+                <TableCell align="right">#</TableCell>
+                <TableCell align="right">نام کارمند</TableCell>
+                <TableCell align="right">بخش</TableCell>
+                <TableCell align="right">معاش پایه</TableCell>
+                <TableCell align="right">مزایا</TableCell>
+                <TableCell align="right">کسرات</TableCell>
+                <TableCell align="right">پیش‌پرداخت</TableCell>
+                <TableCell align="right">معاش خالص</TableCell>
+                <TableCell align="right">وضعیت</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -283,26 +272,28 @@ export default function SalaryPayment() {
               ) : (
                 filtered.map((e, idx) => (
                   <TableRow key={e.id} hover sx={{ opacity: e.paid ? 0.6 : 1 }}>
-                    <TableCell padding="checkbox">
+                    <TableCell padding="checkbox" align="right">
                       <input type="checkbox" disabled={e.paid}
                         checked={selectedEmployees.includes(e.id)}
                         onChange={() => toggleSelect(e.id)} />
                     </TableCell>
-                    <TableCell>{idx + 1}</TableCell>
-                    <TableCell fontWeight="bold">{e.fullName}</TableCell>
-                    <TableCell>{e.department}</TableCell>
-                    <TableCell>{formatCurrency(e.baseSalary)}</TableCell>
-                    <TableCell sx={{ color: "success.main" }}>
+                    <TableCell align="right">{idx + 1}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
+                    <TableCell align="right">{e.department}</TableCell>
+                    <TableCell align="right">{formatCurrency(e.baseSalary)}</TableCell>
+                    <TableCell align="right" sx={{ color: "success.main" }}>
                       +{formatCurrency(e.allowances)}
                     </TableCell>
-                    <TableCell sx={{ color: "error.main" }}>
+                    <TableCell align="right" sx={{ color: "error.main" }}>
                       -{formatCurrency(e.deductions)}
                     </TableCell>
-                    <TableCell sx={{ color: "warning.main" }}>
+                    <TableCell align="right" sx={{ color: "warning.main" }}>
                       {e.advance ? `-${formatCurrency(e.advance)}` : "—"}
                     </TableCell>
-                    <TableCell><strong>{formatCurrency(calcNet(e))}</strong></TableCell>
-                    <TableCell>
+                    <TableCell align="right">
+                      <strong>{formatCurrency(calcNet(e))}</strong>
+                    </TableCell>
+                    <TableCell align="right">
                       {e.paid ? (
                         <Chip icon={<CheckCircleIcon />} label="پرداخت شده"
                           size="small" color="success" />
@@ -331,7 +322,7 @@ export default function SalaryPayment() {
             این عملیات قابل بازگشت نیست.
           </Typography>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ justifyContent: "flex-start", px: 3, pb: 2 }}>
           <Button onClick={() => setConfirmDialog(false)} disabled={saving}>انصراف</Button>
           <Button variant="contained" color="success" startIcon={<CheckCircleIcon />}
             onClick={handlePayment} disabled={saving}>

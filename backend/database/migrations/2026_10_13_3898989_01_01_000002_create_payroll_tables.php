@@ -10,6 +10,11 @@ return new class extends Migration
     public function up(): void
     {
         // ============================================================
+        // 0) حذف View قدیمی (اگر وجود دارد)
+        // ============================================================
+        DB::statement('DROP VIEW IF EXISTS v_active_employees');
+
+        // ============================================================
         // 1) اطلاعات معاش هر کاربر (1:1 با users)
         // ============================================================
         Schema::create('employee_salary_info', function (Blueprint $table) {
@@ -199,14 +204,84 @@ return new class extends Migration
             $table->index('created_at', 'idx_audit_created');
         });
 
+                // ============================================================
+        // 7) ساخت View کامل: ترکیب users + accounts
         // ============================================================
-        // 7) درج تنظیمات پیش‌فرض
+        DB::statement("
+            CREATE VIEW v_active_employees AS
+            -- بخش اول: کاربران سیستم (users)
+            SELECT
+                u.id                                 AS employee_id,
+                u.id                                 AS user_id,
+                NULL                                 AS account_id,
+                'user'                               AS source,
+                u.name                               AS full_name,
+                u.email                              AS email,
+                u.avatar                             AS avatar,
+                u.department_id                      AS department_id,
+                d.name                               AS department_name,
+                u.role                               AS role,
+                u.is_active                          AS is_active,
+                si.id                                AS salary_info_id,
+                COALESCE(si.salary_status, 'active') AS salary_status,
+                COALESCE(si.base_salary, 0)          AS base_salary,
+                COALESCE(si.allowances, 0)           AS allowances,
+                COALESCE(si.deductions, 0)           AS deductions,
+                si.employee_code                     AS employee_code,
+                NULL                                 AS account_code,
+                si.bank_account_number               AS bank_account_number,
+                si.hire_date                         AS hire_date,
+                si.notes                             AS notes,
+                u.created_at                         AS created_at,
+                u.updated_at                         AS updated_at
+            FROM users u
+            LEFT JOIN employee_salary_info si ON si.user_id = u.id
+            LEFT JOIN departments d ON d.id = u.department_id AND d.deleted_at IS NULL
+            WHERE u.is_active = 1
+
+            UNION ALL
+
+            -- بخش دوم: طرف‌حساب‌ها (accounts)
+            SELECT
+                a.id                                 AS employee_id,
+                NULL                                 AS user_id,
+                a.id                                 AS account_id,
+                'account'                            AS source,
+                a.account_name                       AS full_name,
+                a.email                              AS email,
+                NULL                                 AS avatar,
+                NULL                                 AS department_id,
+                NULL                                 AS department_name,
+                NULL                                 AS role,
+                a.is_active                          AS is_active,
+                si.id                                AS salary_info_id,
+                COALESCE(si.salary_status, 'active') AS salary_status,
+                COALESCE(si.base_salary, 0)          AS base_salary,
+                COALESCE(si.allowances, 0)           AS allowances,
+                COALESCE(si.deductions, 0)           AS deductions,
+                si.employee_code                     AS employee_code,
+                a.account_code                       AS account_code,
+                si.bank_account_number               AS bank_account_number,
+                si.hire_date                         AS hire_date,
+                si.notes                             AS notes,
+                a.created_at                         AS created_at,
+                a.updated_at                         AS updated_at
+            FROM accounts a
+            LEFT JOIN employee_salary_info si ON si.bank_account_id = a.id
+            WHERE a.is_active = 1
+        ");
+        // ============================================================
+        // 8) درج تنظیمات پیش‌فرض
         // ============================================================
         $this->seedDefaultSettings();
     }
 
     public function down(): void
     {
+        // حذف View اول
+        DB::statement('DROP VIEW IF EXISTS v_active_employees');
+
+        // سپس حذف جداول
         Schema::dropIfExists('payroll_audit_log');
         Schema::dropIfExists('payroll_settings');
         Schema::dropIfExists('salary_advances');

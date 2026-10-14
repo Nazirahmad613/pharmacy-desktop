@@ -5,7 +5,7 @@ import {
   Button, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Paper, Chip, IconButton, Dialog, DialogTitle,
   DialogContent, DialogActions, Grid, MenuItem, CircularProgress,
-  Alert, Tooltip, Tabs, Tab, Autocomplete,
+  Alert, Tooltip, Autocomplete,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import AddIcon from "@mui/icons-material/Add";
@@ -23,10 +23,10 @@ export default function EmployeeSalaries() {
 
   const [search, setSearch] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
-  const [sourceFilter, setSourceFilter] = useState("all"); // all | user | account
+  const [sourceFilter, setSourceFilter] = useState("all");
 
   const [employees, setEmployees] = useState([]);
-  const [users, setUsers] = useState([]); // برای انتخاب یوزر در فرم
+  const [users, setUsers] = useState([]);
   const [departments, setDepartments] = useState([]);
 
   const [openDialog, setOpenDialog] = useState(false);
@@ -41,31 +41,20 @@ export default function EmployeeSalaries() {
     hireDate: "",
   });
 
-  // ============================================================
-  // ✅ دریافت کارمندان (users + accounts)
-  // ============================================================
   const fetchEmployees = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-
       const params = {};
       if (search) params.search = search;
       if (departmentFilter !== "all") params.department = departmentFilter;
       if (sourceFilter !== "all") params.source = sourceFilter;
 
       const res = await api.get("/payroll/employees", { params });
-
       if (res.data?.success) {
         setEmployees(res.data.data || []);
-
-        // استخراج دپارتمان‌های یکتا
         const uniqueDepts = [
-          ...new Set(
-            (res.data.data || [])
-              .map((e) => e.department)
-              .filter(Boolean)
-          ),
+          ...new Set((res.data.data || []).map((e) => e.department).filter(Boolean)),
         ];
         setDepartments(uniqueDepts);
       } else {
@@ -79,24 +68,15 @@ export default function EmployeeSalaries() {
     }
   }, [search, departmentFilter, sourceFilter]);
 
-  useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
+  useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
 
-  // ============================================================
-  // ✅ دریافت کاربران (برای فرم افزودن)
-  // ============================================================
   const fetchUsers = async (query = "") => {
     try {
-      const res = await api.get("/users", {
-        params: { search: query, per_page: 50 },
-      });
+      const res = await api.get("/users", { params: { search: query, per_page: 50 } });
       const list = res.data?.data?.data || res.data?.data || res.data || [];
       setUsers(
         (Array.isArray(list) ? list : []).map((u) => ({
-          id: u.id,
-          name: u.name,
-          department: u.department?.name || "",
+          id: u.id, name: u.name, department: u.department?.name || "",
         }))
       );
     } catch (err) {
@@ -104,9 +84,6 @@ export default function EmployeeSalaries() {
     }
   };
 
-  // ============================================================
-  // ✅ فرم
-  // ============================================================
   const handleOpenDialog = (employee = null) => {
     if (employee && employee.source === "user") {
       setSelectedEmployee(employee);
@@ -121,12 +98,8 @@ export default function EmployeeSalaries() {
     } else {
       setSelectedEmployee(null);
       setFormData({
-        userId: null,
-        baseSalary: "",
-        allowances: "",
-        deductions: "",
-        bankAccount: "",
-        hireDate: "",
+        userId: null, baseSalary: "", allowances: "", deductions: "",
+        bankAccount: "", hireDate: "",
       });
       fetchUsers();
     }
@@ -138,9 +111,6 @@ export default function EmployeeSalaries() {
     setSelectedEmployee(null);
   };
 
-  // ============================================================
-  // ✅ ذخیره (فقط برای users)
-  // ============================================================
   const handleSave = async () => {
     if (!selectedEmployee && !formData.userId) {
       alert("لطفاً کاربر را انتخاب کنید");
@@ -150,10 +120,8 @@ export default function EmployeeSalaries() {
       alert("معاش پایه الزامی است");
       return;
     }
-
     try {
       setSaving(true);
-
       const payload = {
         userId: formData.userId,
         baseSalary: Number(formData.baseSalary) || 0,
@@ -162,17 +130,12 @@ export default function EmployeeSalaries() {
         bankAccount: formData.bankAccount,
         hireDate: formData.hireDate,
       };
-
       let res;
       if (selectedEmployee) {
-        res = await api.put(
-          `/payroll/employees/${selectedEmployee.id}`,
-          payload
-        );
+        res = await api.put(`/payroll/employees/${selectedEmployee.id}`, payload);
       } else {
         res = await api.post("/payroll/employees", payload);
       }
-
       if (res.data?.success) {
         handleCloseDialog();
         fetchEmployees();
@@ -184,19 +147,12 @@ export default function EmployeeSalaries() {
     }
   };
 
-  // ============================================================
-  // ✅ حذف
-  // ============================================================
   const handleDelete = async (employee) => {
     if (employee.source === "account") {
       alert("کارمندان طرف‌حساب از جدول حسابات مدیریت می‌شوند");
       return;
     }
-
-    if (!window.confirm(`آیا از حذف اطلاعات معاش «${employee.fullName}» مطمئن هستید؟`)) {
-      return;
-    }
-
+    if (!window.confirm(`آیا از حذف اطلاعات معاش «${employee.fullName}» مطمئن هستید؟`)) return;
     try {
       await api.delete(`/payroll/employees/${employee.id}`);
       fetchEmployees();
@@ -205,28 +161,20 @@ export default function EmployeeSalaries() {
     }
   };
 
-  // ============================================================
-  // ✅ محاسبات
-  // ============================================================
   const formatCurrency = (n) =>
     new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
 
   const filtered = employees;
 
   const totalNetSalary = useMemo(
-    () =>
-      filtered.reduce((sum, e) => {
-        return sum + (e.baseSalary || 0) + (e.allowances || 0) - (e.deductions || 0);
-      }, 0),
+    () => filtered.reduce((sum, e) =>
+      sum + (e.baseSalary || 0) + (e.allowances || 0) - (e.deductions || 0), 0),
     [filtered]
   );
 
   const userCount = filtered.filter((e) => e.source === "user").length;
   const accountCount = filtered.filter((e) => e.source === "account").length;
 
-  // ============================================================
-  // ✅ RENDER
-  // ============================================================
   if (loading && employees.length === 0) {
     return (
       <Box display="flex" justifyContent="center" minHeight="400px" alignItems="center">
@@ -236,11 +184,9 @@ export default function EmployeeSalaries() {
   }
 
   return (
-    <Box sx={{ p: 3, direction: "rtl" }}>
+    <Box dir="rtl" sx={{ p: 3 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" fontWeight="bold">
-          👥 معاشات کارمندان
-        </Typography>
+        <Typography variant="h4" fontWeight="bold">👥 معاشات کارمندان</Typography>
         <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchEmployees}>
           بازخوانی
         </Button>
@@ -248,35 +194,25 @@ export default function EmployeeSalaries() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {/* فیلترها */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Grid container spacing={2} alignItems="center">
+          <Grid container spacing={2} alignItems="center" dir="rtl">
             <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                size="small"
+              <TextField fullWidth size="small"
                 placeholder="جستجو در نام، ایمیل، کد..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon />
-                    </InputAdornment>
+                    <InputAdornment position="start"><SearchIcon /></InputAdornment>
                   ),
                 }}
               />
             </Grid>
             <Grid item xs={12} sm={3}>
-              <TextField
-                fullWidth
-                select
-                size="small"
-                label="بخش"
+              <TextField fullWidth select size="small" label="بخش"
                 value={departmentFilter}
-                onChange={(e) => setDepartmentFilter(e.target.value)}
-              >
+                onChange={(e) => setDepartmentFilter(e.target.value)}>
                 <MenuItem value="all">همه بخش‌ها</MenuItem>
                 {departments.map((d) => (
                   <MenuItem key={d} value={d}>{d}</MenuItem>
@@ -284,33 +220,17 @@ export default function EmployeeSalaries() {
               </TextField>
             </Grid>
             <Grid item xs={12} sm={3}>
-              <TextField
-                fullWidth
-                select
-                size="small"
-                label="منبع کارمند"
+              <TextField fullWidth select size="small" label="منبع کارمند"
                 value={sourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value)}
-              >
+                onChange={(e) => setSourceFilter(e.target.value)}>
                 <MenuItem value="all">همه</MenuItem>
-                <MenuItem value="user">
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <PersonIcon fontSize="small" /> کاربران سیستم
-                  </Box>
-                </MenuItem>
-                <MenuItem value="account">
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <BusinessIcon fontSize="small" /> طرف‌حساب‌ها
-                  </Box>
-                </MenuItem>
+                <MenuItem value="user">کاربران سیستم</MenuItem>
+                <MenuItem value="account">طرف‌حساب‌ها</MenuItem>
               </TextField>
             </Grid>
             <Grid item xs={12} sm={2} sx={{ textAlign: "left" }}>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => handleOpenDialog()}
-              >
+              <Button variant="contained" startIcon={<AddIcon />}
+                onClick={() => handleOpenDialog()}>
                 افزودن
               </Button>
             </Grid>
@@ -318,50 +238,35 @@ export default function EmployeeSalaries() {
         </CardContent>
       </Card>
 
-      {/* خلاصه */}
-      <Grid container spacing={2} mb={3}>
+      <Grid container spacing={2} mb={3} dir="rtl">
         <Grid item xs={12} sm={3}>
-          <Card sx={{ bgcolor: "primary.50", borderLeft: "4px solid", borderColor: "primary.main" }}>
+          <Card sx={{ bgcolor: "primary.50", borderRight: "4px solid", borderColor: "primary.main" }}>
             <CardContent>
-              <Typography variant="body2" color="text.secondary">
-                تعداد کل
-              </Typography>
-              <Typography variant="h5" fontWeight="bold">
-                {filtered.length} نفر
-              </Typography>
+              <Typography variant="body2" color="text.secondary">تعداد کل</Typography>
+              <Typography variant="h5" fontWeight="bold">{filtered.length} نفر</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={3}>
-          <Card sx={{ bgcolor: "info.50", borderLeft: "4px solid", borderColor: "info.main" }}>
+          <Card sx={{ bgcolor: "info.50", borderRight: "4px solid", borderColor: "info.main" }}>
             <CardContent>
-              <Typography variant="body2" color="text.secondary">
-                کاربران سیستم
-              </Typography>
-              <Typography variant="h5" fontWeight="bold" color="info.main">
-                {userCount} نفر
-              </Typography>
+              <Typography variant="body2" color="text.secondary">کاربران سیستم</Typography>
+              <Typography variant="h5" fontWeight="bold" color="info.main">{userCount} نفر</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={3}>
-          <Card sx={{ bgcolor: "secondary.50", borderLeft: "4px solid", borderColor: "secondary.main" }}>
+          <Card sx={{ bgcolor: "secondary.50", borderRight: "4px solid", borderColor: "secondary.main" }}>
             <CardContent>
-              <Typography variant="body2" color="text.secondary">
-                طرف‌حساب‌ها
-              </Typography>
-              <Typography variant="h5" fontWeight="bold" color="secondary.main">
-                {accountCount} نفر
-              </Typography>
+              <Typography variant="body2" color="text.secondary">طرف‌حساب‌ها</Typography>
+              <Typography variant="h5" fontWeight="bold" color="secondary.main">{accountCount} نفر</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={3}>
-          <Card sx={{ bgcolor: "success.50", borderLeft: "4px solid", borderColor: "success.main" }}>
+          <Card sx={{ bgcolor: "success.50", borderRight: "4px solid", borderColor: "success.main" }}>
             <CardContent>
-              <Typography variant="body2" color="text.secondary">
-                مجموع معاش خالص
-              </Typography>
+              <Typography variant="body2" color="text.secondary">مجموع معاش خالص</Typography>
               <Typography variant="h5" fontWeight="bold" color="success.main">
                 {formatCurrency(totalNetSalary)}
               </Typography>
@@ -370,43 +275,39 @@ export default function EmployeeSalaries() {
         </Grid>
       </Grid>
 
-      {/* جدول */}
+      {/* ✅✅✅ کلید حل مشکل: dir="rtl" روی خود <Table> ✅✅✅ */}
       <TableContainer component={Paper}>
-        <Table>
+        <Table dir="rtl">
           <TableHead>
             <TableRow sx={{ bgcolor: "grey.100" }}>
-              <TableCell>#</TableCell>
-              <TableCell>نام کامل</TableCell>
-              <TableCell>منبع</TableCell>
-              <TableCell>کد کارمند</TableCell>
-              <TableCell>بخش</TableCell>
-              <TableCell>معاش پایه</TableCell>
-              <TableCell>مزایا</TableCell>
-              <TableCell>کسرات</TableCell>
-              <TableCell>معاش خالص</TableCell>
-              <TableCell>وضعیت</TableCell>
-              <TableCell>عملیات</TableCell>
+              <TableCell align="right">#</TableCell>
+              <TableCell align="right">نام کامل</TableCell>
+              <TableCell align="right">منبع</TableCell>
+              <TableCell align="right">کد کارمند</TableCell>
+              <TableCell align="right">بخش</TableCell>
+              <TableCell align="right">معاش پایه</TableCell>
+              <TableCell align="right">مزایا</TableCell>
+              <TableCell align="right">کسرات</TableCell>
+              <TableCell align="right">معاش خالص</TableCell>
+              <TableCell align="right">وضعیت</TableCell>
+              <TableCell align="right">عملیات</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">
-                    هیچ کارمندی یافت نشد
-                  </Typography>
+                  <Typography color="text.secondary">هیچ کارمندی یافت نشد</Typography>
                 </TableCell>
               </TableRow>
             ) : (
               filtered.map((e, idx) => {
-                const net =
-                  (e.baseSalary || 0) + (e.allowances || 0) - (e.deductions || 0);
-
+                const net = (e.baseSalary || 0) + (e.allowances || 0) - (e.deductions || 0);
                 return (
                   <TableRow key={`${e.source}-${e.id}`} hover>
-                    <TableCell>{idx + 1}</TableCell>
-                    <TableCell fontWeight="bold">{e.fullName}</TableCell>
-                    <TableCell>
+                    <TableCell align="right">{idx + 1}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
+                    <TableCell align="right">
                       <Chip
                         icon={e.source === "user" ? <PersonIcon /> : <BusinessIcon />}
                         label={e.sourceLabel}
@@ -415,47 +316,32 @@ export default function EmployeeSalaries() {
                         variant="outlined"
                       />
                     </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" fontFamily="monospace">
-                        {e.employeeCode || "—"}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{e.department || "—"}</TableCell>
-                    <TableCell>{formatCurrency(e.baseSalary)}</TableCell>
-                    <TableCell sx={{ color: "success.main" }}>
+                    <TableCell align="right">{e.employeeCode || "—"}</TableCell>
+                    <TableCell align="right">{e.department || "—"}</TableCell>
+                    <TableCell align="right">{formatCurrency(e.baseSalary)}</TableCell>
+                    <TableCell align="right" sx={{ color: "success.main" }}>
                       +{formatCurrency(e.allowances)}
                     </TableCell>
-                    <TableCell sx={{ color: "error.main" }}>
+                    <TableCell align="right" sx={{ color: "error.main" }}>
                       -{formatCurrency(e.deductions)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell align="right">
                       <strong>{formatCurrency(net)}</strong>
                     </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={e.status}
-                        size="small"
-                        color={e.statusRaw === "active" ? "success" : "default"}
-                      />
+                    <TableCell align="right">
+                      <Chip label={e.status} size="small"
+                        color={e.statusRaw === "active" ? "success" : "default"} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell align="right">
                       {e.source === "user" ? (
                         <>
                           <Tooltip title="ویرایش">
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => handleOpenDialog(e)}
-                            >
+                            <IconButton size="small" color="primary" onClick={() => handleOpenDialog(e)}>
                               <EditIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="حذف">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => handleDelete(e)}
-                            >
+                            <IconButton size="small" color="error" onClick={() => handleDelete(e)}>
                               <DeleteIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
@@ -474,86 +360,63 @@ export default function EmployeeSalaries() {
         </Table>
       </TableContainer>
 
-      {/* دیالوگ افزودن/ویرایش (فقط کاربران سیستم) */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth dir="rtl">
         <DialogTitle>
           {selectedEmployee ? "ویرایش اطلاعات معاش" : "افزودن اطلاعات معاش"}
         </DialogTitle>
         <DialogContent dividers>
           <Alert severity="info" sx={{ mb: 2 }}>
             💡 کارمندانی که در جدول حسابات هستند (طرف‌حساب) از همان‌جا مدیریت می‌شوند.
-            این فرم فقط برای کاربران سیستم است.
           </Alert>
-
-          <Grid container spacing={2} mt={0.5}>
+          <Grid container spacing={2} mt={0.5} dir="rtl">
             <Grid item xs={12}>
               <Autocomplete
                 options={users}
                 getOptionLabel={(o) => `${o.name} ${o.department ? `(${o.department})` : ""}`}
                 value={users.find((u) => u.id === formData.userId) || null}
-                onChange={(_, v) =>
-                  setFormData({ ...formData, userId: v?.id || null })
-                }
+                onChange={(_, v) => setFormData({ ...formData, userId: v?.id || null })}
                 disabled={!!selectedEmployee}
                 renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="کاربر سیستم *"
-                    required
-                  />
+                  <TextField {...params} label="کاربر سیستم *" required />
                 )}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                type="number"
-                label="معاش پایه *"
+              <TextField fullWidth type="number" label="معاش پایه *"
                 value={formData.baseSalary}
                 onChange={(e) => setFormData({ ...formData, baseSalary: e.target.value })}
                 InputProps={{ endAdornment: <InputAdornment position="end">؋</InputAdornment> }}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                type="number"
-                label="مزایا"
+              <TextField fullWidth type="number" label="مزایا"
                 value={formData.allowances}
                 onChange={(e) => setFormData({ ...formData, allowances: e.target.value })}
                 InputProps={{ endAdornment: <InputAdornment position="end">؋</InputAdornment> }}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                type="number"
-                label="کسرات"
+              <TextField fullWidth type="number" label="کسرات"
                 value={formData.deductions}
                 onChange={(e) => setFormData({ ...formData, deductions: e.target.value })}
                 InputProps={{ endAdornment: <InputAdornment position="end">؋</InputAdornment> }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="شماره حساب بانکی"
+              <TextField fullWidth label="شماره حساب بانکی"
                 value={formData.bankAccount}
                 onChange={(e) => setFormData({ ...formData, bankAccount: e.target.value })}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="تاریخ استخدام"
-                placeholder="1403/01/01"
+              <TextField fullWidth label="تاریخ استخدام" placeholder="1403/01/01"
                 value={formData.hireDate}
                 onChange={(e) => setFormData({ ...formData, hireDate: e.target.value })}
               />
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ justifyContent: "flex-start", px: 3, pb: 2 }}>
           <Button onClick={handleCloseDialog} disabled={saving}>انصراف</Button>
           <Button variant="contained" onClick={handleSave} disabled={saving}>
             {saving ? "در حال ذخیره..." : "ذخیره"}
