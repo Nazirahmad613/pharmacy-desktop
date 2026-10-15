@@ -10,6 +10,8 @@ import PaymentIcon from "@mui/icons-material/Payment";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import PersonIcon from "@mui/icons-material/Person";
+import BusinessIcon from "@mui/icons-material/Business";
 import api from "../../../../api";
 
 const MONTHS = [
@@ -40,7 +42,6 @@ export default function SalaryPayment() {
     try {
       setLoading(true);
       setError(null);
-
       const params = { month: selectedMonth, year: selectedYear };
       if (departmentFilter !== "all") params.department = departmentFilter;
       if (statusFilter !== "all") params.status = statusFilter;
@@ -48,7 +49,17 @@ export default function SalaryPayment() {
       const res = await api.get("/payroll/salaries", { params });
 
       if (res.data?.success) {
-        setEmployees(res.data.data || []);
+        // ✅ نرمال‌سازی داده‌ها برای اطمینان از صحت فیلدها
+        const list = (res.data.data || []).map((e) => ({
+          ...e,
+          paid: e.paymentStatus === "paid",
+          tax: Number(e.tax) || 0,
+          insurance: Number(e.insurance) || 0,
+          advanceDeduction: Number(e.advanceDeduction) || 0,
+          grossSalary: Number(e.grossSalary) || ((Number(e.baseSalary) || 0) + (Number(e.allowances) || 0)),
+          netSalary: Number(e.netSalary) || 0,
+        }));
+        setEmployees(list);
         setPeriodId(res.data.period?.id || null);
       } else {
         setError(res.data?.message || "خطا در دریافت معاشات");
@@ -98,17 +109,16 @@ export default function SalaryPayment() {
   };
 
   const formatCurrency = (n) =>
-    new Intl.NumberFormat("fa-AF").format(n || 0) + " ؋";
+    new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
 
-  const departments = ["all", ...new Set(employees.map((e) => e.department))];
+  const departments = ["all", ...new Set(employees.map((e) => e.department).filter(Boolean))];
 
   const filtered = employees.filter(
     (e) => departmentFilter === "all" || e.department === departmentFilter
   );
 
-  const calcNet = (e) =>
-    (e.baseSalary || 0) + (e.allowances || 0) -
-    (e.deductions || 0) - (e.advance || 0);
+  // ✅ استفاده از netSalary آماده بک‌اند (نه محاسبه مجدد)
+  const calcNet = (e) => Number(e.netSalary) || 0;
 
   const toggleSelect = (id) => {
     setSelectedEmployees((prev) =>
@@ -238,8 +248,7 @@ export default function SalaryPayment() {
         </Box>
       ) : (
         <TableContainer component={Paper}>
-          {/* ✅ dir="rtl" اینجا کلید حل مشکل است */}
-          <Table dir="rtl">
+          <Table dir="rtl" size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: "grey.100" }}>
                 <TableCell padding="checkbox" align="right">
@@ -251,10 +260,14 @@ export default function SalaryPayment() {
                 </TableCell>
                 <TableCell align="right">#</TableCell>
                 <TableCell align="right">نام کارمند</TableCell>
+                <TableCell align="right">منبع</TableCell>
                 <TableCell align="right">بخش</TableCell>
                 <TableCell align="right">معاش پایه</TableCell>
                 <TableCell align="right">مزایا</TableCell>
                 <TableCell align="right">کسرات</TableCell>
+                {/* ✅ ستون‌های جدید */}
+                <TableCell align="right">مالیه</TableCell>
+                <TableCell align="right">بیمه</TableCell>
                 <TableCell align="right">پیش‌پرداخت</TableCell>
                 <TableCell align="right">معاش خالص</TableCell>
                 <TableCell align="right">وضعیت</TableCell>
@@ -263,7 +276,7 @@ export default function SalaryPayment() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={13} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       هیچ معاشی برای این دوره یافت نشد. ابتدا «تولید معاشات» را بزنید.
                     </Typography>
@@ -271,7 +284,7 @@ export default function SalaryPayment() {
                 </TableRow>
               ) : (
                 filtered.map((e, idx) => (
-                  <TableRow key={e.id} hover sx={{ opacity: e.paid ? 0.6 : 1 }}>
+                  <TableRow key={`${e.source}-${e.id}`} hover sx={{ opacity: e.paid ? 0.6 : 1 }}>
                     <TableCell padding="checkbox" align="right">
                       <input type="checkbox" disabled={e.paid}
                         checked={selectedEmployees.includes(e.id)}
@@ -279,7 +292,16 @@ export default function SalaryPayment() {
                     </TableCell>
                     <TableCell align="right">{idx + 1}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
-                    <TableCell align="right">{e.department}</TableCell>
+                    <TableCell align="right">
+                      <Chip
+                        icon={e.source === "user" ? <PersonIcon /> : <BusinessIcon />}
+                        label={e.sourceLabel || (e.source === "user" ? "کاربر" : "حساب")}
+                        size="small"
+                        color={e.source === "user" ? "info" : "secondary"}
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell align="right">{e.department || "—"}</TableCell>
                     <TableCell align="right">{formatCurrency(e.baseSalary)}</TableCell>
                     <TableCell align="right" sx={{ color: "success.main" }}>
                       +{formatCurrency(e.allowances)}
@@ -287,8 +309,17 @@ export default function SalaryPayment() {
                     <TableCell align="right" sx={{ color: "error.main" }}>
                       -{formatCurrency(e.deductions)}
                     </TableCell>
-                    <TableCell align="right" sx={{ color: "warning.main" }}>
-                      {e.advance ? `-${formatCurrency(e.advance)}` : "—"}
+                    {/* ✅ مالیه */}
+                    <TableCell align="right" sx={{ color: "error.main" }}>
+                      {e.tax ? `-${formatCurrency(e.tax)}` : "—"}
+                    </TableCell>
+                    {/* ✅ بیمه */}
+                    <TableCell align="right" sx={{ color: "error.main" }}>
+                      {e.insurance ? `-${formatCurrency(e.insurance)}` : "—"}
+                    </TableCell>
+                    {/* ✅ پیش‌پرداخت - کلید حل مشکل */}
+                    <TableCell align="right" sx={{ color: "warning.main", fontWeight: "bold" }}>
+                      {e.advanceDeduction ? `-${formatCurrency(e.advanceDeduction)}` : "—"}
                     </TableCell>
                     <TableCell align="right">
                       <strong>{formatCurrency(calcNet(e))}</strong>

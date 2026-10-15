@@ -78,6 +78,7 @@ return new class extends Migration
 
         // ============================================================
         // 3) معاشات ماهانه کارمندان (users + accounts)
+        // ✅ ستون‌های جدید: gross_salary, tax_amount, insurance_amount
         // ============================================================
         Schema::create('employee_salaries', function (Blueprint $table) {
             $table->id();
@@ -110,6 +111,12 @@ return new class extends Migration
             $table->decimal('base_salary', 15, 2)->default(0);
             $table->decimal('allowances', 15, 2)->default(0);
             $table->decimal('deductions', 15, 2)->default(0);
+
+            // ✅ ستون‌های جدید برای نمایش دقیق اجزاء
+            $table->decimal('gross_salary', 15, 2)->default(0);       // معاش ناخالص
+            $table->decimal('tax_amount', 15, 2)->default(0);         // مالیه
+            $table->decimal('insurance_amount', 15, 2)->default(0);   // بیمه
+
             $table->decimal('advance_deduction', 15, 2)->default(0);
             $table->decimal('net_salary', 15, 2)->default(0);
             $table->decimal('paid_amount', 15, 2)->default(0);
@@ -152,6 +159,7 @@ return new class extends Migration
 
         // ============================================================
         // 4) پیش‌پرداخت معاش (users + accounts)
+        // ✅ ستون‌های جدید: target_month, target_year
         // ============================================================
         Schema::create('salary_advances', function (Blueprint $table) {
             $table->id();
@@ -171,6 +179,11 @@ return new class extends Migration
             $table->decimal('amount', 15, 2)->default(0);
             $table->text('reason')->nullable();
             $table->string('request_date', 20)->nullable();
+
+            // ✅ ستون‌های جدید: ماه و سال هدف (کسر از معاش همان ماه)
+            $table->string('target_month', 20)->nullable()->after('request_date');
+            $table->string('target_year', 10)->nullable()->after('target_month');
+
             $table->date('approval_date')->nullable();
 
             $table->unsignedBigInteger('approved_by')->nullable();
@@ -190,6 +203,9 @@ return new class extends Migration
             $table->index('user_id', 'idx_advances_user');
             $table->index('account_id', 'idx_advances_account_id');
             $table->index('payment_account_id', 'idx_advances_account');
+
+            // ✅ Index برای فیلتر سریع بر اساس ماه/سال هدف
+            $table->index(['target_month', 'target_year'], 'idx_advances_target_period');
         });
 
         // ============================================================
@@ -228,6 +244,7 @@ return new class extends Migration
 
         // ============================================================
         // 7) ساخت View کامل: ترکیب users + accounts
+        // ✅ شامل ستون role برای نمایش نام رول
         // ============================================================
         DB::statement("
             CREATE VIEW v_active_employees AS

@@ -5,6 +5,7 @@ import {
   Button, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Paper, Chip, Dialog, DialogTitle, DialogContent,
   DialogActions, Alert, Snackbar, Divider, CircularProgress,
+  Tooltip,
 } from "@mui/material";
 import PaymentIcon from "@mui/icons-material/Payment";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -50,7 +51,14 @@ export default function SalaryPayment() {
 
       if (res.data?.success) {
         const list = (res.data.data || []).map((e) => ({
-          ...e, paid: e.paymentStatus === "paid",
+          ...e,
+          paid: e.paymentStatus === "paid",
+          // ✅ اطمینان از وجود فیلدها
+          tax: Number(e.tax) || 0,
+          insurance: Number(e.insurance) || 0,
+          advanceDeduction: Number(e.advanceDeduction) || 0,
+          grossSalary: Number(e.grossSalary) || (Number(e.baseSalary) + Number(e.allowances)),
+          netSalary: Number(e.netSalary) || 0,
         }));
         setEmployees(list);
         setPeriodId(res.data.period?.id || null);
@@ -79,11 +87,19 @@ export default function SalaryPayment() {
         month: selectedMonth, year: selectedYear,
       });
       if (res.data?.success) {
-        setSnackbar({ open: true, msg: `✅ ${res.data.generated} معاش تولید شد`, severity: "success" });
+        setSnackbar({
+          open: true,
+          msg: `✅ ${res.data.generated} معاش تولید شد`,
+          severity: "success",
+        });
         fetchSalaries();
       }
     } catch (err) {
-      setSnackbar({ open: true, msg: err.response?.data?.message || "خطا در تولید", severity: "error" });
+      setSnackbar({
+        open: true,
+        msg: err.response?.data?.message || "خطا در تولید",
+        severity: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -134,7 +150,11 @@ export default function SalaryPayment() {
         fetchSalaries();
       }
     } catch (err) {
-      setSnackbar({ open: true, msg: err.response?.data?.message || "خطا در پرداخت", severity: "error" });
+      setSnackbar({
+        open: true,
+        msg: err.response?.data?.message || "خطا در پرداخت",
+        severity: "error",
+      });
     } finally {
       setSaving(false);
       setConfirmDialog(false);
@@ -212,7 +232,7 @@ export default function SalaryPayment() {
         <Box display="flex" justifyContent="center" py={4}><CircularProgress /></Box>
       ) : (
         <TableContainer component={Paper}>
-          <Table dir="rtl">
+          <Table dir="rtl" size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: "grey.100" }}>
                 <TableCell padding="checkbox" align="right">
@@ -224,11 +244,13 @@ export default function SalaryPayment() {
                 <TableCell align="right">#</TableCell>
                 <TableCell align="right">نام کارمند</TableCell>
                 <TableCell align="right">منبع</TableCell>
-                <TableCell align="right">کد</TableCell>
                 <TableCell align="right">بخش</TableCell>
                 <TableCell align="right">معاش پایه</TableCell>
                 <TableCell align="right">مزایا</TableCell>
                 <TableCell align="right">کسرات</TableCell>
+                {/* ✅ ستون‌های جدید */}
+                <TableCell align="right">مالیه</TableCell>
+                <TableCell align="right">بیمه</TableCell>
                 <TableCell align="right">پیش‌پرداخت</TableCell>
                 <TableCell align="right">معاش خالص</TableCell>
                 <TableCell align="right">وضعیت</TableCell>
@@ -237,7 +259,7 @@ export default function SalaryPayment() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={13} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       هیچ معاشی برای این دوره یافت نشد. ابتدا «تولید معاشات» را بزنید.
                     </Typography>
@@ -256,13 +278,12 @@ export default function SalaryPayment() {
                     <TableCell align="right">
                       <Chip
                         icon={e.source === "user" ? <PersonIcon /> : <BusinessIcon />}
-                        label={e.source === "user" ? "کاربر" : "حساب"}
+                        label={e.sourceLabel || (e.source === "user" ? "کاربر" : "حساب")}
                         size="small"
                         color={e.source === "user" ? "info" : "secondary"}
                         variant="outlined"
                       />
                     </TableCell>
-                    <TableCell align="right">{e.employeeCode || "—"}</TableCell>
                     <TableCell align="right">{e.department || "—"}</TableCell>
                     <TableCell align="right">{formatCurrency(e.baseSalary)}</TableCell>
                     <TableCell align="right" sx={{ color: "success.main" }}>
@@ -271,6 +292,15 @@ export default function SalaryPayment() {
                     <TableCell align="right" sx={{ color: "error.main" }}>
                       -{formatCurrency(e.deductions)}
                     </TableCell>
+                    {/* ✅ مالیه */}
+                    <TableCell align="right" sx={{ color: "error.main" }}>
+                      {e.tax ? `-${formatCurrency(e.tax)}` : "—"}
+                    </TableCell>
+                    {/* ✅ بیمه */}
+                    <TableCell align="right" sx={{ color: "error.main" }}>
+                      {e.insurance ? `-${formatCurrency(e.insurance)}` : "—"}
+                    </TableCell>
+                    {/* ✅ پیش‌پرداخت */}
                     <TableCell align="right" sx={{ color: "warning.main" }}>
                       {e.advanceDeduction ? `-${formatCurrency(e.advanceDeduction)}` : "—"}
                     </TableCell>

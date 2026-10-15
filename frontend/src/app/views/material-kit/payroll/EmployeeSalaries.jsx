@@ -43,9 +43,6 @@ export default function EmployeeSalaries() {
     hireDate: "",
   });
 
-  // ============================================================
-  // ✅ دریافت کارمندان (هم user هم account)
-  // ============================================================
   const fetchEmployees = useCallback(async () => {
     try {
       setLoading(true);
@@ -77,9 +74,6 @@ export default function EmployeeSalaries() {
     fetchEmployees();
   }, [fetchEmployees]);
 
-  // ============================================================
-  // ✅ دریافت کاربران (برای افزودن جدید)
-  // ============================================================
   const fetchUsers = async (query = "") => {
     try {
       const res = await api.get("/users", {
@@ -90,6 +84,7 @@ export default function EmployeeSalaries() {
         (Array.isArray(list) ? list : []).map((u) => ({
           id: u.id,
           name: u.name,
+          role: u.role || "",       // ✅ نام رول
           department: u.department?.name || "",
         }))
       );
@@ -98,12 +93,8 @@ export default function EmployeeSalaries() {
     }
   };
 
-  // ============================================================
-  // ✅ فرم: پشتیبانی از user و account
-  // ============================================================
   const handleOpenDialog = (employee = null) => {
     if (employee) {
-      // ویرایش — چه user چه account
       setSelectedEmployee(employee);
       setFormData({
         userId: employee.userId || null,
@@ -116,7 +107,6 @@ export default function EmployeeSalaries() {
         hireDate: employee.hireDate || "",
       });
     } else {
-      // افزودن جدید
       setSelectedEmployee(null);
       setFormData({
         userId: null,
@@ -138,9 +128,6 @@ export default function EmployeeSalaries() {
     setSelectedEmployee(null);
   };
 
-  // ============================================================
-  // ✅ ذخیره: هم user هم account
-  // ============================================================
   const handleSave = async () => {
     if (!selectedEmployee && !formData.userId && !formData.accountId) {
       alert("لطفاً کاربر یا طرف‌حساب را انتخاب کنید");
@@ -184,9 +171,6 @@ export default function EmployeeSalaries() {
     }
   };
 
-  // ============================================================
-  // ✅ حذف (فقط user)
-  // ============================================================
   const handleDelete = async (employee) => {
     if (employee.source === "account") {
       alert("کارمندان طرف‌حساب از جدول حسابات مدیریت می‌شوند");
@@ -391,7 +375,6 @@ export default function EmployeeSalaries() {
                       />
                     </TableCell>
                     <TableCell align="right">
-                      {/* ✅ ویرایش برای هر دو منبع */}
                       <Tooltip title="ویرایش معاش">
                         <IconButton
                           size="small"
@@ -402,7 +385,6 @@ export default function EmployeeSalaries() {
                         </IconButton>
                       </Tooltip>
 
-                      {/* ✅ حذف فقط برای user */}
                       {e.source === "user" && (
                         <Tooltip title="حذف">
                           <IconButton
@@ -461,13 +443,14 @@ export default function EmployeeSalaries() {
           )}
 
           <Grid container spacing={2} mt={0.5} dir="rtl">
-            {/* ✅ Autocomplete فقط برای افزودن جدید */}
             {!selectedEmployee && (
               <Grid item xs={12}>
                 <Autocomplete
                   options={users}
                   getOptionLabel={(o) =>
-                    `${o.name} ${o.department ? `(${o.department})` : ""}`
+                    `${o.name}${o.role ? ` - ${o.role}` : ""}${
+                      o.department ? ` (${o.department})` : ""
+                    }`
                   }
                   value={users.find((u) => u.id === formData.userId) || null}
                   onChange={(_, v) =>
@@ -484,7 +467,6 @@ export default function EmployeeSalaries() {
               </Grid>
             )}
 
-            {/* ✅ نمایش نام در حالت ویرایش */}
             {selectedEmployee && (
               <Grid item xs={12}>
                 <TextField

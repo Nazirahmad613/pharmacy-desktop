@@ -5,6 +5,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   InputAdornment, Alert, Snackbar, CircularProgress, Autocomplete,
+  MenuItem,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -13,6 +14,91 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import PersonIcon from "@mui/icons-material/Person";
 import BusinessIcon from "@mui/icons-material/Business";
 import api from "../../../../api";
+
+const MONTHS = [
+  "حمل", "ثور", "جوزا", "سرطان", "اسد", "سنبله",
+  "میزان", "عقرب", "قوس", "جدی", "دلو", "حوت",
+];
+
+// ============================================================
+// ✅ تبدیل تاریخ شمسی به میلادی (بدون نیاز به پکیج اضافی)
+// ============================================================
+const toGregorian = (jalaliStr) => {
+  if (!jalaliStr) return new Date().toISOString().slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(jalaliStr)) return jalaliStr;
+
+  const parts = jalaliStr.split("/").map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  const [jy, jm, jd] = parts;
+  let gy = jy + 621;
+  const jDaysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
+  const gDaysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+  let jDayOfYear = jd;
+  for (let i = 0; i < jm - 1; i++) jDayOfYear += jDaysInMonth[i];
+
+  const gDayOfYear = jDayOfYear + 79;
+  let gMonth = 0;
+  let remaining = gDayOfYear;
+
+  const isLeap = (gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0;
+  if (isLeap) gDaysInMonth[1] = 29;
+
+  while (remaining > gDaysInMonth[gMonth]) {
+    remaining -= gDaysInMonth[gMonth];
+    gMonth++;
+    if (gMonth > 11) { gMonth = 0; gy++; }
+  }
+
+  const gd = remaining;
+  const gm = gMonth + 1;
+  return `${gy}-${String(gm).padStart(2, "0")}-${String(gd).padStart(2, "0")}`;
+};
+
+// ============================================================
+// ✅ تبدیل میلادی به شمسی (برای نمایش)
+// ============================================================
+const toJalali = (gregorianStr) => {
+  if (!gregorianStr) return "";
+  const date = new Date(gregorianStr);
+  if (isNaN(date.getTime())) return gregorianStr;
+
+  const gy = date.getFullYear();
+  const gm = date.getMonth() + 1;
+  const gd = date.getDate();
+
+  const gDaysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const jDaysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
+
+  const isLeap = (gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0;
+  if (isLeap) gDaysInMonth[1] = 29;
+
+  let gDayOfYear = gd;
+  for (let i = 0; i < gm - 1; i++) gDayOfYear += gDaysInMonth[i];
+
+  let jDayOfYear = gDayOfYear - 79;
+  let jy = gy - 621;
+
+  if (jDayOfYear <= 0) {
+    jy--;
+    jDayOfYear += 365 + (isLeap ? 1 : 0);
+  }
+
+  let jm = 0;
+  let remaining = jDayOfYear;
+
+  while (remaining > jDaysInMonth[jm]) {
+    remaining -= jDaysInMonth[jm];
+    jm++;
+    if (jm > 11) { jm = 0; jy++; }
+  }
+
+  const jd = remaining;
+  return `${jy}/${String(jm + 1).padStart(2, "0")}/${String(jd).padStart(2, "0")}`;
+};
 
 export default function SalaryAdvances() {
   const [loading, setLoading] = useState(true);
@@ -25,9 +111,10 @@ export default function SalaryAdvances() {
   });
 
   const [open, setOpen] = useState(false);
-  const [employeeOptions, setEmployeeOptions] = useState([]); // ✅ هم users هم accounts
+  const [employeeOptions, setEmployeeOptions] = useState([]);
   const [employeeLoading, setEmployeeLoading] = useState(false);
 
+  // ✅ ماه و سال هدف در فرم
   const [form, setForm] = useState({
     employeeId: null,
     userId: null,
@@ -38,6 +125,8 @@ export default function SalaryAdvances() {
     amount: "",
     reason: "",
     date: "",
+    targetMonth: MONTHS[4],
+    targetYear: "1403",
     repaymentMonths: 1,
   });
 
@@ -51,7 +140,30 @@ export default function SalaryAdvances() {
       setError(null);
       const res = await api.get("/payroll/advances");
       if (res.data?.success) {
-        setAdvances(res.data.data || []);
+        const normalizedData = (res.data.data || []).map((a) => ({
+          id: a.id,
+          employee: a.employee || "—",
+          employeeId: a.employeeId || a.userId || a.accountId,
+          userId: a.userId || null,
+          accountId: a.accountId || null,
+          source: a.source || (a.userId ? "user" : "account"),
+          sourceLabel: a.sourceLabel || "",   // ✅ نام رول
+          department: a.department || "—",
+          amount: Number(a.amount) || 0,
+          reason: a.reason || "",
+          date: a.date || a.requestDate || "",
+          // ✅ ماه و سال هدف
+          targetMonth: a.targetMonth || "",
+          targetYear: a.targetYear || "",
+          status: a.status || "—",
+          statusRaw: a.statusRaw || "pending",
+          repaid: Number(a.repaid ?? a.repaidAmount ?? 0),
+          remaining: Number(a.remaining ?? a.remainingAmount ?? 0),
+          repaymentMonths: Number(a.repaymentMonths) || 1,
+          monthlyDeduction: Number(a.monthlyDeduction) || 0,
+        }));
+
+        setAdvances(normalizedData);
         setStats(res.data.stats || { totalAdvances: 0, totalRepaid: 0, remaining: 0 });
       }
     } catch (err) {
@@ -65,9 +177,6 @@ export default function SalaryAdvances() {
     fetchAdvances();
   }, [fetchAdvances]);
 
-  // ============================================================
-  // ✅ دریافت کارمندان (هم user هم account)
-  // ============================================================
   const fetchEmployees = async (query = "") => {
     try {
       setEmployeeLoading(true);
@@ -81,7 +190,7 @@ export default function SalaryAdvances() {
           id: e.id,
           userId: e.userId || null,
           accountId: e.accountId || null,
-          full_name: e.fullName,
+          full_name: e.fullName || e.full_name || "—",
           department: e.department || "",
           source: e.source,
           sourceLabel: e.sourceLabel,
@@ -104,31 +213,44 @@ export default function SalaryAdvances() {
     new Intl.NumberFormat("fa-AF").format(n || 0) + " ؋";
 
   // ============================================================
-  // ✅ ذخیره پیش‌پرداخت (پشتیبانی از user و account)
+  // ✅ ذخیره پیش‌پرداخت با ماه و سال هدف
   // ============================================================
   const handleSave = async () => {
     if (!form.employeeId || !form.amount) {
       setSnackbar({ open: true, msg: "کارمند و مبلغ الزامی است", severity: "warning" });
       return;
     }
+    if (!form.targetMonth || !form.targetYear) {
+      setSnackbar({ open: true, msg: "ماه و سال هدف الزامی است", severity: "warning" });
+      return;
+    }
+
     try {
       setSaving(true);
+      const gregorianDate = toGregorian(form.date);
+
       const payload = {
         employeeId: form.employeeId,
-        userId: form.userId,
-        accountId: form.accountId,
+        userId: form.userId || null,
+        accountId: form.accountId || null,
         amount: Number(form.amount) || 0,
-        reason: form.reason,
-        date: form.date || new Date().toISOString().slice(0, 10),
+        reason: form.reason || "",
+        date: gregorianDate,
+        targetMonth: form.targetMonth,   // ✅
+        targetYear: form.targetYear,     // ✅
         repaymentMonths: Number(form.repaymentMonths) || 1,
       };
+
       const res = await api.post("/payroll/advances", payload);
+
       if (res.data?.success) {
         setSnackbar({ open: true, msg: "✅ درخواست ثبت شد", severity: "success" });
         setForm({
           employeeId: null, userId: null, accountId: null,
           employee: "", department: "", source: "",
-          amount: "", reason: "", date: "", repaymentMonths: 1,
+          amount: "", reason: "", date: "",
+          targetMonth: MONTHS[4], targetYear: "1403",
+          repaymentMonths: 1,
         });
         setOpen(false);
         fetchAdvances();
@@ -140,11 +262,14 @@ export default function SalaryAdvances() {
         });
       }
     } catch (err) {
-      setSnackbar({
-        open: true,
-        msg: err.response?.data?.message || "خطا در ثبت",
-        severity: "error",
-      });
+      console.error("❌ Save error:", err.response?.data);
+      const errMsg =
+        err.response?.data?.message ||
+        (err.response?.data?.errors
+          ? Object.values(err.response.data.errors).flat().join(", ")
+          : null) ||
+        "خطا در ثبت";
+      setSnackbar({ open: true, msg: errMsg, severity: "error" });
     } finally {
       setSaving(false);
     }
@@ -242,15 +367,19 @@ export default function SalaryAdvances() {
       </Box>
 
       <TableContainer component={Paper}>
-        <Table dir="rtl">
+        <Table dir="rtl" size="small">
           <TableHead>
             <TableRow sx={{ bgcolor: "grey.100" }}>
               <TableCell align="right">#</TableCell>
               <TableCell align="right">کارمند</TableCell>
+              <TableCell align="right">منبع</TableCell>
               <TableCell align="right">بخش</TableCell>
               <TableCell align="right">مبلغ</TableCell>
               <TableCell align="right">دلیل</TableCell>
-              <TableCell align="right">تاریخ</TableCell>
+              <TableCell align="right">تاریخ درخواست</TableCell>
+              {/* ✅ ستون‌های جدید */}
+              <TableCell align="right">ماه هدف</TableCell>
+              <TableCell align="right">قسط ماهانه</TableCell>
               <TableCell align="right">وضعیت</TableCell>
               <TableCell align="right">بازپرداخت شده</TableCell>
               <TableCell align="right">باقی‌مانده</TableCell>
@@ -260,7 +389,7 @@ export default function SalaryAdvances() {
           <TableBody>
             {advances.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={13} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     هیچ درخواست پیش‌پرداختی یافت نشد
                   </Typography>
@@ -271,10 +400,28 @@ export default function SalaryAdvances() {
                 <TableRow key={a.id} hover>
                   <TableCell align="right">{idx + 1}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: "bold" }}>{a.employee}</TableCell>
+                  <TableCell align="right">
+                    <Chip
+                      icon={a.source === "user" ? <PersonIcon /> : <BusinessIcon />}
+                      label={a.sourceLabel || (a.source === "user" ? "کاربر" : "حساب")}
+                      size="small"
+                      color={a.source === "user" ? "info" : "secondary"}
+                      variant="outlined"
+                    />
+                  </TableCell>
                   <TableCell align="right">{a.department}</TableCell>
                   <TableCell align="right">{formatCurrency(a.amount)}</TableCell>
                   <TableCell align="right">{a.reason}</TableCell>
-                  <TableCell align="right">{a.date}</TableCell>
+                  <TableCell align="right">
+                    {a.date ? toJalali(a.date) : "—"}
+                  </TableCell>
+                  {/* ✅ نمایش ماه/سال هدف */}
+                  <TableCell align="right" sx={{ fontWeight: "bold", color: "primary.main" }}>
+                    {a.targetMonth && a.targetYear
+                      ? `${a.targetMonth} ${a.targetYear}`
+                      : "—"}
+                  </TableCell>
+                  <TableCell align="right">{formatCurrency(a.monthlyDeduction)}</TableCell>
                   <TableCell align="right">
                     <Chip
                       label={a.status}
@@ -323,7 +470,6 @@ export default function SalaryAdvances() {
         <DialogContent dividers>
           <Grid container spacing={2} mt={0.5}>
             <Grid item xs={12}>
-              {/* ✅ Autocomplete: هم user هم account */}
               <Autocomplete
                 options={employeeOptions}
                 getOptionLabel={(o) =>
@@ -406,6 +552,34 @@ export default function SalaryAdvances() {
                 }}
               />
             </Grid>
+
+            {/* ✅ ماه هدف */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                select
+                label="ماه هدف (کسر از معاش این ماه) *"
+                value={form.targetMonth}
+                onChange={(e) => setForm({ ...form, targetMonth: e.target.value })}
+                required
+              >
+                {MONTHS.map((m) => (
+                  <MenuItem key={m} value={m}>{m}</MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            {/* ✅ سال هدف */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="سال هدف *"
+                value={form.targetYear}
+                onChange={(e) => setForm({ ...form, targetYear: e.target.value })}
+                required
+              />
+            </Grid>
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -420,7 +594,7 @@ export default function SalaryAdvances() {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="تاریخ"
+                label="تاریخ درخواست (شمسی)"
                 placeholder="1403/05/15"
                 value={form.date}
                 onChange={(e) => setForm({ ...form, date: e.target.value })}

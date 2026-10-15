@@ -19,7 +19,6 @@ class PayrollModelController extends Controller
 {
     // ============================================================
     // 📊 DASHBOARD
-    // GET /api/payroll/dashboard
     // ============================================================
     public function getDashboard(Request $request)
     {
@@ -87,15 +86,8 @@ class PayrollModelController extends Controller
     }
 
     // ============================================================
-    // 👥 EMPLOYEES — از View v_active_employees (users + accounts)
+    // 👥 EMPLOYEES
     // ============================================================
-
-    /**
-     * GET /api/payroll/employees?search=&department=&status=&source=
-     *
-     * ✅ id برگشتی همیشه یکتاست: "user-{id}" یا "account-{id}"
-     *    این کار از تداخل بین user_id و account_id جلوگیری می‌کند
-     */
     public function getEmployees(Request $request)
     {
         try {
@@ -129,17 +121,23 @@ class PayrollModelController extends Controller
             $rows = $query->orderBy('full_name')->get();
 
             $data = $rows->map(function ($r) {
-                // ✅ id یکتای ترکیبی — برای جلوگیری از تداخل user/account
                 $uniqueId = $r->source . '-' . $r->employee_id;
 
+                $sourceLabel = '—';
+                if ($r->source === 'user') {
+                    $sourceLabel = $r->role ?? 'کاربر';
+                } else {
+                    $sourceLabel = 'طرف‌حساب';
+                }
+
                 return [
-                    'id'            => $uniqueId,            // ← کلید حل باگ
-                    'employeeId'    => $r->employee_id,      // id واقعی در users یا accounts
-                    'salaryInfoId'  => $r->salary_info_id,   // id رکورد در employee_salary_info (ممکن است null باشد)
+                    'id'            => $uniqueId,
+                    'employeeId'    => $r->employee_id,
+                    'salaryInfoId'  => $r->salary_info_id,
                     'userId'        => $r->source === 'user' ? $r->employee_id : null,
                     'accountId'     => $r->source === 'account' ? $r->employee_id : null,
                     'source'        => $r->source,
-                    'sourceLabel'   => $r->source === 'user' ? 'کاربر سیستم' : 'کارمند طرف‌حساب',
+                    'sourceLabel'   => $sourceLabel,
                     'fullName'      => $r->full_name,
                     'email'         => $r->email,
                     'department'    => $r->department_name,
@@ -162,12 +160,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * GET /api/payroll/employees/{id}
-     * id می‌تواند:
-     *   - "user-5" یا "account-7" (فرمت جدید)
-     *   - 5 (id عددی: salary_info_id / user_id / account_id)
-     */
     public function getEmployee($id)
     {
         try {
@@ -185,10 +177,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * POST /api/payroll/employees
-     * افزودن اطلاعات معاش برای کاربر یا طرف‌حساب
-     */
     public function createEmployee(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -250,27 +238,18 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * PUT /api/payroll/employees/{id}
-     * id می‌تواند "user-5", "account-7" یا عدد باشد.
-     * اگر رکورد وجود نداشته باشد، ساخته می‌شود (upsert).
-     */
     public function updateEmployee(Request $request, $id)
     {
         try {
-            // 1) پیدا کردن رکورد
             $info = $this->findSalaryInfo($id);
 
-            // 2) اگر پیدا نشد، بساز
             if (!$info) {
-                // پارس id
                 $parsed = $this->parseEmployeeId($id);
 
                 if (!$parsed['userId'] && !$parsed['accountId']) {
                     return response()->json(['success' => false, 'message' => 'کارمند یافت نشد'], 404);
                 }
 
-                // ✅ از payload هم چک کن (اگر id عددی و نامفهوم بود)
                 $userId    = $request->input('userId')    ?: $parsed['userId'];
                 $accountId = $request->input('accountId') ?: $parsed['accountId'];
 
@@ -293,7 +272,6 @@ class PayrollModelController extends Controller
                 ]);
             }
 
-            // 3) اعتبارسنجی
             $validator = Validator::make($request->all(), [
                 'baseSalary'  => 'nullable|numeric|min:0',
                 'allowances'  => 'nullable|numeric|min:0',
@@ -307,7 +285,6 @@ class PayrollModelController extends Controller
                 return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
             }
 
-            // 4) به‌روزرسانی
             $data = [];
             if ($request->has('baseSalary'))  $data['base_salary']         = $request->baseSalary;
             if ($request->has('allowances'))  $data['allowances']          = $request->allowances;
@@ -328,9 +305,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * DELETE /api/payroll/employees/{id}
-     */
     public function deleteEmployee($id)
     {
         try {
@@ -349,7 +323,6 @@ class PayrollModelController extends Controller
     // ============================================================
     // 💵 SALARIES
     // ============================================================
-
     public function getSalaries(Request $request)
     {
         try {
@@ -397,6 +370,9 @@ class PayrollModelController extends Controller
         }
     }
 
+    /**
+     * ✅ generateSalaries - اصلاح‌شده برای نمایش دقیق بیمه، مالیه و پیش‌پرداخت
+     */
     public function generateSalaries(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -442,6 +418,8 @@ class PayrollModelController extends Controller
             $enableIns = (bool)  ($settings['enableInsurance'] ?? false);
 
             $inserted = 0;
+            $requestMonth = trim($request->month);
+            $requestYear  = trim($request->year);
 
             foreach ($employees as $emp) {
                 $base  = (float) $emp->base_salary;
@@ -449,23 +427,71 @@ class PayrollModelController extends Controller
                 $ded   = (float) $emp->deductions;
                 $gross = $base + $allow;
 
-                $tax       = $enableTax ? ($gross * $taxRate / 100) : 0;
-                $insurance = $enableIns ? ($gross * $insRate / 100) : 0;
+                // ✅ محاسبه مالیه و بیمه
+                $tax       = $enableTax ? round($gross * $taxRate / 100, 2) : 0;
+                $insurance = $enableIns ? round($gross * $insRate / 100, 2) : 0;
 
+                // ============================================================
+                // ✅ کسر پیش‌پرداخت: تطابق دقیق با ماه/سال هدف
+                // ============================================================
                 $advanceDeduction = 0;
+
+                $advQuery = SalaryAdvance::whereIn('status', ['approved', 'partially_repaid'])
+                    ->where(function ($q) use ($requestMonth, $requestYear) {
+                        // شرط ۱: تطابق دقیق ماه و سال هدف (با TRIM برای اطمینان)
+                        $q->where(function ($q2) use ($requestMonth, $requestYear) {
+                            $q2->whereRaw('TRIM(target_month) = ?', [$requestMonth])
+                               ->whereRaw('TRIM(target_year) = ?', [$requestYear]);
+                        })
+                        // شرط ۲ (fallback): پیش‌پرداخت‌های قدیمی بدون ماه هدف
+                        ->orWhere(function ($q2) {
+                            $q2->whereNull('target_month')
+                               ->whereNull('target_year');
+                        });
+                    });
+
                 if ($emp->source === 'user') {
-                    $advanceDeduction = (float) DB::table('salary_advances')
-                        ->where('user_id', $emp->employee_id)
-                        ->whereIn('status', ['approved', 'partially_repaid'])
-                        ->sum('monthly_deduction');
-                } elseif ($emp->source === 'account') {
-                    $advanceDeduction = (float) DB::table('salary_advances')
-                        ->where('account_id', $emp->employee_id)
-                        ->whereIn('status', ['approved', 'partially_repaid'])
-                        ->sum('monthly_deduction');
+                    $advQuery->where('user_id', $emp->employee_id);
+                } else {
+                    $advQuery->where('account_id', $emp->employee_id);
                 }
 
-                $net = $gross - $ded - $tax - $insurance - $advanceDeduction;
+                $advances = $advQuery->get();
+
+                // ✅ لاگ برای دیباگ (می‌توانید بعداً حذف کنید)
+                if ($advances->count() > 0) {
+                    Log::info('generateSalaries - advances found', [
+                        'employee_id' => $emp->employee_id,
+                        'source' => $emp->source,
+                        'request_month' => $requestMonth,
+                        'request_year' => $requestYear,
+                        'found' => $advances->count(),
+                        'advances' => $advances->map(fn($a) => [
+                            'id' => $a->id,
+                            'target_month' => $a->target_month,
+                            'target_year' => $a->target_year,
+                            'status' => $a->status,
+                            'monthly_deduction' => $a->monthly_deduction,
+                            'remaining_amount' => $a->remaining_amount,
+                        ])->toArray(),
+                    ]);
+                }
+
+                foreach ($advances as $adv) {
+                    $advRemaining = (float) $adv->remaining_amount
+                        ?: ((float) $adv->amount - (float) $adv->repaid_amount);
+
+                    $monthly = (float) $adv->monthly_deduction;
+                    if ($monthly <= 0) {
+                        $months  = max(1, (int) $adv->repayment_months);
+                        $monthly = $advRemaining / $months;
+                    }
+
+                    $advanceDeduction += min($monthly, $advRemaining);
+                }
+
+                $advanceDeduction = round($advanceDeduction, 2);
+                $net = round($gross - $ded - $tax - $insurance - $advanceDeduction, 2);
 
                 EmployeeSalary::create([
                     'user_id'           => $emp->source === 'user'    ? $emp->employee_id : null,
@@ -475,6 +501,9 @@ class PayrollModelController extends Controller
                     'base_salary'       => $base,
                     'allowances'        => $allow,
                     'deductions'        => $ded,
+                    'gross_salary'      => $gross,
+                    'tax_amount'        => $tax,
+                    'insurance_amount'  => $insurance,
                     'advance_deduction' => $advanceDeduction,
                     'net_salary'        => $net,
                     'payment_status'    => 'pending',
@@ -549,11 +578,32 @@ class PayrollModelController extends Controller
                     'updated_by'           => $request->user()?->id,
                 ]);
 
+                // ============================================================
+                // ✅ کسر پیش‌پرداخت با تطابق دقیق ماه/سال هدف
+                // ============================================================
                 if ($salary->advance_deduction > 0) {
                     $remaining = (float) $salary->advance_deduction;
 
+                    $period = PayrollPeriod::find($salary->period_id);
+
                     $advQuery = SalaryAdvance::whereIn('status', ['approved', 'partially_repaid'])
                         ->orderBy('created_at', 'asc');
+
+                    if ($period) {
+                        $periodMonth = trim($period->period_month);
+                        $periodYear  = trim($period->period_year);
+
+                        $advQuery->where(function ($q) use ($periodMonth, $periodYear) {
+                            $q->where(function ($q2) use ($periodMonth, $periodYear) {
+                                $q2->whereRaw('TRIM(target_month) = ?', [$periodMonth])
+                                   ->whereRaw('TRIM(target_year) = ?', [$periodYear]);
+                            })
+                            ->orWhere(function ($q2) {
+                                $q2->whereNull('target_month')
+                                   ->whereNull('target_year');
+                            });
+                        });
+                    }
 
                     if ($salary->user_id) {
                         $advQuery->where('user_id', $salary->user_id);
@@ -609,7 +659,6 @@ class PayrollModelController extends Controller
     // ============================================================
     // 📉 ADVANCES
     // ============================================================
-
     public function getAdvances(Request $request)
     {
         try {
@@ -648,13 +697,15 @@ class PayrollModelController extends Controller
     public function createAdvance(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'employeeId'      => 'nullable|integer',
+            'employeeId'      => 'nullable',
             'userId'          => 'nullable|integer|exists:users,id',
             'accountId'       => 'nullable|integer|exists:accounts,id',
             'employee'        => 'nullable|string',
             'amount'          => 'required|numeric|min:1',
             'reason'          => 'nullable|string',
             'date'            => 'nullable|string|max:20',
+            'targetMonth'     => 'required|string|max:20',
+            'targetYear'      => 'required|string|max:10',
             'repaymentMonths' => 'nullable|integer|min:1',
         ]);
 
@@ -667,19 +718,29 @@ class PayrollModelController extends Controller
             $accountId = $request->accountId;
 
             if (!$userId && !$accountId && $request->employeeId) {
-                $isUser = User::where('id', $request->employeeId)->exists();
-                if ($isUser) {
-                    $userId = $request->employeeId;
-                } else {
-                    $isAccount = Account::where('id', $request->employeeId)->exists();
-                    if ($isAccount) {
-                        $accountId = $request->employeeId;
+                $employeeId = $request->employeeId;
+
+                if (is_string($employeeId) && str_starts_with($employeeId, 'user-')) {
+                    $userId = (int) substr($employeeId, 5);
+                } elseif (is_string($employeeId) && str_starts_with($employeeId, 'account-')) {
+                    $accountId = (int) substr($employeeId, 8);
+                } elseif (is_numeric($employeeId)) {
+                    $isUser = User::where('id', $employeeId)->exists();
+                    if ($isUser) {
+                        $userId = (int) $employeeId;
+                    } else {
+                        $isAccount = Account::where('id', $employeeId)->exists();
+                        if ($isAccount) {
+                            $accountId = (int) $employeeId;
+                        }
                     }
                 }
             }
 
             if (!$userId && !$accountId && $request->employee) {
-                $user = User::where('name', $request->employee)->first();
+                $user = User::where('name', $request->employee)
+                    ->orWhere('full_name', $request->employee)
+                    ->first();
                 if ($user) {
                     $userId = $user->id;
                 } else {
@@ -689,20 +750,37 @@ class PayrollModelController extends Controller
             }
 
             if (!$userId && !$accountId) {
-                return response()->json(['success' => false, 'message' => 'کارمند یافت نشد'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'کارمند یافت نشد. لطفاً یک کارمند معتبر انتخاب کنید.',
+                ], 404);
+            }
+
+            if ($userId && !User::where('id', $userId)->exists()) {
+                return response()->json(['success' => false, 'message' => 'کاربر یافت نشد'], 404);
+            }
+
+            if ($accountId && !Account::where('id', $accountId)->exists()) {
+                return response()->json(['success' => false, 'message' => 'طرف‌حساب یافت نشد'], 404);
             }
 
             $amount  = (float) $request->amount;
             $months  = (int) ($request->repaymentMonths ?? 1);
-            $monthly = $amount / $months;
+            $monthly = $months > 0 ? $amount / $months : $amount;
 
+            $requestDate = $request->date ?: now()->toDateString();
+
+            // ✅ ذخیره با TRIM برای اطمینان از نبود فاصله اضافی
             $advance = SalaryAdvance::create([
                 'user_id'           => $userId,
                 'account_id'        => $accountId,
                 'amount'            => $amount,
                 'reason'            => $request->reason,
-                'request_date'      => $request->date,
+                'request_date'      => $requestDate,
+                'target_month'      => trim($request->targetMonth),
+                'target_year'       => trim($request->targetYear),
                 'status'            => 'pending',
+                'repaid_amount'     => 0,
                 'remaining_amount'  => $amount,
                 'repayment_months'  => $months,
                 'monthly_deduction' => $monthly,
@@ -713,7 +791,7 @@ class PayrollModelController extends Controller
                 'data'    => $this->advanceToArray($advance->fresh(['user.department', 'account'])),
             ], 201);
         } catch (\Throwable $e) {
-            Log::error('createAdvance: ' . $e->getMessage());
+            Log::error('createAdvance: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -770,7 +848,6 @@ class PayrollModelController extends Controller
     // ============================================================
     // 📊 REPORTS
     // ============================================================
-
     public function getReports(Request $request)
     {
         try {
@@ -856,7 +933,6 @@ class PayrollModelController extends Controller
     // ============================================================
     // ⚙️ SETTINGS
     // ============================================================
-
     public function getSettings()
     {
         try {
@@ -908,13 +984,6 @@ class PayrollModelController extends Controller
     // ============================================================
     // 🔧 HELPERS
     // ============================================================
-
-    /**
-     * ✅ پارس کردن id — پشتیبانی از:
-     *    - "user-5"    → userId = 5
-     *    - "account-7" → accountId = 7
-     *    - 12          → salaryInfoId = 12 (یا از payload تشخیص می‌دهد)
-     */
     private function parseEmployeeId($id): array
     {
         $userId        = null;
@@ -936,28 +1005,22 @@ class PayrollModelController extends Controller
         ];
     }
 
-    /**
-     * ✅ پیدا کردن رکورد EmployeeSalaryInfo از id با فرمت‌های مختلف
-     */
     private function findSalaryInfo($id): ?EmployeeSalaryInfo
     {
         $parsed = $this->parseEmployeeId($id);
 
-        // 1) اگر "user-X" بود
         if ($parsed['userId']) {
             return EmployeeSalaryInfo::with(['user.department', 'account'])
                 ->where('user_id', $parsed['userId'])
                 ->first();
         }
 
-        // 2) اگر "account-X" بود
         if ($parsed['accountId']) {
             return EmployeeSalaryInfo::with(['user.department', 'account'])
                 ->where('account_id', $parsed['accountId'])
                 ->first();
         }
 
-        // 3) اگر id عددی بود، چند مسیر را امتحان کن
         if ($parsed['salaryInfoId']) {
             $id = $parsed['salaryInfoId'];
 
@@ -984,12 +1047,19 @@ class PayrollModelController extends Controller
             ?? $info->account->account_code
             ?? '—';
 
+        $sourceLabel = '—';
+        if ($info->user_id && $info->user) {
+            $sourceLabel = $info->user->role ?? 'کاربر';
+        } elseif ($info->account_id && $info->account) {
+            $sourceLabel = 'طرف‌حساب';
+        }
+
         return [
             'id'            => $info->id,
             'userId'        => $info->user_id,
             'accountId'     => $info->account_id,
             'source'        => $info->user_id ? 'user' : 'account',
-            'sourceLabel'   => $info->user_id ? 'کاربر سیستم' : 'کارمند طرف‌حساب',
+            'sourceLabel'   => $sourceLabel,
             'fullName'      => $fullName,
             'department'    => $department,
             'departmentId'  => $info->user->department_id ?? null,
@@ -1004,55 +1074,113 @@ class PayrollModelController extends Controller
         ];
     }
 
+    /**
+     * ✅ salaryToArray - استفاده از مقادیر ذخیره‌شده در دیتابیس
+     */
     private function salaryToArray(EmployeeSalary $s): array
     {
+        $sourceLabel = '—';
+        if ($s->user_id && $s->user) {
+            $sourceLabel = $s->user->role ?? 'کاربر';
+        } elseif ($s->account_id) {
+            $sourceLabel = 'طرف‌حساب';
+        }
+
+        // ✅ استفاده از مقادیر ذخیره‌شده در دیتابیس
+        $gross     = (float) ($s->gross_salary ?? ((float) $s->base_salary + (float) $s->allowances));
+        $tax       = (float) ($s->tax_amount ?? 0);
+        $insurance = (float) ($s->insurance_amount ?? 0);
+
+        // fallback: اگر tax/insurance صفر بود ولی تنظیمات فعال
+        if ($tax == 0 && $insurance == 0) {
+            $settings  = PayrollSetting::asObject();
+            $taxRate   = (float) ($settings['taxRate'] ?? 0);
+            $insRate   = (float) ($settings['insuranceRate'] ?? 0);
+            $enableTax = (bool)  ($settings['enableTax'] ?? false);
+            $enableIns = (bool)  ($settings['enableInsurance'] ?? false);
+
+            $tax       = $enableTax ? round($gross * $taxRate / 100, 2) : 0;
+            $insurance = $enableIns ? round($gross * $insRate / 100, 2) : 0;
+        }
+
         return [
-            'id'            => $s->id,
-            'source'        => $s->employee_source,
-            'userId'        => $s->user_id,
-            'accountId'     => $s->account_id,
-            'fullName'      => $s->employee_name,
-            'department'    => $s->user->department->name
+            'id'               => $s->id,
+            'source'           => $s->employee_source,
+            'sourceLabel'      => $sourceLabel,
+            'userId'           => $s->user_id,
+            'accountId'        => $s->account_id,
+            'fullName'         => $s->employee_name,
+            'department'       => $s->user->department->name
                 ?? $s->account->account_code
                 ?? '—',
-            'employeeCode'  => $s->salaryInfo->employee_code
+            'employeeCode'     => $s->salaryInfo->employee_code
                 ?? $s->account->account_code
                 ?? null,
-            'baseSalary'    => (float) $s->base_salary,
-            'allowances'    => (float) $s->allowances,
-            'deductions'    => (float) $s->deductions,
+            'baseSalary'       => (float) $s->base_salary,
+            'allowances'       => (float) $s->allowances,
+            'deductions'       => (float) $s->deductions,
             'advanceDeduction' => (float) $s->advance_deduction,
-            'netSalary'     => (float) $s->net_salary,
-            'paidAmount'    => (float) $s->paid_amount,
-            'remaining'     => $s->remaining_amount,
-            'paymentStatus' => $s->payment_status,
-            'paymentDate'   => $s->payment_date?->format('Y-m-d'),
-            'paymentMethod' => $s->payment_method,
-            'receiptNumber' => $s->receipt_number,
-            'notes'         => $s->notes,
+            'insurance'        => $insurance,
+            'tax'              => $tax,
+            'grossSalary'      => $gross,
+            'netSalary'        => (float) $s->net_salary,
+            'paidAmount'       => (float) $s->paid_amount,
+            'remaining'        => $s->remaining_amount,
+            'paymentStatus'    => $s->payment_status,
+            'paymentDate'      => $s->payment_date?->format('Y-m-d'),
+            'paymentMethod'    => $s->payment_method,
+            'receiptNumber'    => $s->receipt_number,
+            'notes'            => $s->notes,
         ];
     }
 
     private function advanceToArray(SalaryAdvance $a): array
     {
+        $statusMap = [
+            'pending'          => 'در انتظار',
+            'approved'         => 'تأیید شده',
+            'rejected'         => 'رد شده',
+            'repaid'           => 'بازپرداخت شده',
+            'partially_repaid' => 'تأیید شده',
+        ];
+
+        $employeeName = $a->user->name
+            ?? $a->user->full_name
+            ?? $a->account->account_name
+            ?? '—';
+
+        $department = $a->user->department->name
+            ?? $a->account->account_code
+            ?? '—';
+
+        $sourceLabel = '—';
+        if ($a->user_id && $a->user) {
+            $sourceLabel = $a->user->role ?? 'کاربر';
+        } elseif ($a->account_id) {
+            $sourceLabel = 'طرف‌حساب';
+        }
+
         return [
             'id'               => $a->id,
+            'employee'         => $employeeName,
+            'employeeId'       => $a->user_id ?? $a->account_id,
             'userId'           => $a->user_id,
             'accountId'        => $a->account_id,
             'source'           => $a->user_id ? 'user' : 'account',
-            'sourceLabel'      => $a->user_id ? 'کاربر سیستم' : 'کارمند طرف‌حساب',
-            'employee'         => $a->user->name
-                ?? $a->account->account_name
-                ?? '—',
-            'department'       => $a->user->department->name
-                ?? $a->account->account_code
-                ?? '—',
+            'sourceLabel'      => $sourceLabel,
+            'department'       => $department,
             'amount'           => (float) $a->amount,
             'reason'           => $a->reason,
+            'date'             => $a->request_date,
             'requestDate'      => $a->request_date,
+            'targetMonth'      => $a->target_month,
+            'targetYear'       => $a->target_year,
             'approvalDate'     => $a->approval_date?->format('Y-m-d'),
-            'status'           => $a->status,
+            'status'           => $statusMap[$a->status] ?? $a->status,
+            'statusRaw'        => $a->status,
+            'repaid'           => (float) $a->repaid_amount,
             'repaidAmount'     => (float) $a->repaid_amount,
+            'remaining'        => (float) $a->remaining_amount,
             'remainingAmount'  => (float) $a->remaining_amount,
             'repaymentMonths'  => (int) $a->repayment_months,
             'monthlyDeduction' => (float) $a->monthly_deduction,
