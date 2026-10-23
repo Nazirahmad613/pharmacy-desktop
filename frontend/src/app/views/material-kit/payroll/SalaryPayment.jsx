@@ -5,7 +5,6 @@ import {
   Button, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Paper, Chip, Dialog, DialogTitle, DialogContent,
   DialogActions, Alert, Snackbar, Divider, CircularProgress,
-  Tooltip,
 } from "@mui/material";
 import PaymentIcon from "@mui/icons-material/Payment";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -19,6 +18,59 @@ const MONTHS = [
   "حمل", "ثور", "جوزا", "سرطان", "اسد", "سنبله",
   "میزان", "عقرب", "قوس", "جدی", "دلو", "حوت",
 ];
+
+// ✅ انتخاب اولین فیلد عددی موجود از میان چند نام جایگزین
+const pickNumber = (obj, keys, fallback = 0) => {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v !== undefined && v !== null && v !== "") {
+      const n = Number(v);
+      if (!Number.isNaN(n)) return n;
+    }
+  }
+  return fallback;
+};
+
+// ✅ نرمال‌سازی ردیف معاش (پوشش نام‌های مختلف فیلدها)
+const normalizeSalaryRow = (e = {}) => {
+  const tax = pickNumber(e, [
+    "tax", "taxAmount", "incomeTax", "tax_value",
+    "deduction_tax", "tax_deduction",
+  ]);
+  const insurance = pickNumber(e, [
+    "insurance", "insuranceAmount", "insurance_value",
+    "insuranceDeduction", "socialSecurity", "social_security",
+    "deduction_insurance",
+  ]);
+  const advanceDeduction = pickNumber(e, [
+    "advanceDeduction", "advance_deduction", "advance",
+    "advanceAmount", "loanDeduction", "loan_deduction",
+  ]);
+  const baseSalary = pickNumber(e, ["baseSalary", "base_salary", "basicSalary"]);
+  const allowances = pickNumber(e, ["allowances", "allowance", "bonuses"]);
+  const deductions = pickNumber(e, ["deductions", "otherDeductions", "manualDeductions"]);
+
+  const grossSalary =
+    pickNumber(e, ["grossSalary", "gross_salary"]) ||
+    baseSalary + allowances;
+
+  const netSalary =
+    pickNumber(e, ["netSalary", "net_salary"]) ||
+    grossSalary - deductions - tax - insurance - advanceDeduction;
+
+  return {
+    ...e,
+    baseSalary,
+    allowances,
+    deductions,
+    tax,
+    insurance,
+    advanceDeduction,
+    grossSalary,
+    netSalary,
+    paid: e.paymentStatus === "paid" || e.paid === true,
+  };
+};
 
 export default function SalaryPayment() {
   const [loading, setLoading] = useState(false);
@@ -50,16 +102,8 @@ export default function SalaryPayment() {
       const res = await api.get("/payroll/salaries", { params });
 
       if (res.data?.success) {
-        const list = (res.data.data || []).map((e) => ({
-          ...e,
-          paid: e.paymentStatus === "paid",
-          // ✅ اطمینان از وجود فیلدها
-          tax: Number(e.tax) || 0,
-          insurance: Number(e.insurance) || 0,
-          advanceDeduction: Number(e.advanceDeduction) || 0,
-          grossSalary: Number(e.grossSalary) || (Number(e.baseSalary) + Number(e.allowances)),
-          netSalary: Number(e.netSalary) || 0,
-        }));
+        // ✅ استفاده از نرمال‌ساز
+        const list = (res.data.data || []).map(normalizeSalaryRow);
         setEmployees(list);
         setPeriodId(res.data.period?.id || null);
       } else {
@@ -248,7 +292,6 @@ export default function SalaryPayment() {
                 <TableCell align="right">معاش پایه</TableCell>
                 <TableCell align="right">مزایا</TableCell>
                 <TableCell align="right">کسرات</TableCell>
-                {/* ✅ ستون‌های جدید */}
                 <TableCell align="right">مالیه</TableCell>
                 <TableCell align="right">بیمه</TableCell>
                 <TableCell align="right">پیش‌پرداخت</TableCell>
@@ -292,17 +335,14 @@ export default function SalaryPayment() {
                     <TableCell align="right" sx={{ color: "error.main" }}>
                       -{formatCurrency(e.deductions)}
                     </TableCell>
-                    {/* ✅ مالیه */}
                     <TableCell align="right" sx={{ color: "error.main" }}>
-                      {e.tax ? `-${formatCurrency(e.tax)}` : "—"}
+                      {e.tax > 0 ? `-${formatCurrency(e.tax)}` : "—"}
                     </TableCell>
-                    {/* ✅ بیمه */}
                     <TableCell align="right" sx={{ color: "error.main" }}>
-                      {e.insurance ? `-${formatCurrency(e.insurance)}` : "—"}
+                      {e.insurance > 0 ? `-${formatCurrency(e.insurance)}` : "—"}
                     </TableCell>
-                    {/* ✅ پیش‌پرداخت */}
                     <TableCell align="right" sx={{ color: "warning.main" }}>
-                      {e.advanceDeduction ? `-${formatCurrency(e.advanceDeduction)}` : "—"}
+                      {e.advanceDeduction > 0 ? `-${formatCurrency(e.advanceDeduction)}` : "—"}
                     </TableCell>
                     <TableCell align="right">
                       <strong>{formatCurrency(calcNet(e))}</strong>

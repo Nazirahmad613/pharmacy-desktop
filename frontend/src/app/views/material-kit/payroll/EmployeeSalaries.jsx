@@ -16,6 +16,58 @@ import PersonIcon from "@mui/icons-material/Person";
 import BusinessIcon from "@mui/icons-material/Business";
 import api from "../../../../api";
 
+// ✅ انتخاب اولین فیلد عددی موجود از میان چند نام جایگزین
+const pickNumber = (obj, keys, fallback = 0) => {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v !== undefined && v !== null && v !== "") {
+      const n = Number(v);
+      if (!Number.isNaN(n)) return n;
+    }
+  }
+  return fallback;
+};
+
+// ✅ نرمال‌سازی ردیف معاش
+const normalizeSalaryRow = (e = {}) => {
+  const tax = pickNumber(e, [
+    "tax", "taxAmount", "incomeTax", "tax_value",
+    "deduction_tax", "tax_deduction",
+  ]);
+  const insurance = pickNumber(e, [
+    "insurance", "insuranceAmount", "insurance_value",
+    "insuranceDeduction", "socialSecurity", "social_security",
+    "deduction_insurance",
+  ]);
+  const advanceDeduction = pickNumber(e, [
+    "advanceDeduction", "advance_deduction", "advance",
+    "advanceAmount", "loanDeduction", "loan_deduction",
+  ]);
+  const baseSalary = pickNumber(e, ["baseSalary", "base_salary", "basicSalary"]);
+  const allowances = pickNumber(e, ["allowances", "allowance", "bonuses"]);
+  const deductions = pickNumber(e, ["deductions", "otherDeductions", "manualDeductions"]);
+
+  const grossSalary =
+    pickNumber(e, ["grossSalary", "gross_salary"]) ||
+    baseSalary + allowances;
+
+  const netSalary =
+    pickNumber(e, ["netSalary", "net_salary"]) ||
+    grossSalary - deductions - tax - insurance - advanceDeduction;
+
+  return {
+    ...e,
+    baseSalary,
+    allowances,
+    deductions,
+    tax,
+    insurance,
+    advanceDeduction,
+    grossSalary,
+    netSalary,
+  };
+};
+
 export default function EmployeeSalaries() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -54,9 +106,11 @@ export default function EmployeeSalaries() {
 
       const res = await api.get("/payroll/employees", { params });
       if (res.data?.success) {
-        setEmployees(res.data.data || []);
+        // ✅ نرمال‌سازی برای نمایش درست مالیات/بیمه/خالص
+        const list = (res.data.data || []).map(normalizeSalaryRow);
+        setEmployees(list);
         const uniqueDepts = [
-          ...new Set((res.data.data || []).map((e) => e.department).filter(Boolean)),
+          ...new Set(list.map((e) => e.department).filter(Boolean)),
         ];
         setDepartments(uniqueDepts);
       } else {
@@ -84,7 +138,7 @@ export default function EmployeeSalaries() {
         (Array.isArray(list) ? list : []).map((u) => ({
           id: u.id,
           name: u.name,
-          role: u.role || "",       // ✅ نام رول
+          role: u.role || "",
           department: u.department?.name || "",
         }))
       );
@@ -193,12 +247,7 @@ export default function EmployeeSalaries() {
   const filtered = employees;
 
   const totalNetSalary = useMemo(
-    () =>
-      filtered.reduce(
-        (sum, e) =>
-          sum + (e.baseSalary || 0) + (e.allowances || 0) - (e.deductions || 0),
-        0
-      ),
+    () => filtered.reduce((sum, e) => sum + (e.netSalary || 0), 0),
     [filtered]
   );
 
@@ -326,6 +375,8 @@ export default function EmployeeSalaries() {
               <TableCell align="right">معاش پایه</TableCell>
               <TableCell align="right">مزایا</TableCell>
               <TableCell align="right">کسرات</TableCell>
+              <TableCell align="right">مالیه</TableCell>
+              <TableCell align="right">بیمه</TableCell>
               <TableCell align="right">معاش خالص</TableCell>
               <TableCell align="right">وضعیت</TableCell>
               <TableCell align="right">عملیات</TableCell>
@@ -334,78 +385,80 @@ export default function EmployeeSalaries() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={13} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">هیچ کارمندی یافت نشد</Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((e, idx) => {
-                const net =
-                  (e.baseSalary || 0) + (e.allowances || 0) - (e.deductions || 0);
-                return (
-                  <TableRow key={`${e.source}-${e.id}`} hover>
-                    <TableCell align="right">{idx + 1}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
-                    <TableCell align="right">
-                      <Chip
-                        icon={e.source === "user" ? <PersonIcon /> : <BusinessIcon />}
-                        label={e.sourceLabel}
+              filtered.map((e, idx) => (
+                <TableRow key={`${e.source}-${e.id}`} hover>
+                  <TableCell align="right">{idx + 1}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
+                  <TableCell align="right">
+                    <Chip
+                      icon={e.source === "user" ? <PersonIcon /> : <BusinessIcon />}
+                      label={e.sourceLabel}
+                      size="small"
+                      color={e.source === "user" ? "info" : "secondary"}
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell align="right">{e.employeeCode || "—"}</TableCell>
+                  <TableCell align="right">{e.department || "—"}</TableCell>
+                  <TableCell align="right">{formatCurrency(e.baseSalary)}</TableCell>
+                  <TableCell align="right" sx={{ color: "success.main" }}>
+                    +{formatCurrency(e.allowances)}
+                  </TableCell>
+                  <TableCell align="right" sx={{ color: "error.main" }}>
+                    -{formatCurrency(e.deductions)}
+                  </TableCell>
+                  <TableCell align="right" sx={{ color: "error.main" }}>
+                    {e.tax > 0 ? `-${formatCurrency(e.tax)}` : "—"}
+                  </TableCell>
+                  <TableCell align="right" sx={{ color: "error.main" }}>
+                    {e.insurance > 0 ? `-${formatCurrency(e.insurance)}` : "—"}
+                  </TableCell>
+                  <TableCell align="right">
+                    <strong>{formatCurrency(e.netSalary)}</strong>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Chip
+                      label={e.status}
+                      size="small"
+                      color={e.statusRaw === "active" ? "success" : "default"}
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    <Tooltip title="ویرایش معاش">
+                      <IconButton
                         size="small"
-                        color={e.source === "user" ? "info" : "secondary"}
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell align="right">{e.employeeCode || "—"}</TableCell>
-                    <TableCell align="right">{e.department || "—"}</TableCell>
-                    <TableCell align="right">{formatCurrency(e.baseSalary)}</TableCell>
-                    <TableCell align="right" sx={{ color: "success.main" }}>
-                      +{formatCurrency(e.allowances)}
-                    </TableCell>
-                    <TableCell align="right" sx={{ color: "error.main" }}>
-                      -{formatCurrency(e.deductions)}
-                    </TableCell>
-                    <TableCell align="right">
-                      <strong>{formatCurrency(net)}</strong>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Chip
-                        label={e.status}
-                        size="small"
-                        color={e.statusRaw === "active" ? "success" : "default"}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="ویرایش معاش">
+                        color="primary"
+                        onClick={() => handleOpenDialog(e)}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+
+                    {e.source === "user" && (
+                      <Tooltip title="حذف">
                         <IconButton
                           size="small"
-                          color="primary"
-                          onClick={() => handleOpenDialog(e)}
+                          color="error"
+                          onClick={() => handleDelete(e)}
                         >
-                          <EditIcon fontSize="small" />
+                          <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                    )}
 
-                      {e.source === "user" && (
-                        <Tooltip title="حذف">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => handleDelete(e)}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-
-                      {e.source === "account" && (
-                        <Tooltip title="حذف از جدول حسابات مدیریت می‌شود">
-                          <Chip label="حساب" size="small" variant="outlined" />
-                        </Tooltip>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })
+                    {e.source === "account" && (
+                      <Tooltip title="حذف از جدول حسابات مدیریت می‌شود">
+                        <Chip label="حساب" size="small" variant="outlined" />
+                      </Tooltip>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>

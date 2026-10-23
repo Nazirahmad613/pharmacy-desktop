@@ -20,9 +20,6 @@ const MONTHS = [
   "میزان", "عقرب", "قوس", "جدی", "دلو", "حوت",
 ];
 
-// ============================================================
-// ✅ تبدیل تاریخ شمسی به میلادی (بدون نیاز به پکیج اضافی)
-// ============================================================
 const toGregorian = (jalaliStr) => {
   if (!jalaliStr) return new Date().toISOString().slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(jalaliStr)) return jalaliStr;
@@ -58,9 +55,6 @@ const toGregorian = (jalaliStr) => {
   return `${gy}-${String(gm).padStart(2, "0")}-${String(gd).padStart(2, "0")}`;
 };
 
-// ============================================================
-// ✅ تبدیل میلادی به شمسی (برای نمایش)
-// ============================================================
 const toJalali = (gregorianStr) => {
   if (!gregorianStr) return "";
   const date = new Date(gregorianStr);
@@ -114,7 +108,6 @@ export default function SalaryAdvances() {
   const [employeeOptions, setEmployeeOptions] = useState([]);
   const [employeeLoading, setEmployeeLoading] = useState(false);
 
-  // ✅ ماه و سال هدف در فرم
   const [form, setForm] = useState({
     employeeId: null,
     userId: null,
@@ -147,12 +140,11 @@ export default function SalaryAdvances() {
           userId: a.userId || null,
           accountId: a.accountId || null,
           source: a.source || (a.userId ? "user" : "account"),
-          sourceLabel: a.sourceLabel || "",   // ✅ نام رول
+          sourceLabel: a.sourceLabel || "",
           department: a.department || "—",
           amount: Number(a.amount) || 0,
           reason: a.reason || "",
           date: a.date || a.requestDate || "",
-          // ✅ ماه و سال هدف
           targetMonth: a.targetMonth || "",
           targetYear: a.targetYear || "",
           status: a.status || "—",
@@ -212,9 +204,6 @@ export default function SalaryAdvances() {
   const formatCurrency = (n) =>
     new Intl.NumberFormat("fa-AF").format(n || 0) + " ؋";
 
-  // ============================================================
-  // ✅ ذخیره پیش‌پرداخت با ماه و سال هدف
-  // ============================================================
   const handleSave = async () => {
     if (!form.employeeId || !form.amount) {
       setSnackbar({ open: true, msg: "کارمند و مبلغ الزامی است", severity: "warning" });
@@ -236,8 +225,8 @@ export default function SalaryAdvances() {
         amount: Number(form.amount) || 0,
         reason: form.reason || "",
         date: gregorianDate,
-        targetMonth: form.targetMonth,   // ✅
-        targetYear: form.targetYear,     // ✅
+        targetMonth: form.targetMonth,
+        targetYear: form.targetYear,
         repaymentMonths: Number(form.repaymentMonths) || 1,
       };
 
@@ -377,7 +366,6 @@ export default function SalaryAdvances() {
               <TableCell align="right">مبلغ</TableCell>
               <TableCell align="right">دلیل</TableCell>
               <TableCell align="right">تاریخ درخواست</TableCell>
-              {/* ✅ ستون‌های جدید */}
               <TableCell align="right">ماه هدف</TableCell>
               <TableCell align="right">قسط ماهانه</TableCell>
               <TableCell align="right">وضعیت</TableCell>
@@ -412,10 +400,7 @@ export default function SalaryAdvances() {
                   <TableCell align="right">{a.department}</TableCell>
                   <TableCell align="right">{formatCurrency(a.amount)}</TableCell>
                   <TableCell align="right">{a.reason}</TableCell>
-                  <TableCell align="right">
-                    {a.date ? toJalali(a.date) : "—"}
-                  </TableCell>
-                  {/* ✅ نمایش ماه/سال هدف */}
+                  <TableCell align="right">{a.date ? toJalali(a.date) : "—"}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: "bold", color: "primary.main" }}>
                     {a.targetMonth && a.targetYear
                       ? `${a.targetMonth} ${a.targetYear}`
@@ -553,7 +538,6 @@ export default function SalaryAdvances() {
               />
             </Grid>
 
-            {/* ✅ ماه هدف */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -569,7 +553,6 @@ export default function SalaryAdvances() {
               </TextField>
             </Grid>
 
-            {/* ✅ سال هدف */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth

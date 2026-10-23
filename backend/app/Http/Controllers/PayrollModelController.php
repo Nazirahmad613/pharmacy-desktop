@@ -371,7 +371,8 @@ class PayrollModelController extends Controller
     }
 
     /**
-     * ✅ generateSalaries - اصلاح‌شده برای نمایش دقیق بیمه، مالیه و پیش‌پرداخت
+     * ✅ generateSalaries - همیشه tax و insurance را محاسبه و ذخیره می‌کند
+     *    تنظیمات enableTax/enableInsurance فقط بر net_salary اثر می‌گذارد
      */
     public function generateSalaries(Request $request)
     {
@@ -427,9 +428,13 @@ class PayrollModelController extends Controller
                 $ded   = (float) $emp->deductions;
                 $gross = $base + $allow;
 
-                // ✅ محاسبه مالیه و بیمه
-                $tax       = $enableTax ? round($gross * $taxRate / 100, 2) : 0;
-                $insurance = $enableIns ? round($gross * $insRate / 100, 2) : 0;
+                // ✅ همیشه محاسبه کن (برای نمایش در گزارش‌ها)
+                $rawTax       = round($gross * $taxRate / 100, 2);
+                $rawInsurance = round($gross * $insRate / 100, 2);
+
+                // ✅ فقط برای محاسبه net، اگر تنظیمات خاموش بود صفر بگیر
+                $taxForNet       = $enableTax ? $rawTax       : 0;
+                $insuranceForNet = $enableIns ? $rawInsurance : 0;
 
                 // ============================================================
                 // ✅ کسر پیش‌پرداخت: تطابق دقیق با ماه/سال هدف
@@ -438,12 +443,10 @@ class PayrollModelController extends Controller
 
                 $advQuery = SalaryAdvance::whereIn('status', ['approved', 'partially_repaid'])
                     ->where(function ($q) use ($requestMonth, $requestYear) {
-                        // شرط ۱: تطابق دقیق ماه و سال هدف (با TRIM برای اطمینان)
                         $q->where(function ($q2) use ($requestMonth, $requestYear) {
                             $q2->whereRaw('TRIM(target_month) = ?', [$requestMonth])
                                ->whereRaw('TRIM(target_year) = ?', [$requestYear]);
                         })
-                        // شرط ۲ (fallback): پیش‌پرداخت‌های قدیمی بدون ماه هدف
                         ->orWhere(function ($q2) {
                             $q2->whereNull('target_month')
                                ->whereNull('target_year');
@@ -457,25 +460,6 @@ class PayrollModelController extends Controller
                 }
 
                 $advances = $advQuery->get();
-
-                // ✅ لاگ برای دیباگ (می‌توانید بعداً حذف کنید)
-                if ($advances->count() > 0) {
-                    Log::info('generateSalaries - advances found', [
-                        'employee_id' => $emp->employee_id,
-                        'source' => $emp->source,
-                        'request_month' => $requestMonth,
-                        'request_year' => $requestYear,
-                        'found' => $advances->count(),
-                        'advances' => $advances->map(fn($a) => [
-                            'id' => $a->id,
-                            'target_month' => $a->target_month,
-                            'target_year' => $a->target_year,
-                            'status' => $a->status,
-                            'monthly_deduction' => $a->monthly_deduction,
-                            'remaining_amount' => $a->remaining_amount,
-                        ])->toArray(),
-                    ]);
-                }
 
                 foreach ($advances as $adv) {
                     $advRemaining = (float) $adv->remaining_amount
@@ -491,7 +475,7 @@ class PayrollModelController extends Controller
                 }
 
                 $advanceDeduction = round($advanceDeduction, 2);
-                $net = round($gross - $ded - $tax - $insurance - $advanceDeduction, 2);
+                $net = round($gross - $ded - $taxForNet - $insuranceForNet - $advanceDeduction, 2);
 
                 EmployeeSalary::create([
                     'user_id'           => $emp->source === 'user'    ? $emp->employee_id : null,
@@ -502,8 +486,8 @@ class PayrollModelController extends Controller
                     'allowances'        => $allow,
                     'deductions'        => $ded,
                     'gross_salary'      => $gross,
-                    'tax_amount'        => $tax,
-                    'insurance_amount'  => $insurance,
+                    'tax_amount'        => $rawTax,          // ✅ همیشه ذخیره
+                    'insurance_amount'  => $rawInsurance,    // ✅ همیشه ذخیره
                     'advance_deduction' => $advanceDeduction,
                     'net_salary'        => $net,
                     'payment_status'    => 'pending',
@@ -578,9 +562,6 @@ class PayrollModelController extends Controller
                     'updated_by'           => $request->user()?->id,
                 ]);
 
-                // ============================================================
-                // ✅ کسر پیش‌پرداخت با تطابق دقیق ماه/سال هدف
-                // ============================================================
                 if ($salary->advance_deduction > 0) {
                     $remaining = (float) $salary->advance_deduction;
 
@@ -770,7 +751,6 @@ class PayrollModelController extends Controller
 
             $requestDate = $request->date ?: now()->toDateString();
 
-            // ✅ ذخیره با TRIM برای اطمینان از نبود فاصله اضافی
             $advance = SalaryAdvance::create([
                 'user_id'           => $userId,
                 'account_id'        => $accountId,
@@ -846,7 +826,7 @@ class PayrollModelController extends Controller
     }
 
     // ============================================================
-    // 📊 REPORTS
+    // 📊 REPORTS - با مالیات، بیمه و پیش‌پرداخت
     // ============================================================
     public function getReports(Request $request)
     {
@@ -878,17 +858,23 @@ class PayrollModelController extends Controller
                     d.name as department,
                     COUNT(DISTINCT u.id) as employees,
                     COALESCE(SUM(s.net_salary), 0) as total_salary,
+                    COALESCE(SUM(s.tax_amount), 0) as total_tax,
+                    COALESCE(SUM(s.insurance_amount), 0) as total_insurance,
+                    COALESCE(SUM(s.advance_deduction), 0) as total_advance,
                     COALESCE(SUM(CASE WHEN s.payment_status = 'paid' THEN s.net_salary ELSE 0 END), 0) as paid,
                     COALESCE(SUM(CASE WHEN s.payment_status != 'paid' THEN s.net_salary ELSE 0 END), 0) as pending
                 ")
                 ->get()
                 ->map(function ($r) {
                     return [
-                        'department'  => $r->department,
-                        'employees'   => (int) $r->employees,
-                        'totalSalary' => (float) $r->total_salary,
-                        'paid'        => (float) $r->paid,
-                        'pending'     => (float) $r->pending,
+                        'department'     => $r->department,
+                        'employees'      => (int) $r->employees,
+                        'totalSalary'    => (float) $r->total_salary,
+                        'totalTax'       => (float) $r->total_tax,
+                        'totalInsurance' => (float) $r->total_insurance,
+                        'totalAdvance'   => (float) $r->total_advance,
+                        'paid'           => (float) $r->paid,
+                        'pending'        => (float) $r->pending,
                     ];
                 });
 
@@ -898,6 +884,9 @@ class PayrollModelController extends Controller
                 ->selectRaw("
                     COUNT(DISTINCT s.account_id) as employees,
                     COALESCE(SUM(s.net_salary), 0) as total_salary,
+                    COALESCE(SUM(s.tax_amount), 0) as total_tax,
+                    COALESCE(SUM(s.insurance_amount), 0) as total_insurance,
+                    COALESCE(SUM(s.advance_deduction), 0) as total_advance,
                     COALESCE(SUM(CASE WHEN s.payment_status = 'paid' THEN s.net_salary ELSE 0 END), 0) as paid,
                     COALESCE(SUM(CASE WHEN s.payment_status != 'paid' THEN s.net_salary ELSE 0 END), 0) as pending
                 ")
@@ -907,11 +896,14 @@ class PayrollModelController extends Controller
 
             if ($accountRow && $accountRow->employees > 0) {
                 $rows[] = [
-                    'department'  => 'طرف‌حساب‌ها (کارمندان)',
-                    'employees'   => (int) $accountRow->employees,
-                    'totalSalary' => (float) $accountRow->total_salary,
-                    'paid'        => (float) $accountRow->paid,
-                    'pending'     => (float) $accountRow->pending,
+                    'department'     => 'طرف‌حساب‌ها (کارمندان)',
+                    'employees'      => (int) $accountRow->employees,
+                    'totalSalary'    => (float) $accountRow->total_salary,
+                    'totalTax'       => (float) $accountRow->total_tax,
+                    'totalInsurance' => (float) $accountRow->total_insurance,
+                    'totalAdvance'   => (float) $accountRow->total_advance,
+                    'paid'           => (float) $accountRow->paid,
+                    'pending'        => (float) $accountRow->pending,
                 ];
             }
 
@@ -1075,7 +1067,8 @@ class PayrollModelController extends Controller
     }
 
     /**
-     * ✅ salaryToArray - استفاده از مقادیر ذخیره‌شده در دیتابیس
+     * ✅ salaryToArray - بدون fallback، مستقیم از دیتابیس
+     *    چون generateSalaries همیشه tax و insurance را ذخیره می‌کند
      */
     private function salaryToArray(EmployeeSalary $s): array
     {
@@ -1086,22 +1079,10 @@ class PayrollModelController extends Controller
             $sourceLabel = 'طرف‌حساب';
         }
 
-        // ✅ استفاده از مقادیر ذخیره‌شده در دیتابیس
+        // ✅ مستقیم از دیتابیس — بدون fallback
         $gross     = (float) ($s->gross_salary ?? ((float) $s->base_salary + (float) $s->allowances));
         $tax       = (float) ($s->tax_amount ?? 0);
         $insurance = (float) ($s->insurance_amount ?? 0);
-
-        // fallback: اگر tax/insurance صفر بود ولی تنظیمات فعال
-        if ($tax == 0 && $insurance == 0) {
-            $settings  = PayrollSetting::asObject();
-            $taxRate   = (float) ($settings['taxRate'] ?? 0);
-            $insRate   = (float) ($settings['insuranceRate'] ?? 0);
-            $enableTax = (bool)  ($settings['enableTax'] ?? false);
-            $enableIns = (bool)  ($settings['enableInsurance'] ?? false);
-
-            $tax       = $enableTax ? round($gross * $taxRate / 100, 2) : 0;
-            $insurance = $enableIns ? round($gross * $insRate / 100, 2) : 0;
-        }
 
         return [
             'id'               => $s->id,

@@ -11,7 +11,7 @@ class SalaryAdvance extends Model
 
     protected $fillable = [
         'user_id',
-        'account_id',        // ✅ اضافه شد - پشتیبانی از طرف‌حساب
+        'account_id',
         'amount',
         'reason',
         'request_date',
@@ -23,13 +23,18 @@ class SalaryAdvance extends Model
         'remaining_amount',
         'repayment_months',
         'monthly_deduction',
+        'target_month',      // ✅ مطمئن شو که ستون‌ها در migration وجود دارند
+        'target_year',       // ✅
     ];
 
+    /**
+     * ✅ استفاده از decimal برای دقت مالی
+     */
     protected $casts = [
-        'amount'            => 'float',
-        'repaid_amount'     => 'float',
-        'remaining_amount'  => 'float',
-        'monthly_deduction' => 'float',
+        'amount'            => 'decimal:2',
+        'repaid_amount'     => 'decimal:2',
+        'remaining_amount'  => 'decimal:2',
+        'monthly_deduction' => 'decimal:2',
         'approval_date'     => 'date',
         'request_date'      => 'date',
     ];
@@ -39,7 +44,6 @@ class SalaryAdvance extends Model
         return $this->belongsTo(\App\Models\User::class, 'user_id');
     }
 
-    // ✅ اضافه شد - relation طرف‌حساب
     public function account()
     {
         return $this->belongsTo(\App\Models\Account::class, 'account_id');
@@ -51,7 +55,7 @@ class SalaryAdvance extends Model
     }
 
     /**
-     * ✅ خروجی مطابق SalaryAdvances.jsx (یکسان‌سازی کامل)
+     * ✅ خروجی مطابق SalaryAdvances.jsx — با امنیت بیشتر برای null
      */
     public function toFrontendArray(): array
     {
@@ -63,16 +67,16 @@ class SalaryAdvance extends Model
             'partially_repaid' => 'تأیید شده',
         ];
 
-        $user = $this->user;
+        $user    = $this->user;
         $account = $this->account;
 
-        $employeeName = $user->full_name
-            ?? $user->name
-            ?? $account->account_name
+        $employeeName = $user?->full_name
+            ?? $user?->name
+            ?? $account?->account_name
             ?? '—';
 
-        $department = $user->department->name
-            ?? $account->account_code
+        $department = $user?->department?->name
+            ?? $account?->account_code
             ?? '—';
 
         return [
@@ -88,6 +92,8 @@ class SalaryAdvance extends Model
             'reason'           => $this->reason,
             'date'             => $this->request_date,
             'requestDate'      => $this->request_date,
+            'targetMonth'      => $this->target_month ?? null,   // ✅
+            'targetYear'       => $this->target_year ?? null,    // ✅
             'approvalDate'     => $this->approval_date?->format('Y-m-d'),
             'status'           => $statusMap[$this->status] ?? $this->status,
             'statusRaw'        => $this->status,

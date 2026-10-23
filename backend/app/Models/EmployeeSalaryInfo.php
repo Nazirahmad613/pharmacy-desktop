@@ -12,7 +12,6 @@ class EmployeeSalaryInfo extends Model
     protected $table = 'employee_salary_info';
     public $timestamps = true;
 
-    // ✅ account_id اضافه شد
     protected $fillable = [
         'user_id',
         'account_id',
@@ -27,10 +26,13 @@ class EmployeeSalaryInfo extends Model
         'notes',
     ];
 
+    /**
+     * ✅ استفاده از decimal برای دقت مالی (اختیاری ولی بهتر)
+     */
     protected $casts = [
-        'base_salary' => 'float',
-        'allowances'  => 'float',
-        'deductions'  => 'float',
+        'base_salary' => 'decimal:2',
+        'allowances'  => 'decimal:2',
+        'deductions'  => 'decimal:2',
         'created_at'  => 'datetime',
         'updated_at'  => 'datetime',
     ];
@@ -39,33 +41,23 @@ class EmployeeSalaryInfo extends Model
     // Relationships
     // ============================================================
 
-    /**
-     * کاربر (کارمند از users)
-     */
     public function user()
     {
         return $this->belongsTo(\App\Models\User::class, 'user_id');
     }
 
-    /**
-     * ✅ طرف‌حساب (کارمند از accounts)
-     * این رابطه کلید حل خطای «Call to undefined relationship [account]» است
-     */
     public function account()
     {
         return $this->belongsTo(\App\Models\Account::class, 'account_id');
     }
 
-    /**
-     * حساب بانکی (طرف‌حساب بانکی)
-     */
     public function bankAccount()
     {
         return $this->belongsTo(\App\Models\Account::class, 'bank_account_id');
     }
 
     /**
-     * معاشات ماهانه این کارمند
+     * ✅ معاشات ماهانه این کارمند (شامل tax/insurance چون در مدل Salary اضافه شدند)
      */
     public function salaries()
     {
@@ -86,9 +78,6 @@ class EmployeeSalaryInfo extends Model
         };
     }
 
-    /**
-     * ✅ نام کامل (از user یا account)
-     */
     public function getFullNameAttribute(): string
     {
         if ($this->user_id && $this->user) {
@@ -100,25 +89,16 @@ class EmployeeSalaryInfo extends Model
         return '—';
     }
 
-    /**
-     * ✅ منبع (user | account)
-     */
     public function getSourceAttribute(): string
     {
         return $this->user_id ? 'user' : 'account';
     }
 
-    /**
-     * ✅ برچسب منبع
-     */
     public function getSourceLabelAttribute(): string
     {
         return $this->user_id ? 'کاربر سیستم' : 'کارمند طرف‌حساب';
     }
 
-    /**
-     * ✅ بخش / دیپارتمنت
-     */
     public function getDepartmentNameAttribute(): string
     {
         if ($this->user_id && $this->user) {

@@ -15,6 +15,35 @@ const MONTHS = [
   "میزان", "عقرب", "قوس", "جدی", "دلو", "حوت",
 ];
 
+// ✅ انتخاب اولین فیلد عددی موجود
+const pickNumber = (obj, keys, fallback = 0) => {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v !== undefined && v !== null && v !== "") {
+      const n = Number(v);
+      if (!Number.isNaN(n)) return n;
+    }
+  }
+  return fallback;
+};
+
+// ✅ نرمال‌سازی ردیف گزارش (تجمیعی)
+const normalizeReportRow = (row = {}) => ({
+  ...row,
+  department: row.department || "بدون بخش",
+  employees: Number(row.employees) || 0,
+  totalSalary: Number(row.totalSalary) || 0,
+  paid: Number(row.paid) || 0,
+  pending: Number(row.pending) || 0,
+  totalTax: pickNumber(row, ["totalTax", "tax", "total_tax", "taxTotal"]),
+  totalInsurance: pickNumber(row, [
+    "totalInsurance", "insurance", "total_insurance", "insuranceTotal",
+  ]),
+  totalAdvance: pickNumber(row, [
+    "totalAdvance", "advanceDeduction", "advance", "total_advance",
+  ]),
+});
+
 export default function PayrollReports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -28,7 +57,8 @@ export default function PayrollReports() {
       setError(null);
       const res = await api.get("/payroll/reports", { params: { month, year } });
       if (res.data?.success) {
-        setReportData(res.data.data || []);
+        // ✅ نرمال‌سازی ردیف‌ها
+        setReportData((res.data.data || []).map(normalizeReportRow));
       }
     } catch (err) {
       setError(err.response?.data?.message || err.message || "خطا در دریافت");
@@ -48,12 +78,23 @@ export default function PayrollReports() {
   const totalSalary = reportData.reduce((s, d) => s + (Number(d.totalSalary) || 0), 0);
   const totalPaid = reportData.reduce((s, d) => s + (Number(d.paid) || 0), 0);
   const totalPending = reportData.reduce((s, d) => s + (Number(d.pending) || 0), 0);
+  const totalTax = reportData.reduce((s, d) => s + (Number(d.totalTax) || 0), 0);
+  const totalInsurance = reportData.reduce((s, d) => s + (Number(d.totalInsurance) || 0), 0);
+  const totalAdvance = reportData.reduce((s, d) => s + (Number(d.totalAdvance) || 0), 0);
 
   const handleExportCSV = () => {
-    const headers = ["#", "بخش", "تعداد کارمندان", "مجموع معاش", "پرداخت شده", "باقی‌مانده", "درصد"];
+    const headers = [
+      "#", "بخش", "تعداد کارمندان", "مجموع معاش",
+      "مالیه", "بیمه", "پیش‌پرداخت",
+      "پرداخت شده", "باقی‌مانده", "درصد",
+    ];
     const rows = reportData.map((row, i) => {
       const pct = row.totalSalary ? Math.round((row.paid / row.totalSalary) * 100) : 0;
-      return [i + 1, row.department, row.employees, row.totalSalary, row.paid, row.pending, `${pct}%`];
+      return [
+        i + 1, row.department, row.employees, row.totalSalary,
+        row.totalTax, row.totalInsurance, row.totalAdvance,
+        row.paid, row.pending, `${pct}%`,
+      ];
     });
 
     const csvContent =
@@ -165,6 +206,27 @@ export default function PayrollReports() {
             </CardContent>
           </Card>
         </Grid>
+        {/* ✅ کارت‌های جدید: مالیه و بیمه */}
+        <Grid item xs={12} sm={6}>
+          <Card sx={{ bgcolor: "error.50", borderRight: "4px solid", borderColor: "error.main" }}>
+            <CardContent>
+              <Typography variant="body2">مجموع مالیه</Typography>
+              <Typography variant="h5" fontWeight="bold" color="error.main">
+                {formatCurrency(totalTax)}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <Card sx={{ bgcolor: "warning.50", borderRight: "4px solid", borderColor: "warning.dark" }}>
+            <CardContent>
+              <Typography variant="body2">مجموع بیمه</Typography>
+              <Typography variant="h5" fontWeight="bold" color="warning.dark">
+                {formatCurrency(totalInsurance)}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
 
       <Card>
@@ -184,7 +246,6 @@ export default function PayrollReports() {
             </Alert>
           ) : (
             <TableContainer component={Paper} variant="outlined">
-              {/* ✅ dir="rtl" اینجا کلید حل مشکل است */}
               <Table dir="rtl">
                 <TableHead>
                   <TableRow sx={{ bgcolor: "grey.100" }}>
@@ -192,6 +253,9 @@ export default function PayrollReports() {
                     <TableCell align="right">بخش</TableCell>
                     <TableCell align="right">تعداد کارمندان</TableCell>
                     <TableCell align="right">مجموع معاش</TableCell>
+                    <TableCell align="right">مالیه</TableCell>
+                    <TableCell align="right">بیمه</TableCell>
+                    <TableCell align="right">پیش‌پرداخت</TableCell>
                     <TableCell align="right">پرداخت شده</TableCell>
                     <TableCell align="right">باقی‌مانده</TableCell>
                     <TableCell align="right">درصد پرداخت</TableCell>
@@ -208,6 +272,15 @@ export default function PayrollReports() {
                         <TableCell align="right" sx={{ fontWeight: "bold" }}>{row.department}</TableCell>
                         <TableCell align="right">{row.employees}</TableCell>
                         <TableCell align="right">{formatCurrency(row.totalSalary)}</TableCell>
+                        <TableCell align="right" sx={{ color: "error.main" }}>
+                          {row.totalTax > 0 ? `-${formatCurrency(row.totalTax)}` : "—"}
+                        </TableCell>
+                        <TableCell align="right" sx={{ color: "error.main" }}>
+                          {row.totalInsurance > 0 ? `-${formatCurrency(row.totalInsurance)}` : "—"}
+                        </TableCell>
+                        <TableCell align="right" sx={{ color: "warning.main" }}>
+                          {row.totalAdvance > 0 ? `-${formatCurrency(row.totalAdvance)}` : "—"}
+                        </TableCell>
                         <TableCell align="right" sx={{ color: "success.main" }}>
                           {formatCurrency(row.paid)}
                         </TableCell>
@@ -228,6 +301,9 @@ export default function PayrollReports() {
                     <TableCell align="right" colSpan={2}>جمع کل</TableCell>
                     <TableCell align="right">{totalEmployees}</TableCell>
                     <TableCell align="right">{formatCurrency(totalSalary)}</TableCell>
+                    <TableCell align="right">{formatCurrency(totalTax)}</TableCell>
+                    <TableCell align="right">{formatCurrency(totalInsurance)}</TableCell>
+                    <TableCell align="right">{formatCurrency(totalAdvance)}</TableCell>
                     <TableCell align="right">{formatCurrency(totalPaid)}</TableCell>
                     <TableCell align="right">{formatCurrency(totalPending)}</TableCell>
                     <TableCell align="right">
