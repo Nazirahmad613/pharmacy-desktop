@@ -3,19 +3,21 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   Box, Card, CardContent, Typography, Grid, TextField, MenuItem,
   Button, Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, Paper, Chip, CircularProgress, Alert,
+  TableRow, Paper, Chip, CircularProgress, Alert, InputAdornment,
 } from "@mui/material";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import PrintIcon from "@mui/icons-material/Print";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import SearchIcon from "@mui/icons-material/Search";
+import PersonIcon from "@mui/icons-material/Person";
+import BusinessIcon from "@mui/icons-material/Business";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import api from "../../../../api";
 
-const MONTHS = [
-  "حمل", "ثور", "جوزا", "سرطان", "اسد", "سنبله",
-  "میزان", "عقرب", "قوس", "جدی", "دلو", "حوت",
-];
+// ============================================================
+// ✅ Helpers
+// ============================================================
 
-// ✅ انتخاب اولین فیلد عددی موجود
 const pickNumber = (obj, keys, fallback = 0) => {
   for (const k of keys) {
     const v = obj?.[k];
@@ -27,91 +29,255 @@ const pickNumber = (obj, keys, fallback = 0) => {
   return fallback;
 };
 
-// ✅ نرمال‌سازی ردیف گزارش (تجمیعی)
-const normalizeReportRow = (row = {}) => ({
+const normalizeSalaryRow = (row = {}) => ({
   ...row,
-  department: row.department || "بدون بخش",
-  employees: Number(row.employees) || 0,
-  totalSalary: Number(row.totalSalary) || 0,
-  paid: Number(row.paid) || 0,
-  pending: Number(row.pending) || 0,
-  totalTax: pickNumber(row, ["totalTax", "tax", "total_tax", "taxTotal"]),
-  totalInsurance: pickNumber(row, [
-    "totalInsurance", "insurance", "total_insurance", "insuranceTotal",
-  ]),
-  totalAdvance: pickNumber(row, [
-    "totalAdvance", "advanceDeduction", "advance", "total_advance",
-  ]),
+  baseSalary:       pickNumber(row, ["baseSalary", "base_salary", "basicSalary"]),
+  allowances:       pickNumber(row, ["allowances", "allowance", "bonuses"]),
+  deductions:       pickNumber(row, ["deductions", "deduction", "otherDeductions"]),
+  tax:              pickNumber(row, ["tax", "tax_amount", "taxAmount"]),
+  insurance:        pickNumber(row, ["insurance", "insurance_amount", "insuranceAmount"]),
+  advanceDeduction: pickNumber(row, ["advanceDeduction", "advance_deduction", "advance"]),
+  grossSalary:      pickNumber(row, ["grossSalary", "gross_salary"]),
+  netSalary:        pickNumber(row, ["netSalary", "net_salary"]),
+  paidAmount:       pickNumber(row, ["paidAmount", "paid_amount"]),
+  paid:             row.paymentStatus === "paid" || row.paid === true,
 });
 
 export default function PayrollReports() {
-  const [loading, setLoading] = useState(true);
+  // ============================================================
+  // State
+  // ============================================================
+  const [loading, setLoading] = useState(false);
+  const [loadingPeriods, setLoadingPeriods] = useState(true);
   const [error, setError] = useState(null);
-  const [month, setMonth] = useState(MONTHS[4]);
-  const [year, setYear] = useState("1403");
-  const [reportData, setReportData] = useState([]);
 
+  // ✅ لیست دوره‌های موجود (از API)
+  const [periods, setPeriods] = useState([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState("");
+
+  // ✅ داده‌های گزارش
+  const [rows, setRows] = useState([]);
+  const [totals, setTotals] = useState({
+    employees: 0, totalSalary: 0, paid: 0, pending: 0,
+    totalTax: 0, totalInsurance: 0, totalAdvance: 0,
+    totalBase: 0, totalAllowances: 0, totalDeductions: 0, totalGross: 0,
+    countPaid: 0, countPending: 0, countPartial: 0,
+  });
+
+  // ✅ فیلترها
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+
+  // ============================================================
+  // بارگذاری لیست دوره‌ها (ماه/سال‌هایی که معاش دارند)
+  // ============================================================
+  const fetchPeriods = useCallback(async () => {
+    try {
+      setLoadingPeriods(true);
+      const res = await api.get("/payroll/report-periods");
+
+      if (res.data?.success) {
+        const list = res.data.data || [];
+        setPeriods(list);
+
+        // اگر دوره‌ای انتخاب نشده، اولین (آخرین) را انتخاب کن
+        if (list.length > 0 && !selectedPeriodId) {
+          setSelectedPeriodId(list[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("fetchPeriods error:", err);
+      // اگر endpoint جدید نیست، fallback: لیست خالی
+      setPeriods([]);
+    } finally {
+      setLoadingPeriods(false);
+    }
+  }, [selectedPeriodId]);
+
+  // ============================================================
+  // بارگذاری گزارش بر اساس دوره انتخاب‌شده
+  // ============================================================
   const fetchReports = useCallback(async () => {
+    if (!selectedPeriodId) return;
+
+    const period = periods.find((p) => p.id === selectedPeriodId);
+    if (!period) return;
+
     try {
       setLoading(true);
       setError(null);
-      const res = await api.get("/payroll/reports", { params: { month, year } });
+
+      const res = await api.get("/payroll/reports", {
+        params: { month: period.month, year: period.year },
+      });
+
       if (res.data?.success) {
-        // ✅ نرمال‌سازی ردیف‌ها
-        setReportData((res.data.data || []).map(normalizeReportRow));
+        const list = (res.data.data || []).map(normalizeSalaryRow);
+        setRows(list);
+
+        // اگر totals از بک‌اند آمد، استفاده کن. وگرنه در فرانت حساب کن
+        const bt = res.data.totals;
+        if (bt && typeof bt === "object") {
+          setTotals({
+            employees:       Number(bt.employees) || list.length,
+            totalSalary:     Number(bt.totalSalary) || 0,
+            paid:            Number(bt.paid) || 0,
+            pending:         Number(bt.pending) || 0,
+            totalTax:        Number(bt.totalTax) || 0,
+            totalInsurance:  Number(bt.totalInsurance) || 0,
+            totalAdvance:    Number(bt.totalAdvance) || 0,
+            totalBase:       Number(bt.totalBase) || 0,
+            totalAllowances: Number(bt.totalAllowances) || 0,
+            totalDeductions: Number(bt.totalDeductions) || 0,
+            totalGross:      Number(bt.totalGross) || 0,
+            countPaid:       Number(bt.countPaid) || 0,
+            countPending:    Number(bt.countPending) || 0,
+            countPartial:    Number(bt.countPartial) || 0,
+          });
+        } else {
+          // محاسبه در فرانت‌اند
+          setTotals({
+            employees:       list.length,
+            totalSalary:     list.reduce((s, r) => s + r.netSalary, 0),
+            paid:            list.filter(r => r.paid).reduce((s, r) => s + r.netSalary, 0),
+            pending:         list.filter(r => !r.paid).reduce((s, r) => s + r.netSalary, 0),
+            totalTax:        list.reduce((s, r) => s + r.tax, 0),
+            totalInsurance:  list.reduce((s, r) => s + r.insurance, 0),
+            totalAdvance:    list.reduce((s, r) => s + r.advanceDeduction, 0),
+            totalBase:       list.reduce((s, r) => s + r.baseSalary, 0),
+            totalAllowances: list.reduce((s, r) => s + r.allowances, 0),
+            totalDeductions: list.reduce((s, r) => s + r.deductions, 0),
+            totalGross:      list.reduce((s, r) => s + (r.grossSalary || (r.baseSalary + r.allowances)), 0),
+            countPaid:       list.filter(r => r.paid).length,
+            countPending:    list.filter(r => !r.paid).length,
+            countPartial:    0,
+          });
+        }
+      } else {
+        setError(res.data?.message || "خطا در دریافت گزارش");
       }
     } catch (err) {
       setError(err.response?.data?.message || err.message || "خطا در دریافت");
     } finally {
       setLoading(false);
     }
-  }, [month, year]);
+  }, [selectedPeriodId, periods]);
 
+  // بارگذاری اولیه دوره‌ها
   useEffect(() => {
-    fetchReports();
-  }, [fetchReports]);
+    fetchPeriods();
+  }, [fetchPeriods]);
 
+  // بارگذاری گزارش وقتی دوره انتخاب شد
+  useEffect(() => {
+    if (selectedPeriodId) fetchReports();
+  }, [selectedPeriodId, fetchReports]);
+
+  // ============================================================
+  // Helpers
+  // ============================================================
   const formatCurrency = (n) =>
     new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
 
-  const totalEmployees = reportData.reduce((s, d) => s + (Number(d.employees) || 0), 0);
-  const totalSalary = reportData.reduce((s, d) => s + (Number(d.totalSalary) || 0), 0);
-  const totalPaid = reportData.reduce((s, d) => s + (Number(d.paid) || 0), 0);
-  const totalPending = reportData.reduce((s, d) => s + (Number(d.pending) || 0), 0);
-  const totalTax = reportData.reduce((s, d) => s + (Number(d.totalTax) || 0), 0);
-  const totalInsurance = reportData.reduce((s, d) => s + (Number(d.totalInsurance) || 0), 0);
-  const totalAdvance = reportData.reduce((s, d) => s + (Number(d.totalAdvance) || 0), 0);
+  // ✅ فیلتر روی داده‌های نمایش‌داده‌شده
+  const filteredRows = rows.filter((r) => {
+    // فیلتر وضعیت
+    if (statusFilter === "paid" && !r.paid) return false;
+    if (statusFilter === "pending" && r.paid) return false;
 
+    // فیلتر جستجو در نام/بخش
+    if (search) {
+      const q = search.toLowerCase();
+      const name = (r.fullName || "").toLowerCase();
+      const dept = (r.department || "").toLowerCase();
+      const code = (r.employeeCode || "").toLowerCase();
+      if (!name.includes(q) && !dept.includes(q) && !code.includes(q)) return false;
+    }
+
+    return true;
+  });
+
+  // مجموع فیلترشده (برای ردیف جمع کل)
+  const filteredTotals = {
+    employees:       filteredRows.length,
+    totalBase:       filteredRows.reduce((s, r) => s + r.baseSalary, 0),
+    totalAllowances: filteredRows.reduce((s, r) => s + r.allowances, 0),
+    totalDeductions: filteredRows.reduce((s, r) => s + r.deductions, 0),
+    totalTax:        filteredRows.reduce((s, r) => s + r.tax, 0),
+    totalInsurance:  filteredRows.reduce((s, r) => s + r.insurance, 0),
+    totalAdvance:    filteredRows.reduce((s, r) => s + r.advanceDeduction, 0),
+    totalSalary:     filteredRows.reduce((s, r) => s + r.netSalary, 0),
+  };
+
+  const currentPeriod = periods.find((p) => p.id === selectedPeriodId);
+  const periodLabel = currentPeriod ? `${currentPeriod.month} ${currentPeriod.year}` : "";
+
+  // ============================================================
+  // خروجی CSV
+  // ============================================================
   const handleExportCSV = () => {
+    if (filteredRows.length === 0) {
+      alert("داده‌ای برای خروجی وجود ندارد");
+      return;
+    }
+
     const headers = [
-      "#", "بخش", "تعداد کارمندان", "مجموع معاش",
+      "#", "نام کارمند", "بخش", "منبع", "کد کارمند",
+      "معاش پایه", "مزایا", "کسرات",
       "مالیه", "بیمه", "پیش‌پرداخت",
-      "پرداخت شده", "باقی‌مانده", "درصد",
+      "معاش ناخالص", "معاش خالص",
+      "تاریخ پرداخت", "وضعیت",
     ];
-    const rows = reportData.map((row, i) => {
-      const pct = row.totalSalary ? Math.round((row.paid / row.totalSalary) * 100) : 0;
-      return [
-        i + 1, row.department, row.employees, row.totalSalary,
-        row.totalTax, row.totalInsurance, row.totalAdvance,
-        row.paid, row.pending, `${pct}%`,
-      ];
-    });
+    const data = filteredRows.map((r, i) => [
+      i + 1,
+      r.fullName || "—",
+      r.department || "—",
+      r.sourceLabel || (r.source === "user" ? "کاربر" : "حساب"),
+      r.employeeCode || "—",
+      r.baseSalary,
+      r.allowances,
+      r.deductions,
+      r.tax,
+      r.insurance,
+      r.advanceDeduction,
+      r.grossSalary || (r.baseSalary + r.allowances),
+      r.netSalary,
+      r.paymentDate || "—",
+      r.paid ? "پرداخت شده" : "در انتظار",
+    ]);
+
+    // ردیف جمع کل
+    data.push([
+      "جمع کل", "", "", "", "",
+      filteredTotals.totalBase,
+      filteredTotals.totalAllowances,
+      filteredTotals.totalDeductions,
+      filteredTotals.totalTax,
+      filteredTotals.totalInsurance,
+      filteredTotals.totalAdvance,
+      filteredTotals.totalBase + filteredTotals.totalAllowances,
+      filteredTotals.totalSalary,
+      "", "",
+    ]);
 
     const csvContent =
-      "\uFEFF" + [headers, ...rows].map((r) => r.join(",")).join("\n");
+      "\uFEFF" + [headers, ...data].map((r) => r.join(",")).join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `payroll-report-${month}-${year}.csv`;
+    link.download = `payroll-report-${currentPeriod?.month || ""}-${currentPeriod?.year || ""}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
   const handlePrint = () => window.print();
 
-  if (loading) {
+  // ============================================================
+  // Loading state
+  // ============================================================
+  if (loadingPeriods) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
         <CircularProgress />
@@ -119,47 +285,117 @@ export default function PayrollReports() {
     );
   }
 
+  // ============================================================
+  // اگر هیچ دوره‌ای وجود ندارد
+  // ============================================================
+  if (periods.length === 0) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+          <Typography variant="h4" fontWeight="bold">📊 گزارشات معاشات</Typography>
+          <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchPeriods}>
+            بازخوانی
+          </Button>
+        </Box>
+
+        <Alert severity="info">
+          هنوز هیچ معاشی ثبت نشده است. ابتدا از صفحه «پرداخت معاش» معاشات را تولید کنید.
+        </Alert>
+      </Box>
+    );
+  }
+
+  // ============================================================
+  // Render
+  // ============================================================
   return (
     <Box sx={{ p: 3 }}>
+      {/* هدر */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">📊 گزارشات معاشات</Typography>
-        <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchReports}>
-          بازخوانی
+        <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchPeriods}>
+          بازخوانی دوره‌ها
         </Button>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+      {/* انتخاب دوره + فیلترها */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={3}>
+            {/* ✅ انتخاب دوره (ماه/سال) از لیست */}
+            <Grid item xs={12} sm={4}>
               <TextField
-                fullWidth select size="small" label="ماه"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
+                fullWidth
+                select
+                size="small"
+                label="دوره معاش (ماه / سال)"
+                value={selectedPeriodId}
+                onChange={(e) => setSelectedPeriodId(e.target.value)}
+                helperText={`${periods.length} دوره موجود`}
               >
-                {MONTHS.map((m) => (
-                  <MenuItem key={m} value={m}>{m}</MenuItem>
+                {periods.map((p) => (
+                  <MenuItem key={p.id} value={p.id}>
+                    {p.month} {p.year}
+                  </MenuItem>
                 ))}
               </TextField>
             </Grid>
-            <Grid item xs={12} sm={2}>
+
+            {/* ✅ فیلتر وضعیت */}
+            <Grid item xs={12} sm={3}>
               <TextField
-                fullWidth size="small" label="سال"
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
+                fullWidth
+                select
+                size="small"
+                label="وضعیت"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <MenuItem value="all">همه ({rows.length})</MenuItem>
+                <MenuItem value="paid">
+                  پرداخت شده ({rows.filter(r => r.paid).length})
+                </MenuItem>
+                <MenuItem value="pending">
+                  در انتظار ({rows.filter(r => !r.paid).length})
+                </MenuItem>
+              </TextField>
+            </Grid>
+
+            {/* ✅ جستجو */}
+            <Grid item xs={12} sm={3}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="جستجو در نام، بخش، کد..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start"><SearchIcon /></InputAdornment>
+                  ),
+                }}
               />
             </Grid>
-            <Grid item xs={12} sm={7} sx={{ textAlign: "left" }}>
+
+            {/* دکمه‌های خروجی */}
+            <Grid item xs={12} sm={2} sx={{ textAlign: "left" }}>
               <Button
                 startIcon={<FileDownloadIcon />}
-                sx={{ mr: 1 }}
                 onClick={handleExportCSV}
+                disabled={filteredRows.length === 0}
+                sx={{ mr: 1 }}
+                size="small"
               >
-                خروجی Excel
+                Excel
               </Button>
-              <Button startIcon={<PrintIcon />} color="info" onClick={handlePrint}>
+              <Button
+                startIcon={<PrintIcon />}
+                color="info"
+                onClick={handlePrint}
+                size="small"
+              >
                 چاپ
               </Button>
             </Grid>
@@ -167,21 +403,25 @@ export default function PayrollReports() {
         </CardContent>
       </Card>
 
+      {/* کارت‌های خلاصه — بر اساس کل داده‌های دوره (نه فیلترشده) */}
       <Grid container spacing={2} mb={3}>
         <Grid item xs={12} sm={3}>
           <Card sx={{ bgcolor: "primary.50", borderRight: "4px solid", borderColor: "primary.main" }}>
             <CardContent>
-              <Typography variant="body2">تعداد کل کارمندان</Typography>
-              <Typography variant="h5" fontWeight="bold">{totalEmployees} نفر</Typography>
+              <Typography variant="body2">تعداد کل معاشات</Typography>
+              <Typography variant="h5" fontWeight="bold">{totals.employees} نفر</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {totals.countPaid} پرداخت‌شده • {totals.countPending} در انتظار
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={3}>
           <Card sx={{ bgcolor: "info.50", borderRight: "4px solid", borderColor: "info.main" }}>
             <CardContent>
-              <Typography variant="body2">مجموع معاشات</Typography>
+              <Typography variant="body2">مجموع معاشات خالص</Typography>
               <Typography variant="h5" fontWeight="bold" color="info.main">
-                {formatCurrency(totalSalary)}
+                {formatCurrency(totals.totalSalary)}
               </Typography>
             </CardContent>
           </Card>
@@ -191,7 +431,7 @@ export default function PayrollReports() {
             <CardContent>
               <Typography variant="body2">پرداخت شده</Typography>
               <Typography variant="h5" fontWeight="bold" color="success.main">
-                {formatCurrency(totalPaid)}
+                {formatCurrency(totals.paid)}
               </Typography>
             </CardContent>
           </Card>
@@ -201,116 +441,161 @@ export default function PayrollReports() {
             <CardContent>
               <Typography variant="body2">باقی‌مانده</Typography>
               <Typography variant="h5" fontWeight="bold" color="warning.main">
-                {formatCurrency(totalPending)}
+                {formatCurrency(totals.pending)}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        {/* ✅ کارت‌های جدید: مالیه و بیمه */}
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={4}>
           <Card sx={{ bgcolor: "error.50", borderRight: "4px solid", borderColor: "error.main" }}>
             <CardContent>
               <Typography variant="body2">مجموع مالیه</Typography>
               <Typography variant="h5" fontWeight="bold" color="error.main">
-                {formatCurrency(totalTax)}
+                {formatCurrency(totals.totalTax)}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={4}>
           <Card sx={{ bgcolor: "warning.50", borderRight: "4px solid", borderColor: "warning.dark" }}>
             <CardContent>
               <Typography variant="body2">مجموع بیمه</Typography>
               <Typography variant="h5" fontWeight="bold" color="warning.dark">
-                {formatCurrency(totalInsurance)}
+                {formatCurrency(totals.totalInsurance)}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <Card sx={{ bgcolor: "secondary.50", borderRight: "4px solid", borderColor: "secondary.main" }}>
+            <CardContent>
+              <Typography variant="body2">مجموع پیش‌پرداخت</Typography>
+              <Typography variant="h5" fontWeight="bold" color="secondary.main">
+                {formatCurrency(totals.totalAdvance)}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
+      {/* جدول لیست ردیفی */}
       <Card>
         <CardContent>
-          <Typography variant="h6" mb={2}>
-            گزارش معاشات بخش‌ها - {month} {year}
-          </Typography>
+          {/* هدر مخصوص چاپ */}
+          <Box sx={{ display: "none", "@media print": { display: "block", mb: 2, textAlign: "center" } }}>
+            <Typography variant="h5" fontWeight="bold">
+              گزارش معاشات - {periodLabel}
+            </Typography>
+            <Typography variant="body2">
+              تاریخ چاپ: {new Date().toLocaleDateString("fa-AF")}
+            </Typography>
+          </Box>
 
-          <Alert severity="info" sx={{ mb: 2 }}>
-            💡 این گزارش فقط کاربران سیستم را بر اساس دپارتمان نشان می‌دهد.
-            کارمندان طرف‌حساب (حسابات) بدون دپارتمان محاسبه می‌شوند.
-          </Alert>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">
+              لیست معاشات - {periodLabel}
+            </Typography>
+            <Chip
+              label={`${filteredRows.length} ردیف نمایش داده شده`}
+              color="primary"
+              variant="outlined"
+              size="small"
+            />
+          </Box>
 
-          {reportData.length === 0 ? (
+          {loading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : filteredRows.length === 0 ? (
             <Alert severity="warning">
-              هیچ داده‌ای برای این دوره یافت نشد. ابتدا معاشات را از صفحه «پرداخت معاش» تولید کنید.
+              هیچ معاشی با این فیلترها یافت نشد. فیلترها را تغییر دهید یا معاشات را تولید کنید.
             </Alert>
           ) : (
             <TableContainer component={Paper} variant="outlined">
-              <Table dir="rtl">
+              <Table dir="rtl" size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: "grey.100" }}>
                     <TableCell align="right">#</TableCell>
+                    <TableCell align="right">نام کارمند</TableCell>
                     <TableCell align="right">بخش</TableCell>
-                    <TableCell align="right">تعداد کارمندان</TableCell>
-                    <TableCell align="right">مجموع معاش</TableCell>
+                    <TableCell align="right">منبع</TableCell>
+                    <TableCell align="right">معاش پایه</TableCell>
+                    <TableCell align="right">مزایا</TableCell>
+                    <TableCell align="right">کسرات</TableCell>
                     <TableCell align="right">مالیه</TableCell>
                     <TableCell align="right">بیمه</TableCell>
                     <TableCell align="right">پیش‌پرداخت</TableCell>
-                    <TableCell align="right">پرداخت شده</TableCell>
-                    <TableCell align="right">باقی‌مانده</TableCell>
-                    <TableCell align="right">درصد پرداخت</TableCell>
+                    <TableCell align="right">معاش خالص</TableCell>
+                    <TableCell align="right">وضعیت</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {reportData.map((row, idx) => {
-                    const pct = row.totalSalary
-                      ? Math.round((row.paid / row.totalSalary) * 100)
-                      : 0;
-                    return (
-                      <TableRow key={idx} hover>
-                        <TableCell align="right">{idx + 1}</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: "bold" }}>{row.department}</TableCell>
-                        <TableCell align="right">{row.employees}</TableCell>
-                        <TableCell align="right">{formatCurrency(row.totalSalary)}</TableCell>
-                        <TableCell align="right" sx={{ color: "error.main" }}>
-                          {row.totalTax > 0 ? `-${formatCurrency(row.totalTax)}` : "—"}
-                        </TableCell>
-                        <TableCell align="right" sx={{ color: "error.main" }}>
-                          {row.totalInsurance > 0 ? `-${formatCurrency(row.totalInsurance)}` : "—"}
-                        </TableCell>
-                        <TableCell align="right" sx={{ color: "warning.main" }}>
-                          {row.totalAdvance > 0 ? `-${formatCurrency(row.totalAdvance)}` : "—"}
-                        </TableCell>
-                        <TableCell align="right" sx={{ color: "success.main" }}>
-                          {formatCurrency(row.paid)}
-                        </TableCell>
-                        <TableCell align="right" sx={{ color: "warning.main" }}>
-                          {formatCurrency(row.pending)}
-                        </TableCell>
-                        <TableCell align="right">
+                  {filteredRows.map((r, idx) => (
+                    <TableRow key={r.id || idx} hover sx={{ opacity: r.paid ? 0.7 : 1 }}>
+                      <TableCell align="right">{idx + 1}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                        {r.fullName || "—"}
+                      </TableCell>
+                      <TableCell align="right">{r.department || "—"}</TableCell>
+                      <TableCell align="right">
+                        <Chip
+                          icon={r.source === "user" ? <PersonIcon /> : <BusinessIcon />}
+                          label={r.sourceLabel || (r.source === "user" ? "کاربر" : "حساب")}
+                          size="small"
+                          color={r.source === "user" ? "info" : "secondary"}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell align="right">{formatCurrency(r.baseSalary)}</TableCell>
+                      <TableCell align="right" sx={{ color: "success.main" }}>
+                        +{formatCurrency(r.allowances)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: "error.main" }}>
+                        -{formatCurrency(r.deductions)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: "error.main" }}>
+                        {r.tax > 0 ? `-${formatCurrency(r.tax)}` : "—"}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: "error.main" }}>
+                        {r.insurance > 0 ? `-${formatCurrency(r.insurance)}` : "—"}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: "warning.main" }}>
+                        {r.advanceDeduction > 0 ? `-${formatCurrency(r.advanceDeduction)}` : "—"}
+                      </TableCell>
+                      <TableCell align="right">
+                        <strong>{formatCurrency(r.netSalary)}</strong>
+                      </TableCell>
+                      <TableCell align="right">
+                        {r.paid ? (
                           <Chip
-                            label={`${pct}%`}
+                            icon={<CheckCircleIcon />}
+                            label="پرداخت شده"
                             size="small"
-                            color={pct === 100 ? "success" : pct > 70 ? "info" : "warning"}
+                            color="success"
                           />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  <TableRow sx={{ bgcolor: "grey.100", fontWeight: "bold" }}>
-                    <TableCell align="right" colSpan={2}>جمع کل</TableCell>
-                    <TableCell align="right">{totalEmployees}</TableCell>
-                    <TableCell align="right">{formatCurrency(totalSalary)}</TableCell>
-                    <TableCell align="right">{formatCurrency(totalTax)}</TableCell>
-                    <TableCell align="right">{formatCurrency(totalInsurance)}</TableCell>
-                    <TableCell align="right">{formatCurrency(totalAdvance)}</TableCell>
-                    <TableCell align="right">{formatCurrency(totalPaid)}</TableCell>
-                    <TableCell align="right">{formatCurrency(totalPending)}</TableCell>
-                    <TableCell align="right">
-                      {totalSalary > 0
-                        ? `${Math.round((totalPaid / totalSalary) * 100)}%`
-                        : "0%"}
+                        ) : (
+                          <Chip label="در انتظار" size="small" color="warning" />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+
+                  {/* ردیف جمع کل — بر اساس ردیف‌های فیلترشده */}
+                  <TableRow sx={{ bgcolor: "grey.200", fontWeight: "bold" }}>
+                    <TableCell align="right" colSpan={4}>
+                      جمع کل ({filteredTotals.employees} نفر)
                     </TableCell>
+                    <TableCell align="right">{formatCurrency(filteredTotals.totalBase)}</TableCell>
+                    <TableCell align="right">{formatCurrency(filteredTotals.totalAllowances)}</TableCell>
+                    <TableCell align="right">{formatCurrency(filteredTotals.totalDeductions)}</TableCell>
+                    <TableCell align="right">{formatCurrency(filteredTotals.totalTax)}</TableCell>
+                    <TableCell align="right">{formatCurrency(filteredTotals.totalInsurance)}</TableCell>
+                    <TableCell align="right">{formatCurrency(filteredTotals.totalAdvance)}</TableCell>
+                    <TableCell align="right">
+                      <strong>{formatCurrency(filteredTotals.totalSalary)}</strong>
+                    </TableCell>
+                    <TableCell align="right">—</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -318,6 +603,26 @@ export default function PayrollReports() {
           )}
         </CardContent>
       </Card>
+
+      {/* استایل چاپ */}
+      <style>{`
+        @media print {
+          button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
+            display: none !important;
+          }
+          .MuiCard-root {
+            box-shadow: none !important;
+            border: 1px solid #ddd !important;
+          }
+          body { margin: 0; padding: 0; }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          tr { page-break-inside: avoid; }
+          .MuiTypography-h4 { font-size: 18px !important; }
+        }
+      `}</style>
     </Box>
   );
 }

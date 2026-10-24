@@ -689,6 +689,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/advances/{id}/reject', [PayrollModelController::class, 'rejectAdvance']);
 
     Route::get('/reports', [PayrollModelController::class, 'getReports']);
+    Route::get('/report-periods', [PayrollModelController::class, 'getReportPeriods']);
 
     Route::get('/settings', [PayrollModelController::class, 'getSettings']);
     Route::put('/settings', [PayrollModelController::class, 'updateSettings']);

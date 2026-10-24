@@ -17,6 +17,7 @@ class JournalRefSourceController extends Controller
 {
     /* ============================================================
      *  ✅ نگاشت ref_type حساب‌محور → (account_type + account_category)
+     *  ✅ جدید: حساب‌های مربوط به معاش
      * ============================================================ */
     private array $accountRefMap = [
         'customer_account' => [
@@ -47,6 +48,32 @@ class JournalRefSourceController extends Controller
             'account_type' => 'income',
             'account_category' => 'customers_income',
         ],
+
+        // ✅ جدید: حساب‌های معاش
+        'salary_payable' => [
+            'account_type' => 'payable',
+            'account_category' => 'salary_payable',
+        ],
+        'salary_expense' => [
+            'account_type' => 'expense',
+            'account_category' => 'salary_expense',
+        ],
+        'advance_receivable' => [
+            'account_type' => 'receivable',
+            'account_category' => 'employee_advances',
+        ],
+        'employee' => [
+            'account_type' => 'receivable',
+            'account_category' => 'employees',
+        ],
+        'cash' => [
+            'account_type' => 'asset',
+            'account_category' => 'cash',
+        ],
+        'bank' => [
+            'account_type' => 'asset',
+            'account_category' => 'bank',
+        ],
     ];
 
     /* ============================================================
@@ -60,7 +87,7 @@ class JournalRefSourceController extends Controller
         'pharmacist'    => ['pharmacist', 'دواساز', 'Pharmacist'],
         'laboratorist'  => ['laboratorist', 'لابراتوار', 'Laboratorist', 'lab'],
         'radiologist'   => ['radiologist', 'رادیولوژیست', 'Radiologist'],
-        'staff'         => null, // همه کاربران
+        'staff'         => null,
     ];
 
     public function refSources(Request $request)
@@ -153,7 +180,7 @@ class JournalRefSourceController extends Controller
                         ]),
                     ]);
 
-                /* ===== کاربران بر اساس نقش (داکتر، نرس، منشی، ...) ===== */
+                /* ===== کاربران بر اساس نقش ===== */
                 case 'doctor':
                 case 'nurse':
                 case 'receptionist':
@@ -162,7 +189,6 @@ class JournalRefSourceController extends Controller
                 case 'laboratorist':
                 case 'radiologist':
                 case 'staff':
-
                     return $this->userSourcesByRole($type, $limit);
 
                 /* ===== نسخه بیرونی ===== */
@@ -279,24 +305,14 @@ class JournalRefSourceController extends Controller
     }
 
     /* ============================================================
-     *  ✅ استخراج کاربران بر اساس نقش — مقاوم در برابر ساختارهای مختلف
+     *  ✅ استخراج کاربران بر اساس نقش
      * ============================================================ */
     private function userSourcesByRole(string $type, int $limit)
     {
         $roleNames = $this->userRoleMap[$type] ?? null;
 
-        Log::info('[JournalRefSource] userSourcesByRole', [
-            'type' => $type,
-            'roleNames' => $roleNames,
-            'users_has_role_id' => Schema::hasColumn('users', 'role_id'),
-            'users_has_role'    => Schema::hasColumn('users', 'role'),
-            'role_user_exists'  => Schema::hasTable('role_user'),
-            'user_roles_exists' => Schema::hasTable('user_roles'),
-        ]);
-
         $query = User::query()->select(['id', 'name']);
 
-        // اگر ستون phone/email/is_active دارید، اضافه کنید
         if (Schema::hasColumn('users', 'phone')) {
             $query->addSelect('phone');
         }
@@ -304,27 +320,16 @@ class JournalRefSourceController extends Controller
             $query->addSelect('email');
         }
 
-        /* ============================================================
-         *  حالت 1: ستون مستقیم role در جدول users
-         * ============================================================ */
         if (Schema::hasColumn('users', 'role') && $roleNames) {
-
             $query->whereIn(DB::raw('LOWER(role)'), array_map('strtolower', $roleNames));
-
-        }
-        /* ============================================================
-         *  حالت 2: ستون role_id در جدول users + جدول roles
-         * ============================================================ */
-        elseif (Schema::hasColumn('users', 'role_id') && $roleNames) {
-
+        } elseif (Schema::hasColumn('users', 'role_id') && $roleNames) {
             $roleIds = DB::table('roles')
                 ->where(function ($q) use ($roleNames) {
                     foreach ($roleNames as $rn) {
                         $q->orWhere('name', 'LIKE', '%' . $rn . '%');
                     }
                 })
-                ->pluck('id')
-                ->toArray();
+                ->pluck('id')->toArray();
 
             if (empty($roleIds)) {
                 return response()->json([
@@ -335,21 +340,14 @@ class JournalRefSourceController extends Controller
             }
 
             $query->whereIn('role_id', $roleIds);
-
-        }
-        /* ============================================================
-         *  حالت 3: جدول pivot role_user (role_id + user_id)
-         * ============================================================ */
-        elseif (Schema::hasTable('role_user') && $roleNames) {
-
+        } elseif (Schema::hasTable('role_user') && $roleNames) {
             $roleIds = DB::table('roles')
                 ->where(function ($q) use ($roleNames) {
                     foreach ($roleNames as $rn) {
                         $q->orWhere('name', 'LIKE', '%' . $rn . '%');
                     }
                 })
-                ->pluck('id')
-                ->toArray();
+                ->pluck('id')->toArray();
 
             if (empty($roleIds)) {
                 return response()->json([
@@ -361,9 +359,7 @@ class JournalRefSourceController extends Controller
 
             $userIds = DB::table('role_user')
                 ->whereIn('role_id', $roleIds)
-                ->pluck('user_id')
-                ->unique()
-                ->toArray();
+                ->pluck('user_id')->unique()->toArray();
 
             if (empty($userIds)) {
                 return response()->json([
@@ -374,21 +370,14 @@ class JournalRefSourceController extends Controller
             }
 
             $query->whereIn('id', $userIds);
-
-        }
-        /* ============================================================
-         *  حالت 4: جدول user_roles (user_id + role_id)
-         * ============================================================ */
-        elseif (Schema::hasTable('user_roles') && $roleNames) {
-
+        } elseif (Schema::hasTable('user_roles') && $roleNames) {
             $roleIds = DB::table('roles')
                 ->where(function ($q) use ($roleNames) {
                     foreach ($roleNames as $rn) {
                         $q->orWhere('name', 'LIKE', '%' . $rn . '%');
                     }
                 })
-                ->pluck('id')
-                ->toArray();
+                ->pluck('id')->toArray();
 
             if (empty($roleIds)) {
                 return response()->json([
@@ -400,9 +389,7 @@ class JournalRefSourceController extends Controller
 
             $userIds = DB::table('user_roles')
                 ->whereIn('role_id', $roleIds)
-                ->pluck('user_id')
-                ->unique()
-                ->toArray();
+                ->pluck('user_id')->unique()->toArray();
 
             if (empty($userIds)) {
                 return response()->json([
@@ -413,22 +400,16 @@ class JournalRefSourceController extends Controller
             }
 
             $query->whereIn('id', $userIds);
-
-        }
-        /* ============================================================
-         *  حالت 5: هیچ‌کدام → همه کاربران (فقط برای staff)
-         * ============================================================ */
-        else {
+        } else {
             Log::warning('[JournalRefSource] ساختار نقش کاربران شناسایی نشد', [
                 'type' => $type,
                 'users_columns' => Schema::getColumnListing('users'),
             ]);
-            // اگر type=staff بود، همه کاربران را برگردان
             if ($type !== 'staff') {
                 return response()->json([
                     'success' => true,
                     'data' => [],
-                    'message' => 'ساختار نقش‌های کاربری در سیستم شناسایی نشد. لطفاً ساختار جدول users و نقش‌ها را بررسی کنید.',
+                    'message' => 'ساختار نقش‌های کاربری در سیستم شناسایی نشد.',
                 ]);
             }
         }

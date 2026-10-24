@@ -14,9 +14,18 @@ use App\Models\SalaryAdvance;
 use App\Models\PayrollSetting;
 use App\Models\User;
 use App\Models\Account;
+use App\Services\PayrollJournalService;    // ✅ جدید
 
 class PayrollModelController extends Controller
 {
+    // ✅ تزریق سرویس ژورنال
+    protected PayrollJournalService $journalService;
+
+    public function __construct(PayrollJournalService $journalService)
+    {
+        $this->journalService = $journalService;
+    }
+
     // ============================================================
     // 📊 DASHBOARD
     // ============================================================
@@ -313,6 +322,13 @@ class PayrollModelController extends Controller
             if (!$info) {
                 return response()->json(['success' => false, 'message' => 'یافت نشد'], 404);
             }
+
+            // ✅ حذف ژورنال‌های مربوط به معاشات این کارمند
+            $salaryIds = EmployeeSalary::where('salary_info_id', $info->id)->pluck('id')->toArray();
+            foreach ($salaryIds as $sid) {
+                $this->journalService->deleteSalaryJournals($sid);
+            }
+
             $info->delete();
             return response()->json(['success' => true, 'message' => 'حذف شد']);
         } catch (\Throwable $e) {
@@ -371,8 +387,7 @@ class PayrollModelController extends Controller
     }
 
     /**
-     * ✅ generateSalaries - همیشه tax و insurance را محاسبه و ذخیره می‌کند
-     *    تنظیمات enableTax/enableInsurance فقط بر net_salary اثر می‌گذارد
+     * ✅ generateSalaries — همیشه tax و insurance را محاسبه و ذخیره می‌کند + ژورنال ثبت می‌کند
      */
     public function generateSalaries(Request $request)
     {
@@ -428,17 +443,12 @@ class PayrollModelController extends Controller
                 $ded   = (float) $emp->deductions;
                 $gross = $base + $allow;
 
-                // ✅ همیشه محاسبه کن (برای نمایش در گزارش‌ها)
                 $rawTax       = round($gross * $taxRate / 100, 2);
                 $rawInsurance = round($gross * $insRate / 100, 2);
 
-                // ✅ فقط برای محاسبه net، اگر تنظیمات خاموش بود صفر بگیر
                 $taxForNet       = $enableTax ? $rawTax       : 0;
                 $insuranceForNet = $enableIns ? $rawInsurance : 0;
 
-                // ============================================================
-                // ✅ کسر پیش‌پرداخت: تطابق دقیق با ماه/سال هدف
-                // ============================================================
                 $advanceDeduction = 0;
 
                 $advQuery = SalaryAdvance::whereIn('status', ['approved', 'partially_repaid'])
@@ -477,7 +487,7 @@ class PayrollModelController extends Controller
                 $advanceDeduction = round($advanceDeduction, 2);
                 $net = round($gross - $ded - $taxForNet - $insuranceForNet - $advanceDeduction, 2);
 
-                EmployeeSalary::create([
+                $salary = EmployeeSalary::create([
                     'user_id'           => $emp->source === 'user'    ? $emp->employee_id : null,
                     'account_id'        => $emp->source === 'account' ? $emp->employee_id : null,
                     'period_id'         => $period->id,
@@ -486,12 +496,15 @@ class PayrollModelController extends Controller
                     'allowances'        => $allow,
                     'deductions'        => $ded,
                     'gross_salary'      => $gross,
-                    'tax_amount'        => $rawTax,          // ✅ همیشه ذخیره
-                    'insurance_amount'  => $rawInsurance,    // ✅ همیشه ذخیره
+                    'tax_amount'        => $rawTax,
+                    'insurance_amount'  => $rawInsurance,
                     'advance_deduction' => $advanceDeduction,
                     'net_salary'        => $net,
                     'payment_status'    => 'pending',
                 ]);
+
+                // ✅ ثبت ژورنال تولید معاش
+                $this->journalService->recordSalaryGeneration($salary);
 
                 $inserted++;
             }
@@ -562,6 +575,10 @@ class PayrollModelController extends Controller
                     'updated_by'           => $request->user()?->id,
                 ]);
 
+                // ✅ ثبت ژورنال پرداخت معاش
+                $this->journalService->recordSalaryPayment($salary->fresh(), $paymentDate, $accountId);
+
+                // کسر پیش‌پرداخت
                 if ($salary->advance_deduction > 0) {
                     $remaining = (float) $salary->advance_deduction;
 
@@ -776,6 +793,9 @@ class PayrollModelController extends Controller
         }
     }
 
+    /**
+     * ✅ approveAdvance — ثبت ژورنال پیش‌پرداخت هنگام تأیید
+     */
     public function approveAdvance(Request $request, $id)
     {
         try {
@@ -791,17 +811,28 @@ class PayrollModelController extends Controller
                 ]);
             }
 
+            DB::beginTransaction();
+
             $advance->update([
                 'status'        => 'approved',
                 'approval_date' => now()->toDateString(),
                 'approved_by'   => $request->user()->id ?? null,
             ]);
 
+            // ✅ ثبت ژورنال پیش‌پرداخت
+            $this->journalService->recordAdvancePayment(
+                $advance->fresh(['user', 'account']),
+                now()->toDateString()
+            );
+
+            DB::commit();
+
             return response()->json([
                 'success' => true,
                 'data'    => $this->advanceToArray($advance->fresh(['user.department', 'account'])),
             ]);
         } catch (\Throwable $e) {
+            DB::rollBack();
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -813,6 +844,9 @@ class PayrollModelController extends Controller
             if (!$advance) {
                 return response()->json(['success' => false, 'message' => 'یافت نشد'], 404);
             }
+
+            // ✅ حذف ژورنال پیش‌پرداخت (اگر قبلاً تأیید شده بود)
+            $this->journalService->deleteAdvanceJournals($advance->id);
 
             $advance->update(['status' => 'rejected']);
 
@@ -826,101 +860,122 @@ class PayrollModelController extends Controller
     }
 
     // ============================================================
-    // 📊 REPORTS - با مالیات، بیمه و پیش‌پرداخت
+    // 📊 REPORTS
     // ============================================================
-    public function getReports(Request $request)
-    {
-        try {
-            $month = $request->query('month');
-            $year  = $request->query('year');
+    /**
+ * ✅ getReports — لیست ردیفی همه معاشات یک دوره (برای گزارش + چاپ + خروجی Excel)
+ *    - همه معاشات: کاربران سیستم + طرف‌حساب‌ها
+ *    - همه وضعیت‌ها: پرداخت شده، در انتظار، جزئی
+ *    - همه فیلدها: پایه، مزایا، کسرات، مالیه، بیمه، پیش‌پرداخت، خالص
+ *    - totals جداگانه برای کارت‌های خلاصه
+ */
+public function getReports(Request $request)
+{
+    try {
+        $month = $request->query('month');
+        $year  = $request->query('year');
 
-            if (!$month || !$year) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'ماه و سال الزامی است',
-                ], 400);
-            }
-
-            $period = PayrollPeriod::findOrCreate($month, $year);
-
-            $userRows = DB::table('departments as d')
-                ->leftJoin('users as u', function ($join) {
-                    $join->on('u.department_id', '=', 'd.id')
-                         ->where('u.is_active', '=', 1);
-                })
-                ->leftJoin('employee_salaries as s', function ($join) use ($period) {
-                    $join->on('s.user_id', '=', 'u.id')
-                         ->where('s.period_id', '=', $period->id);
-                })
-                ->groupBy('d.id', 'd.name')
-                ->orderBy('d.name')
-                ->selectRaw("
-                    d.name as department,
-                    COUNT(DISTINCT u.id) as employees,
-                    COALESCE(SUM(s.net_salary), 0) as total_salary,
-                    COALESCE(SUM(s.tax_amount), 0) as total_tax,
-                    COALESCE(SUM(s.insurance_amount), 0) as total_insurance,
-                    COALESCE(SUM(s.advance_deduction), 0) as total_advance,
-                    COALESCE(SUM(CASE WHEN s.payment_status = 'paid' THEN s.net_salary ELSE 0 END), 0) as paid,
-                    COALESCE(SUM(CASE WHEN s.payment_status != 'paid' THEN s.net_salary ELSE 0 END), 0) as pending
-                ")
-                ->get()
-                ->map(function ($r) {
-                    return [
-                        'department'     => $r->department,
-                        'employees'      => (int) $r->employees,
-                        'totalSalary'    => (float) $r->total_salary,
-                        'totalTax'       => (float) $r->total_tax,
-                        'totalInsurance' => (float) $r->total_insurance,
-                        'totalAdvance'   => (float) $r->total_advance,
-                        'paid'           => (float) $r->paid,
-                        'pending'        => (float) $r->pending,
-                    ];
-                });
-
-            $accountRow = DB::table('employee_salaries as s')
-                ->whereNotNull('s.account_id')
-                ->where('s.period_id', $period->id)
-                ->selectRaw("
-                    COUNT(DISTINCT s.account_id) as employees,
-                    COALESCE(SUM(s.net_salary), 0) as total_salary,
-                    COALESCE(SUM(s.tax_amount), 0) as total_tax,
-                    COALESCE(SUM(s.insurance_amount), 0) as total_insurance,
-                    COALESCE(SUM(s.advance_deduction), 0) as total_advance,
-                    COALESCE(SUM(CASE WHEN s.payment_status = 'paid' THEN s.net_salary ELSE 0 END), 0) as paid,
-                    COALESCE(SUM(CASE WHEN s.payment_status != 'paid' THEN s.net_salary ELSE 0 END), 0) as pending
-                ")
-                ->first();
-
-            $rows = $userRows->values()->all();
-
-            if ($accountRow && $accountRow->employees > 0) {
-                $rows[] = [
-                    'department'     => 'طرف‌حساب‌ها (کارمندان)',
-                    'employees'      => (int) $accountRow->employees,
-                    'totalSalary'    => (float) $accountRow->total_salary,
-                    'totalTax'       => (float) $accountRow->total_tax,
-                    'totalInsurance' => (float) $accountRow->total_insurance,
-                    'totalAdvance'   => (float) $accountRow->total_advance,
-                    'paid'           => (float) $accountRow->paid,
-                    'pending'        => (float) $accountRow->pending,
-                ];
-            }
-
+        if (!$month || !$year) {
             return response()->json([
-                'success' => true,
-                'data'    => $rows,
-                'period'  => [
-                    'id'    => $period->id,
-                    'month' => $period->period_month,
-                    'year'  => $period->period_year,
-                ],
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('getReports: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+                'success' => false,
+                'message' => 'ماه و سال الزامی است',
+            ], 400);
         }
+
+        $period = PayrollPeriod::findOrCreate($month, $year);
+
+        // ✅ ۱) همه معاشات این دوره به‌صورت ردیفی
+        //    با eager loading روابط تا N+1 مشکل نداشته باشد
+        $salaries = EmployeeSalary::with(['user.department', 'account', 'salaryInfo'])
+            ->where('period_id', $period->id)
+            ->orderByRaw("CASE 
+                WHEN payment_status = 'pending' THEN 1
+                WHEN payment_status = 'partial' THEN 2
+                WHEN payment_status = 'paid' THEN 3
+                ELSE 4
+            END")
+            ->orderBy('id', 'asc')
+            ->get();
+
+        // ✅ ۲) تبدیل هر ردیف به آرایه استاندارد
+        $rows = $salaries->map(fn($s) => $this->salaryToArray($s));
+
+        // ✅ ۳) محاسبه مجموع‌ها برای کارت‌های خلاصه
+        $totals = [
+            'employees'       => $rows->count(),
+            'totalBase'       => (float) $rows->sum('baseSalary'),
+            'totalAllowances' => (float) $rows->sum('allowances'),
+            'totalDeductions' => (float) $rows->sum('deductions'),
+            'totalTax'        => (float) $rows->sum('tax'),
+            'totalInsurance'  => (float) $rows->sum('insurance'),
+            'totalAdvance'    => (float) $rows->sum('advanceDeduction'),
+            'totalGross'      => (float) $rows->sum('grossSalary'),
+            'totalSalary'     => (float) $rows->sum('netSalary'),
+
+            // پرداخت شده‌ها
+            'paid'            => (float) $rows
+                ->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'paid')
+                ->sum('netSalary'),
+
+            // باقی‌مانده (هر چیزی که پرداخت نشده)
+            'pending'         => (float) $rows
+                ->filter(fn($r) => ($r['paymentStatus'] ?? '') !== 'paid')
+                ->sum('netSalary'),
+
+            // تعداد به تفکیک وضعیت
+            'countPaid'       => $rows->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'paid')->count(),
+            'countPending'    => $rows->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'pending')->count(),
+            'countPartial'    => $rows->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'partial')->count(),
+        ];
+
+        return response()->json([
+            'success' => true,
+            'data'    => $rows,
+            'totals'  => $totals,
+            'period'  => [
+                'id'    => $period->id,
+                'month' => $period->period_month,
+                'year'  => $period->period_year,
+            ],
+        ]);
+    } catch (\Throwable $e) {
+        Log::error('getReports: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+        ], 500);
     }
+}
+
+
+
+/**
+ * ✅ getReportPeriods — لیست ماه/سال‌هایی که معاش دارند (برای dropdown)
+ */
+public function getReportPeriods(Request $request)
+{
+    try {
+        $periods = PayrollPeriod::query()
+            ->whereHas('salaries')   // فقط دوره‌هایی که معاش دارند
+            ->orderBy('period_year', 'desc')
+            ->orderBy('id', 'desc')
+            ->get(['id', 'period_month', 'period_year'])
+            ->map(fn($p) => [
+                'id'    => $p->id,
+                'month' => $p->period_month,
+                'year'  => $p->period_year,
+            ])
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $periods,
+        ]);
+    } catch (\Throwable $e) {
+        Log::error('getReportPeriods: ' . $e->getMessage());
+        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+    }
+}
 
     // ============================================================
     // ⚙️ SETTINGS
@@ -1066,10 +1121,6 @@ class PayrollModelController extends Controller
         ];
     }
 
-    /**
-     * ✅ salaryToArray - بدون fallback، مستقیم از دیتابیس
-     *    چون generateSalaries همیشه tax و insurance را ذخیره می‌کند
-     */
     private function salaryToArray(EmployeeSalary $s): array
     {
         $sourceLabel = '—';
@@ -1079,7 +1130,6 @@ class PayrollModelController extends Controller
             $sourceLabel = 'طرف‌حساب';
         }
 
-        // ✅ مستقیم از دیتابیس — بدون fallback
         $gross     = (float) ($s->gross_salary ?? ((float) $s->base_salary + (float) $s->allowances));
         $tax       = (float) ($s->tax_amount ?? 0);
         $insurance = (float) ($s->insurance_amount ?? 0);
