@@ -11,6 +11,7 @@ use App\Models\Prescription;
 use App\Models\ExternalPrescription;
 use App\Models\Patient;
 use App\Models\User;
+use App\Models\Account;
 use App\Models\EmployeeSalary;
 use App\Models\SalaryAdvance;
 use Illuminate\Http\Request;
@@ -25,7 +26,6 @@ class JournalController extends Controller
 {
     /* ============================================================
      *  ✅ انواع ژورنال معاشات — فقط برچسب
-     *  ⚠️ source_kind (یوزر/حساب) از داده واقعی استخراج می‌شود
      * ============================================================ */
     private const SALARY_META = [
         'salary_generation'    => ['label' => 'تولید معاش (هزینه)'],
@@ -34,6 +34,235 @@ class JournalController extends Controller
         'salary_payment_debit' => ['label' => 'تسویه معاش'],
         'salary_advance'       => ['label' => 'پیش‌پرداخت معاش'],
         'salary_advance_debit' => ['label' => 'ثبت پیش‌پرداخت'],
+    ];
+
+    /* ============================================================
+     *  ✅ برچسب‌های فارسی برای دسته‌بندی حساب
+     * ============================================================ */
+    private const ACCOUNT_CATEGORY_LABELS = [
+        // Assets
+        'cash' => 'نقدی', 'bank' => 'بانکی',
+        'medicine_inventory' => 'موجودی ادویه',
+        'laboratory_inventory' => 'موجودی لابراتوار',
+        'consumable_inventory' => 'موجودی مصرفی',
+        'medical_equipment' => 'تجهیزات طبی',
+        'office_equipment' => 'تجهیزات دفتری',
+        'tools_and_supplies' => 'ابزار و لوازم',
+        'building' => 'ساختمان', 'land' => 'زمین',
+        'vehicle' => 'وسیله نقلیه', 'furniture' => 'فرنیچر',
+        'prepayments' => 'پیش‌پرداخت‌ها', 'deposits' => 'سپرده‌ها',
+        'other_assets' => 'سایر دارایی‌ها',
+
+        // Liabilities
+        'suppliers' => 'تأمین‌کنندگان',
+        'medicine_purchase_payable' => 'بدهی خرید ادویه',
+        'equipment_purchase_payable' => 'بدهی خرید تجهیزات',
+        'laboratory_material_payable' => 'بدهی مواد لابراتوار',
+        'salary_payable' => 'بدهی معاشات',
+        'tax_payable' => 'بدهی مالیه',
+        'loans' => 'قرض‌ها', 'bank_loans' => 'قرض بانکی',
+        'contractual_liabilities' => 'تعهدات قراردادی',
+        'other_liabilities' => 'سایر بدهی‌ها',
+
+        // Equity
+        'initial_capital' => 'سرمایه اولیه',
+        'owner_capital' => 'سرمایه مالک',
+        'partners_capital' => 'سرمایه شرکا',
+        'retained_earnings' => 'سود انباشته',
+        'retained_losses' => 'ضرر انباشته',
+        'owner_drawings' => 'برداشت مالک',
+        'other_equity' => 'سایر سرمایه',
+
+        // Income
+        'medical_services_income' => 'درآمد خدمات طبی',
+        'consultation_income' => 'درآمد مشاوره',
+        'laboratory_income' => 'درآمد لابراتوار',
+        'radiology_income' => 'درآمد رادیولوژی',
+        'operation_income' => 'درآمد عملیات',
+        'admission_income' => 'درآمد بستر',
+        'pharmacy_income' => 'درآمد دواخانه',
+        'goods_sales_income' => 'درآمد فروش اجناس',
+        'operation_room_income' => 'درآمد اتاق عملیات',
+        'other_services_income' => 'درآمد سایر خدمات',
+        'non_operating_income' => 'درآمد غیرعملیاتی',
+        'rent_income' => 'درآمد کرایه',
+        'customers_income' => 'درآمد از مشتریان',
+        'customer_income'  => 'درآمد از مشتریان', // ✅ هماهنگ‌سازی
+        'other_income' => 'سایر درآمدها',
+
+        // Expense
+        'salary_expense' => 'مصرف معاشات',
+        'rent_expense' => 'مصرف کرایه',
+        'electricity_expense' => 'مصرف برق',
+        'water_expense' => 'مصرف آب',
+        'internet_expense' => 'مصرف انترنت',
+        'telephone_expense' => 'مصرف تلیفون',
+        'transportation_expense' => 'مصرف ترانسپورت',
+        'consumable_material_expense' => 'مصرف مواد مصرفی',
+        'medical_material_expense' => 'مصرف مواد طبی',
+        'laboratory_material_expense' => 'مصرف مواد لابراتوار',
+        'cleaning_material_expense' => 'مصرف مواد پاک‌کاری',
+        'repair_expense' => 'مصرف تعمیرات',
+        'medical_equipment_repair_expense' => 'مصرف تعمیر تجهیزات طبی',
+        'building_repair_expense' => 'مصرف تعمیر ساختمان',
+        'fuel_expense' => 'مصرف سوخت',
+        'stationery_expense' => 'مصرف قرطاسیه',
+        'administrative_expense' => 'مصرف اداری',
+        'marketing_expense' => 'مصرف بازاریابی',
+        'legal_expense' => 'مصرف حقوقی',
+        'tax_and_duty_expense' => 'مصرف مالیه و عوارض',
+        'insurance_expense' => 'مصرف بیمه',
+        'bank_charge_expense' => 'مصرف کمیشن بانکی',
+        'depreciation_expense' => 'مصرف استهلاک',
+        'other_expense' => 'سایر مصارف',
+
+        // Receivable
+        'insurance_companies' => 'شرکت‌های بیمه',
+        'contracting_institutions' => 'مؤسسات قراردادی',
+        'companies' => 'شرکت‌ها',
+        'corporate_customers' => 'مشتریان شرکتی',
+        'customers' => 'مشتریان',
+        'miscellaneous_receivables' => 'مطالبات متفرقه',
+        'other_receivables' => 'سایر مطالبات',
+
+        // Payable
+        'medicine_suppliers' => 'تأمین‌کنندگان ادویه',
+        'medical_equipment_suppliers' => 'تأمین‌کنندگان تجهیزات طبی',
+        'laboratory_material_suppliers' => 'تأمین‌کنندگان مواد لابراتوار',
+        'consumable_material_suppliers' => 'تأمین‌کنندگان مواد مصرفی',
+        'vendors' => 'فروشندگان', 'contractors' => 'پیمانکاران',
+        'salary_payables' => 'معاشات قابل پرداخت',
+        'tax_payables' => 'مالیات قابل پرداخت',
+        'bank_payables' => 'بدهی بانکی',
+        'other_creditors' => 'سایر طلبکاران',
+
+        // Employee
+        'employee_doctor' => 'داکتر',
+        'employee_nurse' => 'نرس',
+        'employee_radiology' => 'کارمند رادیولوژی',
+        'employee_laboratory' => 'کارمند لابراتوار',
+        'employee_pharmacy' => 'کارمند دواخانه',
+        'employee_reception' => 'کارمند پذیرش',
+        'employee_administration' => 'کارمند اداری',
+        'employee_finance' => 'کارمند مالی / حسابداری',
+        'employee_cleaning' => 'کارمند نظافت',
+        'employee_security' => 'کارمند امنیت',
+        'employee_kitchen' => 'کارمند آشپزخانه',
+        'employee_other' => 'سایر کارمندان رسمی',
+        'contract_doctor' => 'داکتر قراردادی',
+        'contract_nurse' => 'نرس قراردادی',
+        'contract_radiology' => 'کارمند رادیولوژی قراردادی',
+        'contract_laboratory' => 'کارمند لابراتوار قراردادی',
+        'contract_pharmacy' => 'کارمند دواخانه قراردادی',
+        'contract_reception' => 'کارمند پذیرش قراردادی',
+        'contract_administration' => 'کارمند اداری قراردادی',
+        'contract_finance' => 'کارمند مالی قراردادی',
+        'contract_cleaning' => 'کارمند نظافت قراردادی',
+        'contract_security' => 'کارمند امنیت قراردادی',
+        'contract_kitchen' => 'کارمند آشپزخانه قراردادی',
+        'contract_other' => 'سایر کارمندان قراردادی',
+        'worker_construction' => 'کارگر ساختمانی',
+        'worker_cleaning' => 'کارگر نظافت',
+        'worker_loading' => 'کارگر بارگیری',
+        'worker_gardening' => 'کارگر باغبانی',
+        'worker_kitchen' => 'کارگر آشپزخانه',
+        'worker_laundry' => 'کارگر لباس‌شویی',
+        'worker_maintenance' => 'کارگر تعمیرات',
+        'worker_security' => 'کارگر نگهبانی',
+        'worker_other' => 'سایر کارگرها',
+    ];
+
+    /* ============================================================
+     *  برچسب‌های فارسی برای role یوزر
+     * ============================================================ */
+    private const USER_ROLE_LABELS = [
+        'patient' => 'مریض',
+        'doctor' => 'داکتر',
+        'nurse' => 'نرس',
+        'receptionist' => 'منشی',
+        'accountant' => 'محاسب',
+        'pharmacist' => 'دواساز',
+        'laboratorist' => 'لابراتوار',
+        'radiologist' => 'رادیولوژیست',
+        'staff' => 'کارمند',
+        'visitor' => 'مراجع',
+        'admin' => 'مدیر',
+        'super_admin' => 'مدیر ارشد',
+        'employee' => 'کارمند',
+        'customer' => 'مشتری',
+        'supplier' => 'تأمین‌کننده',
+    ];
+
+    /* ============================================================
+     *  ✅ انواع حساب‌محور (که از جدول accounts می‌آیند)
+     * ============================================================ */
+    private const ACCOUNT_REF_TYPES = [
+        'customer_account',
+        'corporate_customer',
+        'insurance_company',
+        'supplier_account',
+        'medicine_supplier',
+        'equipment_supplier',
+        'laboratory_material_supplier',
+        'consumable_material_supplier',
+        'customer_income',
+    ];
+
+    /* ============================================================
+     *  ✅ نقشه‌برداری ref_type → account_type + account_category
+     *
+     *  ⚠️ نکته مهم: کتگوری‌ها باید دقیقاً با مقادیری که در
+     *  AccountController::$categories تعریف شده‌اند هماهنگ باشند.
+     *  همچنین نام‌های جایگزین (مثل customers_income / customer_income)
+     *  هر دو پشتیبانی می‌شوند تا اگر حساب‌ها با هر یک از این
+     *  نام‌ها ثبت شده باشند، در لیست نمایش داده شوند.
+     * ============================================================ */
+    private const ACCOUNT_REF_MAP = [
+        'customer_account' => [
+            'type'       => 'receivable',
+            'categories' => ['customers', 'corporate_customers', 'companies'],
+        ],
+        'corporate_customer' => [
+            'type'       => 'receivable',
+            'categories' => ['corporate_customers', 'companies'],
+        ],
+        'insurance_company' => [
+            'type'       => 'receivable',
+            'categories' => ['insurance_companies'],
+        ],
+        'supplier_account' => [
+            'type'       => 'payable',
+            'categories' => [
+                'medicine_suppliers',
+                'medical_equipment_suppliers',
+                'laboratory_material_suppliers',
+                'consumable_material_suppliers',
+                'vendors',
+                'contractors',
+                'other_creditors',
+            ],
+        ],
+        'medicine_supplier' => [
+            'type'       => 'payable',
+            'categories' => ['medicine_suppliers'],
+        ],
+        'equipment_supplier' => [
+            'type'       => 'payable',
+            'categories' => ['medical_equipment_suppliers'],
+        ],
+        'laboratory_material_supplier' => [
+            'type'       => 'payable',
+            'categories' => ['laboratory_material_suppliers'],
+        ],
+        'consumable_material_supplier' => [
+            'type'       => 'payable',
+            'categories' => ['consumable_material_suppliers'],
+        ],
+        // ✅ هر دو نام پشتیبانی می‌شوند تا ناهماهنگی بین دو کنترلر مشکل‌ساز نشود
+        'customer_income' => [
+            'type'       => 'income',
+            'categories' => ['customers_income', 'customer_income'],
+        ],
     ];
 
     /* ============================================================
@@ -53,43 +282,41 @@ class JournalController extends Controller
         $journals = $query->orderBy('journal_date', 'desc')->get();
 
         $journals->transform(function ($j) {
-            $j->full_name    = null;
-            $j->display_name = null;
-            $j->total_amount = null;
-            $j->paid_amount  = null;
-            $j->due_amount   = null;
-            $j->source_name  = null;
-            $j->source_kind  = null;   // ✅ user / account / null
-            $j->source_label = null;   // ✅ برچسب فارسی
+            $j->full_name               = null;
+            $j->display_name            = null;
+            $j->total_amount            = null;
+            $j->paid_amount             = null;
+            $j->due_amount              = null;
+            $j->source_name             = null;
+            $j->source_kind             = null;
+            $j->source_label            = null;
+            $j->source_type_label       = null;
+            $j->source_role_label       = null;
+            $j->source_account_category = null;
+            $j->source_account_category_label = null;
 
             /* ====================================================
-             * ✅ 0) ژورنال‌های معاشات (PayrollJournalService)
-             *    منطق: source_kind از داده واقعی، نه از ref_type
+             * ✅ 0) ژورنال‌های معاشات
              * ==================================================== */
             if (isset(self::SALARY_META[$j->ref_type])) {
                 $meta = self::SALARY_META[$j->ref_type];
                 $j->source_label = $meta['label'];
 
                 try {
-                    /* ---------------------------------------------
-                     * 1) اولویت اول: account_id روی خود ژورنال
-                     * --------------------------------------------- */
                     if (!empty($j->account_id)) {
-                        $account = \App\Models\Account::find($j->account_id);
+                        $account = Account::find($j->account_id);
                         if ($account) {
                             $j->source_kind = 'account';
                             $j->source_name = $account->account_name
                                 ?? $account->name
                                 ?? "حساب #{$j->account_id}";
+                            $j->source_account_category = $account->account_category ?? null;
+                            $j->source_account_category_label =
+                                $this->categoryLabelForAccount($account->account_category ?? null);
                         }
                     }
 
-                    /* ---------------------------------------------
-                     * 2) اگر ژورنال account_id ندارد، از رکورد اصلی
-                     * --------------------------------------------- */
                     if (empty($j->source_kind)) {
-
-                        // ============ انواع از EmployeeSalary ============
                         if (in_array($j->ref_type, [
                             'salary_generation',
                             'salary_payable',
@@ -99,34 +326,35 @@ class JournalController extends Controller
                             $salary = EmployeeSalary::with(['user', 'account'])->find($j->ref_id);
 
                             if ($salary) {
-                                // ✅ user_id → یوزر ، account_id → حساب
                                 if (!empty($salary->user_id)) {
                                     $j->source_kind = 'user';
                                     $j->source_name = $salary->user?->name
                                         ?? $salary->user?->full_name
                                         ?? null;
+                                    $j->employee_id = $salary->user_id;
+
+                                    if ($salary->user) {
+                                        $j->source_role_label =
+                                            $this->roleLabel($salary->user->role ?? null);
+                                    }
                                 } elseif (!empty($salary->account_id)) {
                                     $j->source_kind = 'account';
-                                    $j->account_id  = $salary->account_id; // برای فرانت
-                                    $j->source_name = $salary->account?->account_name
-                                        ?? null;
+                                    $j->account_id  = $salary->account_id;
+                                    $j->source_name = $salary->account?->account_name ?? null;
+                                    $j->source_account_category =
+                                        $salary->account?->account_category ?? null;
+                                    $j->source_account_category_label =
+                                        $this->categoryLabelForAccount($salary->account?->account_category ?? null);
                                 }
 
-                                // اگر نام خالی ماند، از accessor مدل
                                 if (empty($j->source_name)) {
-                                    $name = $salary->employee_name; // accessor
+                                    $name = $salary->employee_name;
                                     if (!empty($name) && $name !== '—') {
                                         $j->source_name = $name;
                                     }
                                 }
-
-                                if (!empty($salary->user_id)) {
-                                    $j->employee_id = $salary->user_id;
-                                }
                             }
-                        }
-                        // ============ انواع از SalaryAdvance ============
-                        else {
+                        } else {
                             $advance = SalaryAdvance::with(['user', 'account'])->find($j->ref_id);
 
                             if ($advance) {
@@ -135,19 +363,25 @@ class JournalController extends Controller
                                     $j->source_name = $advance->user?->name
                                         ?? $advance->user?->full_name
                                         ?? null;
+                                    $j->employee_id = $advance->user_id;
+
+                                    if ($advance->user) {
+                                        $j->source_role_label =
+                                            $this->roleLabel($advance->user->role ?? null);
+                                    }
                                 } elseif (!empty($advance->account_id)) {
                                     $j->source_kind = 'account';
                                     $j->account_id  = $advance->account_id;
-                                    $j->source_name = $advance->account?->account_name
-                                        ?? null;
+                                    $j->source_name = $advance->account?->account_name ?? null;
+                                    $j->source_account_category =
+                                        $advance->account?->account_category ?? null;
+                                    $j->source_account_category_label =
+                                        $this->categoryLabelForAccount($advance->account?->account_category ?? null);
                                 }
                             }
                         }
                     }
 
-                    /* ---------------------------------------------
-                     * 3) fallback: استخراج نام از description
-                     * --------------------------------------------- */
                     if (empty($j->source_name) && !empty($j->description)) {
                         if (preg_match('/(?:معاش|پیش‌پرداخت|تولید معاش|پرداخت معاش|تسویه معاش)\s*-\s*([^\-()]+)/u', $j->description, $m)) {
                             $name = trim($m[1]);
@@ -157,9 +391,6 @@ class JournalController extends Controller
                         }
                     }
 
-                    /* ---------------------------------------------
-                     * 4) آخرین پیش‌فرض
-                     * --------------------------------------------- */
                     if (empty($j->source_kind)) {
                         $j->source_kind = 'user';
                     }
@@ -169,18 +400,58 @@ class JournalController extends Controller
 
                     $j->full_name    = $j->source_name;
                     $j->display_name = $j->source_name;
+                    $j->source_type_label = $this->resolveSourceTypeLabel($j);
 
                 } catch (\Throwable $e) {
                     Log::warning('salary source resolve failed for Journal #' . $j->id . ': ' . $e->getMessage());
                     $j->source_kind = empty($j->account_id) ? 'user' : 'account';
                     $j->source_name = "معاش #{$j->ref_id}";
+                    $j->source_type_label = $this->resolveSourceTypeLabel($j);
                 }
 
                 return $j;
             }
 
             /* ====================================================
-             * 1) external_prescription → فیس نسخه بیرونی
+             * ✅ 0.5) منابع حساب‌محور (accounts)
+             * ==================================================== */
+            if (in_array($j->ref_type, self::ACCOUNT_REF_TYPES, true)) {
+                $account = null;
+
+                // اول از account_id خود ژورنال
+                if (!empty($j->account_id)) {
+                    $account = Account::find($j->account_id);
+                }
+
+                // اگر نبود، از ref_id (که برای این انواع = account.id)
+                if (!$account && !empty($j->ref_id)) {
+                    $account = Account::find($j->ref_id);
+                }
+
+                if ($account) {
+                    $j->source_kind                    = 'account';
+                    $j->source_name                    = $account->account_name;
+                    $j->source_account_category        = $account->account_category;
+                    $j->source_account_category_label  =
+                        $this->categoryLabelForAccount($account->account_category);
+
+                    if (!empty($account->tazkira_number) && empty($j->tazkira_number)) {
+                        $j->tazkira_number = $account->tazkira_number;
+                    }
+
+                    $j->full_name    = $account->account_name;
+                    $j->display_name = $account->account_name;
+                } else {
+                    $j->source_kind = 'account';
+                    $j->source_name = $j->description ?: "حساب #{$j->ref_id}";
+                }
+
+                $j->source_type_label = $this->resolveSourceTypeLabel($j);
+                return $j;
+            }
+
+            /* ====================================================
+             * 1) external_prescription
              * ==================================================== */
             if ($j->ref_type === 'external_prescription') {
                 $external = ExternalPrescription::find($j->ref_id);
@@ -219,6 +490,7 @@ class JournalController extends Controller
                     $j->source_name = $j->description ?: "نسخه بیرونی #{$j->ref_id}";
                 }
 
+                $j->source_type_label = $this->resolveSourceTypeLabel($j);
                 return $j;
             }
 
@@ -242,6 +514,7 @@ class JournalController extends Controller
                 } else {
                     $j->source_name = "فروش شماره {$j->ref_id}";
                 }
+                $j->source_type_label = $this->resolveSourceTypeLabel($j);
                 return $j;
             }
 
@@ -265,11 +538,12 @@ class JournalController extends Controller
                 } else {
                     $j->source_name = "خرید شماره {$j->ref_id}";
                 }
+                $j->source_type_label = $this->resolveSourceTypeLabel($j);
                 return $j;
             }
 
             /* ====================================================
-             * 4) patient → نام کامل از patients
+             * 4) patient
              * ==================================================== */
             if ($j->ref_type === 'patient') {
                 $patient = $this->findPatientForJournal($j);
@@ -331,11 +605,12 @@ class JournalController extends Controller
                     $j->source_name = $j->description ?: "مریض #{$j->ref_id}";
                 }
 
+                $j->source_type_label = $this->resolveSourceTypeLabel($j);
                 return $j;
             }
 
             /* ====================================================
-             * 5) سایر انواع (doctor, nurse, supplier, ...)
+             * 5) سایر انواع
              * ==================================================== */
             if (method_exists($j, 'resolveSourceName')) {
                 try {
@@ -368,10 +643,81 @@ class JournalController extends Controller
                 $j->source_name = $j->description ?: "منبع #{$j->ref_id}";
             }
 
+            $j->source_type_label = $this->resolveSourceTypeLabel($j);
             return $j;
         });
 
         return response()->json($journals);
+    }
+
+    /* ============================================================
+     *  ✅ نوعیت منبع
+     * ============================================================ */
+    private function resolveSourceTypeLabel(Journal $j): string
+    {
+        // 1) برای معاشات
+        if (isset(self::SALARY_META[$j->ref_type])) {
+            if ($j->source_kind === 'user') {
+                if (!empty($j->source_role_label)) return $j->source_role_label;
+                return 'یوزر';
+            }
+            if ($j->source_kind === 'account') {
+                if (!empty($j->source_account_category_label)) {
+                    return $j->source_account_category_label;
+                }
+                return 'حساب';
+            }
+            return '-';
+        }
+
+        // 2) برای حساب‌محورها
+        if (in_array($j->ref_type, self::ACCOUNT_REF_TYPES, true)) {
+            if (!empty($j->source_account_category_label)) {
+                return $j->source_account_category_label;
+            }
+            return 'حساب';
+        }
+
+        // 3) sale
+        if ($j->ref_type === 'sale') return 'مشتری';
+
+        // 4) parchase
+        if ($j->ref_type === 'parchase') return 'تأمین‌کننده';
+
+        // 5) external_prescription
+        if ($j->ref_type === 'external_prescription') return 'نسخه بیرونی';
+
+        // 6) patient
+        if ($j->ref_type === 'patient') return 'مریض';
+
+        // 7) fallback بر اساس reg_type
+        if (!empty($j->reg_type)) {
+            $role = $this->roleLabel($j->reg_type);
+            if ($role) return $role;
+            return (string) $j->reg_type;
+        }
+
+        // 8) fallback بر اساس ref_type
+        if (!empty($j->ref_type)) {
+            $role = $this->roleLabel($j->ref_type);
+            if ($role) return $role;
+            return (string) $j->ref_type;
+        }
+
+        return '-';
+    }
+
+    private function roleLabel(?string $role): ?string
+    {
+        if (!$role) return null;
+        $r = strtolower(trim($role));
+        return self::USER_ROLE_LABELS[$r] ?? $role;
+    }
+
+    private function categoryLabelForAccount(?string $category): ?string
+    {
+        if (!$category) return null;
+        return self::ACCOUNT_CATEGORY_LABELS[$category] ?? $category;
     }
 
     /* ============================================================
@@ -455,7 +801,7 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  ✅ دریافت لیست منابع
+     *  ✅ دریافت لیست منابع (اصلاح‌شده برای حساب‌محورها)
      * ============================================================ */
     public function getRefSources(Request $request)
     {
@@ -465,25 +811,124 @@ class JournalController extends Controller
         ]);
 
         try {
-            $sources = Journal::getRefSources(
-                $request->type,
-                $request->search,
-                min((int) $request->get('limit', 100), 500)
-            );
+            $type   = $request->type;
+            $search = $request->search;
+            $limit  = min((int) $request->get('limit', 100), 500);
+
+            /*
+            |--------------------------------------------------------------------------
+            | ✅ 1) انواع حساب‌محور — از جدول accounts
+            |--------------------------------------------------------------------------
+            */
+            if (in_array($type, self::ACCOUNT_REF_TYPES, true)) {
+                $sources = $this->getAccountsRefSources($type, $search, $limit);
+
+                // ✅ لاگ برای دیباگ
+                if (empty($sources)) {
+                    Log::info('[getRefSources] هیچ حسابی برای ref_type یافت نشد', [
+                        'type'       => $type,
+                        'search'     => $search,
+                        'map_config' => self::ACCOUNT_REF_MAP[$type] ?? null,
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data'    => $sources,
+                    'count'   => count($sources),
+                    'type'    => $type,
+                ]);
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | ✅ 2) بقیه انواع — از Journal::getRefSources
+            |--------------------------------------------------------------------------
+            */
+            $sources = Journal::getRefSources($type, $search, $limit);
 
             return response()->json([
                 'success' => true,
                 'data'    => $sources,
                 'count'   => count($sources),
-                'type'    => $request->type,
+                'type'    => $type,
             ]);
         } catch (\Throwable $e) {
+            Log::error('getRefSources failed: ' . $e->getMessage(), [
+                'type'  => $request->type,
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'خطا در دریافت منابع',
                 'error'   => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
+    }
+
+    /* ============================================================
+     *  ✅ لیست حساب‌ها به‌عنوان منبع ژورنال
+     *
+     *  ⚠️ نکات:
+     *   - از whereIn استفاده می‌شود تا کتگوری‌های جایگزین
+     *     (مثل customers_income / customer_income) هم پشتیبانی شوند.
+     *   - فقط حساب‌های فعال (is_active = true) برگردانده می‌شوند.
+     *   - اگر ستون allow_transactions وجود داشته باشد، فقط
+     *     حساب‌های قابل تراکنش برگردانده می‌شوند (اختیاری).
+     * ============================================================ */
+    private function getAccountsRefSources(string $refType, ?string $search = null, int $limit = 100): array
+    {
+        if (!isset(self::ACCOUNT_REF_MAP[$refType])) {
+            Log::warning('[getAccountsRefSources] ref_type در ACCOUNT_REF_MAP یافت نشد', [
+                'ref_type' => $refType,
+            ]);
+            return [];
+        }
+
+        $config = self::ACCOUNT_REF_MAP[$refType];
+
+        $query = Account::query()
+            ->where('account_type', $config['type'])
+            ->whereIn('account_category', $config['categories']) // ✅ whereIn برای پشتیبانی از چند نام
+            ->where('is_active', true);
+
+        // ✅ اگر ستون allow_transactions وجود داشت، فقط حساب‌های قابل تراکنش را بیاور
+        try {
+            if (Schema::hasColumn('accounts', 'allow_transactions')) {
+                $query->where('allow_transactions', true);
+            }
+        } catch (\Throwable $e) {
+            // اگر بررسی ستون خطا داد، نادیده بگیر
+        }
+
+        if (!empty($search)) {
+            $s = trim($search);
+            $query->where(function ($q) use ($s) {
+                $q->where('account_name', 'like', "%{$s}%")
+                  ->orWhere('account_code', 'like', "%{$s}%")
+                  ->orWhere('tazkira_number', 'like', "%{$s}%");
+            });
+        }
+
+        $accounts = $query
+            ->orderBy('account_name')
+            ->limit($limit)
+            ->get(['id', 'account_code', 'account_name', 'account_category', 'tazkira_number']);
+
+        // ✅ خروجی استاندارد مشابه Journal::getRefSources
+        return $accounts->map(function ($a) {
+            return [
+                'id'           => $a->id,
+                'name'         => $a->account_name,
+                'code'         => $a->account_code,
+                'national_id'  => $a->tazkira_number,
+                'reg_id'       => null,
+                'category'     => $a->account_category,
+                'total_amount' => null,
+                'discount'     => 0,
+                'paid_amount'  => 0,
+            ];
+        })->toArray();
     }
 
     /* ============================================================
@@ -500,6 +945,7 @@ class JournalController extends Controller
             'ref_id'            => 'required|integer',
             'pres_id'           => 'nullable|integer',
             'reg_id'            => 'nullable|integer',
+            'account_id'        => 'nullable|integer|exists:accounts,id',
             'tazkira_number'    => 'nullable|string|max:255',
             'parent_journal_id' => 'nullable|exists:journals,id',
         ]);
@@ -525,6 +971,10 @@ class JournalController extends Controller
                     ?? null,
                 'user_id'           => Auth::id(),
             ];
+
+            if ($this->journalHasAccountIdColumn() && !empty($validated['account_id'])) {
+                $data['account_id'] = $validated['account_id'];
+            }
 
             if ($patientId && $this->journalHasPatientIdColumn()) {
                 $data['patient_id'] = $patientId;
@@ -629,6 +1079,7 @@ class JournalController extends Controller
             'ref_id'            => 'required|integer',
             'pres_id'           => 'nullable|integer',
             'reg_id'            => 'nullable|integer',
+            'account_id'        => 'nullable|integer|exists:accounts,id',
             'tazkira_number'    => 'nullable|string|max:255',
             'parent_journal_id' => 'nullable|exists:journals,id',
         ]);
@@ -639,6 +1090,7 @@ class JournalController extends Controller
             $reg = $this->resolveRegistration($validated);
             $patientId = $this->resolvePatientIdFromValidated($validated);
             $hasPatientIdCol = $this->journalHasPatientIdColumn();
+            $hasAccountIdCol = $this->journalHasAccountIdColumn();
 
             if ($id) {
                 $journal = Journal::find($id);
@@ -667,6 +1119,10 @@ class JournalController extends Controller
                     'user_id'           => Auth::id(),
                 ];
 
+                if ($hasAccountIdCol && !empty($validated['account_id'])) {
+                    $data['account_id'] = $validated['account_id'];
+                }
+
                 if ($hasPatientIdCol && $patientId) {
                     $data['patient_id'] = $patientId;
                 }
@@ -694,6 +1150,10 @@ class JournalController extends Controller
                         ?? null,
                     'user_id'           => Auth::id(),
                 ];
+
+                if ($hasAccountIdCol && !empty($validated['account_id'])) {
+                    $data['account_id'] = $validated['account_id'];
+                }
 
                 if ($hasPatientIdCol && $patientId) {
                     $data['patient_id'] = $patientId;
@@ -750,7 +1210,10 @@ class JournalController extends Controller
             return Registrations::where('reg_id', $validated['reg_id'])->first();
         }
 
-        if (in_array($validated['ref_type'], ['sale', 'parchase', 'patient', 'external_prescription'])) {
+        if (in_array($validated['ref_type'], [
+            'sale', 'parchase', 'patient', 'external_prescription',
+            ...self::ACCOUNT_REF_TYPES,
+        ])) {
             return null;
         }
 
@@ -800,6 +1263,24 @@ class JournalController extends Controller
         if ($hasColumn === null) {
             try {
                 $hasColumn = Schema::hasColumn('journals', 'patient_id');
+            } catch (\Throwable $e) {
+                $hasColumn = false;
+            }
+        }
+
+        return $hasColumn;
+    }
+
+    /* ============================================================
+     *  ✅ بررسی وجود ستون account_id
+     * ============================================================ */
+    private function journalHasAccountIdColumn(): bool
+    {
+        static $hasColumn = null;
+
+        if ($hasColumn === null) {
+            try {
+                $hasColumn = Schema::hasColumn('journals', 'account_id');
             } catch (\Throwable $e) {
                 $hasColumn = false;
             }

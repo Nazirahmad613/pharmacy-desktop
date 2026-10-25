@@ -11,12 +11,6 @@ use Illuminate\Validation\ValidationException;
 
 class AccountController extends Controller
 {
-    /*
-    |--------------------------------------------------------------------------
-    | انواع حساب (✅ employee اضافه شد)
-    |--------------------------------------------------------------------------
-    */
-
     private array $accountTypes = [
         'asset',
         'liability',
@@ -27,13 +21,6 @@ class AccountController extends Controller
         'payable',
         'employee',
     ];
-
-    /*
-    |--------------------------------------------------------------------------
-    | دسته‌بندی حساب‌ها
-    |--------------------------------------------------------------------------
-    | ✅ کارمندی‌ها از payable حذف و به employee منتقل شدند.
-    */
 
     private array $categories = [
 
@@ -93,19 +80,15 @@ class AccountController extends Controller
             'other_creditors',
         ],
 
-        // ✅ Employee - کارمندان (سه گروه)
         'employee' => [
-            // رسمی
             'employee_doctor', 'employee_nurse', 'employee_radiology',
             'employee_laboratory', 'employee_pharmacy', 'employee_reception',
             'employee_administration', 'employee_finance', 'employee_cleaning',
             'employee_security', 'employee_kitchen', 'employee_other',
-            // قراردادی
             'contract_doctor', 'contract_nurse', 'contract_radiology',
             'contract_laboratory', 'contract_pharmacy', 'contract_reception',
             'contract_administration', 'contract_finance', 'contract_cleaning',
             'contract_security', 'contract_kitchen', 'contract_other',
-            // کارگرها
             'worker_construction', 'worker_cleaning', 'worker_loading',
             'worker_gardening', 'worker_kitchen', 'worker_laundry',
             'worker_maintenance', 'worker_security', 'worker_other',
@@ -556,7 +539,8 @@ class AccountController extends Controller
 
     public function customersIncome(Request $request)
     {
-        $query = Account::query()->where('account_category', 'customers_income');
+        // ✅ هماهنگ با JournalController: هم customers_income و هم customer_income
+        $query = Account::query()->whereIn('account_category', ['customers_income', 'customer_income']);
 
         if ($request->has('is_active')) {
             $isActive = filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
@@ -577,7 +561,6 @@ class AccountController extends Controller
         ]);
     }
 
-    // ✅ لیست کارمندان (رسمی / قراردادی / کارگر)
     public function employees(Request $request)
     {
         $query = Account::query()->where('account_type', 'employee');
@@ -611,6 +594,121 @@ class AccountController extends Controller
         ]);
     }
 
+    /* ============================================================
+     * ✅ جدید: دریافت حساب‌ها بر اساس ref_type ژورنال
+     *    (برای هماهنگی دقیق با ACCOUNT_REF_MAP در JournalController)
+     * ============================================================ */
+    public function refSources(Request $request)
+    {
+        $request->validate([
+            'ref_type' => 'required|string',
+            'search'   => 'nullable|string|max:255',
+            'limit'    => 'nullable|integer|min:1|max:500',
+        ]);
+
+        $refType = $request->ref_type;
+        $search  = $request->search;
+        $limit   = (int) $request->get('limit', 200);
+
+        // ✅ نقشه‌برداری ref_type → type + categories
+        $map = [
+            'customer_account' => [
+                'type'       => 'receivable',
+                'categories' => ['customers', 'corporate_customers', 'companies'],
+            ],
+            'corporate_customer' => [
+                'type'       => 'receivable',
+                'categories' => ['corporate_customers', 'companies'],
+            ],
+            'insurance_company' => [
+                'type'       => 'receivable',
+                'categories' => ['insurance_companies'],
+            ],
+            'supplier_account' => [
+                'type'       => 'payable',
+                'categories' => [
+                    'medicine_suppliers',
+                    'medical_equipment_suppliers',
+                    'laboratory_material_suppliers',
+                    'consumable_material_suppliers',
+                    'vendors',
+                    'contractors',
+                    'other_creditors',
+                ],
+            ],
+            'medicine_supplier' => [
+                'type'       => 'payable',
+                'categories' => ['medicine_suppliers'],
+            ],
+            'equipment_supplier' => [
+                'type'       => 'payable',
+                'categories' => ['medical_equipment_suppliers'],
+            ],
+            'laboratory_material_supplier' => [
+                'type'       => 'payable',
+                'categories' => ['laboratory_material_suppliers'],
+            ],
+            'consumable_material_supplier' => [
+                'type'       => 'payable',
+                'categories' => ['consumable_material_suppliers'],
+            ],
+            'customer_income' => [
+                'type'       => 'income',
+                'categories' => ['customers_income', 'customer_income'],
+            ],
+        ];
+
+        if (!isset($map[$refType])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'نوع منبع نامعتبر است.',
+            ], 422);
+        }
+
+        $config = $map[$refType];
+
+        $query = Account::query()
+            ->where('account_type', $config['type'])
+            ->whereIn('account_category', $config['categories'])
+            ->where('is_active', true);
+
+        if (!empty($search)) {
+            $s = trim($search);
+            $query->where(function ($q) use ($s) {
+                $q->where('account_name', 'like', "%{$s}%")
+                  ->orWhere('account_code', 'like', "%{$s}%")
+                  ->orWhere('tazkira_number', 'like', "%{$s}%");
+            });
+        }
+
+        $accounts = $query
+            ->orderBy('account_name')
+            ->limit($limit)
+            ->get(['id', 'account_code', 'account_name', 'account_category', 'tazkira_number']);
+
+        // ✅ خروجی استاندارد مشابه Journal::getRefSources
+        $sources = $accounts->map(function ($a) {
+            return [
+                'id'           => $a->id,
+                'name'         => $a->account_name,
+                'code'         => $a->account_code,
+                'national_id'  => $a->tazkira_number,
+                'reg_id'       => null,
+                'category'     => $a->account_category,
+                'total_amount' => null,
+                'discount'     => 0,
+                'paid_amount'  => 0,
+            ];
+        })->toArray();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $sources,
+            'count'   => count($sources),
+            'type'    => $refType,
+        ]);
+    }
+
     public function categories($accountType)
     {
         if (!array_key_exists($accountType, $this->categories)) {
@@ -638,7 +736,6 @@ class AccountController extends Controller
 
         $customersCount = Account::where('account_category', 'customers')->count();
 
-        // ✅ شمارش کارمندان بر اساس نوع مستقل employee
         $employeesCount = Account::where('account_type', 'employee')->count();
         $officialEmployeesCount = Account::where('account_type', 'employee')
             ->where('account_category', 'like', 'employee_%')->count();
@@ -679,23 +776,19 @@ class AccountController extends Controller
             'opening_balance_type' => ['nullable', Rule::in(['debit', 'credit'])],
             'currency' => ['required', Rule::in(['AFN', 'USD', 'EUR', 'PKR', 'IRR', 'AED'])],
 
-            // ✅ اطلاعات هویتی
             'tazkira_number' => ['nullable', 'string', 'max:30'],
             'tax_number' => ['nullable', 'string', 'max:50'],
 
-            // اطلاعات تماس
             'contact_person' => ['nullable', 'string', 'max:200'],
             'phone' => ['nullable', 'string', 'max:30'],
             'mobile' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
 
-            // آدرس
             'country' => ['nullable', 'string', 'max:100'],
             'province' => ['nullable', 'string', 'max:100'],
             'district' => ['nullable', 'string', 'max:100'],
             'address' => ['nullable', 'string'],
 
-            // شرایط مالی
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
 
             'description' => ['nullable', 'string'],
