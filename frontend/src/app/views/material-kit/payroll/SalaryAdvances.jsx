@@ -23,6 +23,25 @@ const ACCOUNT_TYPE_FA = {
   payable: "بدهی‌ها", employee: "کارمندان",
 };
 
+// ✅ نوعیت حساب: اولویت با نوع کلی (مثلاً «کارمندان»)
+const getAccountTypeDisplay = (row) => {
+  if (!row) return "—";
+  return (
+    row.accountTypeLabel
+    || ACCOUNT_TYPE_FA[row.accountType]
+    || row.accountType
+    || "—"
+  );
+};
+
+// ✅ بخش: اولویت با department (که برای accounts = categoryLabel است)
+const resolveDepartment = (row) => {
+  if (!row) return "—";
+  const dept = row.department || "";
+  if (dept) return dept;
+  return row.accountCategoryLabel || "—";
+};
+
 const toGregorian = (jalaliStr) => {
   if (!jalaliStr) return new Date().toISOString().slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(jalaliStr)) return jalaliStr;
@@ -100,30 +119,38 @@ export default function SalaryAdvances() {
       setError(null);
       const res = await api.get("/payroll/advances");
       if (res.data?.success) {
-        const normalizedData = (res.data.data || []).map((a) => ({
-          id: a.id,
-          employee: a.employee || "—",
-          employeeId: a.employeeId || a.userId || a.accountId,
-          userId: a.userId || null,
-          accountId: a.accountId || null,
-          source: a.source || (a.userId ? "user" : "account"),
-          sourceLabel: a.sourceLabel || "",
-          department: a.department || "—",
-          amount: Number(a.amount) || 0,
-          reason: a.reason || "",
-          date: a.date || a.requestDate || "",
-          targetMonth: a.targetMonth || "",
-          targetYear: a.targetYear || "",
-          status: a.status || "—",
-          statusRaw: a.statusRaw || "pending",
-          repaid: Number(a.repaid ?? a.repaidAmount ?? 0),
-          remaining: Number(a.remaining ?? a.remainingAmount ?? 0),
-          repaymentMonths: Number(a.repaymentMonths) || 1,
-          monthlyDeduction: Number(a.monthlyDeduction) || 0,
-          // ✅ جدید
-          tazkiraNumber: a.tazkiraNumber ?? a.tazkira_number ?? null,
-          accountType: a.accountType ?? a.account_type ?? null,
-        }));
+        const normalizedData = (res.data.data || []).map((a) => {
+          const row = {
+            id: a.id,
+            employee: a.employee || "—",
+            employeeId: a.employeeId || a.userId || a.accountId,
+            userId: a.userId || null,
+            accountId: a.accountId || null,
+            source: a.source || (a.userId ? "user" : "account"),
+            sourceLabel: a.sourceLabel || "",
+            department: a.department || "—",
+            amount: Number(a.amount) || 0,
+            reason: a.reason || "",
+            date: a.date || a.requestDate || "",
+            targetMonth: a.targetMonth || "",
+            targetYear: a.targetYear || "",
+            status: a.status || "—",
+            statusRaw: a.statusRaw || "pending",
+            repaid: Number(a.repaid ?? a.repaidAmount ?? 0),
+            remaining: Number(a.remaining ?? a.remainingAmount ?? 0),
+            repaymentMonths: Number(a.repaymentMonths) || 1,
+            monthlyDeduction: Number(a.monthlyDeduction) || 0,
+
+            tazkiraNumber:        a.tazkiraNumber        ?? a.tazkira_number        ?? null,
+            accountType:          a.accountType          ?? a.account_type          ?? null,
+            accountCategory:      a.accountCategory      ?? a.account_category      ?? null,
+            accountTypeLabel:     a.accountTypeLabel     ?? a.account_type_label    ?? null,
+            accountCategoryLabel: a.accountCategoryLabel ?? a.account_category_label ?? null,
+          };
+          // ✅ بخش نهایی
+          row.department = resolveDepartment(row);
+          return row;
+        });
 
         setAdvances(normalizedData);
         setStats(res.data.stats || { totalAdvances: 0, totalRepaid: 0, remaining: 0 });
@@ -156,6 +183,8 @@ export default function SalaryAdvances() {
         employeeCode: e.employeeCode || "",
         tazkiraNumber: e.tazkiraNumber || e.tazkira_number || "",
         accountType: e.accountType || e.account_type || "",
+        accountTypeLabel: e.accountTypeLabel || "",
+        accountCategoryLabel: e.accountCategoryLabel || "",
       })));
     } catch (err) {
       console.error("fetchEmployees error:", err);
@@ -289,8 +318,8 @@ export default function SalaryAdvances() {
             <TableRow sx={{ bgcolor: "grey.100" }}>
               <TableCell align="right">#</TableCell>
               <TableCell align="right">کارمند</TableCell>
-              <TableCell align="right">تذکره</TableCell>{/* ✅ جدید */}
-              <TableCell align="right">نوعیت حساب</TableCell>{/* ✅ جدید */}
+              <TableCell align="right">تذکره</TableCell>
+              <TableCell align="right">نوعیت حساب</TableCell>
               <TableCell align="right">منبع</TableCell>
               <TableCell align="right">بخش</TableCell>
               <TableCell align="right">مبلغ</TableCell>
@@ -317,13 +346,10 @@ export default function SalaryAdvances() {
                   <TableCell align="right">{idx + 1}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: "bold" }}>{a.employee}</TableCell>
                   <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "12px" }}>
-                    {a.tazkiraNumber || "—"}{/* ✅ جدید */}
+                    {a.tazkiraNumber || "—"}
                   </TableCell>
                   <TableCell align="right">
-                    {a.accountType ? (/* ✅ جدید */
-                      <Chip label={ACCOUNT_TYPE_FA[a.accountType] || a.accountType}
-                        size="small" color="primary" variant="outlined" />
-                    ) : "—"}
+                    <Chip label={getAccountTypeDisplay(a)} size="small" color="primary" variant="outlined" />
                   </TableCell>
                   <TableCell align="right">
                     <Chip
@@ -408,6 +434,9 @@ export default function SalaryAdvances() {
                           {option.department ? ` • ${option.department}` : ""}
                           {option.employeeCode ? ` • ${option.employeeCode}` : ""}
                           {option.tazkiraNumber ? ` • تذکره: ${option.tazkiraNumber}` : ""}
+                          {(option.accountCategoryLabel || option.accountTypeLabel)
+                            ? ` • ${option.accountCategoryLabel || option.accountTypeLabel}`
+                            : ""}
                         </Typography>
                       </Box>
                     </Box>

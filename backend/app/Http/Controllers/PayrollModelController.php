@@ -20,24 +20,258 @@ class PayrollModelController extends Controller
 {
     protected PayrollJournalService $journalService;
 
+    /*
+    |--------------------------------------------------------------------------
+    | ✅ برچسب‌های فارسی نوعیت و دسته‌بندی حساب
+    |--------------------------------------------------------------------------
+    */
+
+    private array $typeLabels = [
+        'asset'      => 'دارایی',
+        'liability'  => 'بدهی',
+        'equity'     => 'سرمایه',
+        'income'     => 'درآمد',
+        'expense'    => 'هزینه',
+        'receivable' => 'مطالبات',
+        'payable'    => 'بدهی‌ها',
+        'employee'   => 'کارمندان',
+    ];
+
+    private array $categoryLabels = [
+        // Asset
+        'cash' => 'نقدی', 'bank' => 'بانکی',
+        'medicine_inventory' => 'موجودی ادویه',
+        'laboratory_inventory' => 'موجودی لابراتوار',
+        'consumable_inventory' => 'موجودی مصرفی',
+        'medical_equipment' => 'تجهیزات طبی',
+        'office_equipment' => 'تجهیزات دفتری',
+        'tools_and_supplies' => 'ابزار و لوازم',
+        'building' => 'ساختمان', 'land' => 'زمین',
+        'vehicle' => 'وسیله نقلیه', 'furniture' => 'فرنیچر',
+        'prepayments' => 'پیش‌پرداخت‌ها', 'deposits' => 'سپرده‌ها',
+        'other_assets' => 'سایر دارایی‌ها',
+
+        // Liability
+        'suppliers' => 'تأمین‌کنندگان',
+        'medicine_purchase_payable' => 'بدهی خرید ادویه',
+        'equipment_purchase_payable' => 'بدهی خرید تجهیزات',
+        'laboratory_material_payable' => 'بدهی مواد لابراتوار',
+        'salary_payable' => 'بدهی معاشات',
+        'tax_payable' => 'بدهی مالیه',
+        'loans' => 'قرض‌ها', 'bank_loans' => 'قرض بانکی',
+        'contractual_liabilities' => 'تعهدات قراردادی',
+        'other_liabilities' => 'سایر بدهی‌ها',
+
+        // Equity
+        'initial_capital' => 'سرمایه اولیه',
+        'owner_capital' => 'سرمایه مالک',
+        'partners_capital' => 'سرمایه شرکا',
+        'retained_earnings' => 'سود انباشته',
+        'retained_losses' => 'ضرر انباشته',
+        'owner_drawings' => 'برداشت مالک',
+        'other_equity' => 'سایر سرمایه',
+
+        // Income
+        'medical_services_income' => 'درآمد خدمات طبی',
+        'consultation_income' => 'درآمد مشاوره',
+        'laboratory_income' => 'درآمد لابراتوار',
+        'radiology_income' => 'درآمد رادیولوژی',
+        'operation_income' => 'درآمد عملیات',
+        'admission_income' => 'درآمد بستر',
+        'pharmacy_income' => 'درآمد دواخانه',
+        'goods_sales_income' => 'درآمد فروش اجناس',
+        'operation_room_income' => 'درآمد اتاق عملیات',
+        'other_services_income' => 'درآمد سایر خدمات',
+        'non_operating_income' => 'درآمد غیرعملیاتی',
+        'rent_income' => 'درآمد کرایه',
+        'customers_income' => 'درآمد از مشتریان',
+        'other_income' => 'سایر درآمدها',
+
+        // Expense
+        'salary_expense' => 'مصرف معاشات',
+        'rent_expense' => 'مصرف کرایه',
+        'electricity_expense' => 'مصرف برق',
+        'water_expense' => 'مصرف آب',
+        'internet_expense' => 'مصرف انترنت',
+        'telephone_expense' => 'مصرف تلیفون',
+        'transportation_expense' => 'مصرف ترانسپورت',
+        'consumable_material_expense' => 'مصرف مواد مصرفی',
+        'medical_material_expense' => 'مصرف مواد طبی',
+        'laboratory_material_expense' => 'مصرف مواد لابراتوار',
+        'cleaning_material_expense' => 'مصرف مواد پاک‌کاری',
+        'repair_expense' => 'مصرف تعمیرات',
+        'medical_equipment_repair_expense' => 'مصرف تعمیر تجهیزات طبی',
+        'building_repair_expense' => 'مصرف تعمیر ساختمان',
+        'fuel_expense' => 'مصرف سوخت',
+        'stationery_expense' => 'مصرف قرطاسیه',
+        'administrative_expense' => 'مصرف اداری',
+        'marketing_expense' => 'مصرف بازاریابی',
+        'legal_expense' => 'مصرف حقوقی',
+        'tax_and_duty_expense' => 'مصرف مالیه و عوارض',
+        'insurance_expense' => 'مصرف بیمه',
+        'bank_charge_expense' => 'مصرف کمیشن بانکی',
+        'depreciation_expense' => 'مصرف استهلاک',
+        'other_expense' => 'سایر مصارف',
+
+        // Receivable
+        'insurance_companies' => 'شرکت‌های بیمه',
+        'contracting_institutions' => 'مؤسسات قراردادی',
+        'companies' => 'شرکت‌ها',
+        'corporate_customers' => 'مشتریان شرکتی',
+        'customers' => 'مشتریان',
+        'miscellaneous_receivables' => 'مطالبات متفرقه',
+        'other_receivables' => 'سایر مطالبات',
+
+        // Payable
+        'medicine_suppliers' => 'تأمین‌کنندگان ادویه',
+        'medical_equipment_suppliers' => 'تأمین‌کنندگان تجهیزات طبی',
+        'laboratory_material_suppliers' => 'تأمین‌کنندگان مواد لابراتوار',
+        'consumable_material_suppliers' => 'تأمین‌کنندگان مواد مصرفی',
+        'vendors' => 'فروشندگان', 'contractors' => 'پیمانکاران',
+        'salary_payables' => 'معاشات قابل پرداخت',
+        'tax_payables' => 'مالیات قابل پرداخت',
+        'bank_payables' => 'بدهی بانکی',
+        'other_creditors' => 'سایر طلبکاران',
+
+        // ✅ Employee - رسمی
+        'employee_doctor' => 'داکتر',
+        'employee_nurse' => 'نرس',
+        'employee_radiology' => 'کارمند رادیولوژی',
+        'employee_laboratory' => 'کارمند لابراتوار',
+        'employee_pharmacy' => 'کارمند دواخانه',
+        'employee_reception' => 'کارمند پذیرش',
+        'employee_administration' => 'کارمند اداری',
+        'employee_finance' => 'کارمند مالی / حسابداری',
+        'employee_cleaning' => 'کارمند نظافت',
+        'employee_security' => 'کارمند امنیت',
+        'employee_kitchen' => 'کارمند آشپزخانه',
+        'employee_other' => 'سایر کارمندان رسمی',
+
+        // ✅ Employee - قراردادی
+        'contract_doctor' => 'داکتر قراردادی',
+        'contract_nurse' => 'نرس قراردادی',
+        'contract_radiology' => 'کارمند رادیولوژی قراردادی',
+        'contract_laboratory' => 'کارمند لابراتوار قراردادی',
+        'contract_pharmacy' => 'کارمند دواخانه قراردادی',
+        'contract_reception' => 'کارمند پذیرش قراردادی',
+        'contract_administration' => 'کارمند اداری قراردادی',
+        'contract_finance' => 'کارمند مالی قراردادی',
+        'contract_cleaning' => 'کارمند نظافت قراردادی',
+        'contract_security' => 'کارمند امنیت قراردادی',
+        'contract_kitchen' => 'کارمند آشپزخانه قراردادی',
+        'contract_other' => 'سایر کارمندان قراردادی',
+
+        // ✅ Employee - کارگرها
+        'worker_construction' => 'کارگر ساختمانی',
+        'worker_cleaning' => 'کارگر نظافت',
+        'worker_loading' => 'کارگر بارگیری',
+        'worker_gardening' => 'کارگر باغبانی',
+        'worker_kitchen' => 'کارگر آشپزخانه',
+        'worker_laundry' => 'کارگر لباس‌شویی',
+        'worker_maintenance' => 'کارگر تعمیرات',
+        'worker_security' => 'کارگر نگهبانی',
+        'worker_other' => 'سایر کارگرها',
+    ];
+
     public function __construct(PayrollJournalService $journalService)
     {
         $this->journalService = $journalService;
     }
 
     // ============================================================
-    // 📊 DASHBOARD
+    // 🔧 کمکی: برچسب‌ها
+    // ============================================================
+    private function typeLabel(?string $type): ?string
+    {
+        return $type ? ($this->typeLabels[$type] ?? $type) : null;
+    }
+
+    private function categoryLabel(?string $category): ?string
+    {
+        return $category ? ($this->categoryLabels[$category] ?? $category) : null;
+    }
+
+    /**
+     * ✅ محاسبه «بخش» برای نمایش در جدول
+     * - برای user: department.name
+     * - برای account: categoryLabel (مثلاً «کارمند رادیولوژی»)
+     * - اگر هیچ‌کدام: '—'
+     */
+    private function resolveDepartmentLabel($user, $account): string
+    {
+        if ($user && $user->department) {
+            return $user->department->name ?? '—';
+        }
+        if ($account) {
+            $label = $this->categoryLabel($account->account_category ?? null);
+            if ($label) return $label;
+            return $account->account_code ?? '—';
+        }
+        return '—';
+    }
+
+    /**
+     * ✅ خروجی استاندارد فیلدهای «حساب» (تذکره، نوع، دسته، برچسب‌ها)
+     */
+    private function accountFields($account): array
+    {
+        $accType     = $account->account_type     ?? null;
+        $accCategory = $account->account_category ?? null;
+
+        return [
+            'tazkiraNumber'        => $account->tazkira_number ?? null,
+            'accountType'          => $accType,
+            'accountCategory'      => $accCategory,
+            'accountTypeLabel'     => $this->typeLabel($accType),
+            'accountCategoryLabel' => $this->categoryLabel($accCategory),
+        ];
+    }
+
+    // ============================================================
+    // 📊 DASHBOARD (✅ اصلاح‌شده برای فیلتر ماه/سال)
     // ============================================================
     public function getDashboard(Request $request)
     {
         try {
+            /*
+            |--------------------------------------------------------------------------
+            | ✅ 1) تعیین دوره بر اساس ماه/سال ارسالی از فرانت
+            |--------------------------------------------------------------------------
+            */
+            $month = $request->query('month');
+            $year  = $request->query('year');
+
+            if ($month && $year) {
+                $period = PayrollPeriod::firstOrCreate(
+                    [
+                        'period_month' => trim($month),
+                        'period_year'  => trim($year),
+                    ],
+                    [
+                        'status'       => 'open',
+                        'total_amount' => 0,
+                        'paid_amount'  => 0,
+                    ]
+                );
+            } else {
+                $period = PayrollPeriod::orderBy('created_at', 'desc')->first();
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | ✅ 2) آمار کلی کارمندان
+            |--------------------------------------------------------------------------
+            */
             $employeeStats = DB::table('v_active_employees')
                 ->selectRaw('COUNT(*) as total')
                 ->selectRaw('COALESCE(SUM(base_salary + allowances - deductions), 0) as total_salaries')
                 ->first();
 
-            $period = PayrollPeriod::orderBy('created_at', 'desc')->first();
-
+            /*
+            |--------------------------------------------------------------------------
+            | ✅ 3) آمار کلی پیش‌پرداخت‌ها
+            |--------------------------------------------------------------------------
+            */
             $advStats = DB::table('salary_advances')
                 ->whereIn('status', ['pending', 'approved', 'partially_repaid'])
                 ->selectRaw('COALESCE(SUM(amount), 0) as total')
@@ -45,45 +279,77 @@ class PayrollModelController extends Controller
                 ->selectRaw('COALESCE(SUM(remaining_amount), 0) as remaining')
                 ->first();
 
-            $totalSalaries   = (float) ($employeeStats->total_salaries ?? 0);
-            $paidThisMonth   = $period ? (float) $period->paid_amount : 0;
-            $periodTotal     = $period ? (float) $period->total_amount : 0;
-            $pendingPayments = max(0, $periodTotal - $paidThisMonth);
-            $progress        = $periodTotal > 0
-                ? (int) round(($paidThisMonth / $periodTotal) * 100)
-                : 0;
+            /*
+            |--------------------------------------------------------------------------
+            | ✅ 4) آمار پرداخت همین دوره
+            |--------------------------------------------------------------------------
+            */
+            if ($period) {
+                $periodTotal     = (float) $period->total_amount;
+                $paidThisMonth   = (float) $period->paid_amount;
+                $pendingPayments = max(0, $periodTotal - $paidThisMonth);
+                $progress        = $periodTotal > 0
+                    ? (int) round(($paidThisMonth / $periodTotal) * 100)
+                    : 0;
 
-            $recent = EmployeeSalary::with(['user.department', 'account', 'salaryInfo'])
-                ->orderBy('updated_at', 'desc')
-                ->limit(5)
-                ->get()
-                ->map(function ($s) {
-                    return [
-                        'id'         => $s->id,
-                        'name'       => $s->employee_name,
-                        'department' => $s->user->department->name ?? ($s->account->account_code ?? '—'),
-                        'amount'     => (float) $s->net_salary,
-                        'date'       => $s->payment_date
-                            ? $s->payment_date->format('Y-m-d')
-                            : $s->updated_at->format('Y-m-d'),
-                        'status'     => $s->payment_status === 'paid'
-                            ? 'پرداخت شده'
-                            : 'در انتظار',
-                        // ✅ جدید
-                        'tazkiraNumber' => $s->account->tazkira_number ?? null,
-                        'accountType'   => $s->account->account_type ?? null,
-                    ];
-                });
+                /*
+                |--------------------------------------------------------------------------
+                | ✅ 5) آخرین پرداخت‌های همین دوره (نه همه)
+                |--------------------------------------------------------------------------
+                */
+                $recent = EmployeeSalary::with(['user.department', 'account', 'salaryInfo'])
+                    ->where('period_id', $period->id)
+                    ->orderBy('updated_at', 'desc')
+                    ->limit(5)
+                    ->get()
+                    ->map(function ($s) {
+                        $departmentLabel = $this->resolveDepartmentLabel($s->user, $s->account);
+                        $fields = $this->accountFields($s->account);
 
+                        return array_merge([
+                            'id'         => $s->id,
+                            'name'       => $s->employee_name,
+                            'department' => $departmentLabel,
+                            'amount'     => (float) $s->net_salary,
+                            'date'       => $s->payment_date
+                                ? $s->payment_date->format('Y-m-d')
+                                : $s->updated_at->format('Y-m-d'),
+                            'status'     => $s->payment_status === 'paid'
+                                ? 'پرداخت شده'
+                                : 'در انتظار',
+                        ], $fields);
+                    });
+            } else {
+                $periodTotal     = 0;
+                $paidThisMonth   = 0;
+                $pendingPayments = 0;
+                $progress        = 0;
+                $recent          = collect();
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | ✅ 6) خروجی
+            |--------------------------------------------------------------------------
+            */
             return response()->json([
                 'success' => true,
+                'period'  => $period ? [
+                    'id'    => $period->id,
+                    'month' => $period->period_month,
+                    'year'  => $period->period_year,
+                ] : null,
                 'stats'   => [
+                    // آمار کلی
                     'totalEmployees'   => (int) ($employeeStats->total ?? 0),
-                    'totalSalaries'    => $totalSalaries,
+                    'totalSalaries'    => (float) ($employeeStats->total_salaries ?? 0),
+                    'totalAdvances'    => (float) ($advStats->total ?? 0),
+
+                    // آمار همین دوره
                     'paidThisMonth'    => $paidThisMonth,
                     'pendingPayments'  => $pendingPayments,
-                    'totalAdvances'    => (float) ($advStats->total ?? 0),
                     'paymentProgress'  => $progress,
+                    'periodTotal'      => $periodTotal,
                 ],
                 'recentPayments' => $recent,
             ]);
@@ -135,12 +401,16 @@ class PayrollModelController extends Controller
             $data = $rows->map(function ($r) {
                 $uniqueId = $r->source . '-' . $r->employee_id;
 
-                $sourceLabel = '—';
-                if ($r->source === 'user') {
-                    $sourceLabel = $r->role ?? 'کاربر';
-                } else {
-                    $sourceLabel = 'طرف‌حساب';
-                }
+                $sourceLabel = $r->source === 'user'
+                    ? ($r->role ?? 'کاربر')
+                    : 'طرف‌حساب';
+
+                $accType     = $r->account_type     ?? null;
+                $accCategory = $r->account_category ?? null;
+
+                $departmentLabel = $r->source === 'user'
+                    ? ($r->department_name ?? '—')
+                    : ($this->categoryLabel($accCategory) ?? ($r->account_code ?? '—'));
 
                 return [
                     'id'            => $uniqueId,
@@ -152,7 +422,7 @@ class PayrollModelController extends Controller
                     'sourceLabel'   => $sourceLabel,
                     'fullName'      => $r->full_name,
                     'email'         => $r->email,
-                    'department'    => $r->department_name,
+                    'department'    => $departmentLabel,
                     'departmentId'  => $r->department_id,
                     'employeeCode'  => $r->employee_code ?? $r->account_code,
                     'baseSalary'    => (float) $r->base_salary,
@@ -162,10 +432,12 @@ class PayrollModelController extends Controller
                     'hireDate'      => $r->hire_date ?? null,
                     'status'        => $r->salary_status === 'active' ? 'فعال' : 'غیرفعال',
                     'statusRaw'     => $r->salary_status,
-                    // ✅ جدید: تذکره و نوعیت حساب
-                    'tazkiraNumber'   => $r->tazkira_number ?? null,
-                    'accountType'     => $r->account_type ?? null,
-                    'accountCategory' => $r->account_category ?? null,
+
+                    'tazkiraNumber'        => $r->tazkira_number ?? null,
+                    'accountType'          => $accType,
+                    'accountCategory'      => $accCategory,
+                    'accountTypeLabel'     => $this->typeLabel($accType),
+                    'accountCategoryLabel' => $this->categoryLabel($accCategory),
                 ];
             });
 
@@ -366,8 +638,13 @@ class PayrollModelController extends Controller
                 ->where('period_id', $period->id);
 
             if ($department && $department !== 'all') {
-                $query->whereHas('user.department', function ($q) use ($department) {
-                    $q->where('name', $department);
+                $query->where(function ($q) use ($department) {
+                    $q->whereHas('user.department', function ($qq) use ($department) {
+                        $qq->where('name', $department);
+                    })
+                    ->orWhereHas('account', function ($qq) use ($department) {
+                        $qq->where('account_category', $department);
+                    });
                 });
             }
 
@@ -1063,9 +1340,7 @@ class PayrollModelController extends Controller
             ?? $info->account->account_name
             ?? '—';
 
-        $department = $info->user->department->name
-            ?? $info->account->account_code
-            ?? '—';
+        $department = $this->resolveDepartmentLabel($info->user, $info->account);
 
         $sourceLabel = '—';
         if ($info->user_id && $info->user) {
@@ -1074,7 +1349,9 @@ class PayrollModelController extends Controller
             $sourceLabel = 'طرف‌حساب';
         }
 
-        return [
+        $accFields = $this->accountFields($info->account);
+
+        return array_merge([
             'id'            => $info->id,
             'userId'        => $info->user_id,
             'accountId'     => $info->account_id,
@@ -1091,12 +1368,7 @@ class PayrollModelController extends Controller
             'hireDate'      => $info->hire_date,
             'status'        => $info->salary_status === 'active' ? 'فعال' : 'غیرفعال',
             'statusRaw'     => $info->salary_status,
-
-            // ✅ جدید
-            'tazkiraNumber'   => $info->account->tazkira_number ?? null,
-            'accountType'     => $info->account->account_type ?? null,
-            'accountCategory' => $info->account->account_category ?? null,
-        ];
+        ], $accFields);
     }
 
     private function salaryToArray(EmployeeSalary $s): array
@@ -1112,16 +1384,18 @@ class PayrollModelController extends Controller
         $tax       = (float) ($s->tax_amount ?? 0);
         $insurance = (float) ($s->insurance_amount ?? 0);
 
-        return [
+        $department = $this->resolveDepartmentLabel($s->user, $s->account);
+
+        $accFields = $this->accountFields($s->account);
+
+        return array_merge([
             'id'               => $s->id,
             'source'           => $s->employee_source,
             'sourceLabel'      => $sourceLabel,
             'userId'           => $s->user_id,
             'accountId'        => $s->account_id,
             'fullName'         => $s->employee_name,
-            'department'       => $s->user->department->name
-                ?? $s->account->account_code
-                ?? '—',
+            'department'       => $department,
             'employeeCode'     => $s->salaryInfo->employee_code
                 ?? $s->account->account_code
                 ?? null,
@@ -1140,12 +1414,7 @@ class PayrollModelController extends Controller
             'paymentMethod'    => $s->payment_method,
             'receiptNumber'    => $s->receipt_number,
             'notes'            => $s->notes,
-
-            // ✅ جدید
-            'tazkiraNumber'   => $s->account->tazkira_number ?? null,
-            'accountType'     => $s->account->account_type ?? null,
-            'accountCategory' => $s->account->account_category ?? null,
-        ];
+        ], $accFields);
     }
 
     private function advanceToArray(SalaryAdvance $a): array
@@ -1163,9 +1432,7 @@ class PayrollModelController extends Controller
             ?? $a->account->account_name
             ?? '—';
 
-        $department = $a->user->department->name
-            ?? $a->account->account_code
-            ?? '—';
+        $department = $this->resolveDepartmentLabel($a->user, $a->account);
 
         $sourceLabel = '—';
         if ($a->user_id && $a->user) {
@@ -1174,7 +1441,9 @@ class PayrollModelController extends Controller
             $sourceLabel = 'طرف‌حساب';
         }
 
-        return [
+        $accFields = $this->accountFields($a->account);
+
+        return array_merge([
             'id'               => $a->id,
             'employee'         => $employeeName,
             'employeeId'       => $a->user_id ?? $a->account_id,
@@ -1198,11 +1467,6 @@ class PayrollModelController extends Controller
             'remainingAmount'  => (float) $a->remaining_amount,
             'repaymentMonths'  => (int) $a->repayment_months,
             'monthlyDeduction' => (float) $a->monthly_deduction,
-
-            // ✅ جدید
-            'tazkiraNumber'   => $a->account->tazkira_number ?? null,
-            'accountType'     => $a->account->account_type ?? null,
-            'accountCategory' => $a->account->account_category ?? null,
-        ];
+        ], $accFields);
     }
 }

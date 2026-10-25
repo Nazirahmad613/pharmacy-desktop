@@ -33,6 +33,25 @@ const pickNumber = (obj, keys, fallback = 0) => {
   return fallback;
 };
 
+// ✅ نوعیت حساب: اولویت با نوع کلی (مثلاً «کارمندان»)
+const getAccountTypeDisplay = (row) => {
+  if (!row) return "—";
+  return (
+    row.accountTypeLabel
+    || ACCOUNT_TYPE_FA[row.accountType]
+    || row.accountType
+    || "—"
+  );
+};
+
+// ✅ بخش
+const resolveDepartment = (row) => {
+  if (!row) return "—";
+  const dept = row.department || "";
+  if (dept) return dept;
+  return row.accountCategoryLabel || "—";
+};
+
 const normalizeSalaryRow = (e = {}) => {
   const tax = pickNumber(e, ["tax", "taxAmount", "incomeTax", "tax_value", "deduction_tax", "tax_deduction"]);
   const insurance = pickNumber(e, ["insurance", "insuranceAmount", "insurance_value", "insuranceDeduction", "socialSecurity", "social_security", "deduction_insurance"]);
@@ -44,14 +63,20 @@ const normalizeSalaryRow = (e = {}) => {
   const grossSalary = pickNumber(e, ["grossSalary", "gross_salary"]) || baseSalary + allowances;
   const netSalary = pickNumber(e, ["netSalary", "net_salary"]) || grossSalary - deductions - tax - insurance - advanceDeduction;
 
-  return {
+  const normalized = {
     ...e,
     baseSalary, allowances, deductions, tax, insurance, advanceDeduction,
     grossSalary, netSalary,
-    // ✅ جدید
-    tazkiraNumber: e.tazkiraNumber ?? e.tazkira_number ?? null,
-    accountType: e.accountType ?? e.account_type ?? null,
+
+    tazkiraNumber:        e.tazkiraNumber        ?? e.tazkira_number        ?? null,
+    accountType:          e.accountType          ?? e.account_type          ?? null,
+    accountCategory:      e.accountCategory      ?? e.account_category      ?? null,
+    accountTypeLabel:     e.accountTypeLabel     ?? e.account_type_label    ?? null,
+    accountCategoryLabel: e.accountCategoryLabel ?? e.account_category_label ?? null,
   };
+
+  normalized.department = resolveDepartment(normalized);
+  return normalized;
 };
 
 export default function EmployeeSalaries() {
@@ -305,8 +330,8 @@ export default function EmployeeSalaries() {
             <TableRow sx={{ bgcolor: "grey.100" }}>
               <TableCell align="right">#</TableCell>
               <TableCell align="right">نام کامل</TableCell>
-              <TableCell align="right">تذکره</TableCell>{/* ✅ جدید */}
-              <TableCell align="right">نوعیت حساب</TableCell>{/* ✅ جدید */}
+              <TableCell align="right">تذکره</TableCell>
+              <TableCell align="right">نوعیت حساب</TableCell>
               <TableCell align="right">منبع</TableCell>
               <TableCell align="right">کد کارمند</TableCell>
               <TableCell align="right">بخش</TableCell>
@@ -333,15 +358,13 @@ export default function EmployeeSalaries() {
                   <TableCell align="right">{idx + 1}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
                   <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "12px" }}>
-                    {e.tazkiraNumber || "—"}{/* ✅ جدید */}
+                    {e.tazkiraNumber || "—"}
                   </TableCell>
                   <TableCell align="right">
-                    {e.accountType ? (/* ✅ جدید */
-                      <Chip
-                        label={ACCOUNT_TYPE_FA[e.accountType] || e.accountType}
-                        size="small" color="primary" variant="outlined"
-                      />
-                    ) : "—"}
+                    <Chip
+                      label={getAccountTypeDisplay(e)}
+                      size="small" color="primary" variant="outlined"
+                    />
                   </TableCell>
                   <TableCell align="right">
                     <Chip

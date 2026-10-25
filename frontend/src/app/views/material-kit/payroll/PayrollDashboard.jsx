@@ -1,449 +1,657 @@
-// src/app/routes/payroll/SalaryPayment.jsx
+// src/app/routes/payroll/PayrollDashboard.jsx
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  Box, Card, CardContent, Typography, Grid, TextField, MenuItem,
-  Button, Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, Paper, Chip, Dialog, DialogTitle, DialogContent,
-  DialogActions, Alert, Snackbar, Divider, CircularProgress,
+  Box, Card, CardContent, Typography, Grid, Button, Chip,
+  CircularProgress, Alert, LinearProgress, Divider, Avatar,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, MenuItem, TextField,
 } from "@mui/material";
-import PaymentIcon from "@mui/icons-material/Payment";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import PersonIcon from "@mui/icons-material/Person";
-import BusinessIcon from "@mui/icons-material/Business";
+import PeopleIcon from "@mui/icons-material/People";
+import PaymentsIcon from "@mui/icons-material/Payments";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import TrendingDownIcon from "@mui/icons-material/TrendingDown";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import PendingIcon from "@mui/icons-material/Pending";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import api from "../../../../api";
+
+const ACCOUNT_TYPE_FA = {
+  asset: "دارایی", liability: "بدهی", equity: "سرمایه",
+  income: "درآمد", expense: "هزینه", receivable: "مطالبات",
+  payable: "بدهی‌ها", employee: "کارمندان",
+};
 
 const MONTHS = [
   "حمل", "ثور", "جوزا", "سرطان", "اسد", "سنبله",
   "میزان", "عقرب", "قوس", "جدی", "دلو", "حوت",
 ];
 
-// ✅ ترجمه نوعیت حساب برای نمایش
-const ACCOUNT_TYPE_FA = {
-  asset: "دارایی",
-  liability: "بدهی",
-  equity: "سرمایه",
-  income: "درآمد",
-  expense: "هزینه",
-  receivable: "مطالبات",
-  payable: "بدهی‌ها",
-  employee: "کارمندان",
-};
+// ✅ تبدیل تاریخ میلادی به شمسی
+const getJalaliDate = (date = new Date()) => {
+  const gy = date.getFullYear();
+  const gm = date.getMonth() + 1;
+  const gd = date.getDate();
 
-// ✅ انتخاب اولین فیلد عددی موجود از میان چند نام جایگزین
-const pickNumber = (obj, keys, fallback = 0) => {
-  for (const k of keys) {
-    const v = obj?.[k];
-    if (v !== undefined && v !== null && v !== "") {
-      const n = Number(v);
-      if (!Number.isNaN(n)) return n;
-    }
+  const gDaysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const jDaysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
+
+  const isLeap = (gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0;
+  if (isLeap) gDaysInMonth[1] = 29;
+
+  let gDayOfYear = gd;
+  for (let i = 0; i < gm - 1; i++) gDayOfYear += gDaysInMonth[i];
+
+  let jDayOfYear = gDayOfYear - 79;
+  let jy = gy - 621;
+
+  if (jDayOfYear <= 0) {
+    jy--;
+    jDayOfYear += 365 + (isLeap ? 1 : 0);
   }
-  return fallback;
-};
 
-// ✅ نرمال‌سازی ردیف معاش (شامل تذکره و نوعیت حساب)
-const normalizeSalaryRow = (e = {}) => {
-  const tax = pickNumber(e, [
-    "tax", "taxAmount", "incomeTax", "tax_value",
-    "deduction_tax", "tax_deduction",
-  ]);
-  const insurance = pickNumber(e, [
-    "insurance", "insuranceAmount", "insurance_value",
-    "insuranceDeduction", "socialSecurity", "social_security",
-    "deduction_insurance",
-  ]);
-  const advanceDeduction = pickNumber(e, [
-    "advanceDeduction", "advance_deduction", "advance",
-    "advanceAmount", "loanDeduction", "loan_deduction",
-  ]);
-  const baseSalary = pickNumber(e, ["baseSalary", "base_salary", "basicSalary"]);
-  const allowances = pickNumber(e, ["allowances", "allowance", "bonuses"]);
-  const deductions = pickNumber(e, ["deductions", "otherDeductions", "manualDeductions"]);
-
-  const grossSalary =
-    pickNumber(e, ["grossSalary", "gross_salary"]) ||
-    baseSalary + allowances;
-
-  const netSalary =
-    pickNumber(e, ["netSalary", "net_salary"]) ||
-    grossSalary - deductions - tax - insurance - advanceDeduction;
+  let jm = 0;
+  let remaining = jDayOfYear;
+  while (remaining > jDaysInMonth[jm]) {
+    remaining -= jDaysInMonth[jm];
+    jm++;
+    if (jm > 11) { jm = 0; jy++; }
+  }
 
   return {
-    ...e,
-    baseSalary,
-    allowances,
-    deductions,
-    tax,
-    insurance,
-    advanceDeduction,
-    grossSalary,
-    netSalary,
-    paid: e.paymentStatus === "paid" || e.paid === true,
-
-    // ✅ جدید: تذکره و نوعیت حساب (پشتیبانی از camelCase و snake_case)
-    tazkiraNumber: e.tazkiraNumber ?? e.tazkira_number ?? null,
-    accountType:   e.accountType   ?? e.account_type   ?? null,
+    year: jy,
+    month: jm + 1,
+    day: remaining,
+    monthName: MONTHS[jm],
+    yearStr: String(jy),
   };
 };
 
-export default function SalaryPayment() {
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+// ✅ لیست سال‌های قابل انتخاب (از سال جاری شمسی تا ۵ سال قبل)
+const buildYearOptions = (currentYear) => {
+  const years = [];
+  for (let y = currentYear + 1; y >= currentYear - 5; y--) {
+    years.push(String(y));
+  }
+  return years;
+};
+
+const getAccountTypeDisplay = (row) => {
+  if (!row) return "—";
+  return (
+    row.accountTypeLabel
+    || ACCOUNT_TYPE_FA[row.accountType]
+    || row.accountType
+    || "—"
+  );
+};
+
+const getDepartmentDisplay = (row) => {
+  if (!row) return "—";
+  const dept = row.department || "";
+  if (dept) return dept;
+  return row.accountCategoryLabel || "—";
+};
+
+const formatCurrency = (n) =>
+  new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
+
+const formatNumber = (n) =>
+  new Intl.NumberFormat("fa-AF").format(Number(n) || 0);
+
+// ✅ کارت آمار
+function StatCard({ title, value, subtitle, icon, color = "#3b82f6" }) {
+  return (
+    <Card
+      sx={{
+        background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+        border: `1px solid ${color}40`,
+        borderRadius: "12px",
+        transition: "all 0.2s",
+        height: "100%",
+        "&:hover": {
+          transform: "translateY(-2px)",
+          boxShadow: `0 8px 24px ${color}30`,
+        },
+      }}
+    >
+      <CardContent>
+        <Box display="flex" justifyContent="space-between" alignItems="flex-start">
+          <Box flex={1}>
+            <Typography sx={{ color: "#94a3b8", fontSize: "13px", mb: 1 }}>
+              {title}
+            </Typography>
+            <Typography sx={{ color: color, fontSize: "24px", fontWeight: "bold", mb: 0.5 }}>
+              {value}
+            </Typography>
+            {subtitle && (
+              <Typography sx={{ color: "#64748b", fontSize: "12px" }}>
+                {subtitle}
+              </Typography>
+            )}
+          </Box>
+          <Box
+            sx={{
+              width: "52px",
+              height: "52px",
+              borderRadius: "12px",
+              background: `${color}20`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            {React.cloneElement(icon, { sx: { color, fontSize: 28 } })}
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function PayrollDashboard() {
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
 
-  const [selectedMonth, setSelectedMonth] = useState(MONTHS[4]);
-  const [selectedYear, setSelectedYear] = useState("1403");
-  const [departmentFilter, setDepartmentFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  // ✅ دوره جاری شمسی (برای مقدار اولیه)
+  const currentJalali = getJalaliDate();
 
-  const [employees, setEmployees] = useState([]);
-  const [periodId, setPeriodId] = useState(null);
-  const [selectedEmployees, setSelectedEmployees] = useState([]);
+  // ✅ فیلتر ماه و سال
+  const [selectedMonth, setSelectedMonth] = useState(currentJalali.monthName);
+  const [selectedYear, setSelectedYear] = useState(currentJalali.yearStr);
 
-  const [confirmDialog, setConfirmDialog] = useState(false);
-  const [snackbar, setSnackbar] = useState({
-    open: false, msg: "", severity: "success",
-  });
+  // ✅ گزینه‌های سال
+  const yearOptions = buildYearOptions(currentJalali.year);
 
-  const fetchSalaries = useCallback(async () => {
+  // ✅ آیا فیلتر روی دوره جاری است؟
+  const isCurrentPeriod =
+    selectedMonth === currentJalali.monthName &&
+    selectedYear === currentJalali.yearStr;
+
+  const fetchDashboard = useCallback(async (month, year) => {
     try {
       setLoading(true);
       setError(null);
-      const params = { month: selectedMonth, year: selectedYear };
-      if (departmentFilter !== "all") params.department = departmentFilter;
-      if (statusFilter !== "all") params.status = statusFilter;
 
-      const res = await api.get("/payroll/salaries", { params });
+      const res = await api.get("/payroll/dashboard", {
+        params: {
+          month: month,
+          year: year,
+        },
+      });
 
       if (res.data?.success) {
-        const list = (res.data.data || []).map(normalizeSalaryRow);
-        setEmployees(list);
-        setPeriodId(res.data.period?.id || null);
+        setDashboard(res.data);
       } else {
-        setError(res.data?.message || "خطا در دریافت معاشات");
+        setError(res.data?.message || "خطا در دریافت داشبورد");
       }
     } catch (err) {
-      console.error("getSalaries error:", err);
+      console.error("getDashboard error:", err);
       setError(err.response?.data?.message || err.message || "خطا در ارتباط");
     } finally {
       setLoading(false);
     }
-  }, [selectedMonth, selectedYear, departmentFilter, statusFilter]);
+  }, []);
 
+  // ✅ وقتی ماه یا سال تغییر کرد، دوباره fetch کن
   useEffect(() => {
-    fetchSalaries();
-  }, [fetchSalaries]);
+    fetchDashboard(selectedMonth, selectedYear);
+  }, [selectedMonth, selectedYear, fetchDashboard]);
 
-  const handleGenerate = async () => {
-    if (!window.confirm(
-      `تولید معاشات برای ${selectedMonth} ${selectedYear}؟\n` +
-      `این کار برای همه کارمندان فعال معاش ایجاد می‌کند.`
-    )) return;
-
-    try {
-      setSaving(true);
-      const res = await api.post("/payroll/salaries/generate", {
-        month: selectedMonth,
-        year: selectedYear,
-      });
-
-      if (res.data?.success) {
-        setSnackbar({
-          open: true,
-          msg: `✅ ${res.data.generated} معاش تولید شد`,
-          severity: "success",
-        });
-        fetchSalaries();
-      }
-    } catch (err) {
-      setSnackbar({
-        open: true,
-        msg: err.response?.data?.message || "خطا در تولید",
-        severity: "error",
-      });
-    } finally {
-      setSaving(false);
-    }
+  const handleRefresh = () => {
+    fetchDashboard(selectedMonth, selectedYear);
   };
 
-  const formatCurrency = (n) =>
-    new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
+  const handleGoToCurrentPeriod = () => {
+    const p = getJalaliDate();
+    setSelectedMonth(p.monthName);
+    setSelectedYear(p.yearStr);
+  };
 
-  const departments = ["all", ...new Set(employees.map((e) => e.department).filter(Boolean))];
-
-  const filtered = employees.filter(
-    (e) => departmentFilter === "all" || e.department === departmentFilter
-  );
-
-  const calcNet = (e) => Number(e.netSalary) || 0;
-
-  const toggleSelect = (id) => {
-    setSelectedEmployees((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+  if (loading && !dashboard) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress />
+      </Box>
     );
-  };
+  }
 
-  const toggleAll = () => {
-    const unpaidIds = filtered.filter((e) => !e.paid).map((e) => e.id);
-    if (selectedEmployees.length === unpaidIds.length) {
-      setSelectedEmployees([]);
-    } else {
-      setSelectedEmployees(unpaidIds);
-    }
-  };
+  if (error && !dashboard) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+        <Button startIcon={<RefreshIcon />} variant="outlined" onClick={handleRefresh}>
+          تلاش مجدد
+        </Button>
+      </Box>
+    );
+  }
 
-  const totalSelected = filtered
-    .filter((e) => selectedEmployees.includes(e.id))
-    .reduce((sum, e) => sum + calcNet(e), 0);
+  if (!dashboard) return null;
 
-  const handlePayment = async () => {
-    try {
-      setSaving(true);
-      const res = await api.post("/payroll/salaries/pay-bulk", {
-        salaryIds: selectedEmployees,
-        paymentDate: new Date().toISOString().slice(0, 10),
-        method: "bank_transfer",
-      });
-
-      if (res.data?.success) {
-        setSnackbar({
-          open: true,
-          msg: res.data.message || `✅ ${res.data.paid} معاش پرداخت شد`,
-          severity: "success",
-        });
-        setSelectedEmployees([]);
-        fetchSalaries();
-      }
-    } catch (err) {
-      setSnackbar({
-        open: true,
-        msg: err.response?.data?.message || "خطا در پرداخت",
-        severity: "error",
-      });
-    } finally {
-      setSaving(false);
-      setConfirmDialog(false);
-    }
-  };
+  const stats = dashboard.stats || {};
+  const recentPayments = dashboard.recentPayments || [];
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" fontWeight="bold">💵 پرداخت معاش</Typography>
+    <Box dir="rtl" sx={{ p: 3, background: "#0f172a", minHeight: "100vh" }}>
+      {/* هدر */}
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+        flexWrap="wrap"
+        gap={2}
+      >
         <Box>
-          <Button startIcon={<PlayArrowIcon />} variant="outlined"
-            onClick={handleGenerate} disabled={saving} sx={{ mr: 1 }}>
-            تولید معاشات
-          </Button>
-          <Button startIcon={<RefreshIcon />} variant="outlined"
-            onClick={fetchSalaries} disabled={loading}>
-            بازخوانی
-          </Button>
+          <Typography variant="h4" fontWeight="bold" sx={{ color: "#fff" }}>
+            📊 داشبورد معاشات
+          </Typography>
+          <Box display="flex" alignItems="center" gap={1} sx={{ mt: 0.75 }}>
+            <CalendarMonthIcon sx={{ color: "#60a5fa", fontSize: 18 }} />
+            <Typography variant="body2" sx={{ color: "#94a3b8" }}>
+              دوره انتخابی:
+            </Typography>
+            <Chip
+              label={`${selectedMonth} ${selectedYear}`}
+              size="small"
+              sx={{
+                background: isCurrentPeriod
+                  ? "linear-gradient(135deg, #10b981, #059669)"
+                  : "linear-gradient(135deg, #3b82f6, #2563eb)",
+                color: "#fff",
+                fontWeight: "bold",
+                fontSize: "12px",
+              }}
+            />
+            {!isCurrentPeriod && (
+              <Button
+                size="small"
+                onClick={handleGoToCurrentPeriod}
+                sx={{ color: "#60a5fa", fontSize: "11px", textTransform: "none" }}
+              >
+                (برگشت به دوره جاری)
+              </Button>
+            )}
+          </Box>
         </Box>
+        <Button
+          startIcon={<RefreshIcon />}
+          variant="outlined"
+          onClick={handleRefresh}
+          disabled={loading}
+          sx={{
+            color: "#60a5fa",
+            borderColor: "#3b82f6",
+            "&:hover": {
+              borderColor: "#60a5fa",
+              background: "rgba(59, 130, 246, 0.1)",
+            },
+          }}
+        >
+          {loading ? "در حال بروزرسانی..." : "بروزرسانی"}
+        </Button>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-      <Card sx={{ mb: 3 }}>
+      {/* فیلتر ماه و سال */}
+      <Card
+        sx={{
+          background: "#1e293b",
+          border: "1px solid #334155",
+          borderRadius: "12px",
+          mb: 3,
+        }}
+      >
         <CardContent>
           <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={3}>
-              <TextField fullWidth select size="small" label="ماه"
+            <Grid item xs={12} sm={5} md={3}>
+              <TextField
+                fullWidth
+                select
+                size="small"
+                label="ماه"
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}>
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                sx={{
+                  "& .MuiOutlinedInput-root": {
+                    color: "#fff",
+                    background: "#0f172a",
+                    "& fieldset": { borderColor: "#334155" },
+                    "&:hover fieldset": { borderColor: "#60a5fa" },
+                    "&.Mui-focused fieldset": { borderColor: "#3b82f6" },
+                  },
+                  "& .MuiInputLabel-root": { color: "#94a3b8" },
+                  "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
+                }}
+              >
                 {MONTHS.map((m) => (
                   <MenuItem key={m} value={m}>{m}</MenuItem>
                 ))}
               </TextField>
             </Grid>
-            <Grid item xs={12} sm={2}>
-              <TextField fullWidth size="small" label="سال"
+            <Grid item xs={12} sm={5} md={3}>
+              <TextField
+                fullWidth
+                select
+                size="small"
+                label="سال"
                 value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)} />
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <TextField fullWidth select size="small" label="بخش"
-                value={departmentFilter}
-                onChange={(e) => setDepartmentFilter(e.target.value)}>
-                <MenuItem value="all">همه بخش‌ها</MenuItem>
-                {departments.filter((d) => d !== "all").map((d) => (
-                  <MenuItem key={d} value={d}>{d}</MenuItem>
+                onChange={(e) => setSelectedYear(e.target.value)}
+                sx={{
+                  "& .MuiOutlinedInput-root": {
+                    color: "#fff",
+                    background: "#0f172a",
+                    "& fieldset": { borderColor: "#334155" },
+                    "&:hover fieldset": { borderColor: "#60a5fa" },
+                    "&.Mui-focused fieldset": { borderColor: "#3b82f6" },
+                  },
+                  "& .MuiInputLabel-root": { color: "#94a3b8" },
+                  "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
+                }}
+              >
+                {yearOptions.map((y) => (
+                  <MenuItem key={y} value={y}>{y}</MenuItem>
                 ))}
               </TextField>
             </Grid>
-            <Grid item xs={12} sm={2}>
-              <TextField fullWidth select size="small" label="وضعیت"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}>
-                <MenuItem value="all">همه</MenuItem>
-                <MenuItem value="pending">در انتظار</MenuItem>
-                <MenuItem value="partial">جزئی</MenuItem>
-                <MenuItem value="paid">پرداخت شده</MenuItem>
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={2} sx={{ textAlign: "left" }}>
-              <Button variant="contained" color="success"
-                startIcon={<PaymentIcon />}
-                disabled={selectedEmployees.length === 0 || saving}
-                onClick={() => setConfirmDialog(true)}>
-                پرداخت ({selectedEmployees.length})
+            <Grid item xs={12} sm={2} md={2}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={handleGoToCurrentPeriod}
+                disabled={isCurrentPeriod}
+                sx={{
+                  color: isCurrentPeriod ? "#64748b" : "#10b981",
+                  borderColor: isCurrentPeriod ? "#334155" : "#10b981",
+                  "&:hover": {
+                    borderColor: "#10b981",
+                    background: "rgba(16, 185, 129, 0.1)",
+                  },
+                }}
+              >
+                دوره جاری
               </Button>
+            </Grid>
+            <Grid item xs={12} md={4} sx={{ textAlign: { xs: "right", md: "left" } }}>
+              <Typography sx={{ color: "#94a3b8", fontSize: "13px" }}>
+                {isCurrentPeriod
+                  ? "✅ در حال مشاهده دوره جاری"
+                  : `📅 در حال مشاهده ${selectedMonth} ${selectedYear}`}
+              </Typography>
             </Grid>
           </Grid>
         </CardContent>
       </Card>
 
-      {selectedEmployees.length > 0 && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <strong>{selectedEmployees.length}</strong> کارمند انتخاب شده - مجموع:{" "}
-          <strong>{formatCurrency(totalSelected)}</strong>
-        </Alert>
-      )}
+      {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {loading ? (
-        <Box display="flex" justifyContent="center" py={4}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper}>
-          <Table dir="rtl" size="small">
-            <TableHead>
-              <TableRow sx={{ bgcolor: "grey.100" }}>
-                <TableCell padding="checkbox" align="right">
-                  <input type="checkbox"
-                    checked={selectedEmployees.length > 0 &&
-                      selectedEmployees.length ===
-                      filtered.filter((e) => !e.paid).length}
-                    onChange={toggleAll} />
-                </TableCell>
-                <TableCell align="right">#</TableCell>
-                <TableCell align="right">نام کارمند</TableCell>
-                {/* ✅ ستون‌های جدید */}
-                <TableCell align="right">تذکره</TableCell>
-                <TableCell align="right">نوعیت حساب</TableCell>
-                <TableCell align="right">منبع</TableCell>
-                <TableCell align="right">بخش</TableCell>
-                <TableCell align="right">معاش پایه</TableCell>
-                <TableCell align="right">مزایا</TableCell>
-                <TableCell align="right">کسرات</TableCell>
-                <TableCell align="right">مالیه</TableCell>
-                <TableCell align="right">بیمه</TableCell>
-                <TableCell align="right">پیش‌پرداخت</TableCell>
-                <TableCell align="right">معاش خالص</TableCell>
-                <TableCell align="right">وضعیت</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={15} align="center" sx={{ py: 4 }}>
-                    <Typography color="text.secondary">
-                      هیچ معاشی برای این دوره یافت نشد. ابتدا «تولید معاشات» را بزنید.
+      {/* کارت‌های آمار اصلی */}
+      <Grid container spacing={2} mb={3}>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="تعداد کارمندان"
+            value={formatNumber(stats.totalEmployees)}
+            subtitle="کاربران + طرف‌حساب‌ها"
+            icon={<PeopleIcon />}
+            color="#3b82f6"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="مجموع معاشات ماهانه"
+            value={formatCurrency(stats.totalSalaries)}
+            subtitle="حقوق پایه + مزایا − کسورات"
+            icon={<AccountBalanceWalletIcon />}
+            color="#8b5cf6"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="پرداخت شده این ماه"
+            value={formatCurrency(stats.paidThisMonth)}
+            subtitle={`${stats.paymentProgress || 0}% از مجموع`}
+            icon={<CheckCircleIcon />}
+            color="#10b981"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="در انتظار پرداخت"
+            value={formatCurrency(stats.pendingPayments)}
+            subtitle="باقی‌مانده پرداخت‌نشده"
+            icon={<PendingIcon />}
+            color="#f59e0b"
+          />
+        </Grid>
+      </Grid>
+
+      {/* کارت‌های دوم */}
+      <Grid container spacing={2} mb={3}>
+        <Grid item xs={12} md={4}>
+          <StatCard
+            title="مجموع پیش‌پرداخت‌ها"
+            value={formatCurrency(stats.totalAdvances)}
+            subtitle="در انتظار + تأییدشده"
+            icon={<TrendingDownIcon />}
+            color="#ec4899"
+          />
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+              border: "1px solid #334155",
+              borderRadius: "12px",
+              height: "100%",
+            }}
+          >
+            <CardContent>
+              <Typography sx={{ color: "#94a3b8", fontSize: "13px", mb: 1.5 }}>
+                پیشرفت پرداخت — {selectedMonth} {selectedYear}
+              </Typography>
+              <Box display="flex" alignItems="center" gap={2} mb={1.5}>
+                <Typography sx={{ color: "#10b981", fontSize: "26px", fontWeight: "bold" }}>
+                  {stats.paymentProgress || 0}%
+                </Typography>
+                <TrendingUpIcon sx={{ color: "#10b981" }} />
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={Math.min(100, stats.paymentProgress || 0)}
+                sx={{
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: "#334155",
+                  "& .MuiLinearProgress-bar": {
+                    background: "linear-gradient(90deg, #10b981, #059669)",
+                  },
+                }}
+              />
+              <Typography sx={{ color: "#64748b", fontSize: "12px", mt: 1.5 }}>
+                از {formatCurrency(stats.totalSalaries)} مجموع معاشات ماهانه
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+              border: "1px solid #334155",
+              borderRadius: "12px",
+              height: "100%",
+            }}
+          >
+            <CardContent>
+              <Typography sx={{ color: "#94a3b8", fontSize: "13px", mb: 2 }}>
+                خلاصه وضعیت
+              </Typography>
+              <Box display="flex" flexDirection="column" gap={1.5}>
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <PaymentsIcon sx={{ color: "#10b981", fontSize: 18 }} />
+                    <Typography sx={{ color: "#e2e8f0", fontSize: "13px" }}>
+                      پرداخت شده
                     </Typography>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((e, idx) => (
-                  <TableRow key={`${e.source}-${e.id}`} hover sx={{ opacity: e.paid ? 0.6 : 1 }}>
-                    <TableCell padding="checkbox" align="right">
-                      <input type="checkbox" disabled={e.paid}
-                        checked={selectedEmployees.includes(e.id)}
-                        onChange={() => toggleSelect(e.id)} />
-                    </TableCell>
-                    <TableCell align="right">{idx + 1}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
+                  </Box>
+                  <Typography sx={{ color: "#10b981", fontWeight: "bold", fontSize: "13px" }}>
+                    {formatCurrency(stats.paidThisMonth)}
+                  </Typography>
+                </Box>
+                <Divider sx={{ borderColor: "#334155" }} />
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <PendingIcon sx={{ color: "#f59e0b", fontSize: 18 }} />
+                    <Typography sx={{ color: "#e2e8f0", fontSize: "13px" }}>
+                      در انتظار
+                    </Typography>
+                  </Box>
+                  <Typography sx={{ color: "#f59e0b", fontWeight: "bold", fontSize: "13px" }}>
+                    {formatCurrency(stats.pendingPayments)}
+                  </Typography>
+                </Box>
+                <Divider sx={{ borderColor: "#334155" }} />
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <TrendingDownIcon sx={{ color: "#ec4899", fontSize: 18 }} />
+                    <Typography sx={{ color: "#e2e8f0", fontSize: "13px" }}>
+                      پیش‌پرداخت‌ها
+                    </Typography>
+                  </Box>
+                  <Typography sx={{ color: "#ec4899", fontWeight: "bold", fontSize: "13px" }}>
+                    {formatCurrency(stats.totalAdvances)}
+                  </Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
-                    {/* ✅ تذکره */}
-                    <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "12px" }}>
-                      {e.tazkiraNumber || "—"}
-                    </TableCell>
+      {/* آخرین پرداخت‌ها */}
+      <Card
+        sx={{
+          background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+          border: "1px solid #334155",
+          borderRadius: "12px",
+        }}
+      >
+        <CardContent>
+          <Box display="flex" alignItems="center" gap={1} mb={2} flexWrap="wrap">
+            <ReceiptLongIcon sx={{ color: "#60a5fa" }} />
+            <Typography variant="h6" sx={{ color: "#fff", fontWeight: "bold" }}>
+              آخرین پرداخت‌ها
+            </Typography>
+            <Chip
+              label={`${selectedMonth} ${selectedYear}`}
+              size="small"
+              sx={{
+                background: "rgba(59, 130, 246, 0.15)",
+                color: "#60a5fa",
+                fontWeight: "bold",
+                fontSize: "11px",
+                ml: 1,
+              }}
+            />
+          </Box>
+          <Divider sx={{ borderColor: "#334155", mb: 2 }} />
 
-                    {/* ✅ نوعیت حساب */}
-                    <TableCell align="right">
-                      {e.accountType ? (
-                        <Chip
-                          label={ACCOUNT_TYPE_FA[e.accountType] || e.accountType}
-                          size="small"
-                          color="primary"
-                          variant="outlined"
-                        />
-                      ) : "—"}
+          {recentPayments.length === 0 ? (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              هیچ پرداختی برای دوره {selectedMonth} {selectedYear} ثبت نشده است.
+              ابتدا از صفحه «پرداخت معاش» معاشات این دوره را تولید کنید.
+            </Alert>
+          ) : (
+            <TableContainer component={Paper} sx={{ background: "transparent", boxShadow: "none" }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ background: "#0f172a" }}>
+                    <TableCell sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                      کارمند
                     </TableCell>
-
-                    <TableCell align="right">
-                      <Chip
-                        icon={e.source === "user" ? <PersonIcon /> : <BusinessIcon />}
-                        label={e.sourceLabel || (e.source === "user" ? "کاربر" : "حساب")}
-                        size="small"
-                        color={e.source === "user" ? "info" : "secondary"}
-                        variant="outlined"
-                      />
+                    <TableCell sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                      تذکره
                     </TableCell>
-                    <TableCell align="right">{e.department || "—"}</TableCell>
-                    <TableCell align="right">{formatCurrency(e.baseSalary)}</TableCell>
-                    <TableCell align="right" sx={{ color: "success.main" }}>
-                      +{formatCurrency(e.allowances)}
+                    <TableCell sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                      نوعیت حساب
                     </TableCell>
-                    <TableCell align="right" sx={{ color: "error.main" }}>
-                      -{formatCurrency(e.deductions)}
+                    <TableCell sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                      بخش
                     </TableCell>
-                    <TableCell align="right" sx={{ color: "error.main" }}>
-                      {e.tax ? `-${formatCurrency(e.tax)}` : "—"}
+                    <TableCell align="right" sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                      مبلغ
                     </TableCell>
-                    <TableCell align="right" sx={{ color: "error.main" }}>
-                      {e.insurance ? `-${formatCurrency(e.insurance)}` : "—"}
+                    <TableCell align="right" sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                      تاریخ
                     </TableCell>
-                    <TableCell align="right" sx={{ color: "warning.main", fontWeight: "bold" }}>
-                      {e.advanceDeduction ? `-${formatCurrency(e.advanceDeduction)}` : "—"}
-                    </TableCell>
-                    <TableCell align="right">
-                      <strong>{formatCurrency(calcNet(e))}</strong>
-                    </TableCell>
-                    <TableCell align="right">
-                      {e.paid ? (
-                        <Chip icon={<CheckCircleIcon />} label="پرداخت شده"
-                          size="small" color="success" />
-                      ) : e.paymentStatus === "partial" ? (
-                        <Chip label="جزئی" size="small" color="info" />
-                      ) : (
-                        <Chip label="در انتظار" size="small" color="warning" />
-                      )}
+                    <TableCell align="center" sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                      وضعیت
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
-
-      <Dialog open={confirmDialog} onClose={() => setConfirmDialog(false)}>
-        <DialogTitle>تأیید پرداخت معاش</DialogTitle>
-        <DialogContent>
-          <Typography>
-            آیا از پرداخت معاش <strong>{selectedEmployees.length}</strong> کارمند
-            به مبلغ <strong>{formatCurrency(totalSelected)}</strong> در ماه{" "}
-            <strong>{selectedMonth} {selectedYear}</strong> مطمئن هستید؟
-          </Typography>
-          <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" color="text.secondary">
-            این عملیات قابل بازگشت نیست.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "flex-start", px: 3, pb: 2 }}>
-          <Button onClick={() => setConfirmDialog(false)} disabled={saving}>انصراف</Button>
-          <Button variant="contained" color="success" startIcon={<CheckCircleIcon />}
-            onClick={handlePayment} disabled={saving}>
-            {saving ? "در حال پرداخت..." : "تأیید پرداخت"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar open={snackbar.open} autoHideDuration={4000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        message={snackbar.msg} />
+                </TableHead>
+                <TableBody>
+                  {recentPayments.map((p) => (
+                    <TableRow
+                      key={p.id}
+                      sx={{
+                        "&:hover": { background: "#0f172a" },
+                        transition: "background 0.2s",
+                      }}
+                    >
+                      <TableCell sx={{ color: "#fff", borderBottom: "1px solid #1e293b" }}>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Avatar sx={{ width: 30, height: 30, bgcolor: "#8b5cf6", fontSize: 13 }}>
+                            {(p.name || "?")[0]}
+                          </Avatar>
+                          <Typography sx={{ color: "#fff", fontSize: "13px", fontWeight: "bold" }}>
+                            {p.name || "—"}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell sx={{ color: "#e2e8f0", borderBottom: "1px solid #1e293b", fontFamily: "monospace", fontSize: "12px" }}>
+                        {p.tazkiraNumber || "—"}
+                      </TableCell>
+                      <TableCell sx={{ borderBottom: "1px solid #1e293b" }}>
+                        <Chip
+                          label={getAccountTypeDisplay(p)}
+                          size="small"
+                          sx={{ background: "#3b82f6", color: "#fff", fontWeight: "bold", fontSize: "11px" }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ color: "#e2e8f0", borderBottom: "1px solid #1e293b", fontSize: "13px" }}>
+                        {getDepartmentDisplay(p)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: "#10b981", borderBottom: "1px solid #1e293b", fontWeight: "bold", fontSize: "13px" }}>
+                        {formatCurrency(p.amount)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: "#94a3b8", borderBottom: "1px solid #1e293b", fontSize: "12px" }}>
+                        {p.date || "—"}
+                      </TableCell>
+                      <TableCell align="center" sx={{ borderBottom: "1px solid #1e293b" }}>
+                        <Chip
+                          icon={p.status === "پرداخت شده" ? <CheckCircleIcon sx={{ fontSize: 14 }} /> : <PendingIcon sx={{ fontSize: 14 }} />}
+                          label={p.status}
+                          size="small"
+                          sx={{
+                            background: p.status === "پرداخت شده" ? "#10b981" : "#f59e0b",
+                            color: "#fff",
+                            fontWeight: "bold",
+                            fontSize: "11px",
+                          }}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
     </Box>
   );
 }

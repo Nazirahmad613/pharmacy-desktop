@@ -41,9 +41,7 @@ export default function SalarySettings() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [loaded, setLoaded] = useState(false);
 
-  const [snackbar, setSnackbar] = useState({
-    open: false, msg: "", severity: "success",
-  });
+  const [snackbar, setSnackbar] = useState({ open: false, msg: "", severity: "success" });
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -81,9 +79,7 @@ export default function SalarySettings() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
+  useEffect(() => { fetchSettings(); }, [fetchSettings]);
 
   const handleChange = (field, value) => {
     setSettings((prev) => ({ ...prev, [field]: value }));
@@ -100,11 +96,7 @@ export default function SalarySettings() {
 
   const handleSave = async () => {
     if (!loaded) {
-      setSnackbar({
-        open: true,
-        msg: "ابتدا تنظیمات را از سرور بارگذاری کنید (دکمه بازخوانی)",
-        severity: "warning",
-      });
+      setSnackbar({ open: true, msg: "ابتدا تنظیمات را از سرور بارگذاری کنید (دکمه بازخوانی)", severity: "warning" });
       return;
     }
 
@@ -130,27 +122,14 @@ export default function SalarySettings() {
       const res = await api.put("/payroll/settings", payload);
 
       if (res.data?.success) {
-        setSnackbar({
-          open: true,
-          msg: res.data.message || "✅ تنظیمات با موفقیت ذخیره شد",
-          severity: "success",
-        });
-
+        setSnackbar({ open: true, msg: res.data.message || "✅ تنظیمات با موفقیت ذخیره شد", severity: "success" });
         await fetchSettings();
       } else {
-        setSnackbar({
-          open: true,
-          msg: res.data?.message || "خطا در ذخیره",
-          severity: "error",
-        });
+        setSnackbar({ open: true, msg: res.data?.message || "خطا در ذخیره", severity: "error" });
       }
     } catch (err) {
       console.error("❌ Save settings error:", err.response?.data);
-      setSnackbar({
-        open: true,
-        msg: err.response?.data?.message || "خطا در ذخیره",
-        severity: "error",
-      });
+      setSnackbar({ open: true, msg: err.response?.data?.message || "خطا در ذخیره", severity: "error" });
     } finally {
       setSaving(false);
     }
@@ -202,17 +181,13 @@ export default function SalarySettings() {
                   <TextField fullWidth label="حداقل معاش" type="number"
                     value={settings.minSalary}
                     onChange={(e) => handleNumberChange("minSalary", e.target.value)}
-                    InputProps={{
-                      endAdornment: <InputAdornment position="end">؋</InputAdornment>,
-                    }} />
+                    InputProps={{ endAdornment: <InputAdornment position="end">؋</InputAdornment> }} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField fullWidth label="حداکثر پیش‌پرداخت (%)" type="number"
                     value={settings.maxAdvancePercent}
                     onChange={(e) => handleNumberChange("maxAdvancePercent", e.target.value)}
-                    InputProps={{
-                      endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                    }} />
+                    InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }} />
                 </Grid>
               </Grid>
             </CardContent>
@@ -229,41 +204,31 @@ export default function SalarySettings() {
                   <TextField fullWidth label="نرخ مالیات" type="number"
                     value={settings.taxRate}
                     onChange={(e) => handleNumberChange("taxRate", e.target.value)}
-                    InputProps={{
-                      endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                    }} />
+                    InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField fullWidth label="نرخ بیمه" type="number"
                     value={settings.insuranceRate}
                     onChange={(e) => handleNumberChange("insuranceRate", e.target.value)}
-                    InputProps={{
-                      endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                    }} />
+                    InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField fullWidth label="نرخ اضافه کاری" type="number"
                     value={settings.overtimeRate}
                     onChange={(e) => handleNumberChange("overtimeRate", e.target.value)}
-                    InputProps={{
-                      endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                    }} />
+                    InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField fullWidth label="کسر تأخیر (روزانه)" type="number"
                     value={settings.lateDeduction}
                     onChange={(e) => handleNumberChange("lateDeduction", e.target.value)}
-                    InputProps={{
-                      endAdornment: <InputAdornment position="end">؋</InputAdornment>,
-                    }} />
+                    InputProps={{ endAdornment: <InputAdornment position="end">؋</InputAdornment> }} />
                 </Grid>
                 <Grid item xs={12}>
                   <TextField fullWidth label="کسر غیابت (روزانه)" type="number"
                     value={settings.absenceDeduction}
                     onChange={(e) => handleNumberChange("absenceDeduction", e.target.value)}
-                    InputProps={{
-                      endAdornment: <InputAdornment position="end">؋</InputAdornment>,
-                    }} />
+                    InputProps={{ endAdornment: <InputAdornment position="end">؋</InputAdornment> }} />
                 </Grid>
               </Grid>
             </CardContent>
@@ -310,15 +275,10 @@ export default function SalarySettings() {
       </Grid>
 
       <Snackbar open={snackbar.open} autoHideDuration={4000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        message={snackbar.msg} />
+        onClose={() => setSnackbar({ ...snackbar, open: false })} message={snackbar.msg} />
     </Box>
   );
 }
-
-// ============================================================
-// ✅ Helpers
-// ============================================================
 
 function toNumber(value, defaultValue = 0) {
   if (value === null || value === undefined || value === "") return defaultValue;
@@ -330,13 +290,11 @@ function toBool(value, defaultValue = false) {
   if (value === null || value === undefined) return defaultValue;
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
-
   if (typeof value === "string") {
     const s = value.trim().toLowerCase();
     if (s === "true" || s === "1" || s === "yes" || s === "on") return true;
     if (s === "false" || s === "0" || s === "no" || s === "off" || s === "") return false;
     return Boolean(value);
   }
-
   return Boolean(value);
 }

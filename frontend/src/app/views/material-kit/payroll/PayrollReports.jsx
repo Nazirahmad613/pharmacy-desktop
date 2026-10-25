@@ -20,6 +20,25 @@ const ACCOUNT_TYPE_FA = {
   payable: "بدهی‌ها", employee: "کارمندان",
 };
 
+// ✅ نوعیت حساب: اولویت با نوع کلی
+const getAccountTypeDisplay = (row) => {
+  if (!row) return "—";
+  return (
+    row.accountTypeLabel
+    || ACCOUNT_TYPE_FA[row.accountType]
+    || row.accountType
+    || "—"
+  );
+};
+
+// ✅ بخش
+const resolveDepartment = (row) => {
+  if (!row) return "—";
+  const dept = row.department || "";
+  if (dept) return dept;
+  return row.accountCategoryLabel || "—";
+};
+
 const pickNumber = (obj, keys, fallback = 0) => {
   for (const k of keys) {
     const v = obj?.[k];
@@ -31,22 +50,30 @@ const pickNumber = (obj, keys, fallback = 0) => {
   return fallback;
 };
 
-const normalizeSalaryRow = (row = {}) => ({
-  ...row,
-  baseSalary:       pickNumber(row, ["baseSalary", "base_salary", "basicSalary"]),
-  allowances:       pickNumber(row, ["allowances", "allowance", "bonuses"]),
-  deductions:       pickNumber(row, ["deductions", "deduction", "otherDeductions"]),
-  tax:              pickNumber(row, ["tax", "tax_amount", "taxAmount"]),
-  insurance:        pickNumber(row, ["insurance", "insurance_amount", "insuranceAmount"]),
-  advanceDeduction: pickNumber(row, ["advanceDeduction", "advance_deduction", "advance"]),
-  grossSalary:      pickNumber(row, ["grossSalary", "gross_salary"]),
-  netSalary:        pickNumber(row, ["netSalary", "net_salary"]),
-  paidAmount:       pickNumber(row, ["paidAmount", "paid_amount"]),
-  paid:             row.paymentStatus === "paid" || row.paid === true,
-  // ✅ جدید
-  tazkiraNumber:    row.tazkiraNumber ?? row.tazkira_number ?? null,
-  accountType:      row.accountType ?? row.account_type ?? null,
-});
+const normalizeSalaryRow = (row = {}) => {
+  const normalized = {
+    ...row,
+    baseSalary:       pickNumber(row, ["baseSalary", "base_salary", "basicSalary"]),
+    allowances:       pickNumber(row, ["allowances", "allowance", "bonuses"]),
+    deductions:       pickNumber(row, ["deductions", "deduction", "otherDeductions"]),
+    tax:              pickNumber(row, ["tax", "tax_amount", "taxAmount"]),
+    insurance:        pickNumber(row, ["insurance", "insurance_amount", "insuranceAmount"]),
+    advanceDeduction: pickNumber(row, ["advanceDeduction", "advance_deduction", "advance"]),
+    grossSalary:      pickNumber(row, ["grossSalary", "gross_salary"]),
+    netSalary:        pickNumber(row, ["netSalary", "net_salary"]),
+    paidAmount:       pickNumber(row, ["paidAmount", "paid_amount"]),
+    paid:             row.paymentStatus === "paid" || row.paid === true,
+
+    tazkiraNumber:        row.tazkiraNumber        ?? row.tazkira_number        ?? null,
+    accountType:          row.accountType          ?? row.account_type          ?? null,
+    accountCategory:      row.accountCategory      ?? row.account_category      ?? null,
+    accountTypeLabel:     row.accountTypeLabel     ?? row.account_type_label    ?? null,
+    accountCategoryLabel: row.accountCategoryLabel ?? row.account_category_label ?? null,
+  };
+
+  normalized.department = resolveDepartment(normalized);
+  return normalized;
+};
 
 export default function PayrollReports() {
   const [loading, setLoading] = useState(false);
@@ -171,8 +198,8 @@ export default function PayrollReports() {
     const data = filteredRows.map((r, i) => [
       i + 1,
       r.fullName || "—",
-      r.tazkiraNumber || "—",                                 // ✅ جدید
-      ACCOUNT_TYPE_FA[r.accountType] || r.accountType || "—", // ✅ جدید
+      r.tazkiraNumber || "—",
+      getAccountTypeDisplay(r),
       r.department || "—",
       r.sourceLabel || (r.source === "user" ? "کاربر" : "حساب"),
       r.employeeCode || "—",
@@ -323,8 +350,8 @@ export default function PayrollReports() {
                   <TableRow sx={{ bgcolor: "grey.100" }}>
                     <TableCell align="right">#</TableCell>
                     <TableCell align="right">نام کارمند</TableCell>
-                    <TableCell align="right">تذکره</TableCell>{/* ✅ جدید */}
-                    <TableCell align="right">نوعیت حساب</TableCell>{/* ✅ جدید */}
+                    <TableCell align="right">تذکره</TableCell>
+                    <TableCell align="right">نوعیت حساب</TableCell>
                     <TableCell align="right">بخش</TableCell>
                     <TableCell align="right">منبع</TableCell>
                     <TableCell align="right">معاش پایه</TableCell>
@@ -343,13 +370,10 @@ export default function PayrollReports() {
                       <TableCell align="right">{idx + 1}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: "bold" }}>{r.fullName || "—"}</TableCell>
                       <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "12px" }}>
-                        {r.tazkiraNumber || "—"}{/* ✅ جدید */}
+                        {r.tazkiraNumber || "—"}
                       </TableCell>
                       <TableCell align="right">
-                        {r.accountType ? (/* ✅ جدید */
-                          <Chip label={ACCOUNT_TYPE_FA[r.accountType] || r.accountType}
-                            size="small" color="primary" variant="outlined" />
-                        ) : "—"}
+                        <Chip label={getAccountTypeDisplay(r)} size="small" color="primary" variant="outlined" />
                       </TableCell>
                       <TableCell align="right">{r.department || "—"}</TableCell>
                       <TableCell align="right">
