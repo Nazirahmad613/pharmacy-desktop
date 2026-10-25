@@ -12,6 +12,33 @@ use Illuminate\Support\Facades\Schema;
 
 class PayrollJournalService
 {
+    /* ============================================================
+     *  ✅ استخراج حساب کارمند از EmployeeSalary یا SalaryAdvance
+     *  بدون نیاز به تغییر مایگریشن — بر اساس ساختار فعلی جداول
+     * ============================================================ */
+    private function resolveAccountId($salaryOrAdvance): ?int
+    {
+        if (!$salaryOrAdvance) return null;
+
+        // 1) اگر خود رکورد ستون account_id دارد → همان را استفاده کن
+        if (!empty($salaryOrAdvance->account_id)) {
+            return (int) $salaryOrAdvance->account_id;
+        }
+
+        // 2) اگر SalaryAdvance ستون account_id دارد و پر است → همان
+        if (property_exists($salaryOrAdvance, 'account_id')
+            && !empty($salaryOrAdvance->account_id)) {
+            return (int) $salaryOrAdvance->account_id;
+        }
+
+        // 3) هیچ ستون account_id در رکورد نیست → null
+        //    (یعنی ژورنال "یوزر" در نظر گرفته می‌شود)
+        return null;
+    }
+
+    /* ============================================================
+     *  ثبت ژورنال تولید معاش
+     * ============================================================ */
     public function recordSalaryGeneration(EmployeeSalary $salary, ?string $journalDate = null): ?Journal
     {
         try {
@@ -29,6 +56,7 @@ class PayrollJournalService
             $description  = "تولید معاش - {$employeeName}" . ($periodLabel ? " - {$periodLabel}" : "");
 
             $hasSourceType = Schema::hasColumn('journals', 'source_type');
+            $accountId     = $this->resolveAccountId($salary);  // ✅ حساب کارمند (یا null)
 
             $debitData = [
                 'journal_date' => $journalDate,
@@ -37,6 +65,7 @@ class PayrollJournalService
                 'amount'       => $amount,
                 'ref_type'     => 'salary_generation',
                 'ref_id'       => $salary->id,
+                'account_id'   => $accountId,                  // ✅
                 'user_id'      => auth()->id(),
             ];
             if ($hasSourceType) $debitData['source_type'] = 'salary';
@@ -49,6 +78,7 @@ class PayrollJournalService
                 'amount'       => $amount,
                 'ref_type'     => 'salary_payable',
                 'ref_id'       => $salary->id,
+                'account_id'   => $accountId,                  // ✅
                 'user_id'      => auth()->id(),
             ];
             if ($hasSourceType) $creditData['source_type'] = 'salary';
@@ -63,6 +93,9 @@ class PayrollJournalService
         }
     }
 
+    /* ============================================================
+     *  ثبت ژورنال پرداخت معاش
+     * ============================================================ */
     public function recordSalaryPayment(EmployeeSalary $salary, string $paymentDate, ?int $paidFromAccountId = null): ?Journal
     {
         try {
@@ -79,6 +112,16 @@ class PayrollJournalService
 
             $hasSourceType = Schema::hasColumn('journals', 'source_type');
 
+            /* ✅ حساب کارمند: از خود EmployeeSalary (یا null) */
+            $employeeAccountId = $this->resolveAccountId($salary);
+
+            /* ✅ حساب پرداخت‌کننده (صندوق/بانک): اگر داده شده بود */
+            $paymentAccountId = $paidFromAccountId ?? $employeeAccountId;
+
+            /* ---------------------------------------------
+             * debit: تسویه معاش (بدهی به کارمند کم می‌شود)
+             * حساب: حساب کارمند (اگر باشد)
+             * --------------------------------------------- */
             $debitData = [
                 'journal_date' => $paymentDate,
                 'description'  => $description . ' (تسویه معاش)',
@@ -86,11 +129,16 @@ class PayrollJournalService
                 'amount'       => $amount,
                 'ref_type'     => 'salary_payment_debit',
                 'ref_id'       => $salary->id,
+                'account_id'   => $employeeAccountId,   // ✅ حساب کارمند
                 'user_id'      => auth()->id(),
             ];
             if ($hasSourceType) $debitData['source_type'] = 'salary';
             Journal::create($debitData);
 
+            /* ---------------------------------------------
+             * credit: پرداخت از صندوق/بانک
+             * حساب: صندوق/بانک (اگر داده شده)، وگرنه کارمند
+             * --------------------------------------------- */
             $creditData = [
                 'journal_date' => $paymentDate,
                 'description'  => $description . ' (پرداخت از صندوق/بانک)',
@@ -98,6 +146,7 @@ class PayrollJournalService
                 'amount'       => $amount,
                 'ref_type'     => 'salary_payment',
                 'ref_id'       => $salary->id,
+                'account_id'   => $paymentAccountId,    // ✅ صندوق/بانک یا کارمند
                 'user_id'      => auth()->id(),
             ];
             if ($hasSourceType) $creditData['source_type'] = 'salary';
@@ -110,6 +159,9 @@ class PayrollJournalService
         }
     }
 
+    /* ============================================================
+     *  ثبت ژورنال پیش‌پرداخت
+     * ============================================================ */
     public function recordAdvancePayment(SalaryAdvance $advance, ?string $paymentDate = null): ?Journal
     {
         try {
@@ -124,6 +176,9 @@ class PayrollJournalService
             $description  = "پیش‌پرداخت معاش - {$employeeName}";
             $hasSourceType = Schema::hasColumn('journals', 'source_type');
 
+            /* ✅ حساب: از SalaryAdvance.account_id (اگر وجود داشت) */
+            $accountId = $this->resolveAccountId($advance);
+
             $debitData = [
                 'journal_date' => $paymentDate,
                 'description'  => $description . ' (پیش‌پرداخت)',
@@ -131,6 +186,7 @@ class PayrollJournalService
                 'amount'       => $amount,
                 'ref_type'     => 'salary_advance_debit',
                 'ref_id'       => $advance->id,
+                'account_id'   => $accountId,       // ✅
                 'user_id'      => auth()->id(),
             ];
             if ($hasSourceType) $debitData['source_type'] = 'salary_advance';
@@ -143,6 +199,7 @@ class PayrollJournalService
                 'amount'       => $amount,
                 'ref_type'     => 'salary_advance',
                 'ref_id'       => $advance->id,
+                'account_id'   => $accountId,       // ✅
                 'user_id'      => auth()->id(),
             ];
             if ($hasSourceType) $creditData['source_type'] = 'salary_advance';

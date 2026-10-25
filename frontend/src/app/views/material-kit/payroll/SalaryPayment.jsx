@@ -14,12 +14,14 @@ import PersonIcon from "@mui/icons-material/Person";
 import BusinessIcon from "@mui/icons-material/Business";
 import api from "../../../../api";
 
-const MONTHS = [
-  "حمل", "ثور", "جوزا", "سرطان", "اسد", "سنبله",
-  "میزان", "عقرب", "قوس", "جدی", "دلو", "حوت",
-];
+const MONTHS = ["حمل", "ثور", "جوزا", "سرطان", "اسد", "سنبله", "میزان", "عقرب", "قوس", "جدی", "دلو", "حوت"];
 
-// ✅ انتخاب اولین فیلد عددی موجود از میان چند نام جایگزین
+const ACCOUNT_TYPE_FA = {
+  asset: "دارایی", liability: "بدهی", equity: "سرمایه",
+  income: "درآمد", expense: "هزینه", receivable: "مطالبات",
+  payable: "بدهی‌ها", employee: "کارمندان",
+};
+
 const pickNumber = (obj, keys, fallback = 0) => {
   for (const k of keys) {
     const v = obj?.[k];
@@ -31,44 +33,24 @@ const pickNumber = (obj, keys, fallback = 0) => {
   return fallback;
 };
 
-// ✅ نرمال‌سازی ردیف معاش (پوشش نام‌های مختلف فیلدها)
 const normalizeSalaryRow = (e = {}) => {
-  const tax = pickNumber(e, [
-    "tax", "taxAmount", "incomeTax", "tax_value",
-    "deduction_tax", "tax_deduction",
-  ]);
-  const insurance = pickNumber(e, [
-    "insurance", "insuranceAmount", "insurance_value",
-    "insuranceDeduction", "socialSecurity", "social_security",
-    "deduction_insurance",
-  ]);
-  const advanceDeduction = pickNumber(e, [
-    "advanceDeduction", "advance_deduction", "advance",
-    "advanceAmount", "loanDeduction", "loan_deduction",
-  ]);
+  const tax = pickNumber(e, ["tax", "taxAmount", "incomeTax", "tax_value", "deduction_tax", "tax_deduction"]);
+  const insurance = pickNumber(e, ["insurance", "insuranceAmount", "insurance_value", "insuranceDeduction", "socialSecurity", "social_security", "deduction_insurance"]);
+  const advanceDeduction = pickNumber(e, ["advanceDeduction", "advance_deduction", "advance", "advanceAmount", "loanDeduction", "loan_deduction"]);
   const baseSalary = pickNumber(e, ["baseSalary", "base_salary", "basicSalary"]);
   const allowances = pickNumber(e, ["allowances", "allowance", "bonuses"]);
   const deductions = pickNumber(e, ["deductions", "otherDeductions", "manualDeductions"]);
 
-  const grossSalary =
-    pickNumber(e, ["grossSalary", "gross_salary"]) ||
-    baseSalary + allowances;
-
-  const netSalary =
-    pickNumber(e, ["netSalary", "net_salary"]) ||
-    grossSalary - deductions - tax - insurance - advanceDeduction;
+  const grossSalary = pickNumber(e, ["grossSalary", "gross_salary"]) || baseSalary + allowances;
+  const netSalary = pickNumber(e, ["netSalary", "net_salary"]) || grossSalary - deductions - tax - insurance - advanceDeduction;
 
   return {
-    ...e,
-    baseSalary,
-    allowances,
-    deductions,
-    tax,
-    insurance,
-    advanceDeduction,
-    grossSalary,
-    netSalary,
+    ...e, baseSalary, allowances, deductions, tax, insurance, advanceDeduction,
+    grossSalary, netSalary,
     paid: e.paymentStatus === "paid" || e.paid === true,
+    // ✅ جدید
+    tazkiraNumber: e.tazkiraNumber ?? e.tazkira_number ?? null,
+    accountType: e.accountType ?? e.account_type ?? null,
   };
 };
 
@@ -87,9 +69,7 @@ export default function SalaryPayment() {
   const [selectedEmployees, setSelectedEmployees] = useState([]);
 
   const [confirmDialog, setConfirmDialog] = useState(false);
-  const [snackbar, setSnackbar] = useState({
-    open: false, msg: "", severity: "success",
-  });
+  const [snackbar, setSnackbar] = useState({ open: false, msg: "", severity: "success" });
 
   const fetchSalaries = useCallback(async () => {
     try {
@@ -102,7 +82,6 @@ export default function SalaryPayment() {
       const res = await api.get("/payroll/salaries", { params });
 
       if (res.data?.success) {
-        // ✅ استفاده از نرمال‌ساز
         const list = (res.data.data || []).map(normalizeSalaryRow);
         setEmployees(list);
         setPeriodId(res.data.period?.id || null);
@@ -127,43 +106,27 @@ export default function SalaryPayment() {
 
     try {
       setSaving(true);
-      const res = await api.post("/payroll/salaries/generate", {
-        month: selectedMonth, year: selectedYear,
-      });
+      const res = await api.post("/payroll/salaries/generate", { month: selectedMonth, year: selectedYear });
       if (res.data?.success) {
-        setSnackbar({
-          open: true,
-          msg: `✅ ${res.data.generated} معاش تولید شد`,
-          severity: "success",
-        });
+        setSnackbar({ open: true, msg: `✅ ${res.data.generated} معاش تولید شد`, severity: "success" });
         fetchSalaries();
       }
     } catch (err) {
-      setSnackbar({
-        open: true,
-        msg: err.response?.data?.message || "خطا در تولید",
-        severity: "error",
-      });
+      setSnackbar({ open: true, msg: err.response?.data?.message || "خطا در تولید", severity: "error" });
     } finally {
       setSaving(false);
     }
   };
 
-  const formatCurrency = (n) =>
-    new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
+  const formatCurrency = (n) => new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
 
   const departments = ["all", ...new Set(employees.map((e) => e.department).filter(Boolean))];
-
-  const filtered = employees.filter(
-    (e) => departmentFilter === "all" || e.department === departmentFilter
-  );
+  const filtered = employees.filter((e) => departmentFilter === "all" || e.department === departmentFilter);
 
   const calcNet = (e) => e.netSalary || 0;
 
   const toggleSelect = (id) => {
-    setSelectedEmployees((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedEmployees((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   };
 
   const toggleAll = () => {
@@ -172,9 +135,7 @@ export default function SalaryPayment() {
     else setSelectedEmployees(unpaidIds);
   };
 
-  const totalSelected = filtered
-    .filter((e) => selectedEmployees.includes(e.id))
-    .reduce((sum, e) => sum + calcNet(e), 0);
+  const totalSelected = filtered.filter((e) => selectedEmployees.includes(e.id)).reduce((sum, e) => sum + calcNet(e), 0);
 
   const handlePayment = async () => {
     try {
@@ -185,20 +146,12 @@ export default function SalaryPayment() {
         method: "bank_transfer",
       });
       if (res.data?.success) {
-        setSnackbar({
-          open: true,
-          msg: res.data.message || `✅ ${res.data.paid} معاش پرداخت شد`,
-          severity: "success",
-        });
+        setSnackbar({ open: true, msg: res.data.message || `✅ ${res.data.paid} معاش پرداخت شد`, severity: "success" });
         setSelectedEmployees([]);
         fetchSalaries();
       }
     } catch (err) {
-      setSnackbar({
-        open: true,
-        msg: err.response?.data?.message || "خطا در پرداخت",
-        severity: "error",
-      });
+      setSnackbar({ open: true, msg: err.response?.data?.message || "خطا در پرداخت", severity: "error" });
     } finally {
       setSaving(false);
       setConfirmDialog(false);
@@ -210,12 +163,10 @@ export default function SalaryPayment() {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">💵 پرداخت معاش</Typography>
         <Box>
-          <Button startIcon={<PlayArrowIcon />} variant="outlined"
-            onClick={handleGenerate} disabled={saving} sx={{ mr: 1 }}>
+          <Button startIcon={<PlayArrowIcon />} variant="outlined" onClick={handleGenerate} disabled={saving} sx={{ mr: 1 }}>
             تولید معاشات
           </Button>
-          <Button startIcon={<RefreshIcon />} variant="outlined"
-            onClick={fetchSalaries} disabled={loading}>
+          <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchSalaries} disabled={loading}>
             بازخوانی
           </Button>
         </Box>
@@ -240,9 +191,7 @@ export default function SalaryPayment() {
               <TextField fullWidth select size="small" label="بخش"
                 value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)}>
                 <MenuItem value="all">همه بخش‌ها</MenuItem>
-                {departments.filter((d) => d !== "all").map((d) => (
-                  <MenuItem key={d} value={d}>{d}</MenuItem>
-                ))}
+                {departments.filter((d) => d !== "all").map((d) => <MenuItem key={d} value={d}>{d}</MenuItem>)}
               </TextField>
             </Grid>
             <Grid item xs={12} sm={2}>
@@ -281,12 +230,13 @@ export default function SalaryPayment() {
               <TableRow sx={{ bgcolor: "grey.100" }}>
                 <TableCell padding="checkbox" align="right">
                   <input type="checkbox"
-                    checked={selectedEmployees.length > 0 &&
-                      selectedEmployees.length === filtered.filter((e) => !e.paid).length}
+                    checked={selectedEmployees.length > 0 && selectedEmployees.length === filtered.filter((e) => !e.paid).length}
                     onChange={toggleAll} />
                 </TableCell>
                 <TableCell align="right">#</TableCell>
                 <TableCell align="right">نام کارمند</TableCell>
+                <TableCell align="right">تذکره</TableCell>{/* ✅ جدید */}
+                <TableCell align="right">نوعیت حساب</TableCell>{/* ✅ جدید */}
                 <TableCell align="right">منبع</TableCell>
                 <TableCell align="right">بخش</TableCell>
                 <TableCell align="right">معاش پایه</TableCell>
@@ -302,10 +252,8 @@ export default function SalaryPayment() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={13} align="center" sx={{ py: 4 }}>
-                    <Typography color="text.secondary">
-                      هیچ معاشی برای این دوره یافت نشد. ابتدا «تولید معاشات» را بزنید.
-                    </Typography>
+                  <TableCell colSpan={15} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary">هیچ معاشی برای این دوره یافت نشد.</Typography>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -318,6 +266,15 @@ export default function SalaryPayment() {
                     </TableCell>
                     <TableCell align="right">{idx + 1}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
+                    <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "12px" }}>
+                      {e.tazkiraNumber || "—"}{/* ✅ جدید */}
+                    </TableCell>
+                    <TableCell align="right">
+                      {e.accountType ? (/* ✅ جدید */
+                        <Chip label={ACCOUNT_TYPE_FA[e.accountType] || e.accountType}
+                          size="small" color="primary" variant="outlined" />
+                      ) : "—"}
+                    </TableCell>
                     <TableCell align="right">
                       <Chip
                         icon={e.source === "user" ? <PersonIcon /> : <BusinessIcon />}
@@ -329,12 +286,8 @@ export default function SalaryPayment() {
                     </TableCell>
                     <TableCell align="right">{e.department || "—"}</TableCell>
                     <TableCell align="right">{formatCurrency(e.baseSalary)}</TableCell>
-                    <TableCell align="right" sx={{ color: "success.main" }}>
-                      +{formatCurrency(e.allowances)}
-                    </TableCell>
-                    <TableCell align="right" sx={{ color: "error.main" }}>
-                      -{formatCurrency(e.deductions)}
-                    </TableCell>
+                    <TableCell align="right" sx={{ color: "success.main" }}>+{formatCurrency(e.allowances)}</TableCell>
+                    <TableCell align="right" sx={{ color: "error.main" }}>-{formatCurrency(e.deductions)}</TableCell>
                     <TableCell align="right" sx={{ color: "error.main" }}>
                       {e.tax > 0 ? `-${formatCurrency(e.tax)}` : "—"}
                     </TableCell>
@@ -344,9 +297,7 @@ export default function SalaryPayment() {
                     <TableCell align="right" sx={{ color: "warning.main" }}>
                       {e.advanceDeduction > 0 ? `-${formatCurrency(e.advanceDeduction)}` : "—"}
                     </TableCell>
-                    <TableCell align="right">
-                      <strong>{formatCurrency(calcNet(e))}</strong>
-                    </TableCell>
+                    <TableCell align="right"><strong>{formatCurrency(calcNet(e))}</strong></TableCell>
                     <TableCell align="right">
                       {e.paid ? (
                         <Chip icon={<CheckCircleIcon />} label="پرداخت شده" size="small" color="success" />
@@ -373,9 +324,7 @@ export default function SalaryPayment() {
             <strong>{selectedMonth} {selectedYear}</strong> مطمئن هستید؟
           </Typography>
           <Divider sx={{ my: 2 }} />
-          <Typography variant="body2" color="text.secondary">
-            این عملیات قابل بازگشت نیست.
-          </Typography>
+          <Typography variant="body2" color="text.secondary">این عملیات قابل بازگشت نیست.</Typography>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "flex-start", px: 3, pb: 2 }}>
           <Button onClick={() => setConfirmDialog(false)} disabled={saving}>انصراف</Button>
@@ -387,8 +336,7 @@ export default function SalaryPayment() {
       </Dialog>
 
       <Snackbar open={snackbar.open} autoHideDuration={4000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        message={snackbar.msg} />
+        onClose={() => setSnackbar({ ...snackbar, open: false })} message={snackbar.msg} />
     </Box>
   );
 }

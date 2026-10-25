@@ -11,15 +11,31 @@ use App\Models\Prescription;
 use App\Models\ExternalPrescription;
 use App\Models\Patient;
 use App\Models\User;
+use App\Models\EmployeeSalary;
+use App\Models\SalaryAdvance;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use App\Services\LogService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class JournalController extends Controller
 {
+    /* ============================================================
+     *  ✅ انواع ژورنال معاشات — فقط برچسب
+     *  ⚠️ source_kind (یوزر/حساب) از داده واقعی استخراج می‌شود
+     * ============================================================ */
+    private const SALARY_META = [
+        'salary_generation'    => ['label' => 'تولید معاش (هزینه)'],
+        'salary_payable'       => ['label' => 'معاش قابل پرداخت'],
+        'salary_payment'       => ['label' => 'پرداخت معاش (صندوق/بانک)'],
+        'salary_payment_debit' => ['label' => 'تسویه معاش'],
+        'salary_advance'       => ['label' => 'پیش‌پرداخت معاش'],
+        'salary_advance_debit' => ['label' => 'ثبت پیش‌پرداخت'],
+    ];
+
     /* ============================================================
      *  نمایش لیست ژورنال‌ها
      * ============================================================ */
@@ -43,9 +59,128 @@ class JournalController extends Controller
             $j->paid_amount  = null;
             $j->due_amount   = null;
             $j->source_name  = null;
+            $j->source_kind  = null;   // ✅ user / account / null
+            $j->source_label = null;   // ✅ برچسب فارسی
 
             /* ====================================================
-             * 0) ✅ external_prescription → فیس نسخه بیرونی
+             * ✅ 0) ژورنال‌های معاشات (PayrollJournalService)
+             *    منطق: source_kind از داده واقعی، نه از ref_type
+             * ==================================================== */
+            if (isset(self::SALARY_META[$j->ref_type])) {
+                $meta = self::SALARY_META[$j->ref_type];
+                $j->source_label = $meta['label'];
+
+                try {
+                    /* ---------------------------------------------
+                     * 1) اولویت اول: account_id روی خود ژورنال
+                     * --------------------------------------------- */
+                    if (!empty($j->account_id)) {
+                        $account = \App\Models\Account::find($j->account_id);
+                        if ($account) {
+                            $j->source_kind = 'account';
+                            $j->source_name = $account->account_name
+                                ?? $account->name
+                                ?? "حساب #{$j->account_id}";
+                        }
+                    }
+
+                    /* ---------------------------------------------
+                     * 2) اگر ژورنال account_id ندارد، از رکورد اصلی
+                     * --------------------------------------------- */
+                    if (empty($j->source_kind)) {
+
+                        // ============ انواع از EmployeeSalary ============
+                        if (in_array($j->ref_type, [
+                            'salary_generation',
+                            'salary_payable',
+                            'salary_payment',
+                            'salary_payment_debit',
+                        ], true)) {
+                            $salary = EmployeeSalary::with(['user', 'account'])->find($j->ref_id);
+
+                            if ($salary) {
+                                // ✅ user_id → یوزر ، account_id → حساب
+                                if (!empty($salary->user_id)) {
+                                    $j->source_kind = 'user';
+                                    $j->source_name = $salary->user?->name
+                                        ?? $salary->user?->full_name
+                                        ?? null;
+                                } elseif (!empty($salary->account_id)) {
+                                    $j->source_kind = 'account';
+                                    $j->account_id  = $salary->account_id; // برای فرانت
+                                    $j->source_name = $salary->account?->account_name
+                                        ?? null;
+                                }
+
+                                // اگر نام خالی ماند، از accessor مدل
+                                if (empty($j->source_name)) {
+                                    $name = $salary->employee_name; // accessor
+                                    if (!empty($name) && $name !== '—') {
+                                        $j->source_name = $name;
+                                    }
+                                }
+
+                                if (!empty($salary->user_id)) {
+                                    $j->employee_id = $salary->user_id;
+                                }
+                            }
+                        }
+                        // ============ انواع از SalaryAdvance ============
+                        else {
+                            $advance = SalaryAdvance::with(['user', 'account'])->find($j->ref_id);
+
+                            if ($advance) {
+                                if (!empty($advance->user_id)) {
+                                    $j->source_kind = 'user';
+                                    $j->source_name = $advance->user?->name
+                                        ?? $advance->user?->full_name
+                                        ?? null;
+                                } elseif (!empty($advance->account_id)) {
+                                    $j->source_kind = 'account';
+                                    $j->account_id  = $advance->account_id;
+                                    $j->source_name = $advance->account?->account_name
+                                        ?? null;
+                                }
+                            }
+                        }
+                    }
+
+                    /* ---------------------------------------------
+                     * 3) fallback: استخراج نام از description
+                     * --------------------------------------------- */
+                    if (empty($j->source_name) && !empty($j->description)) {
+                        if (preg_match('/(?:معاش|پیش‌پرداخت|تولید معاش|پرداخت معاش|تسویه معاش)\s*-\s*([^\-()]+)/u', $j->description, $m)) {
+                            $name = trim($m[1]);
+                            if ($name !== '') {
+                                $j->source_name = $name;
+                            }
+                        }
+                    }
+
+                    /* ---------------------------------------------
+                     * 4) آخرین پیش‌فرض
+                     * --------------------------------------------- */
+                    if (empty($j->source_kind)) {
+                        $j->source_kind = 'user';
+                    }
+                    if (empty($j->source_name)) {
+                        $j->source_name = "معاش #{$j->ref_id}";
+                    }
+
+                    $j->full_name    = $j->source_name;
+                    $j->display_name = $j->source_name;
+
+                } catch (\Throwable $e) {
+                    Log::warning('salary source resolve failed for Journal #' . $j->id . ': ' . $e->getMessage());
+                    $j->source_kind = empty($j->account_id) ? 'user' : 'account';
+                    $j->source_name = "معاش #{$j->ref_id}";
+                }
+
+                return $j;
+            }
+
+            /* ====================================================
+             * 1) external_prescription → فیس نسخه بیرونی
              * ==================================================== */
             if ($j->ref_type === 'external_prescription') {
                 $external = ExternalPrescription::find($j->ref_id);
@@ -59,7 +194,7 @@ class JournalController extends Controller
                     $j->source_name    = $patientName;
                     $j->tazkira_number = $external->tazkira_number ?? $j->tazkira_number;
                     $j->total_amount   = $external->total_amount;
-                    $j->paid_amount    = $j->amount;    // مبلغ پرداخت‌شده = amount ژورنال
+                    $j->paid_amount    = $j->amount;
                     $j->due_amount     = max(
                         0,
                         (float) $external->total_amount
@@ -71,7 +206,6 @@ class JournalController extends Controller
                     $j->source_name = "نسخه بیرونی #{$j->ref_id}";
                 }
 
-                // Fallback: اگر description حاوی نام بیمار است، استخراج کن
                 if (empty($j->source_name) || $j->source_name === "نسخه بیرونی #{$j->ref_id}") {
                     $extracted = $this->extractNameFromDescription($j->description);
                     if (!empty($extracted)) {
@@ -89,7 +223,7 @@ class JournalController extends Controller
             }
 
             /* ====================================================
-             * 1) sale
+             * 2) sale
              * ==================================================== */
             if ($j->ref_type === 'sale') {
                 $sale = Sales::with('customer')->find($j->ref_id);
@@ -112,7 +246,7 @@ class JournalController extends Controller
             }
 
             /* ====================================================
-             * 2) parchase
+             * 3) parchase
              * ==================================================== */
             if ($j->ref_type === 'parchase') {
                 $p = Parchase::with('supplier')->find($j->ref_id);
@@ -135,7 +269,7 @@ class JournalController extends Controller
             }
 
             /* ====================================================
-             * 3) patient → نام کامل از patients
+             * 4) patient → نام کامل از patients
              * ==================================================== */
             if ($j->ref_type === 'patient') {
                 $patient = $this->findPatientForJournal($j);
@@ -159,7 +293,6 @@ class JournalController extends Controller
                     }
                 }
 
-                // Fallback: از registrations
                 if (empty($j->source_name)) {
                     $regIdToUse = $j->reg_id ?: $j->ref_id;
                     if ($regIdToUse) {
@@ -177,7 +310,6 @@ class JournalController extends Controller
                     }
                 }
 
-                // اطلاعات نسخه
                 if ($j->pres_id) {
                     $prescription = Prescription::find($j->pres_id);
                     if ($prescription) {
@@ -191,7 +323,6 @@ class JournalController extends Controller
                     }
                 }
 
-                // Fallback: از description
                 if (empty($j->source_name) && !empty($j->description)) {
                     $j->source_name = $this->extractNameFromDescription($j->description);
                 }
@@ -204,7 +335,7 @@ class JournalController extends Controller
             }
 
             /* ====================================================
-             * 4) سایر انواع (doctor, nurse, supplier, ...)
+             * 5) سایر انواع (doctor, nurse, supplier, ...)
              * ==================================================== */
             if (method_exists($j, 'resolveSourceName')) {
                 try {
@@ -249,13 +380,11 @@ class JournalController extends Controller
     private function findPatientForJournal(Journal $journal): ?Patient
     {
         try {
-            // 1) patient_id مستقیم
             if (!empty($journal->patient_id)) {
                 $p = Patient::find($journal->patient_id);
                 if ($p) return $p;
             }
 
-            // 2) reg_id → registrations.patient_id
             if (!empty($journal->reg_id)) {
                 $reg = Registrations::where('reg_id', $journal->reg_id)->first();
                 if ($reg && !empty($reg->patient_id)) {
@@ -264,7 +393,6 @@ class JournalController extends Controller
                 }
             }
 
-            // 3) ref_id به‌عنوان reg_id
             if (!empty($journal->ref_id)) {
                 $reg = Registrations::where('reg_id', $journal->ref_id)->first();
                 if ($reg && !empty($reg->patient_id)) {
@@ -273,13 +401,11 @@ class JournalController extends Controller
                 }
             }
 
-            // 4) ref_id مستقیم به‌عنوان patient_id
             if (!empty($journal->ref_id)) {
                 $p = Patient::find($journal->ref_id);
                 if ($p) return $p;
             }
 
-            // 5) از parent_journal
             if (!empty($journal->parent_journal_id)) {
                 $parent = Journal::find($journal->parent_journal_id);
                 if ($parent) {
@@ -673,7 +799,7 @@ class JournalController extends Controller
 
         if ($hasColumn === null) {
             try {
-                $hasColumn = \Schema::hasColumn('journals', 'patient_id');
+                $hasColumn = Schema::hasColumn('journals', 'patient_id');
             } catch (\Throwable $e) {
                 $hasColumn = false;
             }

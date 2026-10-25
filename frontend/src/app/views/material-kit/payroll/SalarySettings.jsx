@@ -17,7 +17,6 @@ const rtlStyles = {
   "& .MuiFormControlLabel-label": { marginRight: 8 },
 };
 
-// ✅ مقادیر پیش‌فرض فقط برای اولین رندر
 const DEFAULT_SETTINGS = {
   currency: "AFN",
   payDay: 25,
@@ -40,7 +39,7 @@ export default function SalarySettings() {
   const [error, setError] = useState(null);
 
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [loaded, setLoaded] = useState(false);   // ✅ جدید: آیا از سرور لود شد؟
+  const [loaded, setLoaded] = useState(false);
 
   const [snackbar, setSnackbar] = useState({
     open: false, msg: "", severity: "success",
@@ -53,7 +52,6 @@ export default function SalarySettings() {
       const res = await api.get("/payroll/settings");
 
       if (res.data?.success && res.data?.data) {
-        // ✅ ادغام امن — هر فیلد با نوع درست
         const raw = res.data.data;
 
         setSettings({
@@ -72,7 +70,7 @@ export default function SalarySettings() {
           maxAdvancePercent: toNumber(raw.maxAdvancePercent, 50),
         });
 
-        setLoaded(true);   // ✅ علامت‌گذاری که از سرور لود شد
+        setLoaded(true);
       } else {
         setError("پاسخ سرور نامعتبر است");
       }
@@ -91,7 +89,6 @@ export default function SalarySettings() {
     setSettings((prev) => ({ ...prev, [field]: value }));
   };
 
-  // ✅ فقط عدد — با تبدیل امن
   const handleNumberChange = (field, rawValue) => {
     if (rawValue === "" || rawValue === null || rawValue === undefined) {
       handleChange(field, 0);
@@ -114,7 +111,6 @@ export default function SalarySettings() {
     try {
       setSaving(true);
 
-      // ✅ فقط فیلدهایی که واقعاً در فرم هست، با نوع درست
       const payload = {
         currency:          String(settings.currency || "AFN"),
         payDay:            toNumber(settings.payDay, 25),
@@ -131,9 +127,6 @@ export default function SalarySettings() {
         maxAdvancePercent: toNumber(settings.maxAdvancePercent, 0),
       };
 
-      // ✅ لاگ دیباگ — بعداً حذف کن
-      console.log("📤 Sending settings:", payload);
-
       const res = await api.put("/payroll/settings", payload);
 
       if (res.data?.success) {
@@ -143,7 +136,6 @@ export default function SalarySettings() {
           severity: "success",
         });
 
-        // ✅ دوباره از سرور بخوان تا مطمئن شوی همان چیزی که ذخیره شد، برگردد
         await fetchSettings();
       } else {
         setSnackbar({
@@ -325,29 +317,15 @@ export default function SalarySettings() {
 }
 
 // ============================================================
-// ✅ Helpers: تبدیل امن مقادیر
+// ✅ Helpers
 // ============================================================
 
-/**
- * تبدیل مقدار به عدد — اگر مقدار null/undefined/رشته خالی بود، default برگردان
- */
 function toNumber(value, defaultValue = 0) {
   if (value === null || value === undefined || value === "") return defaultValue;
   const n = Number(value);
   return Number.isNaN(n) ? defaultValue : n;
 }
 
-/**
- * ✅ تبدیل مقدار به boolean — رفع باگ `(bool)"false" === true`
- *
- * این تابع تمام حالت‌های ممکن را پوشش می‌دهد:
- * - true / false (boolean) → همان
- * - 1 / 0 (number) → true / false
- * - "true" / "false" (string) → true / false
- * - "1" / "0" (string) → true / false
- * - undefined / null → defaultValue
- * - هر چیز دیگر → Boolean
- */
 function toBool(value, defaultValue = false) {
   if (value === null || value === undefined) return defaultValue;
   if (typeof value === "boolean") return value;

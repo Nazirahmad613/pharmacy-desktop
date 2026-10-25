@@ -20,13 +20,11 @@ return new class extends Migration
         Schema::create('employee_salary_info', function (Blueprint $table) {
             $table->id();
 
-            // ✅ کارمند از users (nullable چون ممکن است account باشد)
             $table->unsignedBigInteger('user_id')->nullable();
             $table->foreign('user_id')
                   ->references('id')->on('users')
                   ->cascadeOnDelete();
 
-            // ✅ کارمند از accounts (nullable چون ممکن است user باشد)
             $table->unsignedBigInteger('account_id')->nullable();
             $table->foreign('account_id')
                   ->references('id')->on('accounts')
@@ -42,16 +40,13 @@ return new class extends Migration
             $table->string('hire_date', 20)->nullable();
 
             $table->string('salary_status', 20)->default('active');
-            // active | suspended | terminated
 
             $table->text('notes')->nullable();
             $table->timestamps();
 
-            // ✅ Unique: یک کاربر فقط یک رکورد، یک account فقط یک رکورد
             $table->unique('user_id', 'uk_salary_info_user');
             $table->unique('account_id', 'uk_salary_info_account');
 
-            // Indexes
             $table->index('salary_status', 'idx_salary_info_status');
             $table->index('bank_account_id', 'idx_salary_info_bank');
             $table->index('account_id', 'idx_salary_info_account_id');
@@ -67,7 +62,6 @@ return new class extends Migration
             $table->string('period_year', 10);
 
             $table->string('status', 20)->default('open');
-            // open | processing | closed | paid
 
             $table->decimal('total_amount', 18, 2)->default(0);
             $table->decimal('paid_amount', 18, 2)->default(0);
@@ -77,57 +71,47 @@ return new class extends Migration
         });
 
         // ============================================================
-        // 3) معاشات ماهانه کارمندان (users + accounts)
-        // ✅ ستون‌های جدید: gross_salary, tax_amount, insurance_amount
+        // 3) معاشات ماهانه کارمندان
         // ============================================================
         Schema::create('employee_salaries', function (Blueprint $table) {
             $table->id();
 
-            // ✅ کارمند از users
             $table->unsignedBigInteger('user_id')->nullable();
             $table->foreign('user_id')
                   ->references('id')->on('users')
                   ->nullOnDelete();
 
-            // ✅ کارمند از accounts
             $table->unsignedBigInteger('account_id')->nullable();
             $table->foreign('account_id')
                   ->references('id')->on('accounts')
                   ->nullOnDelete();
 
-            // دوره معاش
             $table->unsignedBigInteger('period_id');
             $table->foreign('period_id')
                   ->references('id')->on('payroll_periods')
                   ->cascadeOnDelete();
 
-            // اطلاعات معاش
             $table->unsignedBigInteger('salary_info_id')->nullable();
             $table->foreign('salary_info_id')
                   ->references('id')->on('employee_salary_info')
                   ->nullOnDelete();
 
-            // اجزای معاش
             $table->decimal('base_salary', 15, 2)->default(0);
             $table->decimal('allowances', 15, 2)->default(0);
             $table->decimal('deductions', 15, 2)->default(0);
 
-            // ✅ ستون‌های جدید برای نمایش دقیق اجزاء
-            $table->decimal('gross_salary', 15, 2)->default(0);       // معاش ناخالص
-            $table->decimal('tax_amount', 15, 2)->default(0);         // مالیه
-            $table->decimal('insurance_amount', 15, 2)->default(0);   // بیمه
+            $table->decimal('gross_salary', 15, 2)->default(0);
+            $table->decimal('tax_amount', 15, 2)->default(0);
+            $table->decimal('insurance_amount', 15, 2)->default(0);
 
             $table->decimal('advance_deduction', 15, 2)->default(0);
             $table->decimal('net_salary', 15, 2)->default(0);
             $table->decimal('paid_amount', 15, 2)->default(0);
 
-            // وضعیت پرداخت
             $table->string('payment_status', 20)->default('pending');
-            // pending | partial | paid | cancelled
 
             $table->date('payment_date')->nullable();
             $table->string('payment_method', 30)->default('bank_transfer');
-            // cash | bank_transfer | cheque
 
             $table->unsignedBigInteger('payment_account_id')->nullable();
             $table->unsignedBigInteger('paid_from_account_id')->nullable();
@@ -138,13 +122,11 @@ return new class extends Migration
             $table->string('receipt_number', 80)->nullable();
             $table->text('notes')->nullable();
 
-            // ثبت کننده
             $table->unsignedBigInteger('created_by')->nullable();
             $table->unsignedBigInteger('updated_by')->nullable();
 
             $table->timestamps();
 
-            // Indexes
             $table->index('payment_status', 'idx_salaries_status');
             $table->index('period_id', 'idx_salaries_period');
             $table->index('user_id', 'idx_salaries_user');
@@ -152,25 +134,21 @@ return new class extends Migration
             $table->index('payment_account_id', 'idx_salaries_account');
             $table->index('paid_from_account_id', 'idx_salaries_paid_from');
 
-            // ✅ Unique: یک کارمند (user یا account) در هر دوره فقط یک معاش
             $table->unique(['user_id', 'period_id'], 'uk_user_period');
             $table->unique(['account_id', 'period_id'], 'uk_account_period');
         });
 
         // ============================================================
-        // 4) پیش‌پرداخت معاش (users + accounts)
-        // ✅ ستون‌های جدید: target_month, target_year
+        // 4) پیش‌پرداخت معاش
         // ============================================================
         Schema::create('salary_advances', function (Blueprint $table) {
             $table->id();
 
-            // ✅ کارمند از users (nullable)
             $table->unsignedBigInteger('user_id')->nullable();
             $table->foreign('user_id')
                   ->references('id')->on('users')
                   ->cascadeOnDelete();
 
-            // ✅ کارمند از accounts (nullable)
             $table->unsignedBigInteger('account_id')->nullable();
             $table->foreign('account_id')
                   ->references('id')->on('accounts')
@@ -180,7 +158,6 @@ return new class extends Migration
             $table->text('reason')->nullable();
             $table->string('request_date', 20)->nullable();
 
-            // ✅ ستون‌های جدید: ماه و سال هدف (کسر از معاش همان ماه)
             $table->string('target_month', 20)->nullable()->after('request_date');
             $table->string('target_year', 10)->nullable()->after('target_month');
 
@@ -190,7 +167,6 @@ return new class extends Migration
             $table->unsignedBigInteger('payment_account_id')->nullable();
 
             $table->string('status', 30)->default('pending');
-            // pending | approved | rejected | repaid | partially_repaid
 
             $table->decimal('repaid_amount', 15, 2)->default(0);
             $table->decimal('remaining_amount', 15, 2)->default(0);
@@ -203,8 +179,6 @@ return new class extends Migration
             $table->index('user_id', 'idx_advances_user');
             $table->index('account_id', 'idx_advances_account_id');
             $table->index('payment_account_id', 'idx_advances_account');
-
-            // ✅ Index برای فیلتر سریع بر اساس ماه/سال هدف
             $table->index(['target_month', 'target_year'], 'idx_advances_target_period');
         });
 
@@ -216,7 +190,6 @@ return new class extends Migration
             $table->string('setting_key', 100)->unique();
             $table->text('setting_value')->nullable();
             $table->string('setting_type', 20)->default('string');
-            // string | number | boolean | json
             $table->string('description', 255)->nullable();
             $table->timestamp('updated_at')->nullable();
         });
@@ -244,7 +217,8 @@ return new class extends Migration
 
         // ============================================================
         // 7) ساخت View کامل: ترکیب users + accounts
-        // ✅ شامل ستون role برای نمایش نام رول
+        // ✅ شامل: tazkira_number, account_type, account_category
+        // ✅ سازگار با migration جدید accounts (نوع مستقل employee)
         // ============================================================
         DB::statement("
             CREATE VIEW v_active_employees AS
@@ -271,6 +245,9 @@ return new class extends Migration
                 si.bank_account_number               AS bank_account_number,
                 si.hire_date                         AS hire_date,
                 si.notes                             AS notes,
+                NULL                                 AS tazkira_number,
+                NULL                                 AS account_type,
+                NULL                                 AS account_category,
                 u.created_at                         AS created_at,
                 u.updated_at                         AS updated_at
             FROM users u
@@ -281,6 +258,7 @@ return new class extends Migration
             UNION ALL
 
             -- بخش دوم: کارمندان از accounts
+            -- ✅ فقط نوع employee (شامل رسمی، قراردادی، کارگر)
             SELECT
                 a.id                                 AS employee_id,
                 NULL                                 AS user_id,
@@ -303,17 +281,15 @@ return new class extends Migration
                 si.bank_account_number               AS bank_account_number,
                 si.hire_date                         AS hire_date,
                 si.notes                             AS notes,
+                a.tazkira_number                     AS tazkira_number,
+                a.account_type                       AS account_type,
+                a.account_category                   AS account_category,
                 a.created_at                         AS created_at,
                 a.updated_at                         AS updated_at
             FROM accounts a
             LEFT JOIN employee_salary_info si ON si.account_id = a.id
             WHERE a.is_active = 1
-              AND a.account_category IN (
-                  'employees',
-                  'employees_salary_payable',
-                  'daily_wage_workers',
-                  'external_employees'
-              )
+              AND a.account_type = 'employee'
         ");
 
         // ============================================================
@@ -324,10 +300,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        // حذف View اول
         DB::statement('DROP VIEW IF EXISTS v_active_employees');
 
-        // سپس حذف جداول (ترتیب مهم است - ابتدا وابسته‌ها)
         Schema::dropIfExists('payroll_audit_log');
         Schema::dropIfExists('payroll_settings');
         Schema::dropIfExists('salary_advances');

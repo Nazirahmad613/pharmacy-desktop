@@ -126,6 +126,73 @@ const REF_TYPE_FA = {
 };
 
 /* ============================================================
+ *  ✅ انواع ref_type معاشات — هم‌تراز با JournalController::SALARY_META
+ *  kind: user | account
+ * ============================================================ */
+const SALARY_REF_META = {
+  salary_generation:    { label: "تولید معاش (هزینه)",       kindLabel: "یوزر" },
+  salary_payable:       { label: "معاش قابل پرداخت",          kindLabel: "یوزر" },
+  salary_payment:       { label: "پرداخت معاش (صندوق/بانک)",  kindLabel: "یوزر" },
+  salary_payment_debit: { label: "تسویه معاش",                kindLabel: "یوزر" },
+  salary_advance:       { label: "پیش‌پرداخت معاش",            kindLabel: "حساب" },
+  salary_advance_debit: { label: "ثبت پیش‌پرداخت",             kindLabel: "حساب" },
+};
+
+const isSalaryRefType = (t) => Object.prototype.hasOwnProperty.call(SALARY_REF_META, t);
+
+/* ✅ برچسب «منبع» (کالم منبع)
+ *  - برای معاشات: از source_kind که بک‌اند فرستاده (user/account) → «یوزر» یا «حساب»
+ *  - برای بقیه: برچسب فارسی ref_type
+ */
+const resolveSourceColumnLabel = (row) => {
+  if (!row) return "-";
+
+  if (isSalaryRefType(row.source_type)) {
+    // اگر بک‌اند source_kind داده → همان را استفاده کن
+    if (row.source_kind === "user") return "یوزر";
+    if (row.source_kind === "account") return "حساب";
+    // fallback از متادیتای محلی
+    const meta = SALARY_REF_META[row.source_type];
+    if (meta) return meta.kindLabel;
+  }
+
+  return REF_TYPE_FA[row.source_type] || safeStr(row.source_type);
+};
+
+/* ✅ برچسب «نام منبع» (کالم نام منبع)
+ *  1) source_name از API (بک‌اند جدید پر می‌کند)
+ *  2) full_name / display_name
+ *  3) استخراج از description برای معاشات
+ *  4) fallback نهایی
+ */
+const resolveSourceName = (j) => {
+  if (!j) return "-";
+
+  const primary = safeStr(
+    j.source_name || j.full_name || j.display_name,
+    ""
+  );
+  if (primary && primary !== "-") return primary;
+
+  if (isSalaryRefType(j.ref_type) && j.description) {
+    const m = String(j.description).match(
+      /(?:معاش|پیش‌پرداخت|معاش قابل پرداخت|تولید معاش)\s*-\s*([^\-()]+)/u
+    );
+    if (m && m[1] && m[1].trim()) return m[1].trim();
+  }
+
+  if (j.description) {
+    const d = String(j.description);
+    const m =
+      d.match(/بیمار\s*:\s*([^\-()]+)/u) ||
+      d.match(/مریض\s*:\s*([^\-()]+)/u);
+    if (m && m[1] && m[1].trim()) return m[1].trim();
+  }
+
+  return "-";
+};
+
+/* ============================================================
  *  ✅ انواع منبعی که "نیاز به ref_id ندارند" (مصارف مستقیم)
  * ============================================================ */
 const NO_REF_TYPES = [
@@ -144,7 +211,6 @@ const NO_REF_TYPES = [
 
 /* ============================================================
  *  ✅ انواع منبعی که از جدول accounts می‌آیند (حساب‌محور)
- *  این‌ها ref_id = account.id دارند
  * ============================================================ */
 const ACCOUNT_REF_TYPES = [
   "customer_account",
@@ -431,7 +497,6 @@ export default function JournalPage() {
     let isMounted = true;
 
     const loadSources = async () => {
-      /* ✅ اگر این ref_type نیاز به منبع ندارد، چیزی بارگذاری نکن */
       if (!form.ref_type || !needsRefId(form.ref_type)) {
         setRefSources([]);
         return;
@@ -473,27 +538,18 @@ export default function JournalPage() {
     setForm((prev) => {
       const updated = { ...prev, [name]: value };
 
-      /* ============================================================
-       *  ✅ entry_type عوض شد → فقط فیلدهای وابسته به منبع را ریست کن
-       * ============================================================ */
       if (name === "entry_type") {
         updated.ref_id = "";
         updated.reg_id = "";
         updated.tazkira_number = "";
       }
 
-      /* ============================================================
-       *  ✅ ref_type عوض شد → فیلدهای وابسته به منبع را ریست کن
-       * ============================================================ */
       if (name === "ref_type") {
         updated.ref_id = "";
         updated.reg_id = "";
         updated.tazkira_number = "";
       }
 
-      /* ============================================================
-       *  ✅ ref_id انتخاب شد
-       * ============================================================ */
       if (name === "ref_id") {
         const found = refSources.find(
           (r) => String(r.id) === String(value)
@@ -508,9 +564,6 @@ export default function JournalPage() {
 
           const foundName = safeStr(found.name, "");
 
-          /* ============================================================
-           *  ✅ debit → مبلغ از منبع خوانده می‌شود
-           * ============================================================ */
           if (form.entry_type === "debit") {
             if (form.ref_type === "external_prescription") {
               if (foundName) {
@@ -533,12 +586,7 @@ export default function JournalPage() {
                 updated.amount = found.total_amount;
               }
             }
-          }
-
-          /* ============================================================
-           *  ✅ credit → مبلغ دست نمی‌خورد
-           * ============================================================ */
-          else {
+          } else {
             if (!updated.description && foundName) {
               updated.description = foundName;
             }
@@ -581,7 +629,6 @@ export default function JournalPage() {
     if (!form.ref_type)
       return toast.error("نوع منبع الزامی است");
 
-    /* ✅ فقط اگر ref_type نیاز به منبع دارد، ref_id را چک کن */
     if (needsRefId(form.ref_type) && !form.ref_id) {
       return toast.error("نام منبع الزامی است");
     }
@@ -596,7 +643,6 @@ export default function JournalPage() {
         amount: Number(form.amount),
         ref_id: form.ref_id ? Number(form.ref_id) : 0,
         reg_id: form.reg_id ? Number(form.reg_id) : null,
-        /* ✅ اگر حساب‌محور است، account_id را هم بفرست */
         account_id: isAccountSource && form.ref_id
           ? Number(form.ref_id)
           : undefined,
@@ -653,7 +699,7 @@ export default function JournalPage() {
           <p>مبلغ کل: ${safeStr(row.amount)}</p>
           <p>پرداخت شده: ${safeStr(row.paid)}</p>
           <p>باقی‌مانده: ${safeStr(row.remaining)}</p>
-          <p>منبع: ${REF_TYPE_FA[row.source_type] || safeStr(row.source_type)}</p>
+          <p>منبع: ${safeStr(row.source_label)}</p>
           <p>نام منبع: ${safeStr(row.source_name)}</p>
           <p>شماره تذکره: ${safeStr(row.tazkira_number)}</p>
         </body>
@@ -709,6 +755,13 @@ export default function JournalPage() {
           paid = amount;
         }
 
+        /* ✅ محاسبه برچسب‌ها از توابع کمکی — برای معاشات بک‌اند source_kind/source_name می‌فرستد */
+        const sourceLabel = resolveSourceColumnLabel({
+          source_type: j.ref_type,
+          source_kind: j.source_kind,
+        });
+        const sourceName = resolveSourceName(j);
+
         return {
           id: j.id,
           raw_date: j.journal_date,
@@ -719,9 +772,8 @@ export default function JournalPage() {
           paid,
           remaining,
           source_type: safeStr(j.ref_type),
-          source_name: safeStr(
-            j.source_name || j.full_name || j.display_name
-          ),
+          source_label: sourceLabel,
+          source_name: sourceName,
           tazkira_number: safeStr(j.tazkira_number),
           reg_id: j.reg_id ?? null,
         };
@@ -755,7 +807,7 @@ export default function JournalPage() {
   }, [searchTerm, filterType, fromDate, toDate]);
 
   /* ============================================================
-   *  رنگ ردیف
+   *  رنگ ردیف — بدون هیچ تغییری
    * ============================================================ */
   const getRowColor = (sourceType) => {
     switch (sourceType) {
@@ -908,7 +960,6 @@ export default function JournalPage() {
               ))}
             </select>
 
-            {/* ==================== مبلغ ==================== */}
             <input
               type="number"
               name="amount"
@@ -949,7 +1000,6 @@ export default function JournalPage() {
               required
             >
               <option value="">نوع منبع</option>
-              {/* ✅ گروه‌های حساب‌محور اول */}
               {ACCOUNT_REF_GROUPS.map((group) => (
                 <optgroup key={`acc-group-${group.label}`} label={group.label}>
                   {group.options.map((opt) => (
@@ -959,7 +1009,6 @@ export default function JournalPage() {
                   ))}
                 </optgroup>
               ))}
-              {/* گروه‌های معمولی */}
               {REF_TYPE_GROUPS.map((group) => (
                 <optgroup key={`group-${group.label}`} label={group.label}>
                   {group.options.map((opt) => (
@@ -971,7 +1020,6 @@ export default function JournalPage() {
               ))}
             </select>
 
-            {/* ==================== نام منبع (فقط اگر نیاز باشد) ==================== */}
             {refIdRequired && (
               <select
                 name="ref_id"
@@ -1127,8 +1175,7 @@ export default function JournalPage() {
                           {Number(row.remaining || 0).toLocaleString("fa-IR")}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-[12px]">
-                          {REF_TYPE_FA[row.source_type] ||
-                            safeStr(row.source_type)}
+                          {safeStr(row.source_label)}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-[12px]">
                           {safeStr(row.source_name)}

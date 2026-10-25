@@ -14,11 +14,10 @@ use App\Models\SalaryAdvance;
 use App\Models\PayrollSetting;
 use App\Models\User;
 use App\Models\Account;
-use App\Services\PayrollJournalService;    // ✅ جدید
+use App\Services\PayrollJournalService;
 
 class PayrollModelController extends Controller
 {
-    // ✅ تزریق سرویس ژورنال
     protected PayrollJournalService $journalService;
 
     public function __construct(PayrollJournalService $journalService)
@@ -54,7 +53,7 @@ class PayrollModelController extends Controller
                 ? (int) round(($paidThisMonth / $periodTotal) * 100)
                 : 0;
 
-            $recent = EmployeeSalary::with(['user.department', 'account'])
+            $recent = EmployeeSalary::with(['user.department', 'account', 'salaryInfo'])
                 ->orderBy('updated_at', 'desc')
                 ->limit(5)
                 ->get()
@@ -70,6 +69,9 @@ class PayrollModelController extends Controller
                         'status'     => $s->payment_status === 'paid'
                             ? 'پرداخت شده'
                             : 'در انتظار',
+                        // ✅ جدید
+                        'tazkiraNumber' => $s->account->tazkira_number ?? null,
+                        'accountType'   => $s->account->account_type ?? null,
                     ];
                 });
 
@@ -111,7 +113,8 @@ class PayrollModelController extends Controller
                 $query->where(function ($q) use ($search) {
                     $q->where('full_name', 'like', "%{$search}%")
                       ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('account_code', 'like', "%{$search}%");
+                      ->orWhere('account_code', 'like', "%{$search}%")
+                      ->orWhere('tazkira_number', 'like', "%{$search}%");
                 });
             }
 
@@ -159,6 +162,10 @@ class PayrollModelController extends Controller
                     'hireDate'      => $r->hire_date ?? null,
                     'status'        => $r->salary_status === 'active' ? 'فعال' : 'غیرفعال',
                     'statusRaw'     => $r->salary_status,
+                    // ✅ جدید: تذکره و نوعیت حساب
+                    'tazkiraNumber'   => $r->tazkira_number ?? null,
+                    'accountType'     => $r->account_type ?? null,
+                    'accountCategory' => $r->account_category ?? null,
                 ];
             });
 
@@ -323,7 +330,6 @@ class PayrollModelController extends Controller
                 return response()->json(['success' => false, 'message' => 'یافت نشد'], 404);
             }
 
-            // ✅ حذف ژورنال‌های مربوط به معاشات این کارمند
             $salaryIds = EmployeeSalary::where('salary_info_id', $info->id)->pluck('id')->toArray();
             foreach ($salaryIds as $sid) {
                 $this->journalService->deleteSalaryJournals($sid);
@@ -386,9 +392,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * ✅ generateSalaries — همیشه tax و insurance را محاسبه و ذخیره می‌کند + ژورنال ثبت می‌کند
-     */
     public function generateSalaries(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -503,7 +506,6 @@ class PayrollModelController extends Controller
                     'payment_status'    => 'pending',
                 ]);
 
-                // ✅ ثبت ژورنال تولید معاش
                 $this->journalService->recordSalaryGeneration($salary);
 
                 $inserted++;
@@ -575,10 +577,8 @@ class PayrollModelController extends Controller
                     'updated_by'           => $request->user()?->id,
                 ]);
 
-                // ✅ ثبت ژورنال پرداخت معاش
                 $this->journalService->recordSalaryPayment($salary->fresh(), $paymentDate, $accountId);
 
-                // کسر پیش‌پرداخت
                 if ($salary->advance_deduction > 0) {
                     $remaining = (float) $salary->advance_deduction;
 
@@ -793,9 +793,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * ✅ approveAdvance — ثبت ژورنال پیش‌پرداخت هنگام تأیید
-     */
     public function approveAdvance(Request $request, $id)
     {
         try {
@@ -819,7 +816,6 @@ class PayrollModelController extends Controller
                 'approved_by'   => $request->user()->id ?? null,
             ]);
 
-            // ✅ ثبت ژورنال پیش‌پرداخت
             $this->journalService->recordAdvancePayment(
                 $advance->fresh(['user', 'account']),
                 now()->toDateString()
@@ -845,7 +841,6 @@ class PayrollModelController extends Controller
                 return response()->json(['success' => false, 'message' => 'یافت نشد'], 404);
             }
 
-            // ✅ حذف ژورنال پیش‌پرداخت (اگر قبلاً تأیید شده بود)
             $this->journalService->deleteAdvanceJournals($advance->id);
 
             $advance->update(['status' => 'rejected']);
@@ -862,120 +857,98 @@ class PayrollModelController extends Controller
     // ============================================================
     // 📊 REPORTS
     // ============================================================
-    /**
- * ✅ getReports — لیست ردیفی همه معاشات یک دوره (برای گزارش + چاپ + خروجی Excel)
- *    - همه معاشات: کاربران سیستم + طرف‌حساب‌ها
- *    - همه وضعیت‌ها: پرداخت شده، در انتظار، جزئی
- *    - همه فیلدها: پایه، مزایا، کسرات، مالیه، بیمه، پیش‌پرداخت، خالص
- *    - totals جداگانه برای کارت‌های خلاصه
- */
-public function getReports(Request $request)
-{
-    try {
-        $month = $request->query('month');
-        $year  = $request->query('year');
+    public function getReports(Request $request)
+    {
+        try {
+            $month = $request->query('month');
+            $year  = $request->query('year');
 
-        if (!$month || !$year) {
+            if (!$month || !$year) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'ماه و سال الزامی است',
+                ], 400);
+            }
+
+            $period = PayrollPeriod::findOrCreate($month, $year);
+
+            $salaries = EmployeeSalary::with(['user.department', 'account', 'salaryInfo'])
+                ->where('period_id', $period->id)
+                ->orderByRaw("CASE 
+                    WHEN payment_status = 'pending' THEN 1
+                    WHEN payment_status = 'partial' THEN 2
+                    WHEN payment_status = 'paid' THEN 3
+                    ELSE 4
+                END")
+                ->orderBy('id', 'asc')
+                ->get();
+
+            $rows = $salaries->map(fn($s) => $this->salaryToArray($s));
+
+            $totals = [
+                'employees'       => $rows->count(),
+                'totalBase'       => (float) $rows->sum('baseSalary'),
+                'totalAllowances' => (float) $rows->sum('allowances'),
+                'totalDeductions' => (float) $rows->sum('deductions'),
+                'totalTax'        => (float) $rows->sum('tax'),
+                'totalInsurance'  => (float) $rows->sum('insurance'),
+                'totalAdvance'    => (float) $rows->sum('advanceDeduction'),
+                'totalGross'      => (float) $rows->sum('grossSalary'),
+                'totalSalary'     => (float) $rows->sum('netSalary'),
+                'paid'            => (float) $rows
+                    ->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'paid')
+                    ->sum('netSalary'),
+                'pending'         => (float) $rows
+                    ->filter(fn($r) => ($r['paymentStatus'] ?? '') !== 'paid')
+                    ->sum('netSalary'),
+                'countPaid'       => $rows->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'paid')->count(),
+                'countPending'    => $rows->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'pending')->count(),
+                'countPartial'    => $rows->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'partial')->count(),
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data'    => $rows,
+                'totals'  => $totals,
+                'period'  => [
+                    'id'    => $period->id,
+                    'month' => $period->period_month,
+                    'year'  => $period->period_year,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('getReports: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json([
                 'success' => false,
-                'message' => 'ماه و سال الزامی است',
-            ], 400);
+                'message' => $e->getMessage(),
+            ], 500);
         }
-
-        $period = PayrollPeriod::findOrCreate($month, $year);
-
-        // ✅ ۱) همه معاشات این دوره به‌صورت ردیفی
-        //    با eager loading روابط تا N+1 مشکل نداشته باشد
-        $salaries = EmployeeSalary::with(['user.department', 'account', 'salaryInfo'])
-            ->where('period_id', $period->id)
-            ->orderByRaw("CASE 
-                WHEN payment_status = 'pending' THEN 1
-                WHEN payment_status = 'partial' THEN 2
-                WHEN payment_status = 'paid' THEN 3
-                ELSE 4
-            END")
-            ->orderBy('id', 'asc')
-            ->get();
-
-        // ✅ ۲) تبدیل هر ردیف به آرایه استاندارد
-        $rows = $salaries->map(fn($s) => $this->salaryToArray($s));
-
-        // ✅ ۳) محاسبه مجموع‌ها برای کارت‌های خلاصه
-        $totals = [
-            'employees'       => $rows->count(),
-            'totalBase'       => (float) $rows->sum('baseSalary'),
-            'totalAllowances' => (float) $rows->sum('allowances'),
-            'totalDeductions' => (float) $rows->sum('deductions'),
-            'totalTax'        => (float) $rows->sum('tax'),
-            'totalInsurance'  => (float) $rows->sum('insurance'),
-            'totalAdvance'    => (float) $rows->sum('advanceDeduction'),
-            'totalGross'      => (float) $rows->sum('grossSalary'),
-            'totalSalary'     => (float) $rows->sum('netSalary'),
-
-            // پرداخت شده‌ها
-            'paid'            => (float) $rows
-                ->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'paid')
-                ->sum('netSalary'),
-
-            // باقی‌مانده (هر چیزی که پرداخت نشده)
-            'pending'         => (float) $rows
-                ->filter(fn($r) => ($r['paymentStatus'] ?? '') !== 'paid')
-                ->sum('netSalary'),
-
-            // تعداد به تفکیک وضعیت
-            'countPaid'       => $rows->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'paid')->count(),
-            'countPending'    => $rows->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'pending')->count(),
-            'countPartial'    => $rows->filter(fn($r) => ($r['paymentStatus'] ?? '') === 'partial')->count(),
-        ];
-
-        return response()->json([
-            'success' => true,
-            'data'    => $rows,
-            'totals'  => $totals,
-            'period'  => [
-                'id'    => $period->id,
-                'month' => $period->period_month,
-                'year'  => $period->period_year,
-            ],
-        ]);
-    } catch (\Throwable $e) {
-        Log::error('getReports: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
-        return response()->json([
-            'success' => false,
-            'message' => $e->getMessage(),
-        ], 500);
     }
-}
 
+    public function getReportPeriods(Request $request)
+    {
+        try {
+            $periods = PayrollPeriod::query()
+                ->whereHas('salaries')
+                ->orderBy('period_year', 'desc')
+                ->orderBy('id', 'desc')
+                ->get(['id', 'period_month', 'period_year'])
+                ->map(fn($p) => [
+                    'id'    => $p->id,
+                    'month' => $p->period_month,
+                    'year'  => $p->period_year,
+                ])
+                ->values();
 
-
-/**
- * ✅ getReportPeriods — لیست ماه/سال‌هایی که معاش دارند (برای dropdown)
- */
-public function getReportPeriods(Request $request)
-{
-    try {
-        $periods = PayrollPeriod::query()
-            ->whereHas('salaries')   // فقط دوره‌هایی که معاش دارند
-            ->orderBy('period_year', 'desc')
-            ->orderBy('id', 'desc')
-            ->get(['id', 'period_month', 'period_year'])
-            ->map(fn($p) => [
-                'id'    => $p->id,
-                'month' => $p->period_month,
-                'year'  => $p->period_year,
-            ])
-            ->values();
-
-        return response()->json([
-            'success' => true,
-            'data'    => $periods,
-        ]);
-    } catch (\Throwable $e) {
-        Log::error('getReportPeriods: ' . $e->getMessage());
-        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'success' => true,
+                'data'    => $periods,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('getReportPeriods: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
-}
 
     // ============================================================
     // ⚙️ SETTINGS
@@ -1118,6 +1091,11 @@ public function getReportPeriods(Request $request)
             'hireDate'      => $info->hire_date,
             'status'        => $info->salary_status === 'active' ? 'فعال' : 'غیرفعال',
             'statusRaw'     => $info->salary_status,
+
+            // ✅ جدید
+            'tazkiraNumber'   => $info->account->tazkira_number ?? null,
+            'accountType'     => $info->account->account_type ?? null,
+            'accountCategory' => $info->account->account_category ?? null,
         ];
     }
 
@@ -1162,6 +1140,11 @@ public function getReportPeriods(Request $request)
             'paymentMethod'    => $s->payment_method,
             'receiptNumber'    => $s->receipt_number,
             'notes'            => $s->notes,
+
+            // ✅ جدید
+            'tazkiraNumber'   => $s->account->tazkira_number ?? null,
+            'accountType'     => $s->account->account_type ?? null,
+            'accountCategory' => $s->account->account_category ?? null,
         ];
     }
 
@@ -1215,6 +1198,11 @@ public function getReportPeriods(Request $request)
             'remainingAmount'  => (float) $a->remaining_amount,
             'repaymentMonths'  => (int) $a->repayment_months,
             'monthlyDeduction' => (float) $a->monthly_deduction,
+
+            // ✅ جدید
+            'tazkiraNumber'   => $a->account->tazkira_number ?? null,
+            'accountType'     => $a->account->account_type ?? null,
+            'accountCategory' => $a->account->account_category ?? null,
         ];
     }
 }

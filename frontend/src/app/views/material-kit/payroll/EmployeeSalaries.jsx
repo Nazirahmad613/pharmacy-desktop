@@ -16,7 +16,12 @@ import PersonIcon from "@mui/icons-material/Person";
 import BusinessIcon from "@mui/icons-material/Business";
 import api from "../../../../api";
 
-// ✅ انتخاب اولین فیلد عددی موجود از میان چند نام جایگزین
+const ACCOUNT_TYPE_FA = {
+  asset: "دارایی", liability: "بدهی", equity: "سرمایه",
+  income: "درآمد", expense: "هزینه", receivable: "مطالبات",
+  payable: "بدهی‌ها", employee: "کارمندان",
+};
+
 const pickNumber = (obj, keys, fallback = 0) => {
   for (const k of keys) {
     const v = obj?.[k];
@@ -28,43 +33,24 @@ const pickNumber = (obj, keys, fallback = 0) => {
   return fallback;
 };
 
-// ✅ نرمال‌سازی ردیف معاش
 const normalizeSalaryRow = (e = {}) => {
-  const tax = pickNumber(e, [
-    "tax", "taxAmount", "incomeTax", "tax_value",
-    "deduction_tax", "tax_deduction",
-  ]);
-  const insurance = pickNumber(e, [
-    "insurance", "insuranceAmount", "insurance_value",
-    "insuranceDeduction", "socialSecurity", "social_security",
-    "deduction_insurance",
-  ]);
-  const advanceDeduction = pickNumber(e, [
-    "advanceDeduction", "advance_deduction", "advance",
-    "advanceAmount", "loanDeduction", "loan_deduction",
-  ]);
+  const tax = pickNumber(e, ["tax", "taxAmount", "incomeTax", "tax_value", "deduction_tax", "tax_deduction"]);
+  const insurance = pickNumber(e, ["insurance", "insuranceAmount", "insurance_value", "insuranceDeduction", "socialSecurity", "social_security", "deduction_insurance"]);
+  const advanceDeduction = pickNumber(e, ["advanceDeduction", "advance_deduction", "advance", "advanceAmount", "loanDeduction", "loan_deduction"]);
   const baseSalary = pickNumber(e, ["baseSalary", "base_salary", "basicSalary"]);
   const allowances = pickNumber(e, ["allowances", "allowance", "bonuses"]);
   const deductions = pickNumber(e, ["deductions", "otherDeductions", "manualDeductions"]);
 
-  const grossSalary =
-    pickNumber(e, ["grossSalary", "gross_salary"]) ||
-    baseSalary + allowances;
-
-  const netSalary =
-    pickNumber(e, ["netSalary", "net_salary"]) ||
-    grossSalary - deductions - tax - insurance - advanceDeduction;
+  const grossSalary = pickNumber(e, ["grossSalary", "gross_salary"]) || baseSalary + allowances;
+  const netSalary = pickNumber(e, ["netSalary", "net_salary"]) || grossSalary - deductions - tax - insurance - advanceDeduction;
 
   return {
     ...e,
-    baseSalary,
-    allowances,
-    deductions,
-    tax,
-    insurance,
-    advanceDeduction,
-    grossSalary,
-    netSalary,
+    baseSalary, allowances, deductions, tax, insurance, advanceDeduction,
+    grossSalary, netSalary,
+    // ✅ جدید
+    tazkiraNumber: e.tazkiraNumber ?? e.tazkira_number ?? null,
+    accountType: e.accountType ?? e.account_type ?? null,
   };
 };
 
@@ -85,14 +71,9 @@ export default function EmployeeSalaries() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
 
   const [formData, setFormData] = useState({
-    userId: null,
-    accountId: null,
-    source: null,
-    baseSalary: "",
-    allowances: "",
-    deductions: "",
-    bankAccount: "",
-    hireDate: "",
+    userId: null, accountId: null, source: null,
+    baseSalary: "", allowances: "", deductions: "",
+    bankAccount: "", hireDate: "",
   });
 
   const fetchEmployees = useCallback(async () => {
@@ -106,12 +87,9 @@ export default function EmployeeSalaries() {
 
       const res = await api.get("/payroll/employees", { params });
       if (res.data?.success) {
-        // ✅ نرمال‌سازی برای نمایش درست مالیات/بیمه/خالص
         const list = (res.data.data || []).map(normalizeSalaryRow);
         setEmployees(list);
-        const uniqueDepts = [
-          ...new Set(list.map((e) => e.department).filter(Boolean)),
-        ];
+        const uniqueDepts = [...new Set(list.map((e) => e.department).filter(Boolean))];
         setDepartments(uniqueDepts);
       } else {
         setError(res.data?.message || "خطا در دریافت اطلاعات");
@@ -124,24 +102,17 @@ export default function EmployeeSalaries() {
     }
   }, [search, departmentFilter, sourceFilter]);
 
-  useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
+  useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
 
   const fetchUsers = async (query = "") => {
     try {
-      const res = await api.get("/users", {
-        params: { search: query, per_page: 50 },
-      });
+      const res = await api.get("/users", { params: { search: query, per_page: 50 } });
       const list = res.data?.data?.data || res.data?.data || res.data || [];
-      setUsers(
-        (Array.isArray(list) ? list : []).map((u) => ({
-          id: u.id,
-          name: u.name,
-          role: u.role || "",
-          department: u.department?.name || "",
-        }))
-      );
+      setUsers((Array.isArray(list) ? list : []).map((u) => ({
+        id: u.id, name: u.name,
+        role: u.role || "",
+        department: u.department?.name || "",
+      })));
     } catch (err) {
       console.error("fetchUsers error:", err);
     }
@@ -163,14 +134,9 @@ export default function EmployeeSalaries() {
     } else {
       setSelectedEmployee(null);
       setFormData({
-        userId: null,
-        accountId: null,
-        source: null,
-        baseSalary: "",
-        allowances: "",
-        deductions: "",
-        bankAccount: "",
-        hireDate: "",
+        userId: null, accountId: null, source: null,
+        baseSalary: "", allowances: "", deductions: "",
+        bankAccount: "", hireDate: "",
       });
       fetchUsers();
     }
@@ -230,9 +196,7 @@ export default function EmployeeSalaries() {
       alert("کارمندان طرف‌حساب از جدول حسابات مدیریت می‌شوند");
       return;
     }
-    if (!window.confirm(`آیا از حذف اطلاعات معاش «${employee.fullName}» مطمئن هستید؟`)) {
-      return;
-    }
+    if (!window.confirm(`آیا از حذف اطلاعات معاش «${employee.fullName}» مطمئن هستید؟`)) return;
     try {
       await api.delete(`/payroll/employees/${employee.id}`);
       fetchEmployees();
@@ -241,16 +205,11 @@ export default function EmployeeSalaries() {
     }
   };
 
-  const formatCurrency = (n) =>
-    new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
+  const formatCurrency = (n) => new Intl.NumberFormat("fa-AF").format(Number(n) || 0) + " ؋";
 
   const filtered = employees;
 
-  const totalNetSalary = useMemo(
-    () => filtered.reduce((sum, e) => sum + (e.netSalary || 0), 0),
-    [filtered]
-  );
-
+  const totalNetSalary = useMemo(() => filtered.reduce((sum, e) => sum + (e.netSalary || 0), 0), [filtered]);
   const userCount = filtered.filter((e) => e.source === "user").length;
   const accountCount = filtered.filter((e) => e.source === "account").length;
 
@@ -266,9 +225,7 @@ export default function EmployeeSalaries() {
     <Box dir="rtl" sx={{ p: 3 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">👥 معاشات کارمندان</Typography>
-        <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchEmployees}>
-          بازخوانی
-        </Button>
+        <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchEmployees}>بازخوانی</Button>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -278,47 +235,28 @@ export default function EmployeeSalaries() {
           <Grid container spacing={2} alignItems="center" dir="rtl">
             <Grid item xs={12} sm={4}>
               <TextField
-                fullWidth
-                size="small"
-                placeholder="جستجو در نام، ایمیل، کد..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start"><SearchIcon /></InputAdornment>
-                  ),
-                }}
+                fullWidth size="small" placeholder="جستجو در نام، ایمیل، کد، تذکره..."
+                value={search} onChange={(e) => setSearch(e.target.value)}
+                InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon /></InputAdornment>) }}
               />
             </Grid>
             <Grid item xs={12} sm={3}>
-              <TextField
-                fullWidth select size="small" label="بخش"
-                value={departmentFilter}
-                onChange={(e) => setDepartmentFilter(e.target.value)}
-              >
+              <TextField fullWidth select size="small" label="بخش"
+                value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)}>
                 <MenuItem value="all">همه بخش‌ها</MenuItem>
-                {departments.map((d) => (
-                  <MenuItem key={d} value={d}>{d}</MenuItem>
-                ))}
+                {departments.map((d) => <MenuItem key={d} value={d}>{d}</MenuItem>)}
               </TextField>
             </Grid>
             <Grid item xs={12} sm={3}>
-              <TextField
-                fullWidth select size="small" label="منبع کارمند"
-                value={sourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value)}
-              >
+              <TextField fullWidth select size="small" label="منبع کارمند"
+                value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
                 <MenuItem value="all">همه</MenuItem>
                 <MenuItem value="user">کاربران سیستم</MenuItem>
                 <MenuItem value="account">طرف‌حساب‌ها</MenuItem>
               </TextField>
             </Grid>
             <Grid item xs={12} sm={2} sx={{ textAlign: "left" }}>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => handleOpenDialog()}
-              >
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
                 افزودن
               </Button>
             </Grid>
@@ -355,9 +293,7 @@ export default function EmployeeSalaries() {
           <Card sx={{ bgcolor: "success.50", borderRight: "4px solid", borderColor: "success.main" }}>
             <CardContent>
               <Typography variant="body2" color="text.secondary">مجموع معاش خالص</Typography>
-              <Typography variant="h5" fontWeight="bold" color="success.main">
-                {formatCurrency(totalNetSalary)}
-              </Typography>
+              <Typography variant="h5" fontWeight="bold" color="success.main">{formatCurrency(totalNetSalary)}</Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -369,6 +305,8 @@ export default function EmployeeSalaries() {
             <TableRow sx={{ bgcolor: "grey.100" }}>
               <TableCell align="right">#</TableCell>
               <TableCell align="right">نام کامل</TableCell>
+              <TableCell align="right">تذکره</TableCell>{/* ✅ جدید */}
+              <TableCell align="right">نوعیت حساب</TableCell>{/* ✅ جدید */}
               <TableCell align="right">منبع</TableCell>
               <TableCell align="right">کد کارمند</TableCell>
               <TableCell align="right">بخش</TableCell>
@@ -385,7 +323,7 @@ export default function EmployeeSalaries() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={13} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={15} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">هیچ کارمندی یافت نشد</Typography>
                 </TableCell>
               </TableRow>
@@ -394,6 +332,17 @@ export default function EmployeeSalaries() {
                 <TableRow key={`${e.source}-${e.id}`} hover>
                   <TableCell align="right">{idx + 1}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
+                  <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "12px" }}>
+                    {e.tazkiraNumber || "—"}{/* ✅ جدید */}
+                  </TableCell>
+                  <TableCell align="right">
+                    {e.accountType ? (/* ✅ جدید */
+                      <Chip
+                        label={ACCOUNT_TYPE_FA[e.accountType] || e.accountType}
+                        size="small" color="primary" variant="outlined"
+                      />
+                    ) : "—"}
+                  </TableCell>
                   <TableCell align="right">
                     <Chip
                       icon={e.source === "user" ? <PersonIcon /> : <BusinessIcon />}
@@ -406,54 +355,29 @@ export default function EmployeeSalaries() {
                   <TableCell align="right">{e.employeeCode || "—"}</TableCell>
                   <TableCell align="right">{e.department || "—"}</TableCell>
                   <TableCell align="right">{formatCurrency(e.baseSalary)}</TableCell>
-                  <TableCell align="right" sx={{ color: "success.main" }}>
-                    +{formatCurrency(e.allowances)}
-                  </TableCell>
-                  <TableCell align="right" sx={{ color: "error.main" }}>
-                    -{formatCurrency(e.deductions)}
-                  </TableCell>
+                  <TableCell align="right" sx={{ color: "success.main" }}>+{formatCurrency(e.allowances)}</TableCell>
+                  <TableCell align="right" sx={{ color: "error.main" }}>-{formatCurrency(e.deductions)}</TableCell>
                   <TableCell align="right" sx={{ color: "error.main" }}>
                     {e.tax > 0 ? `-${formatCurrency(e.tax)}` : "—"}
                   </TableCell>
                   <TableCell align="right" sx={{ color: "error.main" }}>
                     {e.insurance > 0 ? `-${formatCurrency(e.insurance)}` : "—"}
                   </TableCell>
+                  <TableCell align="right"><strong>{formatCurrency(e.netSalary)}</strong></TableCell>
                   <TableCell align="right">
-                    <strong>{formatCurrency(e.netSalary)}</strong>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Chip
-                      label={e.status}
-                      size="small"
-                      color={e.statusRaw === "active" ? "success" : "default"}
-                    />
+                    <Chip label={e.status} size="small" color={e.statusRaw === "active" ? "success" : "default"} />
                   </TableCell>
                   <TableCell align="right">
                     <Tooltip title="ویرایش معاش">
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        onClick={() => handleOpenDialog(e)}
-                      >
+                      <IconButton size="small" color="primary" onClick={() => handleOpenDialog(e)}>
                         <EditIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-
                     {e.source === "user" && (
                       <Tooltip title="حذف">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDelete(e)}
-                        >
+                        <IconButton size="small" color="error" onClick={() => handleDelete(e)}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
-                      </Tooltip>
-                    )}
-
-                    {e.source === "account" && (
-                      <Tooltip title="حذف از جدول حسابات مدیریت می‌شود">
-                        <Chip label="حساب" size="small" variant="outlined" />
                       </Tooltip>
                     )}
                   </TableCell>
@@ -464,34 +388,16 @@ export default function EmployeeSalaries() {
         </Table>
       </TableContainer>
 
-      <Dialog
-        open={openDialog}
-        onClose={handleCloseDialog}
-        maxWidth="md"
-        fullWidth
-        dir="rtl"
-      >
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth dir="rtl">
         <DialogTitle>
-          {selectedEmployee
-            ? `ویرایش اطلاعات معاش - ${selectedEmployee.fullName}`
-            : "افزودن اطلاعات معاش"}
+          {selectedEmployee ? `ویرایش اطلاعات معاش - ${selectedEmployee.fullName}` : "افزودن اطلاعات معاش"}
         </DialogTitle>
         <DialogContent dividers>
           {selectedEmployee && (
-            <Alert
-              severity={selectedEmployee.source === "user" ? "info" : "warning"}
-              sx={{ mb: 2 }}
-            >
+            <Alert severity={selectedEmployee.source === "user" ? "info" : "warning"} sx={{ mb: 2 }}>
               {selectedEmployee.source === "user"
                 ? "👤 این کارمند از کاربران سیستم است."
-                : "🏢 این کارمند از طرف‌حساب‌ها است. با ذخیره این فرم، اطلاعات معاش برای این حساب ثبت/به‌روز می‌شود."}
-            </Alert>
-          )}
-
-          {!selectedEmployee && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              💡 برای افزودن معاش به کاربر سیستم، از این فرم استفاده کن.
-              طرف‌حساب‌ها به‌صورت خودکار در لیست هستند و با زدن دکمه ویرایش روی آن‌ها می‌توانی معاش تعیین کنی.
+                : "🏢 این کارمند از طرف‌حساب‌ها است."}
             </Alert>
           )}
 
@@ -500,106 +406,57 @@ export default function EmployeeSalaries() {
               <Grid item xs={12}>
                 <Autocomplete
                   options={users}
-                  getOptionLabel={(o) =>
-                    `${o.name}${o.role ? ` - ${o.role}` : ""}${
-                      o.department ? ` (${o.department})` : ""
-                    }`
-                  }
+                  getOptionLabel={(o) => `${o.name}${o.role ? ` - ${o.role}` : ""}${o.department ? ` (${o.department})` : ""}`}
                   value={users.find((u) => u.id === formData.userId) || null}
-                  onChange={(_, v) =>
-                    setFormData({
-                      ...formData,
-                      userId: v?.id || null,
-                      source: "user",
-                    })
-                  }
-                  renderInput={(params) => (
-                    <TextField {...params} label="کاربر سیستم *" required />
-                  )}
+                  onChange={(_, v) => setFormData({ ...formData, userId: v?.id || null, source: "user" })}
+                  renderInput={(params) => <TextField {...params} label="کاربر سیستم *" required />}
                 />
               </Grid>
             )}
 
             {selectedEmployee && (
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="کارمند"
-                  value={selectedEmployee.fullName || ""}
-                  disabled
-                />
+                <TextField fullWidth label="کارمند" value={selectedEmployee.fullName || ""} disabled />
               </Grid>
             )}
 
             <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                type="number"
-                label="معاش پایه *"
+              <TextField fullWidth type="number" label="معاش پایه *"
                 value={formData.baseSalary}
-                onChange={(e) =>
-                  setFormData({ ...formData, baseSalary: e.target.value })
-                }
-                InputProps={{
-                  endAdornment: <InputAdornment position="end">؋</InputAdornment>,
-                }}
+                onChange={(e) => setFormData({ ...formData, baseSalary: e.target.value })}
+                InputProps={{ endAdornment: <InputAdornment position="end">؋</InputAdornment> }}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                type="number"
-                label="مزایا"
+              <TextField fullWidth type="number" label="مزایا"
                 value={formData.allowances}
-                onChange={(e) =>
-                  setFormData({ ...formData, allowances: e.target.value })
-                }
-                InputProps={{
-                  endAdornment: <InputAdornment position="end">؋</InputAdornment>,
-                }}
+                onChange={(e) => setFormData({ ...formData, allowances: e.target.value })}
+                InputProps={{ endAdornment: <InputAdornment position="end">؋</InputAdornment> }}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
-              <TextField
-                fullWidth
-                type="number"
-                label="کسرات"
+              <TextField fullWidth type="number" label="کسرات"
                 value={formData.deductions}
-                onChange={(e) =>
-                  setFormData({ ...formData, deductions: e.target.value })
-                }
-                InputProps={{
-                  endAdornment: <InputAdornment position="end">؋</InputAdornment>,
-                }}
+                onChange={(e) => setFormData({ ...formData, deductions: e.target.value })}
+                InputProps={{ endAdornment: <InputAdornment position="end">؋</InputAdornment> }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="شماره حساب بانکی"
+              <TextField fullWidth label="شماره حساب بانکی"
                 value={formData.bankAccount}
-                onChange={(e) =>
-                  setFormData({ ...formData, bankAccount: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, bankAccount: e.target.value })}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="تاریخ استخدام"
-                placeholder="1403/01/01"
+              <TextField fullWidth label="تاریخ استخدام" placeholder="1403/01/01"
                 value={formData.hireDate}
-                onChange={(e) =>
-                  setFormData({ ...formData, hireDate: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, hireDate: e.target.value })}
               />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "flex-start", px: 3, pb: 2 }}>
-          <Button onClick={handleCloseDialog} disabled={saving}>
-            انصراف
-          </Button>
+          <Button onClick={handleCloseDialog} disabled={saving}>انصراف</Button>
           <Button variant="contained" onClick={handleSave} disabled={saving}>
             {saving ? "در حال ذخیره..." : "ذخیره"}
           </Button>

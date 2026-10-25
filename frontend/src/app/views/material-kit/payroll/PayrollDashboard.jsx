@@ -19,6 +19,75 @@ const MONTHS = [
   "میزان", "عقرب", "قوس", "جدی", "دلو", "حوت",
 ];
 
+// ✅ ترجمه نوعیت حساب برای نمایش
+const ACCOUNT_TYPE_FA = {
+  asset: "دارایی",
+  liability: "بدهی",
+  equity: "سرمایه",
+  income: "درآمد",
+  expense: "هزینه",
+  receivable: "مطالبات",
+  payable: "بدهی‌ها",
+  employee: "کارمندان",
+};
+
+// ✅ انتخاب اولین فیلد عددی موجود از میان چند نام جایگزین
+const pickNumber = (obj, keys, fallback = 0) => {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v !== undefined && v !== null && v !== "") {
+      const n = Number(v);
+      if (!Number.isNaN(n)) return n;
+    }
+  }
+  return fallback;
+};
+
+// ✅ نرمال‌سازی ردیف معاش (شامل تذکره و نوعیت حساب)
+const normalizeSalaryRow = (e = {}) => {
+  const tax = pickNumber(e, [
+    "tax", "taxAmount", "incomeTax", "tax_value",
+    "deduction_tax", "tax_deduction",
+  ]);
+  const insurance = pickNumber(e, [
+    "insurance", "insuranceAmount", "insurance_value",
+    "insuranceDeduction", "socialSecurity", "social_security",
+    "deduction_insurance",
+  ]);
+  const advanceDeduction = pickNumber(e, [
+    "advanceDeduction", "advance_deduction", "advance",
+    "advanceAmount", "loanDeduction", "loan_deduction",
+  ]);
+  const baseSalary = pickNumber(e, ["baseSalary", "base_salary", "basicSalary"]);
+  const allowances = pickNumber(e, ["allowances", "allowance", "bonuses"]);
+  const deductions = pickNumber(e, ["deductions", "otherDeductions", "manualDeductions"]);
+
+  const grossSalary =
+    pickNumber(e, ["grossSalary", "gross_salary"]) ||
+    baseSalary + allowances;
+
+  const netSalary =
+    pickNumber(e, ["netSalary", "net_salary"]) ||
+    grossSalary - deductions - tax - insurance - advanceDeduction;
+
+  return {
+    ...e,
+    baseSalary,
+    allowances,
+    deductions,
+    tax,
+    insurance,
+    advanceDeduction,
+    grossSalary,
+    netSalary,
+    paid: e.paymentStatus === "paid" || e.paid === true,
+
+    // ✅ جدید: تذکره و نوعیت حساب (پشتیبانی از camelCase و snake_case)
+    tazkiraNumber: e.tazkiraNumber ?? e.tazkira_number ?? null,
+    accountType:   e.accountType   ?? e.account_type   ?? null,
+  };
+};
+
 export default function SalaryPayment() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,16 +118,7 @@ export default function SalaryPayment() {
       const res = await api.get("/payroll/salaries", { params });
 
       if (res.data?.success) {
-        // ✅ نرمال‌سازی داده‌ها برای اطمینان از صحت فیلدها
-        const list = (res.data.data || []).map((e) => ({
-          ...e,
-          paid: e.paymentStatus === "paid",
-          tax: Number(e.tax) || 0,
-          insurance: Number(e.insurance) || 0,
-          advanceDeduction: Number(e.advanceDeduction) || 0,
-          grossSalary: Number(e.grossSalary) || ((Number(e.baseSalary) || 0) + (Number(e.allowances) || 0)),
-          netSalary: Number(e.netSalary) || 0,
-        }));
+        const list = (res.data.data || []).map(normalizeSalaryRow);
         setEmployees(list);
         setPeriodId(res.data.period?.id || null);
       } else {
@@ -117,7 +177,6 @@ export default function SalaryPayment() {
     (e) => departmentFilter === "all" || e.department === departmentFilter
   );
 
-  // ✅ استفاده از netSalary آماده بک‌اند (نه محاسبه مجدد)
   const calcNet = (e) => Number(e.netSalary) || 0;
 
   const toggleSelect = (id) => {
@@ -220,6 +279,7 @@ export default function SalaryPayment() {
                 onChange={(e) => setStatusFilter(e.target.value)}>
                 <MenuItem value="all">همه</MenuItem>
                 <MenuItem value="pending">در انتظار</MenuItem>
+                <MenuItem value="partial">جزئی</MenuItem>
                 <MenuItem value="paid">پرداخت شده</MenuItem>
               </TextField>
             </Grid>
@@ -260,12 +320,14 @@ export default function SalaryPayment() {
                 </TableCell>
                 <TableCell align="right">#</TableCell>
                 <TableCell align="right">نام کارمند</TableCell>
+                {/* ✅ ستون‌های جدید */}
+                <TableCell align="right">تذکره</TableCell>
+                <TableCell align="right">نوعیت حساب</TableCell>
                 <TableCell align="right">منبع</TableCell>
                 <TableCell align="right">بخش</TableCell>
                 <TableCell align="right">معاش پایه</TableCell>
                 <TableCell align="right">مزایا</TableCell>
                 <TableCell align="right">کسرات</TableCell>
-                {/* ✅ ستون‌های جدید */}
                 <TableCell align="right">مالیه</TableCell>
                 <TableCell align="right">بیمه</TableCell>
                 <TableCell align="right">پیش‌پرداخت</TableCell>
@@ -276,7 +338,7 @@ export default function SalaryPayment() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={13} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={15} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       هیچ معاشی برای این دوره یافت نشد. ابتدا «تولید معاشات» را بزنید.
                     </Typography>
@@ -292,6 +354,24 @@ export default function SalaryPayment() {
                     </TableCell>
                     <TableCell align="right">{idx + 1}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: "bold" }}>{e.fullName}</TableCell>
+
+                    {/* ✅ تذکره */}
+                    <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "12px" }}>
+                      {e.tazkiraNumber || "—"}
+                    </TableCell>
+
+                    {/* ✅ نوعیت حساب */}
+                    <TableCell align="right">
+                      {e.accountType ? (
+                        <Chip
+                          label={ACCOUNT_TYPE_FA[e.accountType] || e.accountType}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                        />
+                      ) : "—"}
+                    </TableCell>
+
                     <TableCell align="right">
                       <Chip
                         icon={e.source === "user" ? <PersonIcon /> : <BusinessIcon />}
@@ -309,15 +389,12 @@ export default function SalaryPayment() {
                     <TableCell align="right" sx={{ color: "error.main" }}>
                       -{formatCurrency(e.deductions)}
                     </TableCell>
-                    {/* ✅ مالیه */}
                     <TableCell align="right" sx={{ color: "error.main" }}>
                       {e.tax ? `-${formatCurrency(e.tax)}` : "—"}
                     </TableCell>
-                    {/* ✅ بیمه */}
                     <TableCell align="right" sx={{ color: "error.main" }}>
                       {e.insurance ? `-${formatCurrency(e.insurance)}` : "—"}
                     </TableCell>
-                    {/* ✅ پیش‌پرداخت - کلید حل مشکل */}
                     <TableCell align="right" sx={{ color: "warning.main", fontWeight: "bold" }}>
                       {e.advanceDeduction ? `-${formatCurrency(e.advanceDeduction)}` : "—"}
                     </TableCell>
@@ -328,6 +405,8 @@ export default function SalaryPayment() {
                       {e.paid ? (
                         <Chip icon={<CheckCircleIcon />} label="پرداخت شده"
                           size="small" color="success" />
+                      ) : e.paymentStatus === "partial" ? (
+                        <Chip label="جزئی" size="small" color="info" />
                       ) : (
                         <Chip label="در انتظار" size="small" color="warning" />
                       )}

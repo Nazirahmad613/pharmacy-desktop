@@ -66,6 +66,7 @@ const ACCOUNT_TYPE_LABELS = {
   expense: "هزینه",
   receivable: "مطالبات",
   payable: "بدهی‌ها",
+  employee: "کارمندان",
 };
 
 // ============================================================
@@ -166,117 +167,121 @@ const CATEGORY_LABELS = {
   tax_payables: "مالیات قابل پرداخت",
   bank_payables: "بدهی بانکی",
   other_creditors: "سایر طلبکاران",
-  // ✅ Employees - کارمندان
-  employees: "کارمندان",
-  employees_salary_payable: "معاش پرداختنی کارمندان",
-  daily_wage_workers: "کارگران روزمزد",
-  external_employees: "کارمندان قراردادی",
+
+  // ✅ Employee - کارمندان رسمی
+  employee_doctor: "داکتر",
+  employee_nurse: "نرس",
+  employee_radiology: "کارمند رادیولوژی",
+  employee_laboratory: "کارمند لابراتوار",
+  employee_pharmacy: "کارمند دواخانه",
+  employee_reception: "کارمند پذیرش",
+  employee_administration: "کارمند اداری",
+  employee_finance: "کارمند مالی / حسابداری",
+  employee_cleaning: "کارمند نظافت",
+  employee_security: "کارمند امنیت",
+  employee_kitchen: "کارمند آشپزخانه",
+  employee_other: "سایر کارمندان رسمی",
+
+  // ✅ Employee - کارمندان قراردادی
+  contract_doctor: "داکتر قراردادی",
+  contract_nurse: "نرس قراردادی",
+  contract_radiology: "کارمند رادیولوژی قراردادی",
+  contract_laboratory: "کارمند لابراتوار قراردادی",
+  contract_pharmacy: "کارمند دواخانه قراردادی",
+  contract_reception: "کارمند پذیرش قراردادی",
+  contract_administration: "کارمند اداری قراردادی",
+  contract_finance: "کارمند مالی قراردادی",
+  contract_cleaning: "کارمند نظافت قراردادی",
+  contract_security: "کارمند امنیت قراردادی",
+  contract_kitchen: "کارمند آشپزخانه قراردادی",
+  contract_other: "سایر کارمندان قراردادی",
+
+  // ✅ Employee - کارگرها
+  worker_construction: "کارگر ساختمانی",
+  worker_cleaning: "کارگر نظافت",
+  worker_loading: "کارگر بارگیری",
+  worker_gardening: "کارگر باغبانی",
+  worker_kitchen: "کارگر آشپزخانه",
+  worker_laundry: "کارگر لباس‌شویی",
+  worker_maintenance: "کارگر تعمیرات",
+  worker_security: "کارگر نگهبانی",
+  worker_other: "سایر کارگرها",
 };
 
 // ============================================================
 // ✅ دسته‌های کارمندی (برای تشخیص سریع)
 // ============================================================
 const EMPLOYEE_CATEGORIES = [
-  "employees",
-  "employees_salary_payable",
-  "daily_wage_workers",
-  "external_employees",
+  // رسمی
+  "employee_doctor", "employee_nurse", "employee_radiology",
+  "employee_laboratory", "employee_pharmacy", "employee_reception",
+  "employee_administration", "employee_finance", "employee_cleaning",
+  "employee_security", "employee_kitchen", "employee_other",
+  // قراردادی
+  "contract_doctor", "contract_nurse", "contract_radiology",
+  "contract_laboratory", "contract_pharmacy", "contract_reception",
+  "contract_administration", "contract_finance", "contract_cleaning",
+  "contract_security", "contract_kitchen", "contract_other",
+  // کارگرها
+  "worker_construction", "worker_cleaning", "worker_loading",
+  "worker_gardening", "worker_kitchen", "worker_laundry",
+  "worker_maintenance", "worker_security", "worker_other",
 ];
 
 const isEmployeeCategory = (category) =>
   EMPLOYEE_CATEGORIES.includes(category);
+
+const isContractCategory = (category) =>
+  typeof category === "string" && category.startsWith("contract_");
+
+const isWorkerCategory = (category) =>
+  typeof category === "string" && category.startsWith("worker_");
+
+// ✅ تشخیص کارمند (نوع مستقل یا دسته کارمندی)
+const isEmployeeAccount = (account) =>
+  !!account &&
+  (account.account_type === "employee" ||
+    isEmployeeCategory(account.account_category));
 
 // ============================================================
 // ✅ دسته‌بندی‌های استاتیک بر اساس نوع حساب
 // ============================================================
 const STATIC_CATEGORIES = {
   asset: [
-    "cash",
-    "bank",
-    "medicine_inventory",
-    "laboratory_inventory",
-    "consumable_inventory",
-    "medical_equipment",
-    "office_equipment",
-    "tools_and_supplies",
-    "building",
-    "land",
-    "vehicle",
-    "furniture",
-    "prepayments",
-    "deposits",
-    "other_assets",
+    "cash", "bank", "medicine_inventory", "laboratory_inventory",
+    "consumable_inventory", "medical_equipment", "office_equipment",
+    "tools_and_supplies", "building", "land", "vehicle", "furniture",
+    "prepayments", "deposits", "other_assets",
   ],
   liability: [
-    "suppliers",
-    "medicine_purchase_payable",
-    "equipment_purchase_payable",
-    "laboratory_material_payable",
-    "salary_payable",
-    "tax_payable",
-    "loans",
-    "bank_loans",
-    "contractual_liabilities",
-    "other_liabilities",
+    "suppliers", "medicine_purchase_payable", "equipment_purchase_payable",
+    "laboratory_material_payable", "salary_payable", "tax_payable",
+    "loans", "bank_loans", "contractual_liabilities", "other_liabilities",
   ],
   equity: [
-    "initial_capital",
-    "owner_capital",
-    "partners_capital",
-    "retained_earnings",
-    "retained_losses",
-    "owner_drawings",
-    "other_equity",
+    "initial_capital", "owner_capital", "partners_capital",
+    "retained_earnings", "retained_losses", "owner_drawings", "other_equity",
   ],
   income: [
-    "medical_services_income",
-    "consultation_income",
-    "laboratory_income",
-    "radiology_income",
-    "operation_income",
-    "admission_income",
-    "pharmacy_income",
-    "goods_sales_income",
-    "operation_room_income",
-    "other_services_income",
-    "non_operating_income",
-    "rent_income",
-    "customers_income",
-    "other_income",
+    "medical_services_income", "consultation_income", "laboratory_income",
+    "radiology_income", "operation_income", "admission_income", "pharmacy_income",
+    "goods_sales_income", "operation_room_income", "other_services_income",
+    "non_operating_income", "rent_income", "customers_income", "other_income",
   ],
   expense: [
-    "salary_expense",
-    "rent_expense",
-    "electricity_expense",
-    "water_expense",
-    "internet_expense",
-    "telephone_expense",
-    "transportation_expense",
-    "consumable_material_expense",
-    "medical_material_expense",
-    "laboratory_material_expense",
-    "cleaning_material_expense",
-    "repair_expense",
-    "medical_equipment_repair_expense",
-    "building_repair_expense",
-    "fuel_expense",
-    "stationery_expense",
-    "administrative_expense",
-    "marketing_expense",
-    "legal_expense",
-    "tax_and_duty_expense",
-    "insurance_expense",
-    "bank_charge_expense",
-    "depreciation_expense",
-    "other_expense",
+    "salary_expense", "rent_expense", "electricity_expense", "water_expense",
+    "internet_expense", "telephone_expense", "transportation_expense",
+    "consumable_material_expense", "medical_material_expense",
+    "laboratory_material_expense", "cleaning_material_expense",
+    "repair_expense", "medical_equipment_repair_expense",
+    "building_repair_expense", "fuel_expense", "stationery_expense",
+    "administrative_expense", "marketing_expense", "legal_expense",
+    "tax_and_duty_expense", "insurance_expense", "bank_charge_expense",
+    "depreciation_expense", "other_expense",
   ],
   receivable: [
-    "insurance_companies",
-    "contracting_institutions",
-    "companies",
-    "corporate_customers",
-    "customers",
-    "miscellaneous_receivables",
+    "insurance_companies", "contracting_institutions", "companies",
+    "corporate_customers", "customers", "miscellaneous_receivables",
     "other_receivables",
   ],
   payable: [
@@ -290,12 +295,23 @@ const STATIC_CATEGORIES = {
     "tax_payables",
     "bank_payables",
     "other_creditors",
-
-    // ✅ Employees - کارمندان
-    "employees",
-    "employees_salary_payable",
-    "daily_wage_workers",
-    "external_employees",
+  ],
+  // ✅ Employee - کارمندان (سه گروه)
+  employee: [
+    // کارمندان رسمی
+    "employee_doctor", "employee_nurse", "employee_radiology",
+    "employee_laboratory", "employee_pharmacy", "employee_reception",
+    "employee_administration", "employee_finance", "employee_cleaning",
+    "employee_security", "employee_kitchen", "employee_other",
+    // کارمندان قراردادی
+    "contract_doctor", "contract_nurse", "contract_radiology",
+    "contract_laboratory", "contract_pharmacy", "contract_reception",
+    "contract_administration", "contract_finance", "contract_cleaning",
+    "contract_security", "contract_kitchen", "contract_other",
+    // کارگرها
+    "worker_construction", "worker_cleaning", "worker_loading",
+    "worker_gardening", "worker_kitchen", "worker_laundry",
+    "worker_maintenance", "worker_security", "worker_other",
   ],
 };
 
@@ -318,12 +334,13 @@ const TYPE_COLORS = {
   expense: "#f59e0b",
   receivable: "#06b6d4",
   payable: "#ec4899",
+  employee: "#a78bfa",
 };
 
 const CURRENCIES = ["AFN", "USD", "EUR", "PKR", "IRR", "AED"];
 
 // ============================================================
-// فرم خالی
+// فرم خالی (شامل تمام فیلدهای Model/Controller)
 // ============================================================
 const emptyForm = {
   account_code: "",
@@ -334,12 +351,65 @@ const emptyForm = {
   opening_balance: 0,
   opening_balance_type: "",
   currency: "AFN",
+
+  // ✅ اطلاعات هویتی
+  tazkira_number: "",
+  tax_number: "",
+
+  // اطلاعات تماس
+  contact_person: "",
+  phone: "",
+  mobile: "",
+  email: "",
+
+  // آدرس
+  country: "Afghanistan",
+  province: "",
+  district: "",
+  address: "",
+
+  // شرایط مالی
+  credit_limit: 0,
+
   description: "",
   is_system: false,
   allow_transactions: true,
   is_control_account: false,
   is_active: true,
 };
+
+// ✅ نگاشت امن از account به form (بدون گم شدن فیلدها)
+const accountToForm = (account) => ({
+  account_code: account.account_code || "",
+  account_name: account.account_name || "",
+  account_type: account.account_type || "",
+  account_category: account.account_category || "",
+  parent_id: account.parent_id || "",
+  opening_balance: account.opening_balance || 0,
+  opening_balance_type: account.opening_balance_type || "",
+  currency: account.currency || "AFN",
+
+  tazkira_number: account.tazkira_number || "",
+  tax_number: account.tax_number || "",
+
+  contact_person: account.contact_person || "",
+  phone: account.phone || "",
+  mobile: account.mobile || "",
+  email: account.email || "",
+
+  country: account.country || "Afghanistan",
+  province: account.province || "",
+  district: account.district || "",
+  address: account.address || "",
+
+  credit_limit: account.credit_limit || 0,
+
+  description: account.description || "",
+  is_system: account.is_system || false,
+  allow_transactions: account.allow_transactions ?? true,
+  is_control_account: account.is_control_account || false,
+  is_active: account.is_active ?? true,
+});
 
 export default function Accounts() {
   const { api: authApi } = useAuth();
@@ -380,10 +450,7 @@ export default function Accounts() {
   const loadAccounts = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {
-        page,
-        per_page: perPage,
-      };
+      const params = { page, per_page: perPage };
       if (search) params.search = search;
       if (filterType) params.account_type = filterType;
       if (filterCategory) params.account_category = filterCategory;
@@ -457,21 +524,7 @@ export default function Accounts() {
 
   const handleOpenEdit = (account) => {
     setEditingId(account.id);
-    setFormData({
-      account_code: account.account_code || "",
-      account_name: account.account_name || "",
-      account_type: account.account_type || "",
-      account_category: account.account_category || "",
-      parent_id: account.parent_id || "",
-      opening_balance: account.opening_balance || 0,
-      opening_balance_type: account.opening_balance_type || "",
-      currency: account.currency || "AFN",
-      description: account.description || "",
-      is_system: account.is_system || false,
-      allow_transactions: account.allow_transactions ?? true,
-      is_control_account: account.is_control_account || false,
-      is_active: account.is_active ?? true,
-    });
+    setFormData(accountToForm(account));
     setFormErrors({});
     setCategories(getCategoriesByType(account.account_type));
     loadParents(account.account_type);
@@ -497,16 +550,13 @@ export default function Accounts() {
 
   const handleFormChange = (field, value) => {
     const updated = { ...formData, [field]: value };
-
     if (field === "account_type") {
       updated.account_category = "";
       updated.parent_id = "";
       setCategories(getCategoriesByType(value));
       loadParents(value);
     }
-
     setFormData(updated);
-
     if (formErrors[field]) {
       setFormErrors({ ...formErrors, [field]: null });
     }
@@ -527,12 +577,12 @@ export default function Accounts() {
     }
 
     setSaving(true);
-
     try {
       const payload = {
         ...formData,
         parent_id: formData.parent_id || null,
         opening_balance: Number(formData.opening_balance) || 0,
+        credit_limit: Number(formData.credit_limit) || 0,
       };
 
       if (editingId) {
@@ -567,24 +617,17 @@ export default function Accounts() {
   const handleToggleStatus = async (account) => {
     try {
       await api.post(`/accounts/${account.id}/toggle-status`);
-      toast.success(
-        account.is_active
-          ? "✅ حساب غیرفعال شد"
-          : "✅ حساب فعال شد"
-      );
+      toast.success(account.is_active ? "✅ حساب غیرفعال شد" : "✅ حساب فعال شد");
       loadAccounts();
       loadSummary();
     } catch (error) {
       console.error("Error toggling status:", error);
-      toast.error(
-        error.response?.data?.message || "❌ خطا در تغییر وضعیت"
-      );
+      toast.error(error.response?.data?.message || "❌ خطا در تغییر وضعیت");
     }
   };
 
   const handleDelete = async () => {
     if (!selectedAccount) return;
-
     try {
       await api.delete(`/accounts/${selectedAccount.id}`);
       toast.success("✅ حساب با موفقیت حذف شد");
@@ -594,9 +637,7 @@ export default function Accounts() {
       loadSummary();
     } catch (error) {
       console.error("Error deleting account:", error);
-      toast.error(
-        error.response?.data?.message || "❌ خطا در حذف حساب"
-      );
+      toast.error(error.response?.data?.message || "❌ خطا در حذف حساب");
     }
   };
 
@@ -608,10 +649,10 @@ export default function Accounts() {
     setPage(1);
   };
 
-  // ✅ فیلتر سریع کارمندان
+  // ✅ فیلتر سریع کارمندان (نوع مستقل employee)
   const handleShowOnlyEmployees = () => {
-    setFilterType("payable");
-    setFilterCategory("employees");
+    setFilterType("employee");
+    setFilterCategory("");
     setPage(1);
   };
 
@@ -623,133 +664,66 @@ export default function Accounts() {
 
   // ========== استایل‌ها ==========
   const styles = {
-    pageContainer: {
-      padding: "20px",
-      background: "#0f172a",
-      minHeight: "100vh",
-    },
+    pageContainer: { padding: "20px", background: "#0f172a", minHeight: "100vh" },
     header: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "20px",
-      flexWrap: "wrap",
-      gap: "15px",
+      display: "flex", justifyContent: "space-between", alignItems: "center",
+      marginBottom: "20px", flexWrap: "wrap", gap: "15px",
     },
     title: {
-      color: "#fff",
-      fontSize: "24px",
-      fontWeight: "bold",
-      display: "flex",
-      alignItems: "center",
-      gap: "10px",
+      color: "#fff", fontSize: "24px", fontWeight: "bold",
+      display: "flex", alignItems: "center", gap: "10px",
     },
     summaryCard: {
       background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
-      borderRadius: "12px",
-      padding: "20px",
-      border: "1px solid #334155",
+      borderRadius: "12px", padding: "20px", border: "1px solid #334155",
       textAlign: "center",
     },
-    summaryNumber: {
-      fontSize: "28px",
-      fontWeight: "bold",
-      marginBottom: "5px",
-    },
-    summaryLabel: {
-      fontSize: "13px",
-      color: "#94a3b8",
-    },
+    summaryNumber: { fontSize: "28px", fontWeight: "bold", marginBottom: "5px" },
+    summaryLabel: { fontSize: "13px", color: "#94a3b8" },
     filterCard: {
-      background: "#1e293b",
-      borderRadius: "12px",
-      padding: "20px",
-      marginBottom: "20px",
-      border: "1px solid #334155",
+      background: "#1e293b", borderRadius: "12px", padding: "20px",
+      marginBottom: "20px", border: "1px solid #334155",
     },
     tableContainer: {
-      background: "#1e293b",
-      borderRadius: "12px",
-      border: "1px solid #334155",
-      overflow: "hidden",
+      background: "#1e293b", borderRadius: "12px",
+      border: "1px solid #334155", overflow: "hidden",
     },
-    tableHead: {
-      background: "#0f172a",
-    },
+    tableHead: { background: "#0f172a" },
     tableHeadCell: {
-      color: "#60a5fa",
-      fontWeight: "bold",
-      fontSize: "13px",
-      borderBottom: "1px solid #334155",
-      whiteSpace: "nowrap",
+      color: "#60a5fa", fontWeight: "bold", fontSize: "13px",
+      borderBottom: "1px solid #334155", whiteSpace: "nowrap",
     },
     tableCell: {
-      color: "#e2e8f0",
-      fontSize: "13px",
-      borderBottom: "1px solid #1e293b",
+      color: "#e2e8f0", fontSize: "13px", borderBottom: "1px solid #1e293b",
     },
     typeChip: (type) => ({
-      background: TYPE_COLORS[type] || "#6b7280",
-      color: "#fff",
-      fontWeight: "bold",
-      fontSize: "11px",
+      background: TYPE_COLORS[type] || "#6b7280", color: "#fff",
+      fontWeight: "bold", fontSize: "11px",
     }),
     statusChip: (isActive) => ({
-      background: isActive ? "#10b981" : "#ef4444",
-      color: "#fff",
-      fontWeight: "bold",
-      fontSize: "11px",
+      background: isActive ? "#10b981" : "#ef4444", color: "#fff",
+      fontWeight: "bold", fontSize: "11px",
     }),
-    actionBtn: {
-      minWidth: "32px",
-      width: "32px",
-      height: "32px",
-      padding: 0,
-    },
+    actionBtn: { minWidth: "32px", width: "32px", height: "32px", padding: 0 },
     dialog: {
-      "& .MuiDialog-paper": {
-        background: "#1e293b",
-        color: "#fff",
-        borderRadius: "12px",
-      },
+      "& .MuiDialog-paper": { background: "#1e293b", color: "#fff", borderRadius: "12px" },
     },
     dialogTitle: {
-      background: "#0f172a",
-      color: "#fff",
-      fontWeight: "bold",
+      background: "#0f172a", color: "#fff", fontWeight: "bold",
       borderBottom: "1px solid #334155",
     },
-    dialogContent: {
-      padding: "20px",
-    },
-    dialogActions: {
-      padding: "15px 20px",
-      borderTop: "1px solid #334155",
-      gap: "10px",
-    },
+    dialogContent: { padding: "20px" },
+    dialogActions: { padding: "15px 20px", borderTop: "1px solid #334155", gap: "10px" },
     input: {
       "& .MuiOutlinedInput-root": {
-        color: "#fff",
-        background: "#0f172a",
-        "& fieldset": {
-          borderColor: "#334155",
-        },
-        "&:hover fieldset": {
-          borderColor: "#60a5fa",
-        },
-        "&.Mui-focused fieldset": {
-          borderColor: "#3b82f6",
-        },
+        color: "#fff", background: "#0f172a",
+        "& fieldset": { borderColor: "#334155" },
+        "&:hover fieldset": { borderColor: "#60a5fa" },
+        "&.Mui-focused fieldset": { borderColor: "#3b82f6" },
       },
-      "& .MuiInputLabel-root": {
-        color: "#94a3b8",
-      },
-      "& .MuiInputLabel-root.Mui-focused": {
-        color: "#60a5fa",
-      },
-      "& .MuiFormHelperText-root": {
-        color: "#ef4444",
-      },
+      "& .MuiInputLabel-root": { color: "#94a3b8" },
+      "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
+      "& .MuiFormHelperText-root": { color: "#ef4444" },
     },
   };
 
@@ -767,17 +741,10 @@ export default function Accounts() {
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
-              onClick={() => {
-                loadAccounts();
-                loadSummary();
-              }}
+              onClick={() => { loadAccounts(); loadSummary(); }}
               sx={{
-                color: "#60a5fa",
-                borderColor: "#3b82f6",
-                "&:hover": {
-                  borderColor: "#60a5fa",
-                  background: "rgba(59, 130, 246, 0.1)",
-                },
+                color: "#60a5fa", borderColor: "#3b82f6",
+                "&:hover": { borderColor: "#60a5fa", background: "rgba(59, 130, 246, 0.1)" },
               }}
             >
               بروزرسانی
@@ -787,12 +754,8 @@ export default function Accounts() {
               startIcon={<PeopleIcon />}
               onClick={handleShowOnlyEmployees}
               sx={{
-                color: "#a78bfa",
-                borderColor: "#8b5cf6",
-                "&:hover": {
-                  borderColor: "#a78bfa",
-                  background: "rgba(139, 92, 246, 0.1)",
-                },
+                color: "#a78bfa", borderColor: "#8b5cf6",
+                "&:hover": { borderColor: "#a78bfa", background: "rgba(139, 92, 246, 0.1)" },
               }}
             >
               کارمندان
@@ -803,9 +766,7 @@ export default function Accounts() {
               onClick={handleOpenCreate}
               sx={{
                 background: "linear-gradient(135deg, #10b981, #059669)",
-                "&:hover": {
-                  background: "linear-gradient(135deg, #059669, #047857)",
-                },
+                "&:hover": { background: "linear-gradient(135deg, #059669, #047857)" },
               }}
             >
               حساب جدید
@@ -818,33 +779,25 @@ export default function Accounts() {
           <Grid container spacing={2} sx={{ marginBottom: "20px" }}>
             <Grid item xs={12} sm={6} md={3}>
               <Box sx={styles.summaryCard}>
-                <Typography sx={{ ...styles.summaryNumber, color: "#3b82f6" }}>
-                  {summary.total}
-                </Typography>
+                <Typography sx={{ ...styles.summaryNumber, color: "#3b82f6" }}>{summary.total}</Typography>
                 <Typography sx={styles.summaryLabel}>کل حساب‌ها</Typography>
               </Box>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <Box sx={styles.summaryCard}>
-                <Typography sx={{ ...styles.summaryNumber, color: "#10b981" }}>
-                  {summary.active}
-                </Typography>
+                <Typography sx={{ ...styles.summaryNumber, color: "#10b981" }}>{summary.active}</Typography>
                 <Typography sx={styles.summaryLabel}>حساب‌های فعال</Typography>
               </Box>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <Box sx={styles.summaryCard}>
-                <Typography sx={{ ...styles.summaryNumber, color: "#ef4444" }}>
-                  {summary.inactive}
-                </Typography>
+                <Typography sx={{ ...styles.summaryNumber, color: "#ef4444" }}>{summary.inactive}</Typography>
                 <Typography sx={styles.summaryLabel}>حساب‌های غیرفعال</Typography>
               </Box>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <Box sx={styles.summaryCard}>
-                <Typography sx={{ ...styles.summaryNumber, color: "#8b5cf6" }}>
-                  {summary.system}
-                </Typography>
+                <Typography sx={{ ...styles.summaryNumber, color: "#8b5cf6" }}>{summary.system}</Typography>
                 <Typography sx={styles.summaryLabel}>حساب‌های سیستمی</Typography>
               </Box>
             </Grid>
@@ -870,25 +823,18 @@ export default function Accounts() {
         {/* ===== تب 1: لیست ===== */}
         {tabValue === 0 && (
           <>
-            {/* ===== فیلترها ===== */}
+            {/* فیلترها */}
             <Box sx={styles.filterCard}>
               <Box sx={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "15px" }}>
                 <FilterListIcon sx={{ color: "#60a5fa" }} />
-                <Typography sx={{ color: "#fff", fontWeight: "bold" }}>
-                  فیلترها
-                </Typography>
+                <Typography sx={{ color: "#fff", fontWeight: "bold" }}>فیلترها</Typography>
               </Box>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6} md={3}>
                   <TextField
-                    fullWidth
-                    size="small"
-                    placeholder="جستجو..."
+                    fullWidth size="small" placeholder="جستجو..."
                     value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setPage(1);
-                    }}
+                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -903,8 +849,7 @@ export default function Accounts() {
                   <FormControl fullWidth size="small" sx={styles.input}>
                     <InputLabel>نوع حساب</InputLabel>
                     <Select
-                      value={filterType}
-                      label="نوع حساب"
+                      value={filterType} label="نوع حساب"
                       onChange={(e) => {
                         setFilterType(e.target.value);
                         setFilterCategory("");
@@ -924,12 +869,8 @@ export default function Accounts() {
                   <FormControl fullWidth size="small" sx={styles.input} disabled={!filterType}>
                     <InputLabel>دسته‌بندی</InputLabel>
                     <Select
-                      value={filterCategory}
-                      label="دسته‌بندی"
-                      onChange={(e) => {
-                        setFilterCategory(e.target.value);
-                        setPage(1);
-                      }}
+                      value={filterCategory} label="دسته‌بندی"
+                      onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
                     >
                       <MenuItem value="">همه</MenuItem>
                       {availableCategories.map((c) => (
@@ -944,12 +885,8 @@ export default function Accounts() {
                   <FormControl fullWidth size="small" sx={styles.input}>
                     <InputLabel>وضعیت</InputLabel>
                     <Select
-                      value={filterStatus}
-                      label="وضعیت"
-                      onChange={(e) => {
-                        setFilterStatus(e.target.value);
-                        setPage(1);
-                      }}
+                      value={filterStatus} label="وضعیت"
+                      onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
                     >
                       <MenuItem value="">همه</MenuItem>
                       <MenuItem value="true">فعال</MenuItem>
@@ -959,17 +896,10 @@ export default function Accounts() {
                 </Grid>
                 <Grid item xs={12} sm={6} md={2}>
                   <Button
-                    fullWidth
-                    variant="outlined"
-                    onClick={handleResetFilters}
+                    fullWidth variant="outlined" onClick={handleResetFilters}
                     sx={{
-                      color: "#ef4444",
-                      borderColor: "#ef4444",
-                      height: "40px",
-                      "&:hover": {
-                        borderColor: "#dc2626",
-                        background: "rgba(239, 68, 68, 0.1)",
-                      },
+                      color: "#ef4444", borderColor: "#ef4444", height: "40px",
+                      "&:hover": { borderColor: "#dc2626", background: "rgba(239, 68, 68, 0.1)" },
                     }}
                   >
                     پاک کردن
@@ -978,7 +908,7 @@ export default function Accounts() {
               </Grid>
             </Box>
 
-            {/* ===== جدول ===== */}
+            {/* جدول */}
             <TableContainer component={Paper} sx={styles.tableContainer}>
               <Table>
                 <TableHead sx={styles.tableHead}>
@@ -986,6 +916,7 @@ export default function Accounts() {
                     <TableCell sx={styles.tableHeadCell}>#</TableCell>
                     <TableCell sx={styles.tableHeadCell}>کد حساب</TableCell>
                     <TableCell sx={styles.tableHeadCell}>نام حساب</TableCell>
+                    <TableCell sx={styles.tableHeadCell}>تذکره</TableCell>
                     <TableCell sx={styles.tableHeadCell}>نوع</TableCell>
                     <TableCell sx={styles.tableHeadCell}>دسته‌بندی</TableCell>
                     <TableCell sx={styles.tableHeadCell}>حساب مادر</TableCell>
@@ -997,34 +928,29 @@ export default function Accounts() {
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={9} align="center" sx={{ padding: "40px" }}>
+                      <TableCell colSpan={10} align="center" sx={{ padding: "40px" }}>
                         <CircularProgress sx={{ color: "#3b82f6" }} />
                       </TableCell>
                     </TableRow>
                   ) : accounts.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} align="center" sx={{ ...styles.tableCell, padding: "40px" }}>
-                        <Typography sx={{ color: "#94a3b8" }}>
-                          هیچ حسابی یافت نشد
-                        </Typography>
+                      <TableCell colSpan={10} align="center" sx={{ ...styles.tableCell, padding: "40px" }}>
+                        <Typography sx={{ color: "#94a3b8" }}>هیچ حسابی یافت نشد</Typography>
                       </TableCell>
                     </TableRow>
                   ) : (
                     accounts.map((account, idx) => {
-                      const isEmployee = isEmployeeCategory(account.account_category);
+                      const isEmployee = isEmployeeAccount(account);
                       return (
                         <TableRow
                           key={account.id}
                           sx={{
                             "&:hover": { background: "#0f172a" },
                             transition: "background 0.2s",
-                            // ✅ رنگ ملایم برای ردیف‌های کارمندی
                             background: isEmployee ? "rgba(139, 92, 246, 0.05)" : "transparent",
                           }}
                         >
-                          <TableCell sx={styles.tableCell}>
-                            {(page - 1) * perPage + idx + 1}
-                          </TableCell>
+                          <TableCell sx={styles.tableCell}>{(page - 1) * perPage + idx + 1}</TableCell>
                           <TableCell sx={styles.tableCell}>
                             <Typography sx={{ fontFamily: "monospace", fontWeight: "bold", color: "#fcd34d" }}>
                               {account.account_code}
@@ -1037,7 +963,6 @@ export default function Accounts() {
                                   <AccountTreeIcon sx={{ fontSize: 16, color: "#8b5cf6" }} />
                                 </Tooltip>
                               )}
-                              {/* ✅ نشان کارمند */}
                               {isEmployee && (
                                 <Tooltip title="کارمند - در لیست معاشات ظاهر می‌شود">
                                   <Chip
@@ -1046,18 +971,23 @@ export default function Accounts() {
                                     size="small"
                                     sx={{
                                       background: "linear-gradient(135deg, #8b5cf6, #6d28d9)",
-                                      color: "#fff",
-                                      fontWeight: "bold",
-                                      fontSize: "10px",
-                                      height: "22px",
+                                      color: "#fff", fontWeight: "bold",
+                                      fontSize: "10px", height: "22px",
                                     }}
                                   />
                                 </Tooltip>
                               )}
-                              <Typography sx={{ color: "#fff" }}>
-                                {account.account_name}
-                              </Typography>
+                              <Typography sx={{ color: "#fff" }}>{account.account_name}</Typography>
                             </Box>
+                          </TableCell>
+                          <TableCell sx={styles.tableCell}>
+                            {account.tazkira_number ? (
+                              <Typography sx={{ fontFamily: "monospace", color: "#e2e8f0", fontSize: "12px" }}>
+                                {account.tazkira_number}
+                              </Typography>
+                            ) : (
+                              <Typography sx={{ color: "#64748b", fontSize: "12px" }}>—</Typography>
+                            )}
                           </TableCell>
                           <TableCell sx={styles.tableCell}>
                             <Chip
@@ -1067,16 +997,17 @@ export default function Accounts() {
                             />
                           </TableCell>
                           <TableCell sx={styles.tableCell}>
-                            {/* ✅ رنگ مخصوص برای دسته‌های کارمندی */}
                             {isEmployee ? (
                               <Chip
                                 label={CATEGORY_LABELS[account.account_category] || account.account_category}
                                 size="small"
                                 sx={{
-                                  background: "#8b5cf6",
-                                  color: "#fff",
-                                  fontWeight: "bold",
-                                  fontSize: "11px",
+                                  background: isWorkerCategory(account.account_category)
+                                    ? "#f59e0b"
+                                    : isContractCategory(account.account_category)
+                                    ? "#06b6d4"
+                                    : "#8b5cf6",
+                                  color: "#fff", fontWeight: "bold", fontSize: "11px",
                                 }}
                               />
                             ) : (
@@ -1089,17 +1020,11 @@ export default function Accounts() {
                                 {account.parent.account_name}
                               </Typography>
                             ) : (
-                              <Typography sx={{ fontSize: "12px", color: "#64748b" }}>
-                                —
-                              </Typography>
+                              <Typography sx={{ fontSize: "12px", color: "#64748b" }}>—</Typography>
                             )}
                           </TableCell>
                           <TableCell sx={styles.tableCell}>
-                            <Chip
-                              label={account.currency}
-                              size="small"
-                              sx={{ background: "#334155", color: "#e2e8f0" }}
-                            />
+                            <Chip label={account.currency} size="small" sx={{ background: "#334155", color: "#e2e8f0" }} />
                           </TableCell>
                           <TableCell sx={styles.tableCell}>
                             <Chip
@@ -1136,9 +1061,7 @@ export default function Accounts() {
                                     ...styles.actionBtn,
                                     color: account.is_active ? "#ef4444" : "#10b981",
                                     "&:hover": {
-                                      background: account.is_active
-                                        ? "rgba(239,68,68,0.2)"
-                                        : "rgba(16,185,129,0.2)",
+                                      background: account.is_active ? "rgba(239,68,68,0.2)" : "rgba(16,185,129,0.2)",
                                     },
                                   }}
                                 >
@@ -1166,35 +1089,21 @@ export default function Accounts() {
               </Table>
             </TableContainer>
 
-            {/* ===== Pagination ===== */}
+            {/* Pagination */}
             {totalItems > 0 && (
               <Box sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginTop: "20px",
-                flexWrap: "wrap",
-                gap: "10px",
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                marginTop: "20px", flexWrap: "wrap", gap: "10px",
               }}>
                 <Typography sx={{ color: "#94a3b8", fontSize: "14px" }}>
                   نمایش {(page - 1) * perPage + 1} تا {Math.min(page * perPage, totalItems)} از {totalItems}
                 </Typography>
                 <Box sx={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                  <Button
-                    disabled={page === 1}
-                    onClick={() => setPage(page - 1)}
-                    sx={{ color: "#60a5fa" }}
-                  >
+                  <Button disabled={page === 1} onClick={() => setPage(page - 1)} sx={{ color: "#60a5fa" }}>
                     قبلی
                   </Button>
-                  <Typography sx={{ color: "#fff" }}>
-                    صفحه {page} از {totalPages}
-                  </Typography>
-                  <Button
-                    disabled={page === totalPages}
-                    onClick={() => setPage(page + 1)}
-                    sx={{ color: "#60a5fa" }}
-                  >
+                  <Typography sx={{ color: "#fff" }}>صفحه {page} از {totalPages}</Typography>
+                  <Button disabled={page === totalPages} onClick={() => setPage(page + 1)} sx={{ color: "#60a5fa" }}>
                     بعدی
                   </Button>
                 </Box>
@@ -1224,13 +1133,9 @@ export default function Accounts() {
                         </Typography>
                       </Box>
                       <Box sx={{
-                        width: "60px",
-                        height: "60px",
-                        borderRadius: "50%",
+                        width: "60px", height: "60px", borderRadius: "50%",
                         background: `${TYPE_COLORS[item.account_type]}20`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        display: "flex", alignItems: "center", justifyContent: "center",
                       }}>
                         {["asset", "receivable"].includes(item.account_type) ? (
                           <TrendingUpIcon sx={{ color: TYPE_COLORS[item.account_type], fontSize: 32 }} />
@@ -1247,13 +1152,7 @@ export default function Accounts() {
         )}
 
         {/* ===== دیالوگ فرم ===== */}
-        <Dialog
-          open={openForm}
-          onClose={handleCloseForm}
-          maxWidth="md"
-          fullWidth
-          sx={styles.dialog}
-        >
+        <Dialog open={openForm} onClose={handleCloseForm} maxWidth="md" fullWidth sx={styles.dialog}>
           <DialogTitle sx={styles.dialogTitle}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Typography sx={{ fontWeight: "bold" }}>
@@ -1265,17 +1164,12 @@ export default function Accounts() {
             </Box>
           </DialogTitle>
           <DialogContent sx={styles.dialogContent}>
-            {/* ✅ هشدار برای دسته‌های کارمندی */}
             {isEmployeeCategory(formData.account_category) && (
               <Box sx={{
                 background: "rgba(139, 92, 246, 0.15)",
-                border: "1px solid #8b5cf6",
-                borderRadius: "8px",
-                padding: "12px",
-                marginBottom: "15px",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
+                border: "1px solid #8b5cf6", borderRadius: "8px",
+                padding: "12px", marginBottom: "15px",
+                display: "flex", alignItems: "center", gap: "10px",
               }}>
                 <BadgeIcon sx={{ color: "#a78bfa" }} />
                 <Typography sx={{ color: "#e2e8f0", fontSize: "13px" }}>
@@ -1288,9 +1182,7 @@ export default function Accounts() {
             <Grid container spacing={2} sx={{ marginTop: "5px" }}>
               <Grid item xs={12} sm={6}>
                 <TextField
-                  fullWidth
-                  size="small"
-                  label="کد حساب *"
+                  fullWidth size="small" label="کد حساب *"
                   value={formData.account_code}
                   onChange={(e) => handleFormChange("account_code", e.target.value)}
                   error={!!formErrors.account_code}
@@ -1300,9 +1192,7 @@ export default function Accounts() {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
-                  fullWidth
-                  size="small"
-                  label="نام حساب *"
+                  fullWidth size="small" label="نام حساب *"
                   value={formData.account_name}
                   onChange={(e) => handleFormChange("account_name", e.target.value)}
                   error={!!formErrors.account_name}
@@ -1311,11 +1201,30 @@ export default function Accounts() {
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth size="small" label="شماره تذکره"
+                  value={formData.tazkira_number}
+                  onChange={(e) => handleFormChange("tazkira_number", e.target.value)}
+                  error={!!formErrors.tazkira_number}
+                  helperText={formErrors.tazkira_number}
+                  sx={styles.input}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth size="small" label="شماره مالیاتی"
+                  value={formData.tax_number}
+                  onChange={(e) => handleFormChange("tax_number", e.target.value)}
+                  error={!!formErrors.tax_number}
+                  helperText={formErrors.tax_number}
+                  sx={styles.input}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small" sx={styles.input} error={!!formErrors.account_type}>
                   <InputLabel>نوع حساب *</InputLabel>
                   <Select
-                    value={formData.account_type}
-                    label="نوع حساب *"
+                    value={formData.account_type} label="نوع حساب *"
                     onChange={(e) => handleFormChange("account_type", e.target.value)}
                   >
                     {(types.length > 0 ? types : Object.keys(ACCOUNT_TYPE_LABELS)).map((t) => (
@@ -1328,22 +1237,17 @@ export default function Accounts() {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl
-                  fullWidth
-                  size="small"
-                  sx={styles.input}
+                  fullWidth size="small" sx={styles.input}
                   error={!!formErrors.account_category}
                   disabled={!formData.account_type}
                 >
                   <InputLabel>دسته‌بندی *</InputLabel>
                   <Select
-                    value={formData.account_category}
-                    label="دسته‌بندی *"
+                    value={formData.account_category} label="دسته‌بندی *"
                     onChange={(e) => handleFormChange("account_category", e.target.value)}
                   >
                     {categories.length === 0 ? (
-                      <MenuItem value="" disabled>
-                        ابتدا نوع حساب را انتخاب کنید
-                      </MenuItem>
+                      <MenuItem value="" disabled>ابتدا نوع حساب را انتخاب کنید</MenuItem>
                     ) : (
                       categories.map((c) => (
                         <MenuItem key={c} value={c}>
@@ -1363,8 +1267,7 @@ export default function Accounts() {
                 <FormControl fullWidth size="small" sx={styles.input}>
                   <InputLabel>حساب مادر</InputLabel>
                   <Select
-                    value={formData.parent_id}
-                    label="حساب مادر"
+                    value={formData.parent_id} label="حساب مادر"
                     onChange={(e) => handleFormChange("parent_id", e.target.value)}
                   >
                     <MenuItem value="">— بدون حساب مادر —</MenuItem>
@@ -1382,8 +1285,7 @@ export default function Accounts() {
                 <FormControl fullWidth size="small" sx={styles.input}>
                   <InputLabel>واحد پول *</InputLabel>
                   <Select
-                    value={formData.currency}
-                    label="واحد پول *"
+                    value={formData.currency} label="واحد پول *"
                     onChange={(e) => handleFormChange("currency", e.target.value)}
                   >
                     {CURRENCIES.map((c) => (
@@ -1394,10 +1296,7 @@ export default function Accounts() {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
-                  fullWidth
-                  size="small"
-                  type="number"
-                  label="موجودی اولیه"
+                  fullWidth size="small" type="number" label="موجودی اولیه"
                   value={formData.opening_balance}
                   onChange={(e) => handleFormChange("opening_balance", e.target.value)}
                   sx={styles.input}
@@ -1407,8 +1306,7 @@ export default function Accounts() {
                 <FormControl fullWidth size="small" sx={styles.input}>
                   <InputLabel>نوع موجودی اولیه</InputLabel>
                   <Select
-                    value={formData.opening_balance_type}
-                    label="نوع موجودی اولیه"
+                    value={formData.opening_balance_type} label="نوع موجودی اولیه"
                     onChange={(e) => handleFormChange("opening_balance_type", e.target.value)}
                   >
                     <MenuItem value="">— خودکار —</MenuItem>
@@ -1417,13 +1315,75 @@ export default function Accounts() {
                   </Select>
                 </FormControl>
               </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth size="small" label="شخص تماس"
+                  value={formData.contact_person}
+                  onChange={(e) => handleFormChange("contact_person", e.target.value)}
+                  sx={styles.input}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth size="small" label="شماره تلفن"
+                  value={formData.phone}
+                  onChange={(e) => handleFormChange("phone", e.target.value)}
+                  sx={styles.input}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth size="small" label="شماره موبایل"
+                  value={formData.mobile}
+                  onChange={(e) => handleFormChange("mobile", e.target.value)}
+                  sx={styles.input}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth size="small" label="ایمیل"
+                  value={formData.email}
+                  onChange={(e) => handleFormChange("email", e.target.value)}
+                  error={!!formErrors.email}
+                  helperText={formErrors.email}
+                  sx={styles.input}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth size="small" label="ولایت"
+                  value={formData.province}
+                  onChange={(e) => handleFormChange("province", e.target.value)}
+                  sx={styles.input}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth size="small" label="ولسوالی / ناحیه"
+                  value={formData.district}
+                  onChange={(e) => handleFormChange("district", e.target.value)}
+                  sx={styles.input}
+                />
+              </Grid>
               <Grid item xs={12}>
                 <TextField
-                  fullWidth
-                  size="small"
-                  multiline
-                  rows={2}
-                  label="توضیحات"
+                  fullWidth size="small" multiline rows={2} label="آدرس"
+                  value={formData.address}
+                  onChange={(e) => handleFormChange("address", e.target.value)}
+                  sx={styles.input}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth size="small" type="number" label="سقف اعتبار"
+                  value={formData.credit_limit}
+                  onChange={(e) => handleFormChange("credit_limit", e.target.value)}
+                  sx={styles.input}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth size="small" multiline rows={2} label="توضیحات"
                   value={formData.description}
                   onChange={(e) => handleFormChange("description", e.target.value)}
                   sx={styles.input}
@@ -1477,12 +1437,7 @@ export default function Accounts() {
             </Grid>
           </DialogContent>
           <DialogActions sx={styles.dialogActions}>
-            <Button
-              onClick={handleCloseForm}
-              sx={{ color: "#94a3b8" }}
-            >
-              انصراف
-            </Button>
+            <Button onClick={handleCloseForm} sx={{ color: "#94a3b8" }}>انصراف</Button>
             <Button
               variant="contained"
               onClick={handleSave}
@@ -1490,9 +1445,7 @@ export default function Accounts() {
               startIcon={saving ? <CircularProgress size={16} sx={{ color: "#fff" }} /> : null}
               sx={{
                 background: "linear-gradient(135deg, #10b981, #059669)",
-                "&:hover": {
-                  background: "linear-gradient(135deg, #059669, #047857)",
-                },
+                "&:hover": { background: "linear-gradient(135deg, #059669, #047857)" },
               }}
             >
               {saving ? "در حال ذخیره..." : editingId ? "ویرایش" : "ایجاد"}
@@ -1501,13 +1454,7 @@ export default function Accounts() {
         </Dialog>
 
         {/* ===== دیالوگ مشاهده ===== */}
-        <Dialog
-          open={openView}
-          onClose={() => setOpenView(false)}
-          maxWidth="sm"
-          fullWidth
-          sx={styles.dialog}
-        >
+        <Dialog open={openView} onClose={() => setOpenView(false)} maxWidth="sm" fullWidth sx={styles.dialog}>
           <DialogTitle sx={styles.dialogTitle}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Typography sx={{ fontWeight: "bold" }}>👁️ جزئیات حساب</Typography>
@@ -1540,21 +1487,31 @@ export default function Accounts() {
                       <Typography sx={{ color: "#fff", fontWeight: "bold" }}>
                         {selectedAccount.account_name}
                       </Typography>
-                      {isEmployeeCategory(selectedAccount.account_category) && (
+                      {isEmployeeAccount(selectedAccount) && (
                         <Chip
                           icon={<BadgeIcon sx={{ fontSize: 14 }} />}
                           label="کارمند"
                           size="small"
                           sx={{
                             background: "linear-gradient(135deg, #8b5cf6, #6d28d9)",
-                            color: "#fff",
-                            fontWeight: "bold",
-                            fontSize: "10px",
-                            height: "22px",
+                            color: "#fff", fontWeight: "bold",
+                            fontSize: "10px", height: "22px",
                           }}
                         />
                       )}
                     </Box>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>شماره تذکره</Typography>
+                    <Typography sx={{ color: "#e2e8f0", fontFamily: "monospace" }}>
+                      {selectedAccount.tazkira_number || "—"}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>شماره مالیاتی</Typography>
+                    <Typography sx={{ color: "#e2e8f0", fontFamily: "monospace" }}>
+                      {selectedAccount.tax_number || "—"}
+                    </Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>نوع حساب</Typography>
@@ -1580,6 +1537,48 @@ export default function Accounts() {
                       {selectedAccount.normal_balance === "debit" ? "بدهکار" : "بستانکار"}
                     </Typography>
                   </Grid>
+                  {selectedAccount.contact_person && (
+                    <Grid item xs={6}>
+                      <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>شخص تماس</Typography>
+                      <Typography sx={{ color: "#e2e8f0" }}>{selectedAccount.contact_person}</Typography>
+                    </Grid>
+                  )}
+                  {selectedAccount.phone && (
+                    <Grid item xs={6}>
+                      <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>شماره تلفن</Typography>
+                      <Typography sx={{ color: "#e2e8f0" }}>{selectedAccount.phone}</Typography>
+                    </Grid>
+                  )}
+                  {selectedAccount.mobile && (
+                    <Grid item xs={6}>
+                      <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>موبایل</Typography>
+                      <Typography sx={{ color: "#e2e8f0" }}>{selectedAccount.mobile}</Typography>
+                    </Grid>
+                  )}
+                  {selectedAccount.email && (
+                    <Grid item xs={6}>
+                      <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>ایمیل</Typography>
+                      <Typography sx={{ color: "#e2e8f0" }}>{selectedAccount.email}</Typography>
+                    </Grid>
+                  )}
+                  {selectedAccount.province && (
+                    <Grid item xs={6}>
+                      <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>ولایت</Typography>
+                      <Typography sx={{ color: "#e2e8f0" }}>{selectedAccount.province}</Typography>
+                    </Grid>
+                  )}
+                  {selectedAccount.district && (
+                    <Grid item xs={6}>
+                      <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>ولسوالی / ناحیه</Typography>
+                      <Typography sx={{ color: "#e2e8f0" }}>{selectedAccount.district}</Typography>
+                    </Grid>
+                  )}
+                  {selectedAccount.address && (
+                    <Grid item xs={12}>
+                      <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>آدرس</Typography>
+                      <Typography sx={{ color: "#e2e8f0", fontSize: "13px" }}>{selectedAccount.address}</Typography>
+                    </Grid>
+                  )}
                   {selectedAccount.parent && (
                     <Grid item xs={12}>
                       <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>حساب مادر</Typography>
@@ -1607,34 +1606,22 @@ export default function Accounts() {
             )}
           </DialogContent>
           <DialogActions sx={styles.dialogActions}>
-            <Button onClick={() => setOpenView(false)} sx={{ color: "#94a3b8" }}>
-              بستن
-            </Button>
+            <Button onClick={() => setOpenView(false)} sx={{ color: "#94a3b8" }}>بستن</Button>
           </DialogActions>
         </Dialog>
 
         {/* ===== دیالوگ حذف ===== */}
-        <Dialog
-          open={openDelete}
-          onClose={() => setOpenDelete(false)}
-          maxWidth="sm"
-          fullWidth
-          sx={styles.dialog}
-        >
-          <DialogTitle sx={{ ...styles.dialogTitle, color: "#ef4444" }}>
-            ⚠️ تأیید حذف
-          </DialogTitle>
+        <Dialog open={openDelete} onClose={() => setOpenDelete(false)} maxWidth="sm" fullWidth sx={styles.dialog}>
+          <DialogTitle sx={{ ...styles.dialogTitle, color: "#ef4444" }}>⚠️ تأیید حذف</DialogTitle>
           <DialogContent sx={styles.dialogContent}>
             <Typography sx={{ color: "#e2e8f0", marginTop: "10px" }}>
               آیا از حذف حساب <strong style={{ color: "#fcd34d" }}>{selectedAccount?.account_name}</strong> مطمئن هستید؟
             </Typography>
-            {isEmployeeCategory(selectedAccount?.account_category) && (
+            {isEmployeeAccount(selectedAccount) && (
               <Box sx={{
                 background: "rgba(239, 68, 68, 0.1)",
-                border: "1px solid #ef4444",
-                borderRadius: "8px",
-                padding: "10px",
-                marginTop: "10px",
+                border: "1px solid #ef4444", borderRadius: "8px",
+                padding: "10px", marginTop: "10px",
               }}>
                 <Typography sx={{ color: "#fca5a5", fontSize: "12px" }}>
                   ⚠️ این حساب یک <strong>کارمند</strong> است. حذف آن باعث حذف معاشات مرتبط می‌شود.
@@ -1646,17 +1633,13 @@ export default function Accounts() {
             </Typography>
           </DialogContent>
           <DialogActions sx={styles.dialogActions}>
-            <Button onClick={() => setOpenDelete(false)} sx={{ color: "#94a3b8" }}>
-              انصراف
-            </Button>
+            <Button onClick={() => setOpenDelete(false)} sx={{ color: "#94a3b8" }}>انصراف</Button>
             <Button
               variant="contained"
               onClick={handleDelete}
               sx={{
                 background: "linear-gradient(135deg, #ef4444, #dc2626)",
-                "&:hover": {
-                  background: "linear-gradient(135deg, #dc2626, #b91c1c)",
-                },
+                "&:hover": { background: "linear-gradient(135deg, #dc2626, #b91c1c)" },
               }}
             >
               حذف
