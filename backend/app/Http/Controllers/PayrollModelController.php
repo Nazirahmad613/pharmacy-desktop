@@ -10,21 +10,27 @@ use Illuminate\Support\Facades\Log;
 use App\Models\EmployeeSalaryInfo;
 use App\Models\EmployeeSalary;
 use App\Models\PayrollPeriod;
-use App\Models\SalaryAdvance;
 use App\Models\PayrollSetting;
 use App\Models\User;
 use App\Models\Account;
+use App\Models\Journal;
 use App\Services\PayrollJournalService;
 
 class PayrollModelController extends Controller
 {
     protected PayrollJournalService $journalService;
 
-    /*
-    |--------------------------------------------------------------------------
-    | ✅ برچسب‌های فارسی نوعیت و دسته‌بندی حساب
-    |--------------------------------------------------------------------------
-    */
+    /**
+     * ✅ ref_type های مربوط به پیش‌پرداخت معاش در ژورنال
+     */
+    private const ADVANCE_CREDIT_REF_TYPES = [
+        'salary_advance',
+        'salary_advance_debit',
+    ];
+
+    private const ADVANCE_SETTLEMENT_REF_TYPES = [
+        'salary_advance_settlement',
+    ];
 
     private array $typeLabels = [
         'asset'      => 'دارایی',
@@ -38,7 +44,6 @@ class PayrollModelController extends Controller
     ];
 
     private array $categoryLabels = [
-        // Asset
         'cash' => 'نقدی', 'bank' => 'بانکی',
         'medicine_inventory' => 'موجودی ادویه',
         'laboratory_inventory' => 'موجودی لابراتوار',
@@ -51,7 +56,6 @@ class PayrollModelController extends Controller
         'prepayments' => 'پیش‌پرداخت‌ها', 'deposits' => 'سپرده‌ها',
         'other_assets' => 'سایر دارایی‌ها',
 
-        // Liability
         'suppliers' => 'تأمین‌کنندگان',
         'medicine_purchase_payable' => 'بدهی خرید ادویه',
         'equipment_purchase_payable' => 'بدهی خرید تجهیزات',
@@ -62,7 +66,6 @@ class PayrollModelController extends Controller
         'contractual_liabilities' => 'تعهدات قراردادی',
         'other_liabilities' => 'سایر بدهی‌ها',
 
-        // Equity
         'initial_capital' => 'سرمایه اولیه',
         'owner_capital' => 'سرمایه مالک',
         'partners_capital' => 'سرمایه شرکا',
@@ -71,7 +74,6 @@ class PayrollModelController extends Controller
         'owner_drawings' => 'برداشت مالک',
         'other_equity' => 'سایر سرمایه',
 
-        // Income
         'medical_services_income' => 'درآمد خدمات طبی',
         'consultation_income' => 'درآمد مشاوره',
         'laboratory_income' => 'درآمد لابراتوار',
@@ -87,7 +89,6 @@ class PayrollModelController extends Controller
         'customers_income' => 'درآمد از مشتریان',
         'other_income' => 'سایر درآمدها',
 
-        // Expense
         'salary_expense' => 'مصرف معاشات',
         'rent_expense' => 'مصرف کرایه',
         'electricity_expense' => 'مصرف برق',
@@ -113,7 +114,6 @@ class PayrollModelController extends Controller
         'depreciation_expense' => 'مصرف استهلاک',
         'other_expense' => 'سایر مصارف',
 
-        // Receivable
         'insurance_companies' => 'شرکت‌های بیمه',
         'contracting_institutions' => 'مؤسسات قراردادی',
         'companies' => 'شرکت‌ها',
@@ -122,7 +122,6 @@ class PayrollModelController extends Controller
         'miscellaneous_receivables' => 'مطالبات متفرقه',
         'other_receivables' => 'سایر مطالبات',
 
-        // Payable
         'medicine_suppliers' => 'تأمین‌کنندگان ادویه',
         'medical_equipment_suppliers' => 'تأمین‌کنندگان تجهیزات طبی',
         'laboratory_material_suppliers' => 'تأمین‌کنندگان مواد لابراتوار',
@@ -133,7 +132,6 @@ class PayrollModelController extends Controller
         'bank_payables' => 'بدهی بانکی',
         'other_creditors' => 'سایر طلبکاران',
 
-        // ✅ Employee - رسمی
         'employee_doctor' => 'داکتر',
         'employee_nurse' => 'نرس',
         'employee_radiology' => 'کارمند رادیولوژی',
@@ -147,7 +145,6 @@ class PayrollModelController extends Controller
         'employee_kitchen' => 'کارمند آشپزخانه',
         'employee_other' => 'سایر کارمندان رسمی',
 
-        // ✅ Employee - قراردادی
         'contract_doctor' => 'داکتر قراردادی',
         'contract_nurse' => 'نرس قراردادی',
         'contract_radiology' => 'کارمند رادیولوژی قراردادی',
@@ -161,7 +158,6 @@ class PayrollModelController extends Controller
         'contract_kitchen' => 'کارمند آشپزخانه قراردادی',
         'contract_other' => 'سایر کارمندان قراردادی',
 
-        // ✅ Employee - کارگرها
         'worker_construction' => 'کارگر ساختمانی',
         'worker_cleaning' => 'کارگر نظافت',
         'worker_loading' => 'کارگر بارگیری',
@@ -191,12 +187,6 @@ class PayrollModelController extends Controller
         return $category ? ($this->categoryLabels[$category] ?? $category) : null;
     }
 
-    /**
-     * ✅ محاسبه «بخش» برای نمایش در جدول
-     * - برای user: department.name
-     * - برای account: categoryLabel (مثلاً «کارمند رادیولوژی»)
-     * - اگر هیچ‌کدام: '—'
-     */
     private function resolveDepartmentLabel($user, $account): string
     {
         if ($user && $user->department) {
@@ -210,9 +200,6 @@ class PayrollModelController extends Controller
         return '—';
     }
 
-    /**
-     * ✅ خروجی استاندارد فیلدهای «حساب» (تذکره، نوع، دسته، برچسب‌ها)
-     */
     private function accountFields($account): array
     {
         $accType     = $account->account_type     ?? null;
@@ -228,16 +215,406 @@ class PayrollModelController extends Controller
     }
 
     // ============================================================
-    // 📊 DASHBOARD (✅ اصلاح‌شده برای فیلتر ماه/سال)
+    // 🧮 هسته‌ی محاسبه پیش‌پرداخت — از ژورنال حساب کارمند
+    // ============================================================
+
+    /**
+     * ✅ پیدا کردن account_id کارمند
+     */
+       private function resolveEmployeeAccountId(?int $userId, ?int $accountId): ?int
+    {
+        // 1) اگر account_id مستقیم
+        if (!empty($accountId)) {
+            return (int) $accountId;
+        }
+
+        if (empty($userId)) {
+            return null;
+        }
+
+        // 2) از salary_info
+        $info = EmployeeSalaryInfo::where('user_id', $userId)->first();
+        if ($info && !empty($info->account_id)) {
+            return (int) $info->account_id;
+        }
+
+        // 3) از employee_salaries (fallback)
+        try {
+            $salary = EmployeeSalary::where('user_id', $userId)
+                ->whereNotNull('account_id')
+                ->orderBy('id', 'desc')
+                ->first();
+            if ($salary && !empty($salary->account_id)) {
+                return (int) $salary->account_id;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('resolveEmployeeAccountId fallback failed: ' . $e->getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * ✅ محاسبه مانده پیش‌پرداخت از ژورنال حساب کارمند
+     *
+     * ✅ تغییر مهم: اگر $upToDate = null → همه ژورنال‌ها (بدون فیلتر تاریخ)
+     * اگر بخواهید تا تاریخ خاصی فیلتر کنید، $upToDate را مقدار بدهید.
+     */
+     /**
+     * ✅ محاسبه مانده پیش‌پرداخت از ژورنال حساب کارمند
+     *
+     * منطق:
+     *   - هر credit روی حساب کارمند (به جز ژورنال‌های معاش) = پیش‌پرداخت
+     *   - هر debit روی حساب کارمند (به جز ژورنال‌های معاش) = کاهش پیش‌پرداخت
+     *   - مانده = مجموع credit − مجموع debit
+     *
+     * ژورنال‌های معاش (تولید، پرداخت، تسویه) نادیده گرفته می‌شوند
+     * چون خودشان بخشی از چرخه‌ی معاش هستند و باعث دوبار محاسبه می‌شوند.
+     */
+     /**
+     * ✅ محاسبه مانده پیش‌پرداخت از ژورنال حساب کارمند
+     *
+     * منطق:
+     *   - هر credit روی حساب کارمند (به جز ژورنال‌های معاش) = پیش‌پرداخت
+     *   - هر debit روی حساب کارمند (به جز ژورنال‌های معاش) = کاهش پیش‌پرداخت
+     *   - مانده = مجموع credit − مجموع debit
+     *
+     * ⚠️ اگر account_id ژورنال NULL بود ولی ref_id حساب کارمند است،
+     *    از COALESCE(account_id, ref_id) استفاده می‌کنیم.
+     */
+       /**
+     * ✅ محاسبه مانده پیش‌پرداخت از ژورنال حساب کارمند
+     *
+     * منطق:
+     *   - هر credit روی حساب کارمند (به جز معاش) = پیش‌پرداخت
+     *   - هر debit روی حساب کارمند (به جز معاش) = کاهش پیش‌پرداخت
+     *   - مانده = مجموع credit − مجموع debit
+     *
+     * ⚠️ این نسخه چند مسیر را برای پیدا کردن حساب چک می‌کند:
+     *   1) account_id مستقیم روی ژورنال
+     *   2) ref_id = account_id کارمند (اگر account_id ژورنال NULL بود)
+     *   3) هر ژورنالی که user_id آن با userId کارمند یکسان است
+     *   4) هر ژورنالی که ref_id آن با userId کارمند یکسان است
+     */
+    private function calcAdvanceDeduction(
+        ?int $userId,
+        ?int $accountId,
+        ?string $upToDate = null
+    ): float {
+        // ✅ جمع‌آوری همه شناسه‌های مرتبط با این کارمند
+        $accountIds   = [];
+        $userIds      = [];
+
+        if (!empty($accountId)) {
+            $accountIds[] = (int) $accountId;
+        }
+
+        if (!empty($userId)) {
+            $userIds[] = (int) $userId;
+
+            // از salary_info
+            $info = EmployeeSalaryInfo::where('user_id', $userId)->first();
+            if ($info && !empty($info->account_id)) {
+                $accountIds[] = (int) $info->account_id;
+            }
+
+            // از employee_salaries (همه)
+            $salaryAccountIds = EmployeeSalary::where('user_id', $userId)
+                ->whereNotNull('account_id')
+                ->pluck('account_id')
+                ->unique()
+                ->filter()
+                ->values()
+                ->all();
+            foreach ($salaryAccountIds as $aid) {
+                $accountIds[] = (int) $aid;
+            }
+        }
+
+        $accountIds = array_values(array_unique(array_filter($accountIds)));
+        $userIds    = array_values(array_unique(array_filter($userIds)));
+
+        Log::info('[calcAdvanceDeduction] START', [
+            'userId' => $userId,
+            'accountId' => $accountId,
+            'accountIds' => $accountIds,
+            'userIds' => $userIds,
+        ]);
+
+        if (empty($accountIds) && empty($userIds)) {
+            Log::warning('[calcAdvanceDeduction] هیچ حساب/کاربری پیدا نشد');
+            return 0.0;
+        }
+
+        // ✅ ref_type هایی که نادیده گرفته می‌شوند
+        $excludedRefTypes = [
+            'salary_generation',
+            'salary_payable',
+            'salary_payment',
+            'salary_payment_debit',
+        ];
+
+        // ✅ تابع کمکی برای ساخت شرط شناسایی ژورنال کارمند
+        $matchEmployee = function ($q) use ($accountIds, $userIds) {
+            $q->where(function ($q2) use ($accountIds, $userIds) {
+                // مسیر ۱: account_id روی ژورنال با یکی از حساب‌های کارمند
+                if (!empty($accountIds)) {
+                    $q2->whereIn('account_id', $accountIds);
+                }
+
+                // مسیر ۲: ref_id = یکی از حساب‌های کارمند (اگر account_id NULL بود)
+                if (!empty($accountIds)) {
+                    $q2->orWhere(function ($q3) use ($accountIds) {
+                        $q3->whereNull('account_id')
+                           ->whereIn('ref_id', $accountIds);
+                    });
+                }
+
+                // مسیر ۳: user_id ژورنال = userId کارمند
+                if (!empty($userIds)) {
+                    $q2->orWhereIn('user_id', $userIds);
+                }
+
+                // مسیر ۴: ref_id = userId (بعضی از createAdvance قدیمی)
+                if (!empty($userIds)) {
+                    $q2->orWhere(function ($q3) use ($userIds) {
+                        $q3->whereIn('ref_id', $userIds)
+                           ->whereIn('ref_type', [
+                               'salary_advance',
+                               'salary_advance_debit',
+                           ]);
+                    });
+                }
+            });
+        };
+
+        // ✅ مرحله ۱: مجموع credit
+        $creditQuery = DB::table('journals')
+            ->where('entry_type', 'credit')
+            ->whereNotIn('ref_type', $excludedRefTypes)
+            ->where($matchEmployee);
+
+        if (!empty($upToDate)) {
+            $creditQuery->whereRaw('REPLACE(journal_date, "-", "/") <= ?', [$upToDate]);
+        }
+
+        $totalCredit = (float) $creditQuery->sum('amount');
+
+        // ✅ مرحله ۲: مجموع debit
+        $debitQuery = DB::table('journals')
+            ->where('entry_type', 'debit')
+            ->whereNotIn('ref_type', $excludedRefTypes)
+            ->where($matchEmployee);
+
+        if (!empty($upToDate)) {
+            $debitQuery->whereRaw('REPLACE(journal_date, "-", "/") <= ?', [$upToDate]);
+        }
+
+        $totalDebit = (float) $debitQuery->sum('amount');
+
+        $remaining = max(0, round($totalCredit - $totalDebit, 2));
+
+        Log::info('[calcAdvanceDeduction] RESULT', [
+            'accountIds' => $accountIds,
+            'userIds' => $userIds,
+            'totalCredit' => $totalCredit,
+            'totalDebit' => $totalDebit,
+            'remaining' => $remaining,
+        ]);
+
+        return $remaining;
+    }
+    
+    public function getEmployeeAdvanceBalances(Request $request)
+    {
+        try {
+            $month = $request->query('month');
+            $year  = $request->query('year');
+
+            if (!$month || !$year) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'ماه و سال الزامی است',
+                ], 400);
+            }
+
+            $period = PayrollPeriod::findOrCreate($month, $year);
+
+            // ✅ حذف فیلتر تاریخ — همه ژورنال‌ها
+            $salaries = EmployeeSalary::where('period_id', $period->id)
+                ->whereIn('payment_status', ['pending', 'partial'])
+                ->get();
+
+            $balances = [];
+            foreach ($salaries as $s) {
+                $balance = $this->calcAdvanceDeduction(
+                    $s->user_id,
+                    $s->account_id,
+                    null // همه ژورنال‌ها
+                );
+                $balances[] = [
+                    'salaryId'  => $s->id,
+                    'userId'    => $s->user_id,
+                    'accountId' => $s->account_id,
+                    'balance'   => $balance,
+                ];
+            }
+
+            return response()->json([
+                'success'  => true,
+                'period'   => [
+                    'id'    => $period->id,
+                    'month' => $period->period_month,
+                    'year'  => $period->period_year,
+                ],
+                'balances' => $balances,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('getEmployeeAdvanceBalances: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * ✅ دیباگ: بررسی دقیق وضعیت پیش‌پرداخت یک کارمند
+     */
+    public function debugAdvance(Request $request)
+    {
+        try {
+            $userId    = $request->query('userId');
+            $accountId = $request->query('accountId');
+            $salaryId  = $request->query('salaryId');
+
+            // اگر salaryId داده شد، از آن استفاده کن
+            if ($salaryId) {
+                $salary = EmployeeSalary::find($salaryId);
+                if ($salary) {
+                    $userId    = $salary->user_id;
+                    $accountId = $salary->account_id;
+                }
+            }
+
+            $employeeAccountId = $this->resolveEmployeeAccountId(
+                $userId ? (int) $userId : null,
+                $accountId ? (int) $accountId : null
+            );
+
+            if (!$employeeAccountId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'حساب کارمند یافت نشد',
+                    'userId'  => $userId,
+                    'accountId' => $accountId,
+                    'hint'    => 'این کارمند در employee_salary_info.account_id حساب ندارد. ابتدا یک حساب به او اختصاص دهید.',
+                ], 404);
+            }
+
+            // همه ژورنال‌های مرتبط
+            $journals = DB::table('journals')
+                ->where('account_id', $employeeAccountId)
+                ->whereIn('ref_type', array_merge(
+                    self::ADVANCE_CREDIT_REF_TYPES,
+                    self::ADVANCE_SETTLEMENT_REF_TYPES
+                ))
+                ->orderBy('journal_date')
+                ->get();
+
+            // مجموع‌ها
+            $row = DB::table('journals')
+                ->where('account_id', $employeeAccountId)
+                ->whereIn('ref_type', array_merge(
+                    self::ADVANCE_CREDIT_REF_TYPES,
+                    self::ADVANCE_SETTLEMENT_REF_TYPES
+                ))
+                ->selectRaw('
+                    COALESCE(SUM(CASE WHEN entry_type = "credit" THEN amount ELSE 0 END), 0) AS total_credit,
+                    COALESCE(SUM(CASE WHEN entry_type = "debit"  THEN amount ELSE 0 END), 0) AS total_debit
+                ')
+                ->first();
+
+            $credit = (float) ($row->total_credit ?? 0);
+            $debit  = (float) ($row->total_debit  ?? 0);
+
+            return response()->json([
+                'success' => true,
+                'employeeAccountId' => $employeeAccountId,
+                'advance_credit_types' => self::ADVANCE_CREDIT_REF_TYPES,
+                'advance_settlement_types' => self::ADVANCE_SETTLEMENT_REF_TYPES,
+                'journals_count' => count($journals),
+                'journals' => $journals,
+                'total_credit' => $credit,
+                'total_debit'  => $debit,
+                'balance'      => max(0, round($credit - $debit, 2)),
+                'today' => now()->toDateString(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('debugAdvance: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * ✅ بازمحاسبه‌ی پیش‌پرداخت برای همه معاش‌های «پرداخت‌نشده» یک دوره
+     * ✅ تغییر مهم: بدون فیلتر تاریخ — همه ژورنال‌های پیش‌پرداخت جمع می‌شوند.
+     */
+    private function recalcAdvanceDeductionsForPeriod(PayrollPeriod $period): int
+    {
+        $salaries = EmployeeSalary::where('period_id', $period->id)
+            ->whereIn('payment_status', ['pending', 'partial'])
+            ->get();
+
+        $changed = 0;
+
+        foreach ($salaries as $salary) {
+            // ✅ null → بدون فیلتر تاریخ
+            $newAdvance = $this->calcAdvanceDeduction(
+                $salary->user_id,
+                $salary->account_id,
+                null
+            );
+
+            $oldAdvance = (float) $salary->advance_deduction;
+
+            if (abs($newAdvance - $oldAdvance) < 0.005) {
+                continue;
+            }
+
+            $gross = (float) ($salary->gross_salary
+                ?? ((float) $salary->base_salary + (float) $salary->allowances));
+            $tax   = (float) ($salary->tax_amount ?? 0);
+            $ins   = (float) ($salary->insurance_amount ?? 0);
+            $ded   = (float) ($salary->deductions ?? 0);
+
+            $newNet = round($gross - $ded - $tax - $ins - $newAdvance, 2);
+
+            $salary->update([
+                'advance_deduction' => $newAdvance,
+                'net_salary'        => $newNet,
+            ]);
+
+            try {
+                $this->journalService->deleteSalaryJournals($salary->id);
+                $this->journalService->recordSalaryGeneration($salary->fresh());
+            } catch (\Throwable $je) {
+                Log::warning('recalcAdvanceDeductionsForPeriod journal error: ' . $je->getMessage());
+            }
+
+            $changed++;
+        }
+
+        if ($changed > 0) {
+            $period->recalcTotals();
+        }
+
+        return $changed;
+    }
+
+    // ============================================================
+    // 📊 DASHBOARD
     // ============================================================
     public function getDashboard(Request $request)
     {
         try {
-            /*
-            |--------------------------------------------------------------------------
-            | ✅ 1) تعیین دوره بر اساس ماه/سال ارسالی از فرانت
-            |--------------------------------------------------------------------------
-            */
             $month = $request->query('month');
             $year  = $request->query('year');
 
@@ -257,33 +634,26 @@ class PayrollModelController extends Controller
                 $period = PayrollPeriod::orderBy('created_at', 'desc')->first();
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | ✅ 2) آمار کلی کارمندان
-            |--------------------------------------------------------------------------
-            */
             $employeeStats = DB::table('v_active_employees')
                 ->selectRaw('COUNT(*) as total')
                 ->selectRaw('COALESCE(SUM(base_salary + allowances - deductions), 0) as total_salaries')
                 ->first();
 
-            /*
-            |--------------------------------------------------------------------------
-            | ✅ 3) آمار کلی پیش‌پرداخت‌ها
-            |--------------------------------------------------------------------------
-            */
-            $advStats = DB::table('salary_advances')
-                ->whereIn('status', ['pending', 'approved', 'partially_repaid'])
-                ->selectRaw('COALESCE(SUM(amount), 0) as total')
-                ->selectRaw('COALESCE(SUM(repaid_amount), 0) as repaid')
-                ->selectRaw('COALESCE(SUM(remaining_amount), 0) as remaining')
+            $advStats = DB::table('journals')
+                ->whereIn('ref_type', array_merge(
+                    self::ADVANCE_CREDIT_REF_TYPES,
+                    self::ADVANCE_SETTLEMENT_REF_TYPES
+                ))
+                ->selectRaw('
+                    COALESCE(SUM(CASE WHEN entry_type = "credit" THEN amount ELSE 0 END), 0) AS total,
+                    COALESCE(SUM(CASE WHEN entry_type = "debit"  THEN amount ELSE 0 END), 0) AS settled
+                ')
                 ->first();
 
-            /*
-            |--------------------------------------------------------------------------
-            | ✅ 4) آمار پرداخت همین دوره
-            |--------------------------------------------------------------------------
-            */
+            $advTotal    = (float) ($advStats->total ?? 0);
+            $advSettled  = (float) ($advStats->settled ?? 0);
+            $advRemaining = max(0, round($advTotal - $advSettled, 2));
+
             if ($period) {
                 $periodTotal     = (float) $period->total_amount;
                 $paidThisMonth   = (float) $period->paid_amount;
@@ -292,11 +662,6 @@ class PayrollModelController extends Controller
                     ? (int) round(($paidThisMonth / $periodTotal) * 100)
                     : 0;
 
-                /*
-                |--------------------------------------------------------------------------
-                | ✅ 5) آخرین پرداخت‌های همین دوره (نه همه)
-                |--------------------------------------------------------------------------
-                */
                 $recent = EmployeeSalary::with(['user.department', 'account', 'salaryInfo'])
                     ->where('period_id', $period->id)
                     ->orderBy('updated_at', 'desc')
@@ -327,11 +692,6 @@ class PayrollModelController extends Controller
                 $recent          = collect();
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | ✅ 6) خروجی
-            |--------------------------------------------------------------------------
-            */
             return response()->json([
                 'success' => true,
                 'period'  => $period ? [
@@ -340,12 +700,11 @@ class PayrollModelController extends Controller
                     'year'  => $period->period_year,
                 ] : null,
                 'stats'   => [
-                    // آمار کلی
                     'totalEmployees'   => (int) ($employeeStats->total ?? 0),
                     'totalSalaries'    => (float) ($employeeStats->total_salaries ?? 0),
-                    'totalAdvances'    => (float) ($advStats->total ?? 0),
-
-                    // آمار همین دوره
+                    'totalAdvances'    => $advTotal,
+                    'totalAdvanceSettled' => $advSettled,
+                    'totalAdvanceRemaining' => $advRemaining,
                     'paidThisMonth'    => $paidThisMonth,
                     'pendingPayments'  => $pendingPayments,
                     'paymentProgress'  => $progress,
@@ -634,6 +993,13 @@ class PayrollModelController extends Controller
 
             $period = PayrollPeriod::findOrCreate($month, $year);
 
+            // ✅ بازمحاسبه پیش‌پرداخت — بدون فیلتر تاریخ
+            try {
+                $this->recalcAdvanceDeductionsForPeriod($period);
+            } catch (\Throwable $re) {
+                Log::warning('getSalaries recalcAdvance failed: ' . $re->getMessage());
+            }
+
             $query = EmployeeSalary::with(['user.department', 'account', 'salaryInfo'])
                 ->where('period_id', $period->id);
 
@@ -714,8 +1080,6 @@ class PayrollModelController extends Controller
             $enableIns = (bool)  ($settings['enableInsurance'] ?? false);
 
             $inserted = 0;
-            $requestMonth = trim($request->month);
-            $requestYear  = trim($request->year);
 
             foreach ($employees as $emp) {
                 $base  = (float) $emp->base_salary;
@@ -729,42 +1093,13 @@ class PayrollModelController extends Controller
                 $taxForNet       = $enableTax ? $rawTax       : 0;
                 $insuranceForNet = $enableIns ? $rawInsurance : 0;
 
-                $advanceDeduction = 0;
+                // ✅ پیش‌پرداخت از ژورنال — بدون فیلتر تاریخ
+                $advanceDeduction = $this->calcAdvanceDeduction(
+                    $emp->source === 'user'    ? (int) $emp->employee_id : null,
+                    $emp->source === 'account' ? (int) $emp->employee_id : null,
+                    null
+                );
 
-                $advQuery = SalaryAdvance::whereIn('status', ['approved', 'partially_repaid'])
-                    ->where(function ($q) use ($requestMonth, $requestYear) {
-                        $q->where(function ($q2) use ($requestMonth, $requestYear) {
-                            $q2->whereRaw('TRIM(target_month) = ?', [$requestMonth])
-                               ->whereRaw('TRIM(target_year) = ?', [$requestYear]);
-                        })
-                        ->orWhere(function ($q2) {
-                            $q2->whereNull('target_month')
-                               ->whereNull('target_year');
-                        });
-                    });
-
-                if ($emp->source === 'user') {
-                    $advQuery->where('user_id', $emp->employee_id);
-                } else {
-                    $advQuery->where('account_id', $emp->employee_id);
-                }
-
-                $advances = $advQuery->get();
-
-                foreach ($advances as $adv) {
-                    $advRemaining = (float) $adv->remaining_amount
-                        ?: ((float) $adv->amount - (float) $adv->repaid_amount);
-
-                    $monthly = (float) $adv->monthly_deduction;
-                    if ($monthly <= 0) {
-                        $months  = max(1, (int) $adv->repayment_months);
-                        $monthly = $advRemaining / $months;
-                    }
-
-                    $advanceDeduction += min($monthly, $advRemaining);
-                }
-
-                $advanceDeduction = round($advanceDeduction, 2);
                 $net = round($gross - $ded - $taxForNet - $insuranceForNet - $advanceDeduction, 2);
 
                 $salary = EmployeeSalary::create([
@@ -788,6 +1123,7 @@ class PayrollModelController extends Controller
                 $inserted++;
             }
 
+            $this->recalcAdvanceDeductionsForPeriod($period);
             $period->recalcTotals();
 
             DB::commit();
@@ -844,6 +1180,27 @@ class PayrollModelController extends Controller
             $affectedPeriods = [];
 
             foreach ($salaries as $salary) {
+                // ✅ بازخوانی پیش‌پرداخت — بدون فیلتر تاریخ
+                $freshAdvance = $this->calcAdvanceDeduction(
+                    $salary->user_id,
+                    $salary->account_id,
+                    null
+                );
+
+                if (abs($freshAdvance - (float) $salary->advance_deduction) > 0.005) {
+                    $gross = (float) ($salary->gross_salary
+                        ?? ((float) $salary->base_salary + (float) $salary->allowances));
+                    $tax   = (float) ($salary->tax_amount ?? 0);
+                    $ins   = (float) ($salary->insurance_amount ?? 0);
+                    $ded   = (float) ($salary->deductions ?? 0);
+
+                    $salary->update([
+                        'advance_deduction' => $freshAdvance,
+                        'net_salary'        => round($gross - $ded - $tax - $ins - $freshAdvance, 2),
+                    ]);
+                    $salary->refresh();
+                }
+
                 $salary->update([
                     'payment_status'       => 'paid',
                     'paid_amount'          => $salary->net_salary,
@@ -856,57 +1213,24 @@ class PayrollModelController extends Controller
 
                 $this->journalService->recordSalaryPayment($salary->fresh(), $paymentDate, $accountId);
 
-                if ($salary->advance_deduction > 0) {
-                    $remaining = (float) $salary->advance_deduction;
+                if ((float) $salary->advance_deduction > 0) {
+                    $employeeAccountId = $this->resolveEmployeeAccountId(
+                        $salary->user_id,
+                        $salary->account_id
+                    );
 
-                    $period = PayrollPeriod::find($salary->period_id);
-
-                    $advQuery = SalaryAdvance::whereIn('status', ['approved', 'partially_repaid'])
-                        ->orderBy('created_at', 'asc');
-
-                    if ($period) {
-                        $periodMonth = trim($period->period_month);
-                        $periodYear  = trim($period->period_year);
-
-                        $advQuery->where(function ($q) use ($periodMonth, $periodYear) {
-                            $q->where(function ($q2) use ($periodMonth, $periodYear) {
-                                $q2->whereRaw('TRIM(target_month) = ?', [$periodMonth])
-                                   ->whereRaw('TRIM(target_year) = ?', [$periodYear]);
-                            })
-                            ->orWhere(function ($q2) {
-                                $q2->whereNull('target_month')
-                                   ->whereNull('target_year');
-                            });
-                        });
-                    }
-
-                    if ($salary->user_id) {
-                        $advQuery->where('user_id', $salary->user_id);
-                    } elseif ($salary->account_id) {
-                        $advQuery->where('account_id', $salary->account_id);
-                    }
-
-                    $advances = $advQuery->get();
-
-                    foreach ($advances as $adv) {
-                        if ($remaining <= 0) break;
-
-                        $advRemaining = (float) $adv->remaining_amount
-                            ?: ((float) $adv->amount - (float) $adv->repaid_amount);
-
-                        $deduct = min($remaining, $advRemaining);
-
-                        $newRepaid    = (float) $adv->repaid_amount + $deduct;
-                        $newRemaining = (float) $adv->amount - $newRepaid;
-                        $newStatus    = $newRemaining <= 0 ? 'repaid' : 'partially_repaid';
-
-                        $adv->update([
-                            'repaid_amount'    => $newRepaid,
-                            'remaining_amount' => $newRemaining,
-                            'status'           => $newStatus,
-                        ]);
-
-                        $remaining -= $deduct;
+                    if ($employeeAccountId) {
+                        try {
+                            $this->journalService->recordAdvanceSettlement(
+                                $salary->fresh(),
+                                $paymentDate,
+                                $employeeAccountId
+                            );
+                        } catch (\Throwable $je) {
+                            Log::warning('recordAdvanceSettlement failed for salary #' . $salary->id . ': ' . $je->getMessage());
+                        }
+                    } else {
+                        Log::warning("پیش‌پرداخت کسر شد اما حساب کارمند یافت نشد. salary #{$salary->id}");
                     }
                 }
 
@@ -932,39 +1256,109 @@ class PayrollModelController extends Controller
     }
 
     // ============================================================
-    // 📉 ADVANCES
+    // 📉 ADVANCES — بر اساس ژورنال
     // ============================================================
+
     public function getAdvances(Request $request)
     {
         try {
             $status = $request->query('status');
+            $search = $request->query('search');
 
-            $query = SalaryAdvance::with(['user.department', 'account'])
-                ->orderBy('created_at', 'desc');
+            $query = Journal::query()
+                ->with(['account', 'user'])
+                ->whereIn('ref_type', self::ADVANCE_CREDIT_REF_TYPES)
+                ->orderBy('journal_date', 'desc')
+                ->orderBy('id', 'desc');
 
-            if ($status && $status !== 'all') {
-                $query->where('status', $status);
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('description', 'like', "%{$search}%")
+                      ->orWhereHas('account', function ($qq) use ($search) {
+                          $qq->where('account_name', 'like', "%{$search}%")
+                             ->orWhere('account_code', 'like', "%{$search}%");
+                      });
+                });
             }
 
-            $rows = $query->get()->map(fn($a) => $this->advanceToArray($a));
+            $journals = $query->limit(1000)->get();
 
-            $stats = DB::table('salary_advances')
-                ->whereIn('status', ['pending', 'approved', 'partially_repaid'])
-                ->selectRaw('COALESCE(SUM(amount), 0) as total')
-                ->selectRaw('COALESCE(SUM(repaid_amount), 0) as repaid')
-                ->selectRaw('COALESCE(SUM(remaining_amount), 0) as remaining')
+            $rows = $journals->map(function ($j) {
+                $acc = $j->account;
+                $accId = $j->account_id;
+                $balance = 0.0;
+
+                if ($accId) {
+                    $row = DB::table('journals')
+                        ->where('account_id', $accId)
+                        ->whereIn('ref_type', array_merge(
+                            self::ADVANCE_CREDIT_REF_TYPES,
+                            self::ADVANCE_SETTLEMENT_REF_TYPES
+                        ))
+                        ->selectRaw('
+                            COALESCE(SUM(CASE WHEN entry_type = "credit" THEN amount ELSE 0 END), 0) AS total_credit,
+                            COALESCE(SUM(CASE WHEN entry_type = "debit"  THEN amount ELSE 0 END), 0) AS total_debit
+                        ')
+                        ->first();
+
+                    $balance = max(0, (float) ($row->total_credit ?? 0) - (float) ($row->total_debit ?? 0));
+                }
+
+                return [
+                    'id'              => $j->id,
+                    'employee'        => $acc?->account_name ?? '—',
+                    'employeeId'      => $j->account_id,
+                    'accountId'       => $j->account_id,
+                    'userId'          => null,
+                    'source'          => 'account',
+                    'sourceLabel'     => 'حساب',
+                    'department'      => $this->categoryLabel($acc?->account_category),
+                    'amount'          => (float) $j->amount,
+                    'reason'          => $j->description,
+                    'date'            => $j->journal_date,
+                    'requestDate'     => $j->journal_date,
+                    'targetMonth'     => null,
+                    'targetYear'      => null,
+                    'approvalDate'    => $j->journal_date,
+                    'status'          => 'ثبت شده',
+                    'statusRaw'       => 'approved',
+                    'repaid'          => 0,
+                    'repaidAmount'    => 0,
+                    'remaining'       => $balance,
+                    'remainingAmount' => $balance,
+                    'repaymentMonths' => 1,
+                    'monthlyDeduction'=> (float) $j->amount,
+                    'accountCode'     => $acc?->account_code,
+                    'tazkiraNumber'   => $acc?->tazkira_number,
+                    'accountCategoryLabel' => $this->categoryLabel($acc?->account_category),
+                ];
+            });
+
+            $statsRow = DB::table('journals')
+                ->whereIn('ref_type', array_merge(
+                    self::ADVANCE_CREDIT_REF_TYPES,
+                    self::ADVANCE_SETTLEMENT_REF_TYPES
+                ))
+                ->selectRaw('
+                    COALESCE(SUM(CASE WHEN entry_type = "credit" THEN amount ELSE 0 END), 0) AS total,
+                    COALESCE(SUM(CASE WHEN entry_type = "debit"  THEN amount ELSE 0 END), 0) AS settled
+                ')
                 ->first();
+
+            $total   = (float) ($statsRow->total ?? 0);
+            $settled = (float) ($statsRow->settled ?? 0);
 
             return response()->json([
                 'success' => true,
                 'data'    => $rows,
                 'stats'   => [
-                    'totalAdvances' => (float) ($stats->total ?? 0),
-                    'totalRepaid'   => (float) ($stats->repaid ?? 0),
-                    'remaining'     => (float) ($stats->remaining ?? 0),
+                    'totalAdvances' => $total,
+                    'totalRepaid'   => $settled,
+                    'remaining'     => max(0, round($total - $settled, 2)),
                 ],
             ]);
         } catch (\Throwable $e) {
+            Log::error('getAdvances: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -978,7 +1372,7 @@ class PayrollModelController extends Controller
             'employee'        => 'nullable|string',
             'amount'          => 'required|numeric|min:1',
             'reason'          => 'nullable|string',
-            'date'            => 'nullable|string|max:20',
+            'date'            => 'nullable|date',
             'targetMonth'     => 'required|string|max:20',
             'targetYear'      => 'required|string|max:10',
             'repaymentMonths' => 'nullable|integer|min:1',
@@ -988,6 +1382,7 @@ class PayrollModelController extends Controller
             return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
 
+        DB::beginTransaction();
         try {
             $userId    = $request->userId;
             $accountId = $request->accountId;
@@ -1024,47 +1419,81 @@ class PayrollModelController extends Controller
                 }
             }
 
-            if (!$userId && !$accountId) {
+            $employeeAccountId = $this->resolveEmployeeAccountId($userId, $accountId);
+
+            if (!$employeeAccountId) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
-                    'message' => 'کارمند یافت نشد. لطفاً یک کارمند معتبر انتخاب کنید.',
-                ], 404);
+                    'message' => 'برای این کارمند حساب تعریف نشده است. ابتدا در صفحه حساب‌ها یک حساب به کارمند اختصاص دهید.',
+                ], 422);
             }
 
-            if ($userId && !User::where('id', $userId)->exists()) {
-                return response()->json(['success' => false, 'message' => 'کاربر یافت نشد'], 404);
-            }
-
-            if ($accountId && !Account::where('id', $accountId)->exists()) {
-                return response()->json(['success' => false, 'message' => 'طرف‌حساب یافت نشد'], 404);
-            }
-
-            $amount  = (float) $request->amount;
-            $months  = (int) ($request->repaymentMonths ?? 1);
-            $monthly = $months > 0 ? $amount / $months : $amount;
-
+            $amount      = (float) $request->amount;
             $requestDate = $request->date ?: now()->toDateString();
+            $description = $request->reason ?: 'پیش‌پرداخت معاش';
 
-            $advance = SalaryAdvance::create([
-                'user_id'           => $userId,
-                'account_id'        => $accountId,
-                'amount'            => $amount,
-                'reason'            => $request->reason,
-                'request_date'      => $requestDate,
-                'target_month'      => trim($request->targetMonth),
-                'target_year'       => trim($request->targetYear),
-                'status'            => 'pending',
-                'repaid_amount'     => 0,
-                'remaining_amount'  => $amount,
-                'repayment_months'  => $months,
-                'monthly_deduction' => $monthly,
+            $journal = Journal::create([
+                'journal_date'   => $requestDate,
+                'description'    => $description,
+                'entry_type'     => 'credit',
+                'amount'         => $amount,
+                'ref_type'       => 'salary_advance',
+                'ref_id'         => $employeeAccountId,
+                'account_id'     => $employeeAccountId,
+                'user_id'        => $request->user()?->id,
+                'tazkira_number' => optional(Account::find($employeeAccountId))->tazkira_number,
             ]);
+
+            try {
+                $period = PayrollPeriod::where('period_month', trim($request->targetMonth))
+                    ->where('period_year', trim($request->targetYear))
+                    ->first();
+
+                if ($period) {
+                    $this->recalcAdvanceDeductionsForPeriod($period);
+                }
+            } catch (\Throwable $re) {
+                Log::warning('createAdvance recalc failed: ' . $re->getMessage());
+            }
+
+            DB::commit();
+
+            $account = Account::find($employeeAccountId);
 
             return response()->json([
                 'success' => true,
-                'data'    => $this->advanceToArray($advance->fresh(['user.department', 'account'])),
+                'data'    => [
+                    'id'              => $journal->id,
+                    'employee'        => $account?->account_name ?? '—',
+                    'employeeId'      => $employeeAccountId,
+                    'userId'          => $userId,
+                    'accountId'       => $employeeAccountId,
+                    'source'          => 'account',
+                    'sourceLabel'     => 'حساب',
+                    'department'      => $this->categoryLabel($account?->account_category),
+                    'amount'          => $amount,
+                    'reason'          => $description,
+                    'date'            => $requestDate,
+                    'requestDate'     => $requestDate,
+                    'targetMonth'     => $request->targetMonth,
+                    'targetYear'      => $request->targetYear,
+                    'approvalDate'    => $requestDate,
+                    'status'          => 'ثبت شده',
+                    'statusRaw'       => 'approved',
+                    'repaid'          => 0,
+                    'repaidAmount'    => 0,
+                    'remaining'       => $amount,
+                    'remainingAmount' => $amount,
+                    'repaymentMonths' => (int) ($request->repaymentMonths ?? 1),
+                    'monthlyDeduction'=> $amount,
+                    'accountCode'     => $account?->account_code,
+                    'tazkiraNumber'   => $account?->tazkira_number,
+                    'accountCategoryLabel' => $this->categoryLabel($account?->account_category),
+                ],
             ], 201);
         } catch (\Throwable $e) {
+            DB::rollBack();
             Log::error('createAdvance: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -1073,60 +1502,76 @@ class PayrollModelController extends Controller
     public function approveAdvance(Request $request, $id)
     {
         try {
-            $advance = SalaryAdvance::find($id);
-            if (!$advance) {
+            $journal = Journal::whereIn('ref_type', self::ADVANCE_CREDIT_REF_TYPES)
+                ->find($id);
+
+            if (!$journal) {
                 return response()->json(['success' => false, 'message' => 'یافت نشد'], 404);
             }
 
-            if ($advance->status !== 'pending') {
-                return response()->json([
-                    'success' => true,
-                    'data'    => $this->advanceToArray($advance->fresh(['user.department', 'account'])),
-                ]);
-            }
-
-            DB::beginTransaction();
-
-            $advance->update([
-                'status'        => 'approved',
-                'approval_date' => now()->toDateString(),
-                'approved_by'   => $request->user()->id ?? null,
-            ]);
-
-            $this->journalService->recordAdvancePayment(
-                $advance->fresh(['user', 'account']),
-                now()->toDateString()
-            );
-
-            DB::commit();
+            $account = Account::find($journal->account_id);
 
             return response()->json([
                 'success' => true,
-                'data'    => $this->advanceToArray($advance->fresh(['user.department', 'account'])),
+                'data'    => [
+                    'id'              => $journal->id,
+                    'employee'        => $account?->account_name ?? '—',
+                    'employeeId'      => $journal->account_id,
+                    'accountId'       => $journal->account_id,
+                    'source'          => 'account',
+                    'sourceLabel'     => 'حساب',
+                    'department'      => $this->categoryLabel($account?->account_category),
+                    'amount'          => (float) $journal->amount,
+                    'reason'          => $journal->description,
+                    'date'            => $journal->journal_date,
+                    'requestDate'     => $journal->journal_date,
+                    'status'          => 'ثبت شده',
+                    'statusRaw'       => 'approved',
+                    'repaid'          => 0,
+                    'repaidAmount'    => 0,
+                    'remaining'       => (float) $journal->amount,
+                    'remainingAmount' => (float) $journal->amount,
+                    'repaymentMonths' => 1,
+                    'monthlyDeduction'=> (float) $journal->amount,
+                ],
             ]);
         } catch (\Throwable $e) {
-            DB::rollBack();
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
     public function rejectAdvance(Request $request, $id)
     {
+        DB::beginTransaction();
         try {
-            $advance = SalaryAdvance::find($id);
-            if (!$advance) {
+            $journal = Journal::whereIn('ref_type', self::ADVANCE_CREDIT_REF_TYPES)
+                ->find($id);
+
+            if (!$journal) {
+                DB::rollBack();
                 return response()->json(['success' => false, 'message' => 'یافت نشد'], 404);
             }
 
-            $this->journalService->deleteAdvanceJournals($advance->id);
+            $accountId = $journal->account_id;
+            $journal->delete();
 
-            $advance->update(['status' => 'rejected']);
+            try {
+                PayrollPeriod::whereIn('status', ['open', 'processing'])
+                    ->get()
+                    ->each(fn($p) => $this->recalcAdvanceDeductionsForPeriod($p));
+            } catch (\Throwable $re) {
+                Log::warning('rejectAdvance recalc failed: ' . $re->getMessage());
+            }
+
+            DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data'    => $this->advanceToArray($advance->fresh(['user.department', 'account'])),
+                'message' => 'پیش‌پرداخت حذف شد',
+                'data'    => ['accountId' => $accountId],
             ]);
         } catch (\Throwable $e) {
+            DB::rollBack();
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -1148,6 +1593,12 @@ class PayrollModelController extends Controller
             }
 
             $period = PayrollPeriod::findOrCreate($month, $year);
+
+            try {
+                $this->recalcAdvanceDeductionsForPeriod($period);
+            } catch (\Throwable $re) {
+                Log::warning('getReports recalc failed: ' . $re->getMessage());
+            }
 
             $salaries = EmployeeSalary::with(['user.department', 'account', 'salaryInfo'])
                 ->where('period_id', $period->id)
@@ -1414,59 +1865,6 @@ class PayrollModelController extends Controller
             'paymentMethod'    => $s->payment_method,
             'receiptNumber'    => $s->receipt_number,
             'notes'            => $s->notes,
-        ], $accFields);
-    }
-
-    private function advanceToArray(SalaryAdvance $a): array
-    {
-        $statusMap = [
-            'pending'          => 'در انتظار',
-            'approved'         => 'تأیید شده',
-            'rejected'         => 'رد شده',
-            'repaid'           => 'بازپرداخت شده',
-            'partially_repaid' => 'تأیید شده',
-        ];
-
-        $employeeName = $a->user->name
-            ?? $a->user->full_name
-            ?? $a->account->account_name
-            ?? '—';
-
-        $department = $this->resolveDepartmentLabel($a->user, $a->account);
-
-        $sourceLabel = '—';
-        if ($a->user_id && $a->user) {
-            $sourceLabel = $a->user->role ?? 'کاربر';
-        } elseif ($a->account_id) {
-            $sourceLabel = 'طرف‌حساب';
-        }
-
-        $accFields = $this->accountFields($a->account);
-
-        return array_merge([
-            'id'               => $a->id,
-            'employee'         => $employeeName,
-            'employeeId'       => $a->user_id ?? $a->account_id,
-            'userId'           => $a->user_id,
-            'accountId'        => $a->account_id,
-            'source'           => $a->user_id ? 'user' : 'account',
-            'sourceLabel'      => $sourceLabel,
-            'department'       => $department,
-            'amount'           => (float) $a->amount,
-            'reason'           => $a->reason,
-            'date'             => $a->request_date,
-            'requestDate'      => $a->request_date,
-            'targetMonth'      => $a->target_month,
-            'targetYear'       => $a->target_year,
-            'approvalDate'     => $a->approval_date?->format('Y-m-d'),
-            'status'           => $statusMap[$a->status] ?? $a->status,
-            'statusRaw'        => $a->status,
-            'repaid'           => (float) $a->repaid_amount,
-            'repaidAmount'     => (float) $a->repaid_amount,
-            'remaining'        => (float) $a->remaining_amount,
-            'remainingAmount'  => (float) $a->remaining_amount,
-            'repaymentMonths'  => (int) $a->repayment_months,
-            'monthlyDeduction' => (float) $a->monthly_deduction,
         ], $accFields);
     }
 }

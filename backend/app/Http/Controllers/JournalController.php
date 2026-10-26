@@ -13,7 +13,7 @@ use App\Models\Patient;
 use App\Models\User;
 use App\Models\Account;
 use App\Models\EmployeeSalary;
-use App\Models\SalaryAdvance;
+use App\Models\EmployeeSalaryInfo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -34,13 +34,13 @@ class JournalController extends Controller
         'salary_payment_debit' => ['label' => 'تسویه معاش'],
         'salary_advance'       => ['label' => 'پیش‌پرداخت معاش'],
         'salary_advance_debit' => ['label' => 'ثبت پیش‌پرداخت'],
+        'salary_advance_settlement' => ['label' => 'تسویه پیش‌پرداخت'],
     ];
 
     /* ============================================================
      *  ✅ برچسب‌های فارسی برای دسته‌بندی حساب
      * ============================================================ */
     private const ACCOUNT_CATEGORY_LABELS = [
-        // Assets
         'cash' => 'نقدی', 'bank' => 'بانکی',
         'medicine_inventory' => 'موجودی ادویه',
         'laboratory_inventory' => 'موجودی لابراتوار',
@@ -52,8 +52,6 @@ class JournalController extends Controller
         'vehicle' => 'وسیله نقلیه', 'furniture' => 'فرنیچر',
         'prepayments' => 'پیش‌پرداخت‌ها', 'deposits' => 'سپرده‌ها',
         'other_assets' => 'سایر دارایی‌ها',
-
-        // Liabilities
         'suppliers' => 'تأمین‌کنندگان',
         'medicine_purchase_payable' => 'بدهی خرید ادویه',
         'equipment_purchase_payable' => 'بدهی خرید تجهیزات',
@@ -63,8 +61,6 @@ class JournalController extends Controller
         'loans' => 'قرض‌ها', 'bank_loans' => 'قرض بانکی',
         'contractual_liabilities' => 'تعهدات قراردادی',
         'other_liabilities' => 'سایر بدهی‌ها',
-
-        // Equity
         'initial_capital' => 'سرمایه اولیه',
         'owner_capital' => 'سرمایه مالک',
         'partners_capital' => 'سرمایه شرکا',
@@ -72,8 +68,6 @@ class JournalController extends Controller
         'retained_losses' => 'ضرر انباشته',
         'owner_drawings' => 'برداشت مالک',
         'other_equity' => 'سایر سرمایه',
-
-        // Income
         'medical_services_income' => 'درآمد خدمات طبی',
         'consultation_income' => 'درآمد مشاوره',
         'laboratory_income' => 'درآمد لابراتوار',
@@ -87,10 +81,8 @@ class JournalController extends Controller
         'non_operating_income' => 'درآمد غیرعملیاتی',
         'rent_income' => 'درآمد کرایه',
         'customers_income' => 'درآمد از مشتریان',
-        'customer_income'  => 'درآمد از مشتریان', // ✅ هماهنگ‌سازی
+        'customer_income'  => 'درآمد از مشتریان',
         'other_income' => 'سایر درآمدها',
-
-        // Expense
         'salary_expense' => 'مصرف معاشات',
         'rent_expense' => 'مصرف کرایه',
         'electricity_expense' => 'مصرف برق',
@@ -115,8 +107,6 @@ class JournalController extends Controller
         'bank_charge_expense' => 'مصرف کمیشن بانکی',
         'depreciation_expense' => 'مصرف استهلاک',
         'other_expense' => 'سایر مصارف',
-
-        // Receivable
         'insurance_companies' => 'شرکت‌های بیمه',
         'contracting_institutions' => 'مؤسسات قراردادی',
         'companies' => 'شرکت‌ها',
@@ -124,8 +114,6 @@ class JournalController extends Controller
         'customers' => 'مشتریان',
         'miscellaneous_receivables' => 'مطالبات متفرقه',
         'other_receivables' => 'سایر مطالبات',
-
-        // Payable
         'medicine_suppliers' => 'تأمین‌کنندگان ادویه',
         'medical_equipment_suppliers' => 'تأمین‌کنندگان تجهیزات طبی',
         'laboratory_material_suppliers' => 'تأمین‌کنندگان مواد لابراتوار',
@@ -135,8 +123,6 @@ class JournalController extends Controller
         'tax_payables' => 'مالیات قابل پرداخت',
         'bank_payables' => 'بدهی بانکی',
         'other_creditors' => 'سایر طلبکاران',
-
-        // Employee
         'employee_doctor' => 'داکتر',
         'employee_nurse' => 'نرس',
         'employee_radiology' => 'کارمند رادیولوژی',
@@ -172,30 +158,15 @@ class JournalController extends Controller
         'worker_other' => 'سایر کارگرها',
     ];
 
-    /* ============================================================
-     *  برچسب‌های فارسی برای role یوزر
-     * ============================================================ */
     private const USER_ROLE_LABELS = [
-        'patient' => 'مریض',
-        'doctor' => 'داکتر',
-        'nurse' => 'نرس',
-        'receptionist' => 'منشی',
-        'accountant' => 'محاسب',
-        'pharmacist' => 'دواساز',
-        'laboratorist' => 'لابراتوار',
-        'radiologist' => 'رادیولوژیست',
-        'staff' => 'کارمند',
-        'visitor' => 'مراجع',
-        'admin' => 'مدیر',
-        'super_admin' => 'مدیر ارشد',
-        'employee' => 'کارمند',
-        'customer' => 'مشتری',
-        'supplier' => 'تأمین‌کننده',
+        'patient' => 'مریض', 'doctor' => 'داکتر', 'nurse' => 'نرس',
+        'receptionist' => 'منشی', 'accountant' => 'محاسب',
+        'pharmacist' => 'دواساز', 'laboratorist' => 'لابراتوار',
+        'radiologist' => 'رادیولوژیست', 'staff' => 'کارمند',
+        'visitor' => 'مراجع', 'admin' => 'مدیر', 'super_admin' => 'مدیر ارشد',
+        'employee' => 'کارمند', 'customer' => 'مشتری', 'supplier' => 'تأمین‌کننده',
     ];
 
-    /* ============================================================
-     *  ✅ انواع حساب‌محور (که از جدول accounts می‌آیند)
-     * ============================================================ */
     private const ACCOUNT_REF_TYPES = [
         'customer_account',
         'corporate_customer',
@@ -208,73 +179,146 @@ class JournalController extends Controller
         'customer_income',
     ];
 
+    public const GENERIC_ACCOUNT_REF_TYPE = 'account';
+    public const ACCOUNT_CATEGORY_PREFIX = 'account:';
+
     /* ============================================================
-     *  ✅ نقشه‌برداری ref_type → account_type + account_category
-     *
-     *  ⚠️ نکته مهم: کتگوری‌ها باید دقیقاً با مقادیری که در
-     *  AccountController::$categories تعریف شده‌اند هماهنگ باشند.
-     *  همچنین نام‌های جایگزین (مثل customers_income / customer_income)
-     *  هر دو پشتیبانی می‌شوند تا اگر حساب‌ها با هر یک از این
-     *  نام‌ها ثبت شده باشند، در لیست نمایش داده شوند.
+     *  ✅ جدید: پیشوند داینامیک یوزرها بر اساس نقش
+     *  مثال: user_role:nurse → همه یوزرهای با نقش nurse
      * ============================================================ */
+    public const USER_ROLE_PREFIX = 'user_role:';
+
     private const ACCOUNT_REF_MAP = [
-        'customer_account' => [
-            'type'       => 'receivable',
-            'categories' => ['customers', 'corporate_customers', 'companies'],
-        ],
-        'corporate_customer' => [
-            'type'       => 'receivable',
-            'categories' => ['corporate_customers', 'companies'],
-        ],
-        'insurance_company' => [
-            'type'       => 'receivable',
-            'categories' => ['insurance_companies'],
-        ],
+        'customer_account' => ['type' => 'receivable', 'categories' => ['customers', 'corporate_customers', 'companies']],
+        'corporate_customer' => ['type' => 'receivable', 'categories' => ['corporate_customers', 'companies']],
+        'insurance_company' => ['type' => 'receivable', 'categories' => ['insurance_companies']],
         'supplier_account' => [
-            'type'       => 'payable',
+            'type' => 'payable',
             'categories' => [
-                'medicine_suppliers',
-                'medical_equipment_suppliers',
-                'laboratory_material_suppliers',
-                'consumable_material_suppliers',
-                'vendors',
-                'contractors',
-                'other_creditors',
+                'medicine_suppliers', 'medical_equipment_suppliers',
+                'laboratory_material_suppliers', 'consumable_material_suppliers',
+                'vendors', 'contractors', 'other_creditors',
             ],
         ],
-        'medicine_supplier' => [
-            'type'       => 'payable',
-            'categories' => ['medicine_suppliers'],
-        ],
-        'equipment_supplier' => [
-            'type'       => 'payable',
-            'categories' => ['medical_equipment_suppliers'],
-        ],
-        'laboratory_material_supplier' => [
-            'type'       => 'payable',
-            'categories' => ['laboratory_material_suppliers'],
-        ],
-        'consumable_material_supplier' => [
-            'type'       => 'payable',
-            'categories' => ['consumable_material_suppliers'],
-        ],
-        // ✅ هر دو نام پشتیبانی می‌شوند تا ناهماهنگی بین دو کنترلر مشکل‌ساز نشود
-        'customer_income' => [
-            'type'       => 'income',
-            'categories' => ['customers_income', 'customer_income'],
-        ],
+        'medicine_supplier' => ['type' => 'payable', 'categories' => ['medicine_suppliers']],
+        'equipment_supplier' => ['type' => 'payable', 'categories' => ['medical_equipment_suppliers']],
+        'laboratory_material_supplier' => ['type' => 'payable', 'categories' => ['laboratory_material_suppliers']],
+        'consumable_material_supplier' => ['type' => 'payable', 'categories' => ['consumable_material_suppliers']],
+        'customer_income' => ['type' => 'income', 'categories' => ['customers_income', 'customer_income']],
     ];
 
     /* ============================================================
-     *  نمایش لیست ژورنال‌ها
+     *  ✅ نرمال‌سازی تاریخ — همه به شمسی YYYY/MM/DD
+     * ============================================================ */
+    private function normalizeJournalDate(?string $date): ?string
+    {
+        if (empty($date)) return null;
+
+        $date = trim((string) $date);
+
+        if (str_contains($date, 'T')) $date = substr($date, 0, 10);
+        if (str_contains($date, ' ')) $date = explode(' ', $date)[0];
+
+        $date = str_replace('-', '/', $date);
+
+        if (preg_match('/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/', $date, $m)) {
+            $year  = (int) $m[1];
+            $month = (int) $m[2];
+            $day   = (int) $m[3];
+
+            if ($year >= 1900) {
+                return $this->gregorianToShamsi($year, $month, $day);
+            }
+
+            if ($year >= 1200 && $year < 1900) {
+                return sprintf('%04d/%02d/%02d', $year, $month, $day);
+            }
+        }
+
+        return null;
+    }
+
+    private function gregorianToShamsi(int $gy, int $gm, int $gd): string
+    {
+        $g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+        $gy2 = ($gm > 2) ? ($gy + 1) : $gy;
+        $days = 355666 + (365 * $gy) + intdiv($gy2 + 3, 4) - intdiv($gy2 + 99, 100)
+              + intdiv($gy2 + 399, 400) + $gd + $g_d_m[$gm - 1];
+
+        $jy = -1595 + (33 * intdiv($days, 12053));
+        $days %= 12053;
+        $jy += 4 * intdiv($days, 1461);
+        $days %= 1461;
+        if ($days > 365) {
+            $jy += intdiv($days - 1, 365);
+            $days = ($days - 1) % 365;
+        }
+
+        if ($days < 186) {
+            $jm = 1 + intdiv($days, 31);
+            $jd = 1 + ($days % 31);
+        } else {
+            $jm = 7 + intdiv($days - 186, 30);
+            $jd = 1 + (($days - 186) % 30);
+        }
+
+        return sprintf('%04d/%02d/%02d', $jy, $jm, $jd);
+    }
+
+    /* ============================================================
+     *  🔧 کمکی: تشخیص ref_type داینامیک حساب
+     * ============================================================ */
+    private function isDynamicAccountRef(?string $refType): bool
+    {
+        return is_string($refType)
+            && str_starts_with($refType, self::ACCOUNT_CATEGORY_PREFIX)
+            && strlen($refType) > strlen(self::ACCOUNT_CATEGORY_PREFIX);
+    }
+
+    private function extractCategoryFromRefType(?string $refType): ?string
+    {
+        if (!$this->isDynamicAccountRef($refType)) return null;
+        return substr($refType, strlen(self::ACCOUNT_CATEGORY_PREFIX));
+    }
+
+    /* ============================================================
+     *  ✅ جدید: کمکی‌های تشخیص ref_type داینامیک یوزر
+     * ============================================================ */
+    private function isDynamicUserRoleRef(?string $refType): bool
+    {
+        return is_string($refType)
+            && str_starts_with($refType, self::USER_ROLE_PREFIX)
+            && strlen($refType) > strlen(self::USER_ROLE_PREFIX);
+    }
+
+    private function extractRoleFromRefType(?string $refType): ?string
+    {
+        if (!$this->isDynamicUserRoleRef($refType)) return null;
+        return substr($refType, strlen(self::USER_ROLE_PREFIX));
+    }
+
+    /* ============================================================
+     *  ✅ نمایش لیست ژورنال‌ها
      * ============================================================ */
     public function index(Request $request)
     {
         $query = Journal::query();
 
         if ($request->filled('type'))     $query->where('entry_type', $request->type);
-        if ($request->filled('from'))     $query->whereDate('journal_date', '>=', $request->from);
-        if ($request->filled('to'))       $query->whereDate('journal_date', '<=', $request->to);
+
+        if ($request->filled('from')) {
+            $from = $this->normalizeJournalDate($request->from);
+            if ($from) {
+                $query->whereRaw('REPLACE(journal_date, "-", "/") >= ?', [$from]);
+            }
+        }
+        if ($request->filled('to')) {
+            $to = $this->normalizeJournalDate($request->to);
+            if ($to) {
+                $query->whereRaw('REPLACE(journal_date, "-", "/") <= ?', [$to]);
+            }
+        }
+
         if ($request->filled('ref_type')) $query->where('ref_type', $request->ref_type);
         if ($request->filled('ref_id'))   $query->where('ref_id', $request->ref_id);
         if ($request->filled('reg_id'))   $query->where('reg_id', $request->reg_id);
@@ -295,9 +339,7 @@ class JournalController extends Controller
             $j->source_account_category = null;
             $j->source_account_category_label = null;
 
-            /* ====================================================
-             * ✅ 0) ژورنال‌های معاشات
-             * ==================================================== */
+            // ============ ژورنال‌های معاشات ============
             if (isset(self::SALARY_META[$j->ref_type])) {
                 $meta = self::SALARY_META[$j->ref_type];
                 $j->source_label = $meta['label'];
@@ -318,10 +360,8 @@ class JournalController extends Controller
 
                     if (empty($j->source_kind)) {
                         if (in_array($j->ref_type, [
-                            'salary_generation',
-                            'salary_payable',
-                            'salary_payment',
-                            'salary_payment_debit',
+                            'salary_generation', 'salary_payable',
+                            'salary_payment', 'salary_payment_debit',
                         ], true)) {
                             $salary = EmployeeSalary::with(['user', 'account'])->find($j->ref_id);
 
@@ -354,49 +394,18 @@ class JournalController extends Controller
                                     }
                                 }
                             }
-                        } else {
-                            $advance = SalaryAdvance::with(['user', 'account'])->find($j->ref_id);
-
-                            if ($advance) {
-                                if (!empty($advance->user_id)) {
-                                    $j->source_kind = 'user';
-                                    $j->source_name = $advance->user?->name
-                                        ?? $advance->user?->full_name
-                                        ?? null;
-                                    $j->employee_id = $advance->user_id;
-
-                                    if ($advance->user) {
-                                        $j->source_role_label =
-                                            $this->roleLabel($advance->user->role ?? null);
-                                    }
-                                } elseif (!empty($advance->account_id)) {
-                                    $j->source_kind = 'account';
-                                    $j->account_id  = $advance->account_id;
-                                    $j->source_name = $advance->account?->account_name ?? null;
-                                    $j->source_account_category =
-                                        $advance->account?->account_category ?? null;
-                                    $j->source_account_category_label =
-                                        $this->categoryLabelForAccount($advance->account?->account_category ?? null);
-                                }
-                            }
                         }
                     }
 
                     if (empty($j->source_name) && !empty($j->description)) {
-                        if (preg_match('/(?:معاش|پیش‌پرداخت|تولید معاش|پرداخت معاش|تسویه معاش)\s*-\s*([^\-()]+)/u', $j->description, $m)) {
+                        if (preg_match('/(?:معاش|پیش‌پرداخت|تولید معاش|پرداخت معاش|تسویه معاش|تسویه پیش‌پرداخت)\s*-\s*([^\-()]+)/u', $j->description, $m)) {
                             $name = trim($m[1]);
-                            if ($name !== '') {
-                                $j->source_name = $name;
-                            }
+                            if ($name !== '') $j->source_name = $name;
                         }
                     }
 
-                    if (empty($j->source_kind)) {
-                        $j->source_kind = 'user';
-                    }
-                    if (empty($j->source_name)) {
-                        $j->source_name = "معاش #{$j->ref_id}";
-                    }
+                    if (empty($j->source_kind)) $j->source_kind = 'user';
+                    if (empty($j->source_name)) $j->source_name = "معاش #{$j->ref_id}";
 
                     $j->full_name    = $j->source_name;
                     $j->display_name = $j->source_name;
@@ -412,21 +421,11 @@ class JournalController extends Controller
                 return $j;
             }
 
-            /* ====================================================
-             * ✅ 0.5) منابع حساب‌محور (accounts)
-             * ==================================================== */
+            // ============ منابع حساب‌محور کلاسیک ============
             if (in_array($j->ref_type, self::ACCOUNT_REF_TYPES, true)) {
                 $account = null;
-
-                // اول از account_id خود ژورنال
-                if (!empty($j->account_id)) {
-                    $account = Account::find($j->account_id);
-                }
-
-                // اگر نبود، از ref_id (که برای این انواع = account.id)
-                if (!$account && !empty($j->ref_id)) {
-                    $account = Account::find($j->ref_id);
-                }
+                if (!empty($j->account_id)) $account = Account::find($j->account_id);
+                if (!$account && !empty($j->ref_id)) $account = Account::find($j->ref_id);
 
                 if ($account) {
                     $j->source_kind                    = 'account';
@@ -450,15 +449,104 @@ class JournalController extends Controller
                 return $j;
             }
 
-            /* ====================================================
-             * 1) external_prescription
-             * ==================================================== */
+            // ============ نوع «account» عمومی ============
+            if ($j->ref_type === self::GENERIC_ACCOUNT_REF_TYPE) {
+                $account = null;
+                if (!empty($j->account_id)) $account = Account::find($j->account_id);
+                if (!$account && !empty($j->ref_id)) $account = Account::find($j->ref_id);
+
+                if ($account) {
+                    $j->source_kind                    = 'account';
+                    $j->source_name                    = $account->account_name;
+                    $j->source_account_category        = $account->account_category;
+                    $j->source_account_category_label  =
+                        $this->categoryLabelForAccount($account->account_category);
+
+                    if (!empty($account->tazkira_number) && empty($j->tazkira_number)) {
+                        $j->tazkira_number = $account->tazkira_number;
+                    }
+
+                    $j->full_name    = $account->account_name;
+                    $j->display_name = $account->account_name;
+                } else {
+                    $j->source_kind = 'account';
+                    $j->source_name = $j->description ?: "حساب #{$j->ref_id}";
+                }
+
+                $j->source_type_label = $this->resolveSourceTypeLabel($j);
+                return $j;
+            }
+
+            // ============ نوع داینامیک account:{category} ============
+            if ($this->isDynamicAccountRef($j->ref_type)) {
+                $account = null;
+                if (!empty($j->account_id)) $account = Account::find($j->account_id);
+                if (!$account && !empty($j->ref_id)) $account = Account::find($j->ref_id);
+
+                $expectedCategory = $this->extractCategoryFromRefType($j->ref_type);
+
+                if ($account) {
+                    $j->source_kind                    = 'account';
+                    $j->source_name                    = $account->account_name;
+                    $j->source_account_category        = $account->account_category;
+                    $j->source_account_category_label  =
+                        $this->categoryLabelForAccount($account->account_category);
+
+                    if (!empty($account->tazkira_number) && empty($j->tazkira_number)) {
+                        $j->tazkira_number = $account->tazkira_number;
+                    }
+
+                    $j->full_name    = $account->account_name;
+                    $j->display_name = $account->account_name;
+                } else {
+                    $j->source_kind = 'account';
+                    $j->source_account_category = $expectedCategory;
+                    $j->source_account_category_label = $this->categoryLabelForAccount($expectedCategory);
+                    $j->source_name = $j->description ?: "حساب #{$j->ref_id}";
+                }
+
+                $j->source_type_label = $this->resolveSourceTypeLabel($j);
+                return $j;
+            }
+
+            // ============ ✅ جدید: نوع داینامیک user_role:{role} ============
+            if ($this->isDynamicUserRoleRef($j->ref_type)) {
+                $role = $this->extractRoleFromRefType($j->ref_type);
+
+                $j->source_kind = 'user';
+                $j->source_role_label = $this->roleLabel($role);
+
+                try {
+                    $user = User::find($j->ref_id);
+                    if ($user) {
+                        $j->source_name  = $user->name ?? $user->full_name ?? "کاربر #{$user->id}";
+                        $j->employee_id  = $user->id;
+
+                        if (!empty($user->role)) {
+                            $j->source_role_label = $this->roleLabel($user->role);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('user_role source resolve failed: ' . $e->getMessage());
+                }
+
+                if (empty($j->source_name)) {
+                    $j->source_name = $j->description ?: "کاربر #{$j->ref_id}";
+                }
+
+                $j->full_name    = $j->source_name;
+                $j->display_name = $j->source_name;
+                $j->source_type_label = $this->resolveSourceTypeLabel($j);
+
+                return $j;
+            }
+
+            // ============ external_prescription ============
             if ($j->ref_type === 'external_prescription') {
                 $external = ExternalPrescription::find($j->ref_id);
 
                 if ($external) {
-                    $patientName = $external->patient_name
-                        ?: "نسخه بیرونی #{$j->ref_id}";
+                    $patientName = $external->patient_name ?: "نسخه بیرونی #{$j->ref_id}";
 
                     $j->full_name      = $patientName;
                     $j->display_name   = $patientName;
@@ -494,9 +582,7 @@ class JournalController extends Controller
                 return $j;
             }
 
-            /* ====================================================
-             * 2) sale
-             * ==================================================== */
+            // ============ sale ============
             if ($j->ref_type === 'sale') {
                 $sale = Sales::with('customer')->find($j->ref_id);
                 if ($sale) {
@@ -518,9 +604,7 @@ class JournalController extends Controller
                 return $j;
             }
 
-            /* ====================================================
-             * 3) parchase
-             * ==================================================== */
+            // ============ parchase ============
             if ($j->ref_type === 'parchase') {
                 $p = Parchase::with('supplier')->find($j->ref_id);
                 if ($p) {
@@ -542,9 +626,7 @@ class JournalController extends Controller
                 return $j;
             }
 
-            /* ====================================================
-             * 4) patient
-             * ==================================================== */
+            // ============ patient ============
             if ($j->ref_type === 'patient') {
                 $patient = $this->findPatientForJournal($j);
 
@@ -609,9 +691,7 @@ class JournalController extends Controller
                 return $j;
             }
 
-            /* ====================================================
-             * 5) سایر انواع
-             * ==================================================== */
+            // ============ سایر انواع ============
             if (method_exists($j, 'resolveSourceName')) {
                 try {
                     $name = $j->resolveSourceName();
@@ -650,12 +730,11 @@ class JournalController extends Controller
         return response()->json($journals);
     }
 
-    /* ============================================================
+    /* ============================================================ 
      *  ✅ نوعیت منبع
      * ============================================================ */
     private function resolveSourceTypeLabel(Journal $j): string
     {
-        // 1) برای معاشات
         if (isset(self::SALARY_META[$j->ref_type])) {
             if ($j->source_kind === 'user') {
                 if (!empty($j->source_role_label)) return $j->source_role_label;
@@ -670,7 +749,6 @@ class JournalController extends Controller
             return '-';
         }
 
-        // 2) برای حساب‌محورها
         if (in_array($j->ref_type, self::ACCOUNT_REF_TYPES, true)) {
             if (!empty($j->source_account_category_label)) {
                 return $j->source_account_category_label;
@@ -678,26 +756,39 @@ class JournalController extends Controller
             return 'حساب';
         }
 
-        // 3) sale
+        if ($j->ref_type === self::GENERIC_ACCOUNT_REF_TYPE) {
+            if (!empty($j->source_account_category_label)) {
+                return $j->source_account_category_label;
+            }
+            return 'حساب';
+        }
+
+        if ($this->isDynamicAccountRef($j->ref_type)) {
+            if (!empty($j->source_account_category_label)) {
+                return $j->source_account_category_label;
+            }
+            $cat = $this->extractCategoryFromRefType($j->ref_type);
+            return $this->categoryLabelForAccount($cat) ?? 'حساب';
+        }
+
+        // ✅ جدید: نوع داینامیک user_role:{role}
+        if ($this->isDynamicUserRoleRef($j->ref_type)) {
+            if (!empty($j->source_role_label)) return $j->source_role_label;
+            $role = $this->extractRoleFromRefType($j->ref_type);
+            return $this->roleLabel($role) ?? 'کاربر';
+        }
+
         if ($j->ref_type === 'sale') return 'مشتری';
-
-        // 4) parchase
         if ($j->ref_type === 'parchase') return 'تأمین‌کننده';
-
-        // 5) external_prescription
         if ($j->ref_type === 'external_prescription') return 'نسخه بیرونی';
-
-        // 6) patient
         if ($j->ref_type === 'patient') return 'مریض';
 
-        // 7) fallback بر اساس reg_type
         if (!empty($j->reg_type)) {
             $role = $this->roleLabel($j->reg_type);
             if ($role) return $role;
             return (string) $j->reg_type;
         }
 
-        // 8) fallback بر اساس ref_type
         if (!empty($j->ref_type)) {
             $role = $this->roleLabel($j->ref_type);
             if ($role) return $role;
@@ -720,9 +811,22 @@ class JournalController extends Controller
         return self::ACCOUNT_CATEGORY_LABELS[$category] ?? $category;
     }
 
-    /* ============================================================
-     *  پیدا کردن مریض از چند مسیر
-     * ============================================================ */
+    private function typeLabelForAccount(?string $type): string
+    {
+        $map = [
+            'asset'      => 'دارایی',
+            'liability'  => 'بدهی',
+            'equity'     => 'سرمایه',
+            'income'     => 'درآمد',
+            'expense'    => 'هزینه',
+            'receivable' => 'مطالبات',
+            'payable'    => 'بدهی‌ها',
+            'employee'   => 'کارمندان',
+        ];
+        if (!$type) return 'سایر';
+        return $map[$type] ?? $type;
+    }
+
     private function findPatientForJournal(Journal $journal): ?Patient
     {
         try {
@@ -730,7 +834,6 @@ class JournalController extends Controller
                 $p = Patient::find($journal->patient_id);
                 if ($p) return $p;
             }
-
             if (!empty($journal->reg_id)) {
                 $reg = Registrations::where('reg_id', $journal->reg_id)->first();
                 if ($reg && !empty($reg->patient_id)) {
@@ -738,7 +841,6 @@ class JournalController extends Controller
                     if ($p) return $p;
                 }
             }
-
             if (!empty($journal->ref_id)) {
                 $reg = Registrations::where('reg_id', $journal->ref_id)->first();
                 if ($reg && !empty($reg->patient_id)) {
@@ -746,12 +848,10 @@ class JournalController extends Controller
                     if ($p) return $p;
                 }
             }
-
             if (!empty($journal->ref_id)) {
                 $p = Patient::find($journal->ref_id);
                 if ($p) return $p;
             }
-
             if (!empty($journal->parent_journal_id)) {
                 $parent = Journal::find($journal->parent_journal_id);
                 if ($parent) {
@@ -769,15 +869,11 @@ class JournalController extends Controller
                 }
             }
         } catch (\Throwable $e) {
-            Log::warning('findPatientForJournal failed for Journal #' . $journal->id . ': ' . $e->getMessage());
+            Log::warning('findPatientForJournal failed: ' . $e->getMessage());
         }
-
         return null;
     }
 
-    /* ============================================================
-     *  استخراج نام از description
-     * ============================================================ */
     private function extractNameFromDescription(?string $description): ?string
     {
         if (empty($description)) return null;
@@ -796,12 +892,11 @@ class JournalController extends Controller
                 if ($name !== '') return $name;
             }
         }
-
         return null;
     }
 
     /* ============================================================
-     *  ✅ دریافت لیست منابع (اصلاح‌شده برای حساب‌محورها)
+     *  ✅ دریافت لیست منابع
      * ============================================================ */
     public function getRefSources(Request $request)
     {
@@ -815,19 +910,59 @@ class JournalController extends Controller
             $search = $request->search;
             $limit  = min((int) $request->get('limit', 100), 500);
 
-            /*
-            |--------------------------------------------------------------------------
-            | ✅ 1) انواع حساب‌محور — از جدول accounts
-            |--------------------------------------------------------------------------
-            */
+            if ($type === self::GENERIC_ACCOUNT_REF_TYPE) {
+                $sources = $this->getAllAccountsRefSources($search, $limit);
+                return response()->json([
+                    'success' => true,
+                    'data'    => $sources,
+                    'count'   => count($sources),
+                    'type'    => $type,
+                ]);
+            }
+
+            if ($this->isDynamicAccountRef($type)) {
+                $category = $this->extractCategoryFromRefType($type);
+                $sources  = $this->getAccountsByCategory($category, $search, $limit);
+
+                if (empty($sources)) {
+                    Log::info('[getRefSources] هیچ حسابی برای دسته داینامیک یافت نشد', [
+                        'type' => $type, 'category' => $category,
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data'    => $sources,
+                    'count'   => count($sources),
+                    'type'    => $type,
+                ]);
+            }
+
+            // ✅ جدید: نوع داینامیک user_role:{role}
+            if ($this->isDynamicUserRoleRef($type)) {
+                $role    = $this->extractRoleFromRefType($type);
+                $sources = $this->getUsersByRole($role, $search, $limit);
+
+                if (empty($sources)) {
+                    Log::info('[getRefSources] هیچ یوزری برای نقش یافت نشد', [
+                        'type' => $type, 'role' => $role,
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data'    => $sources,
+                    'count'   => count($sources),
+                    'type'    => $type,
+                ]);
+            }
+
             if (in_array($type, self::ACCOUNT_REF_TYPES, true)) {
                 $sources = $this->getAccountsRefSources($type, $search, $limit);
 
-                // ✅ لاگ برای دیباگ
                 if (empty($sources)) {
                     Log::info('[getRefSources] هیچ حسابی برای ref_type یافت نشد', [
-                        'type'       => $type,
-                        'search'     => $search,
+                        'type' => $type, 'search' => $search,
                         'map_config' => self::ACCOUNT_REF_MAP[$type] ?? null,
                     ]);
                 }
@@ -840,11 +975,6 @@ class JournalController extends Controller
                 ]);
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | ✅ 2) بقیه انواع — از Journal::getRefSources
-            |--------------------------------------------------------------------------
-            */
             $sources = Journal::getRefSources($type, $search, $limit);
 
             return response()->json([
@@ -867,14 +997,279 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  ✅ لیست حساب‌ها به‌عنوان منبع ژورنال
-     *
-     *  ⚠️ نکات:
-     *   - از whereIn استفاده می‌شود تا کتگوری‌های جایگزین
-     *     (مثل customers_income / customer_income) هم پشتیبانی شوند.
-     *   - فقط حساب‌های فعال (is_active = true) برگردانده می‌شوند.
-     *   - اگر ستون allow_transactions وجود داشته باشد، فقط
-     *     حساب‌های قابل تراکنش برگردانده می‌شوند (اختیاری).
+     *  ✅ گروه‌های داینامیک کتگوری حساب‌ها
+     * ============================================================ */
+    public function getAccountRefGroups()
+    {
+        try {
+            $rows = Account::query()
+                ->where('is_active', true)
+                ->whereNotNull('account_type')
+                ->whereNotNull('account_category')
+                ->select('account_type', 'account_category', DB::raw('COUNT(*) as total'))
+                ->groupBy('account_type', 'account_category')
+                ->orderBy('account_type')
+                ->orderBy('account_category')
+                ->get();
+
+            $groups = [];
+            foreach ($rows as $r) {
+                $groups[] = [
+                    'account_type'           => $r->account_type,
+                    'account_type_label'     => $this->typeLabelForAccount($r->account_type),
+                    'account_category'       => $r->account_category,
+                    'account_category_label' => $this->categoryLabelForAccount($r->account_category),
+                    'ref_type'               => self::ACCOUNT_CATEGORY_PREFIX . $r->account_category,
+                    'total'                  => (int) $r->total,
+                ];
+            }
+
+            $grouped = [];
+            foreach ($groups as $g) {
+                $grouped[$g['account_type']][] = $g;
+            }
+
+            return response()->json([
+                'success' => true,
+                'data'    => $groups,
+                'grouped' => $grouped,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('getAccountRefGroups failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /* ============================================================
+     *  ✅ جدید: گروه‌های داینامیک نقش‌های کاربری
+     *  هر نقشی که حداقل یک یوزر دارد، اینجا برمی‌گردد.
+     * ============================================================ */
+    public function getUserRoleGroups()
+    {
+        try {
+            $groups = [];
+
+            // ✅ تلاش ۱: از جدول Spatie roles
+            try {
+                if (Schema::hasTable('roles') && Schema::hasTable('model_has_roles')) {
+                    $rows = DB::table('roles')
+                        ->select('roles.name', DB::raw('(SELECT COUNT(*) FROM model_has_roles mhr WHERE mhr.role_id = roles.id) as total'))
+                        ->orderBy('roles.name')
+                        ->get();
+
+                    foreach ($rows as $r) {
+                        $roleName  = $r->name;
+                        $roleLabel = self::USER_ROLE_LABELS[$roleName] ?? $roleName;
+
+                        $groups[] = [
+                            'role'       => $roleName,
+                            'role_label' => $roleLabel,
+                            'ref_type'   => self::USER_ROLE_PREFIX . $roleName,
+                            'total'      => (int) $r->total,
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('getUserRoleGroups (spatie) failed: ' . $e->getMessage());
+            }
+
+            // ✅ تلاش ۲: اگر خالی بود، از ستون users.role
+            if (empty($groups)) {
+                $rows = User::query()
+                    ->whereNotNull('role')
+                    ->where('role', '!=', '')
+                    ->select('role', DB::raw('COUNT(*) as total'))
+                    ->groupBy('role')
+                    ->orderBy('role')
+                    ->get();
+
+                foreach ($rows as $r) {
+                    $roleName  = $r->role;
+                    $roleLabel = self::USER_ROLE_LABELS[$roleName] ?? $roleName;
+
+                    $groups[] = [
+                        'role'       => $roleName,
+                        'role_label' => $roleLabel,
+                        'ref_type'   => self::USER_ROLE_PREFIX . $roleName,
+                        'total'      => (int) $r->total,
+                    ];
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data'    => $groups,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('getUserRoleGroups failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /* ============================================================
+     *  ✅ جدید: یوزرهای یک نقش خاص (برای user_role:{role})
+     * ============================================================ */
+    private function getUsersByRole(string $role, ?string $search = null, int $limit = 200): array
+    {
+        $query = User::query();
+
+        // ✅ فیلتر بر اساس نقش (هم ستون role، هم Spatie roles)
+        try {
+            $query->where(function ($q) use ($role) {
+                $q->where('role', $role);
+
+                if (Schema::hasTable('roles') && Schema::hasTable('model_has_roles')) {
+                    $q->orWhereHas('roles', function ($qq) use ($role) {
+                        $qq->where('name', $role);
+                    });
+                }
+            });
+        } catch (\Throwable $e) {
+            $query->where('role', $role);
+        }
+
+        if (!empty($search)) {
+            $s = trim($search);
+            $query->where(function ($q) use ($s) {
+                $q->where('name', 'like', "%{$s}%")
+                  ->orWhere('email', 'like', "%{$s}%");
+            });
+        }
+
+        $users = $query
+            ->orderBy('name')
+            ->limit($limit)
+            ->get(['id', 'name', 'email', 'role']);
+
+        $roleLabel = self::USER_ROLE_LABELS[$role] ?? $role;
+
+        return $users->map(function ($u) use ($role, $roleLabel) {
+            return [
+                'id'             => $u->id,
+                'name'           => $u->name ?? ('کاربر #' . $u->id),
+                'code'           => 'USR-' . str_pad($u->id, 5, '0', STR_PAD_LEFT),
+                'national_id'    => null,
+                'reg_id'         => null,
+                'currency'       => null,
+                'category'       => $role,
+                'category_label' => $roleLabel,
+                'type'           => 'user',
+                'type_label'     => 'کاربر سیستم',
+                'source_kind'    => 'user',
+                'total_amount'   => null,
+                'discount'       => 0,
+                'paid_amount'    => 0,
+                'role'           => $role,
+            ];
+        })->toArray();
+    }
+
+    /* ============================================================
+     *  ✅ همه حساب‌های فعال (برای نوع account عمومی)
+     * ============================================================ */
+    private function getAllAccountsRefSources(?string $search = null, int $limit = 500): array
+    {
+        $query = Account::query()->where('is_active', true);
+
+        if (!empty($search)) {
+            $s = trim($search);
+            $query->where(function ($q) use ($s) {
+                $q->where('account_name', 'like', "%{$s}%")
+                  ->orWhere('account_code', 'like', "%{$s}%")
+                  ->orWhere('tazkira_number', 'like', "%{$s}%");
+            });
+        }
+
+        $accounts = $query
+            ->orderBy('account_type')
+            ->orderBy('account_category')
+            ->orderBy('account_name')
+            ->limit($limit)
+            ->get([
+                'id', 'account_code', 'account_name', 'account_type',
+                'account_category', 'tazkira_number', 'currency',
+            ]);
+
+        $flat = [];
+        foreach ($accounts as $a) {
+            $typeKey = $a->account_type ?: 'other';
+            $catKey  = $a->account_category ?: 'other';
+
+            $flat[] = [
+                'id'             => $a->id,
+                'name'           => $a->account_name,
+                'code'           => $a->account_code,
+                'national_id'    => $a->tazkira_number,
+                'reg_id'         => null,
+                'currency'       => $a->currency,
+                'category'       => $a->account_category,
+                'category_label' => $this->categoryLabelForAccount($a->account_category),
+                'type'           => $a->account_type,
+                'type_label'     => $this->typeLabelForAccount($a->account_type),
+                'source_kind'    => 'account',
+                'total_amount'   => null,
+                'discount'       => 0,
+                'paid_amount'    => 0,
+                'group_type'       => $typeKey,
+                'group_type_label' => $this->typeLabelForAccount($typeKey),
+                'group_category'   => $catKey,
+            ];
+        }
+
+        return $flat;
+    }
+
+    /* ============================================================
+     *  ✅ حساب‌های یک کتگوری خاص (برای account:{category})
+     * ============================================================ */
+    private function getAccountsByCategory(string $category, ?string $search = null, int $limit = 100): array
+    {
+        $query = Account::query()
+            ->where('is_active', true)
+            ->where('account_category', $category);
+
+        if (!empty($search)) {
+            $s = trim($search);
+            $query->where(function ($q) use ($s) {
+                $q->where('account_name', 'like', "%{$s}%")
+                  ->orWhere('account_code', 'like', "%{$s}%")
+                  ->orWhere('tazkira_number', 'like', "%{$s}%");
+            });
+        }
+
+        $accounts = $query
+            ->orderBy('account_name')
+            ->limit($limit)
+            ->get([
+                'id', 'account_code', 'account_name', 'account_category',
+                'account_type', 'tazkira_number', 'currency',
+            ]);
+
+        return $accounts->map(function ($a) {
+            return [
+                'id'             => $a->id,
+                'name'           => $a->account_name,
+                'code'           => $a->account_code,
+                'national_id'    => $a->tazkira_number,
+                'reg_id'         => null,
+                'currency'       => $a->currency,
+                'category'       => $a->account_category,
+                'category_label' => $this->categoryLabelForAccount($a->account_category),
+                'type'           => $a->account_type,
+                'type_label'     => $this->typeLabelForAccount($a->account_type),
+                'source_kind'    => 'account',
+                'total_amount'   => null,
+                'discount'       => 0,
+                'paid_amount'    => 0,
+            ];
+        })->toArray();
+    }
+
+    /* ============================================================
+     *  ✅ حساب‌های یک کتگوری خاص (کلاسیک)
      * ============================================================ */
     private function getAccountsRefSources(string $refType, ?string $search = null, int $limit = 100): array
     {
@@ -889,16 +1284,15 @@ class JournalController extends Controller
 
         $query = Account::query()
             ->where('account_type', $config['type'])
-            ->whereIn('account_category', $config['categories']) // ✅ whereIn برای پشتیبانی از چند نام
+            ->whereIn('account_category', $config['categories'])
             ->where('is_active', true);
 
-        // ✅ اگر ستون allow_transactions وجود داشت، فقط حساب‌های قابل تراکنش را بیاور
         try {
             if (Schema::hasColumn('accounts', 'allow_transactions')) {
                 $query->where('allow_transactions', true);
             }
         } catch (\Throwable $e) {
-            // اگر بررسی ستون خطا داد، نادیده بگیر
+            // نادیده بگیر
         }
 
         if (!empty($search)) {
@@ -915,7 +1309,6 @@ class JournalController extends Controller
             ->limit($limit)
             ->get(['id', 'account_code', 'account_name', 'account_category', 'tazkira_number']);
 
-        // ✅ خروجی استاندارد مشابه Journal::getRefSources
         return $accounts->map(function ($a) {
             return [
                 'id'           => $a->id,
@@ -924,6 +1317,7 @@ class JournalController extends Controller
                 'national_id'  => $a->tazkira_number,
                 'reg_id'       => null,
                 'category'     => $a->account_category,
+                'category_label' => $this->categoryLabelForAccount($a->account_category),
                 'total_amount' => null,
                 'discount'     => 0,
                 'paid_amount'  => 0,
@@ -932,12 +1326,12 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  store
+     *  ✅ STORE — با نرمال‌سازی تاریخ + استخراج خودکار account_id
      * ============================================================ */
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'journal_date'      => 'required|date',
+            'journal_date'      => 'required|string',
             'description'       => 'nullable|string|max:1000',
             'entry_type'        => ['required', Rule::in(['debit', 'credit'])],
             'amount'            => 'required|numeric|min:0.01',
@@ -950,14 +1344,35 @@ class JournalController extends Controller
             'parent_journal_id' => 'nullable|exists:journals,id',
         ]);
 
+        $journalDate = $this->normalizeJournalDate($validated['journal_date']);
+        if (!$journalDate) {
+            return response()->json([
+                'message' => 'تاریخ ژورنال نامعتبر است',
+                'received' => $validated['journal_date'],
+            ], 422);
+        }
+
+        Log::info('Journal store — date', [
+            'received' => $validated['journal_date'],
+            'normalized' => $journalDate,
+        ]);
+
         DB::beginTransaction();
 
         try {
             $reg = $this->resolveRegistration($validated);
             $patientId = $this->resolvePatientIdFromValidated($validated);
 
+            $resolvedAccountId = $this->resolveJournalAccountId($validated);
+            Log::info('[store] resolvedAccountId', [
+                'input' => $validated['account_id'] ?? null,
+                'resolved' => $resolvedAccountId,
+                'ref_type' => $validated['ref_type'],
+                'ref_id' => $validated['ref_id'],
+            ]);
+
             $data = [
-                'journal_date'      => $validated['journal_date'],
+                'journal_date'      => $journalDate,
                 'description'       => $validated['description'] ?? null,
                 'entry_type'        => $validated['entry_type'],
                 'amount'            => $validated['amount'],
@@ -972,8 +1387,8 @@ class JournalController extends Controller
                 'user_id'           => Auth::id(),
             ];
 
-            if ($this->journalHasAccountIdColumn() && !empty($validated['account_id'])) {
-                $data['account_id'] = $validated['account_id'];
+            if ($this->journalHasAccountIdColumn() && $resolvedAccountId) {
+                $data['account_id'] = $resolvedAccountId;
             }
 
             if ($patientId && $this->journalHasPatientIdColumn()) {
@@ -992,7 +1407,7 @@ class JournalController extends Controller
 
             return response()->json([
                 'message' => 'ژورنال با موفقیت ذخیره شد.',
-                'journal' => $journal
+                'journal' => $journal,
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1027,7 +1442,7 @@ class JournalController extends Controller
 
             $parentJournal->update([
                 'amount'      => $netAmount,
-                'description' => "مجموع فیس‌های مریض - مجموع: {$netAmount}"
+                'description' => "مجموع فیس‌های مریض - مجموع: {$netAmount}",
             ]);
         }
     }
@@ -1066,12 +1481,12 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  upsert
+     *  ✅ UPSERT — با نرمال‌سازی تاریخ + استخراج خودکار account_id
      * ============================================================ */
     public function upsert(Request $request, $id = null)
     {
         $validated = $request->validate([
-            'journal_date'      => 'required|date',
+            'journal_date'      => 'required|string',
             'description'       => 'nullable|string|max:1000',
             'entry_type'        => ['required', Rule::in(['debit', 'credit'])],
             'amount'            => 'required|numeric|min:0.01',
@@ -1084,6 +1499,20 @@ class JournalController extends Controller
             'parent_journal_id' => 'nullable|exists:journals,id',
         ]);
 
+        $journalDate = $this->normalizeJournalDate($validated['journal_date']);
+        if (!$journalDate) {
+            return response()->json([
+                'message' => 'تاریخ ژورنال نامعتبر است',
+                'received' => $validated['journal_date'],
+            ], 422);
+        }
+
+        Log::info('Journal upsert — date', [
+            'received' => $validated['journal_date'],
+            'normalized' => $journalDate,
+            'id' => $id,
+        ]);
+
         DB::beginTransaction();
 
         try {
@@ -1091,6 +1520,14 @@ class JournalController extends Controller
             $patientId = $this->resolvePatientIdFromValidated($validated);
             $hasPatientIdCol = $this->journalHasPatientIdColumn();
             $hasAccountIdCol = $this->journalHasAccountIdColumn();
+
+            $resolvedAccountId = $this->resolveJournalAccountId($validated);
+            Log::info('[upsert] resolvedAccountId', [
+                'input' => $validated['account_id'] ?? null,
+                'resolved' => $resolvedAccountId,
+                'ref_type' => $validated['ref_type'],
+                'ref_id' => $validated['ref_id'],
+            ]);
 
             if ($id) {
                 $journal = Journal::find($id);
@@ -1104,7 +1541,7 @@ class JournalController extends Controller
                 $newRegId = $validated['reg_id'] ?? null;
 
                 $data = [
-                    'journal_date'      => $validated['journal_date'],
+                    'journal_date'      => $journalDate,
                     'description'       => $validated['description'] ?? null,
                     'entry_type'        => $validated['entry_type'],
                     'amount'            => $validated['amount'],
@@ -1119,8 +1556,8 @@ class JournalController extends Controller
                     'user_id'           => Auth::id(),
                 ];
 
-                if ($hasAccountIdCol && !empty($validated['account_id'])) {
-                    $data['account_id'] = $validated['account_id'];
+                if ($hasAccountIdCol && $resolvedAccountId) {
+                    $data['account_id'] = $resolvedAccountId;
                 }
 
                 if ($hasPatientIdCol && $patientId) {
@@ -1136,7 +1573,7 @@ class JournalController extends Controller
                 $message = 'ژورنال با موفقیت آپدیت شد.';
             } else {
                 $data = [
-                    'journal_date'      => $validated['journal_date'],
+                    'journal_date'      => $journalDate,
                     'description'       => $validated['description'] ?? null,
                     'entry_type'        => $validated['entry_type'],
                     'amount'            => $validated['amount'],
@@ -1151,8 +1588,8 @@ class JournalController extends Controller
                     'user_id'           => Auth::id(),
                 ];
 
-                if ($hasAccountIdCol && !empty($validated['account_id'])) {
-                    $data['account_id'] = $validated['account_id'];
+                if ($hasAccountIdCol && $resolvedAccountId) {
+                    $data['account_id'] = $resolvedAccountId;
                 }
 
                 if ($hasPatientIdCol && $patientId) {
@@ -1178,6 +1615,56 @@ class JournalController extends Controller
     }
 
     /* ============================================================
+     *  ✅ استخراج خودکار account_id از ورودی ژورنال
+     * ============================================================ */
+    private function resolveJournalAccountId(array $validated): ?int
+    {
+        if (!empty($validated['account_id'])) {
+            return (int) $validated['account_id'];
+        }
+
+        $refType = $validated['ref_type'] ?? null;
+        $refId   = $validated['ref_id'] ?? null;
+
+        if (!$refId) return null;
+
+        if (in_array($refType, self::ACCOUNT_REF_TYPES, true)) {
+            return (int) $refId;
+        }
+
+        if ($refType === self::GENERIC_ACCOUNT_REF_TYPE) {
+            return (int) $refId;
+        }
+
+        if ($this->isDynamicAccountRef($refType)) {
+            return (int) $refId;
+        }
+
+        if (in_array($refType, [
+            'salary_advance',
+            'salary_advance_debit',
+            'salary_advance_settlement',
+        ], true)) {
+            return (int) $refId;
+        }
+
+        // ✅ جدید: برای user_role:{role}، حساب salary_info کاربر را برمی‌گردانیم
+        if ($this->isDynamicUserRoleRef($refType)) {
+            try {
+                $info = EmployeeSalaryInfo::where('user_id', $refId)->first();
+                if ($info && !empty($info->account_id)) {
+                    return (int) $info->account_id;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('resolveJournalAccountId user_role failed: ' . $e->getMessage());
+            }
+            return null;
+        }
+
+        return null;
+    }
+
+    /* ============================================================
      *  getPatientJournalSummary
      * ============================================================ */
     public function getPatientJournalSummary($regId)
@@ -1197,7 +1684,7 @@ class JournalController extends Controller
             'total_fees'      => $totalDebit,
             'total_payments'  => $totalCredit,
             'balance'         => $balance,
-            'journals'        => $journals
+            'journals'        => $journals,
         ]);
     }
 
@@ -1210,10 +1697,22 @@ class JournalController extends Controller
             return Registrations::where('reg_id', $validated['reg_id'])->first();
         }
 
-        if (in_array($validated['ref_type'], [
+        $skipRegTypes = [
             'sale', 'parchase', 'patient', 'external_prescription',
+            self::GENERIC_ACCOUNT_REF_TYPE,
             ...self::ACCOUNT_REF_TYPES,
-        ])) {
+        ];
+
+        if ($this->isDynamicAccountRef($validated['ref_type'])) {
+            return null;
+        }
+
+        // ✅ جدید: user_role هم reg_id ندارد
+        if ($this->isDynamicUserRoleRef($validated['ref_type'])) {
+            return null;
+        }
+
+        if (in_array($validated['ref_type'], $skipRegTypes)) {
             return null;
         }
 
@@ -1223,7 +1722,7 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  استخراج patient_id
+     *  resolvePatientIdFromValidated
      * ============================================================ */
     private function resolvePatientIdFromValidated(array $validated): ?int
     {
@@ -1254,12 +1753,11 @@ class JournalController extends Controller
     }
 
     /* ============================================================
-     *  بررسی وجود ستون patient_id
+     *  journalHasPatientIdColumn / journalHasAccountIdColumn
      * ============================================================ */
     private function journalHasPatientIdColumn(): bool
     {
         static $hasColumn = null;
-
         if ($hasColumn === null) {
             try {
                 $hasColumn = Schema::hasColumn('journals', 'patient_id');
@@ -1267,17 +1765,12 @@ class JournalController extends Controller
                 $hasColumn = false;
             }
         }
-
         return $hasColumn;
     }
 
-    /* ============================================================
-     *  ✅ بررسی وجود ستون account_id
-     * ============================================================ */
     private function journalHasAccountIdColumn(): bool
     {
         static $hasColumn = null;
-
         if ($hasColumn === null) {
             try {
                 $hasColumn = Schema::hasColumn('journals', 'account_id');
@@ -1285,7 +1778,6 @@ class JournalController extends Controller
                 $hasColumn = false;
             }
         }
-
         return $hasColumn;
     }
 }

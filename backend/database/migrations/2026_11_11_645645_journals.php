@@ -23,7 +23,10 @@ return new class extends Migration
              * ستون‌های اصلی
              * ============================================================ */
             $table->unsignedBigInteger('account_id')->nullable();
-            $table->date('journal_date');
+
+            // ✅ تغییر: journal_date حالا string است تا تاریخ شمسی (1402/05/15) ذخیره شود
+            $table->string('journal_date', 10); // فرمت: YYYY/MM/DD (شمسی)
+
             $table->enum('entry_type', ['debit', 'credit'])->default('debit');
             $table->string('description')->nullable();
             $table->decimal('amount', 15, 2)->nullable()->default(0);

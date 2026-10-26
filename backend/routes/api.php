@@ -593,6 +593,13 @@ Route::middleware('auth:sanctum')->group(function () {
         // ✅ منابع ژورنال (حساب‌محور + عمومی)
         Route::get('/ref-sources', [JournalRefSourceController::class, 'refSources']);
 
+        // ✅ جدید: گروه‌های کتگوری حساب‌ها برای dropdown داینامیک
+        Route::get('/account-ref-groups', [JournalController::class, 'getAccountRefGroups']);
+         Route::get('/user-role-groups', [JournalController::class, 'getUserRoleGroups']);
+
+        // ✅ جدید: لیست منابع از JournalController (برای نوع account و account:{category})
+        Route::get('/ref-sources-dynamic', [JournalController::class, 'getRefSources']);
+
         Route::get('/patient-summary/{regId}', [JournalController::class, 'getPatientJournalSummary'])
             ->where('regId', '[0-9]+');
 
@@ -672,28 +679,45 @@ Route::middleware('auth:sanctum')->group(function () {
     // ✅ PAYROLL (مدیریت معاشات)
     // ============================================================
     Route::prefix('payroll')->group(function () {
-    Route::get('/dashboard', [PayrollModelController::class, 'getDashboard']);
-    Route::get('/employees', [PayrollModelController::class, 'getEmployees']);
-    Route::get('/employees/{id}', [PayrollModelController::class, 'getEmployee']);
-    Route::post('/employees', [PayrollModelController::class, 'createEmployee']);
-    Route::put('/employees/{id}', [PayrollModelController::class, 'updateEmployee']);
-    Route::delete('/employees/{id}', [PayrollModelController::class, 'deleteEmployee']);
 
-    Route::get('/salaries', [PayrollModelController::class, 'getSalaries']);
-    Route::post('/salaries/generate', [PayrollModelController::class, 'generateSalaries']);
-    Route::post('/salaries/pay-bulk', [PayrollModelController::class, 'paySalariesBulk']);
+        // ===== Dashboard =====
+        Route::get('/dashboard', [PayrollModelController::class, 'getDashboard']);
 
-    Route::get('/advances', [PayrollModelController::class, 'getAdvances']);
-    Route::post('/advances', [PayrollModelController::class, 'createAdvance']);
-    Route::patch('/advances/{id}/approve', [PayrollModelController::class, 'approveAdvance']);
-    Route::patch('/advances/{id}/reject', [PayrollModelController::class, 'rejectAdvance']);
+        // ===== Employees =====
+        Route::get('/employees', [PayrollModelController::class, 'getEmployees']);
+        Route::get('/employees/{id}', [PayrollModelController::class, 'getEmployee']);
+        Route::post('/employees', [PayrollModelController::class, 'createEmployee']);
+        Route::put('/employees/{id}', [PayrollModelController::class, 'updateEmployee']);
+        Route::delete('/employees/{id}', [PayrollModelController::class, 'deleteEmployee']);
 
-    Route::get('/reports', [PayrollModelController::class, 'getReports']);
-    Route::get('/report-periods', [PayrollModelController::class, 'getReportPeriods']);
+        // ===== Salaries =====
+        Route::get('/salaries', [PayrollModelController::class, 'getSalaries']);
+        Route::post('/salaries/generate', [PayrollModelController::class, 'generateSalaries']);
+        Route::post('/salaries/pay-bulk', [PayrollModelController::class, 'paySalariesBulk']);
 
-    Route::get('/settings', [PayrollModelController::class, 'getSettings']);
-    Route::put('/settings', [PayrollModelController::class, 'updateSettings']);
-});
+        // ===== Advances (جدید — بر اساس ژورنال) =====
+        Route::get('/advances', [PayrollModelController::class, 'getAdvances']);
+        Route::post('/advances', [PayrollModelController::class, 'createAdvance']);
+        Route::patch('/advances/{id}/approve', [PayrollModelController::class, 'approveAdvance']);
+        Route::patch('/advances/{id}/reject', [PayrollModelController::class, 'rejectAdvance']);
+
+        // ✅ جدید: مانده پیش‌پرداخت همه کارمندان یک دوره (سبک — بدون تولید مجدد معاش)
+        Route::get('/advances/balances', [PayrollModelController::class, 'getEmployeeAdvanceBalances']);
+
+        // ===== Reports =====
+        Route::get('/reports', [PayrollModelController::class, 'getReports']);
+        Route::get('/report-periods', [PayrollModelController::class, 'getReportPeriods']);
+
+        // ===== Settings =====
+        Route::get('/settings', [PayrollModelController::class, 'getSettings']);
+        Route::put('/settings', [PayrollModelController::class, 'updateSettings']);
+
+        // ✅ جدید: دیباگ پیش‌پرداخت یک کارمند
+        //    GET /payroll/debug/advance?userId=5
+        //    GET /payroll/debug/advance?accountId=12
+        //    GET /payroll/debug/advance?salaryId=100
+        Route::get('/debug/advance', [PayrollModelController::class, 'debugAdvance']);
+    });
 });
 
 /*
