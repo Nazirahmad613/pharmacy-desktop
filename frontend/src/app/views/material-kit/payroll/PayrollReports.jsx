@@ -229,7 +229,263 @@ export default function PayrollReports() {
     URL.revokeObjectURL(url);
   };
 
-  const handlePrint = () => window.print();
+  // ✅ چاپ اختصاصی: پنجره‌ی چاپ مستقل با HTML و استایل مخصوص
+  const handlePrint = () => {
+    if (filteredRows.length === 0) {
+      alert("داده‌ای برای چاپ وجود ندارد");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "width=1200,height=800");
+    if (!printWindow) {
+      alert("لطفاً پنجره‌های پاپ‌آپ را برای این سایت فعال کنید");
+      return;
+    }
+
+    const formatNum = (n) => new Intl.NumberFormat("fa-AF").format(Number(n) || 0);
+    const esc = (s) => String(s ?? "—").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+
+    const totalGross = filteredTotals.totalBase + filteredTotals.totalAllowances;
+
+    const rowsHtml = filteredRows.map((r, i) => `
+      <tr>
+        <td class="center">${i + 1}</td>
+        <td class="name">${esc(r.fullName)}</td>
+        <td class="mono">${esc(r.tazkiraNumber)}</td>
+        <td>${esc(getAccountTypeDisplay(r))}</td>
+        <td>${esc(r.department)}</td>
+        <td class="center">${esc(r.sourceLabel || (r.source === "user" ? "کاربر" : "حساب"))}</td>
+        <td class="num">${formatNum(r.baseSalary)}</td>
+        <td class="num pos">${formatNum(r.allowances)}</td>
+        <td class="num neg">${formatNum(r.deductions)}</td>
+        <td class="num neg">${r.tax > 0 ? formatNum(r.tax) : "—"}</td>
+        <td class="num neg">${r.insurance > 0 ? formatNum(r.insurance) : "—"}</td>
+        <td class="num warn">${r.advanceDeduction > 0 ? formatNum(r.advanceDeduction) : "—"}</td>
+        <td class="num strong">${formatNum(r.netSalary)}</td>
+        <td class="center">
+          <span class="badge ${r.paid ? "badge-paid" : "badge-pending"}">
+            ${r.paid ? "پرداخت شده" : "در انتظار"}
+          </span>
+        </td>
+      </tr>
+    `).join("");
+
+    const html = `
+<!DOCTYPE html>
+<html dir="rtl" lang="fa">
+<head>
+<meta charset="utf-8" />
+<title>گزارش معاشات - ${esc(periodLabel)}</title>
+<link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">
+<style>
+  @page { size: A4 landscape; margin: 10mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body {
+    font-family: "Vazirmatn", "Tahoma", "Segoe UI", sans-serif;
+    color: #111827;
+    font-size: 10.5px;
+    line-height: 1.5;
+    padding: 8px;
+  }
+
+  /* هدر گزارش */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 3px solid #1e3a8a;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+  }
+  .header .brand h1 { margin: 0; font-size: 19px; color: #1e3a8a; font-weight: 800; }
+  .header .brand .sub { margin-top: 3px; font-size: 11px; color: #4b5563; }
+  .header .meta { text-align: left; font-size: 10px; color: #4b5563; line-height: 1.8; }
+  .header .meta strong { color: #111827; }
+
+  /* کارت‌های خلاصه */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .summary .box {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: #f9fafb;
+  }
+  .summary .box .label { font-size: 9.5px; color: #6b7280; }
+  .summary .box .value { font-size: 13px; font-weight: 800; margin-top: 2px; }
+  .summary .box .value.primary { color: #1e3a8a; }
+  .summary .box .value.success { color: #047857; }
+  .summary .box .value.warning { color: #b45309; }
+
+  /* جدول */
+  table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
+  thead { display: table-header-group; } /* تکرار هدر در صفحات بعدی */
+  tfoot { display: table-row-group; }
+  thead th {
+    background: #1e3a8a;
+    color: #fff;
+    padding: 7px 5px;
+    text-align: right;
+    font-weight: 700;
+    border: 1px solid #1e3a8a;
+    white-space: nowrap;
+    font-size: 9.5px;
+  }
+  tbody td {
+    padding: 5px;
+    border: 1px solid #d1d5db;
+    text-align: right;
+    vertical-align: middle;
+  }
+  tbody tr:nth-child(even) { background: #f3f4f6; }
+  tbody tr { page-break-inside: avoid; }
+  tbody td.name { font-weight: 700; white-space: nowrap; }
+  .center { text-align: center !important; }
+  .num { text-align: left !important; font-family: "Courier New", monospace; direction: ltr; white-space: nowrap; }
+  .mono { font-family: "Courier New", monospace; direction: ltr; text-align: center !important; font-size: 8.5px; }
+  .pos { color: #047857; }
+  .neg { color: #b91c1c; }
+  .warn { color: #b45309; }
+  .strong { font-weight: 800; color: #1e3a8a; }
+
+  /* نشان وضعیت */
+  .badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 8.5px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .badge-paid { background: #d1fae5; color: #047857; border: 1px solid #6ee7b7; }
+  .badge-pending { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
+
+  /* جمع کل */
+  tfoot td {
+    background: #e5e7eb;
+    font-weight: 800;
+    padding: 7px 5px;
+    border: 1px solid #9ca3af;
+    text-align: right;
+  }
+
+  /* امضاها */
+  .sign {
+    margin-top: 30px;
+    display: flex;
+    justify-content: space-around;
+    page-break-inside: avoid;
+  }
+  .sign div { text-align: center; font-size: 10px; color: #374151; }
+  .sign .line { border-top: 1px solid #374151; width: 160px; margin-top: 36px; }
+
+  /* فوتر */
+  .footer {
+    margin-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: #6b7280;
+    border-top: 1px dashed #d1d5db;
+    padding-top: 8px;
+  }
+
+  @media print {
+    body { padding: 0; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <h1>📊 گزارش معاشات</h1>
+      <div class="sub">دوره: <strong>${esc(periodLabel)}</strong> — تعداد ردیف: <strong>${filteredRows.length}</strong></div>
+    </div>
+    <div class="meta">
+      تاریخ چاپ: <strong>${esc(new Date().toLocaleDateString("fa-AF"))}</strong><br/>
+      وضعیت فیلتر: <strong>${statusFilter === "all" ? "همه" : statusFilter === "paid" ? "پرداخت شده" : "در انتظار"}</strong>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="box"><div class="label">تعداد معاشات</div><div class="value">${filteredTotals.employees} نفر</div></div>
+    <div class="box"><div class="label">معاش ناخالص</div><div class="value primary">${formatNum(totalGross)} ؋</div></div>
+    <div class="box"><div class="label">معاش خالص</div><div class="value primary">${formatNum(filteredTotals.totalSalary)} ؋</div></div>
+    <div class="box"><div class="label">باقی‌مانده کل</div><div class="value warning">${formatNum(totals.pending)} ؋</div></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="center">#</th>
+        <th>نام کارمند</th>
+        <th class="center">تذکره</th>
+        <th>نوعیت حساب</th>
+        <th>بخش</th>
+        <th class="center">منبع</th>
+        <th>معاش پایه</th>
+        <th>مزایا</th>
+        <th>کسرات</th>
+        <th>مالیه</th>
+        <th>بیمه</th>
+        <th>پیش‌پرداخت</th>
+        <th>معاش خالص</th>
+        <th class="center">وضعیت</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="6">جمع کل (${filteredTotals.employees} نفر)</td>
+        <td class="num">${formatNum(filteredTotals.totalBase)}</td>
+        <td class="num">${formatNum(filteredTotals.totalAllowances)}</td>
+        <td class="num">${formatNum(filteredTotals.totalDeductions)}</td>
+        <td class="num">${formatNum(filteredTotals.totalTax)}</td>
+        <td class="num">${formatNum(filteredTotals.totalInsurance)}</td>
+        <td class="num">${formatNum(filteredTotals.totalAdvance)}</td>
+        <td class="num strong">${formatNum(filteredTotals.totalSalary)}</td>
+        <td class="center">—</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="sign">
+    <div>تهیه‌کننده<div class="line"></div></div>
+    <div>مدیر مالی<div class="line"></div></div>
+    <div>مدیر عمومی<div class="line"></div></div>
+  </div>
+
+  <div class="footer">
+    <span>این گزارش توسط سیستم مدیریت معاشات تولید شده است.</span>
+    <span>${esc(new Date().toLocaleString("fa-AF"))}</span>
+  </div>
+
+  <script>
+    window.onload = function () {
+      window.focus();
+      setTimeout(function () {
+        window.print();
+        window.onafterprint = function () { window.close(); };
+      }, 300);
+    };
+  </script>
+</body>
+</html>`;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
   if (loadingPeriods) {
     return <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px"><CircularProgress /></Box>;
@@ -427,16 +683,6 @@ export default function PayrollReports() {
           )}
         </CardContent>
       </Card>
-
-      <style>{`
-        @media print {
-          button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root { display: none !important; }
-          .MuiCard-root { box-shadow: none !important; border: 1px solid #ddd !important; }
-          body { margin: 0; padding: 0; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          tr { page-break-inside: avoid; }
-        }
-      `}</style>
     </Box>
   );
 }

@@ -327,14 +327,7 @@ const materialRoutes = [
       </RoleRoute>
     ),
   },
-  {
-    path: "/material/payroll/advances",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
-        <AppSalaryAdvances />
-      </RoleRoute>
-    ),
-  },
+   
   {
     path: "/material/payroll/reports",
     element: (

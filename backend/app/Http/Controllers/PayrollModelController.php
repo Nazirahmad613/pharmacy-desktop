@@ -20,9 +20,6 @@ class PayrollModelController extends Controller
 {
     protected PayrollJournalService $journalService;
 
-    /**
-     * ✅ ref_type های مربوط به پیش‌پرداخت معاش در ژورنال
-     */
     private const ADVANCE_CREDIT_REF_TYPES = [
         'salary_advance',
         'salary_advance_debit',
@@ -30,6 +27,24 @@ class PayrollModelController extends Controller
 
     private const ADVANCE_SETTLEMENT_REF_TYPES = [
         'salary_advance_settlement',
+    ];
+
+    /**
+     * ✅ برچسب فارسی role کاربران سیستم (به عنوان «نوعیت حساب»)
+     */
+    private array $roleLabels = [
+        'admin'       => 'مدیر سیستم',
+        'manager'     => 'مدیر',
+        'doctor'      => 'داکتر',
+        'nurse'       => 'نرس',
+        'accountant'  => 'حسابدار',
+        'reception'   => 'پذیرش',
+        'pharmacist'  => 'دواساز',
+        'laboratory'  => 'لابراتوار',
+        'radiology'   => 'رادیولوژی',
+        'staff'       => 'کارمند',
+        'employee'    => 'کارمند',
+        'user'        => 'کاربر',
     ];
 
     private array $typeLabels = [
@@ -187,6 +202,15 @@ class PayrollModelController extends Controller
         return $category ? ($this->categoryLabels[$category] ?? $category) : null;
     }
 
+    /**
+     * ✅ برچسب فارسی برای role کاربر
+     */
+    private function roleLabel(?string $role): ?string
+    {
+        if (!$role) return null;
+        return $this->roleLabels[strtolower($role)] ?? $role;
+    }
+
     private function resolveDepartmentLabel($user, $account): string
     {
         if ($user && $user->department) {
@@ -200,30 +224,55 @@ class PayrollModelController extends Controller
         return '—';
     }
 
-    private function accountFields($account): array
+    /**
+     * ✅ فیلدهای حساب: برای «کاربر سیستم» از role و department استفاده می‌کنیم
+     *    و برای «طرف‌حساب» از فیلدهای account.
+     */
+    private function accountFields($account, $user = null): array
     {
-        $accType     = $account->account_type     ?? null;
-        $accCategory = $account->account_category ?? null;
+        // اگر حساب واقعی وجود دارد (طرف‌حساب)
+        if ($account) {
+            $accType     = $account->account_type     ?? null;
+            $accCategory = $account->account_category ?? null;
+
+            return [
+                'tazkiraNumber'        => $account->tazkira_number ?? null,
+                'accountType'          => $accType,
+                'accountCategory'      => $accCategory,
+                'accountTypeLabel'     => $this->typeLabel($accType),
+                'accountCategoryLabel' => $this->categoryLabel($accCategory),
+                'roleLabel'            => null,
+            ];
+        }
+
+        // اگر کاربر سیستم است — از role به عنوان نوعیت حساب استفاده کن
+        if ($user) {
+            $roleLabel = $this->roleLabel($user->role ?? null);
+            return [
+                'tazkiraNumber'        => $user->tazkira_number ?? null,
+                'accountType'          => $user->role ?? null,
+                'accountCategory'      => null,
+                'accountTypeLabel'     => $roleLabel,
+                'accountCategoryLabel' => null,
+                'roleLabel'            => $roleLabel,
+            ];
+        }
 
         return [
-            'tazkiraNumber'        => $account->tazkira_number ?? null,
-            'accountType'          => $accType,
-            'accountCategory'      => $accCategory,
-            'accountTypeLabel'     => $this->typeLabel($accType),
-            'accountCategoryLabel' => $this->categoryLabel($accCategory),
+            'tazkiraNumber'        => null,
+            'accountType'          => null,
+            'accountCategory'      => null,
+            'accountTypeLabel'     => null,
+            'accountCategoryLabel' => null,
+            'roleLabel'            => null,
         ];
     }
 
     // ============================================================
-    // 🧮 هسته‌ی محاسبه پیش‌پرداخت — از ژورنال حساب کارمند
+    // 🧮 پیش‌پرداخت — بدون تغییر
     // ============================================================
-
-    /**
-     * ✅ پیدا کردن account_id کارمند
-     */
-       private function resolveEmployeeAccountId(?int $userId, ?int $accountId): ?int
+    private function resolveEmployeeAccountId(?int $userId, ?int $accountId): ?int
     {
-        // 1) اگر account_id مستقیم
         if (!empty($accountId)) {
             return (int) $accountId;
         }
@@ -232,13 +281,11 @@ class PayrollModelController extends Controller
             return null;
         }
 
-        // 2) از salary_info
         $info = EmployeeSalaryInfo::where('user_id', $userId)->first();
         if ($info && !empty($info->account_id)) {
             return (int) $info->account_id;
         }
 
-        // 3) از employee_salaries (fallback)
         try {
             $salary = EmployeeSalary::where('user_id', $userId)
                 ->whereNotNull('account_id')
@@ -254,54 +301,11 @@ class PayrollModelController extends Controller
         return null;
     }
 
-    /**
-     * ✅ محاسبه مانده پیش‌پرداخت از ژورنال حساب کارمند
-     *
-     * ✅ تغییر مهم: اگر $upToDate = null → همه ژورنال‌ها (بدون فیلتر تاریخ)
-     * اگر بخواهید تا تاریخ خاصی فیلتر کنید، $upToDate را مقدار بدهید.
-     */
-     /**
-     * ✅ محاسبه مانده پیش‌پرداخت از ژورنال حساب کارمند
-     *
-     * منطق:
-     *   - هر credit روی حساب کارمند (به جز ژورنال‌های معاش) = پیش‌پرداخت
-     *   - هر debit روی حساب کارمند (به جز ژورنال‌های معاش) = کاهش پیش‌پرداخت
-     *   - مانده = مجموع credit − مجموع debit
-     *
-     * ژورنال‌های معاش (تولید، پرداخت، تسویه) نادیده گرفته می‌شوند
-     * چون خودشان بخشی از چرخه‌ی معاش هستند و باعث دوبار محاسبه می‌شوند.
-     */
-     /**
-     * ✅ محاسبه مانده پیش‌پرداخت از ژورنال حساب کارمند
-     *
-     * منطق:
-     *   - هر credit روی حساب کارمند (به جز ژورنال‌های معاش) = پیش‌پرداخت
-     *   - هر debit روی حساب کارمند (به جز ژورنال‌های معاش) = کاهش پیش‌پرداخت
-     *   - مانده = مجموع credit − مجموع debit
-     *
-     * ⚠️ اگر account_id ژورنال NULL بود ولی ref_id حساب کارمند است،
-     *    از COALESCE(account_id, ref_id) استفاده می‌کنیم.
-     */
-       /**
-     * ✅ محاسبه مانده پیش‌پرداخت از ژورنال حساب کارمند
-     *
-     * منطق:
-     *   - هر credit روی حساب کارمند (به جز معاش) = پیش‌پرداخت
-     *   - هر debit روی حساب کارمند (به جز معاش) = کاهش پیش‌پرداخت
-     *   - مانده = مجموع credit − مجموع debit
-     *
-     * ⚠️ این نسخه چند مسیر را برای پیدا کردن حساب چک می‌کند:
-     *   1) account_id مستقیم روی ژورنال
-     *   2) ref_id = account_id کارمند (اگر account_id ژورنال NULL بود)
-     *   3) هر ژورنالی که user_id آن با userId کارمند یکسان است
-     *   4) هر ژورنالی که ref_id آن با userId کارمند یکسان است
-     */
     private function calcAdvanceDeduction(
         ?int $userId,
         ?int $accountId,
         ?string $upToDate = null
     ): float {
-        // ✅ جمع‌آوری همه شناسه‌های مرتبط با این کارمند
         $accountIds   = [];
         $userIds      = [];
 
@@ -312,13 +316,11 @@ class PayrollModelController extends Controller
         if (!empty($userId)) {
             $userIds[] = (int) $userId;
 
-            // از salary_info
             $info = EmployeeSalaryInfo::where('user_id', $userId)->first();
             if ($info && !empty($info->account_id)) {
                 $accountIds[] = (int) $info->account_id;
             }
 
-            // از employee_salaries (همه)
             $salaryAccountIds = EmployeeSalary::where('user_id', $userId)
                 ->whereNotNull('account_id')
                 ->pluck('account_id')
@@ -334,19 +336,10 @@ class PayrollModelController extends Controller
         $accountIds = array_values(array_unique(array_filter($accountIds)));
         $userIds    = array_values(array_unique(array_filter($userIds)));
 
-        Log::info('[calcAdvanceDeduction] START', [
-            'userId' => $userId,
-            'accountId' => $accountId,
-            'accountIds' => $accountIds,
-            'userIds' => $userIds,
-        ]);
-
         if (empty($accountIds) && empty($userIds)) {
-            Log::warning('[calcAdvanceDeduction] هیچ حساب/کاربری پیدا نشد');
             return 0.0;
         }
 
-        // ✅ ref_type هایی که نادیده گرفته می‌شوند
         $excludedRefTypes = [
             'salary_generation',
             'salary_payable',
@@ -354,15 +347,12 @@ class PayrollModelController extends Controller
             'salary_payment_debit',
         ];
 
-        // ✅ تابع کمکی برای ساخت شرط شناسایی ژورنال کارمند
         $matchEmployee = function ($q) use ($accountIds, $userIds) {
             $q->where(function ($q2) use ($accountIds, $userIds) {
-                // مسیر ۱: account_id روی ژورنال با یکی از حساب‌های کارمند
                 if (!empty($accountIds)) {
                     $q2->whereIn('account_id', $accountIds);
                 }
 
-                // مسیر ۲: ref_id = یکی از حساب‌های کارمند (اگر account_id NULL بود)
                 if (!empty($accountIds)) {
                     $q2->orWhere(function ($q3) use ($accountIds) {
                         $q3->whereNull('account_id')
@@ -370,12 +360,10 @@ class PayrollModelController extends Controller
                     });
                 }
 
-                // مسیر ۳: user_id ژورنال = userId کارمند
                 if (!empty($userIds)) {
                     $q2->orWhereIn('user_id', $userIds);
                 }
 
-                // مسیر ۴: ref_id = userId (بعضی از createAdvance قدیمی)
                 if (!empty($userIds)) {
                     $q2->orWhere(function ($q3) use ($userIds) {
                         $q3->whereIn('ref_id', $userIds)
@@ -388,7 +376,6 @@ class PayrollModelController extends Controller
             });
         };
 
-        // ✅ مرحله ۱: مجموع credit
         $creditQuery = DB::table('journals')
             ->where('entry_type', 'credit')
             ->whereNotIn('ref_type', $excludedRefTypes)
@@ -400,7 +387,6 @@ class PayrollModelController extends Controller
 
         $totalCredit = (float) $creditQuery->sum('amount');
 
-        // ✅ مرحله ۲: مجموع debit
         $debitQuery = DB::table('journals')
             ->where('entry_type', 'debit')
             ->whereNotIn('ref_type', $excludedRefTypes)
@@ -412,19 +398,9 @@ class PayrollModelController extends Controller
 
         $totalDebit = (float) $debitQuery->sum('amount');
 
-        $remaining = max(0, round($totalCredit - $totalDebit, 2));
-
-        Log::info('[calcAdvanceDeduction] RESULT', [
-            'accountIds' => $accountIds,
-            'userIds' => $userIds,
-            'totalCredit' => $totalCredit,
-            'totalDebit' => $totalDebit,
-            'remaining' => $remaining,
-        ]);
-
-        return $remaining;
+        return max(0, round($totalCredit - $totalDebit, 2));
     }
-    
+
     public function getEmployeeAdvanceBalances(Request $request)
     {
         try {
@@ -440,7 +416,6 @@ class PayrollModelController extends Controller
 
             $period = PayrollPeriod::findOrCreate($month, $year);
 
-            // ✅ حذف فیلتر تاریخ — همه ژورنال‌ها
             $salaries = EmployeeSalary::where('period_id', $period->id)
                 ->whereIn('payment_status', ['pending', 'partial'])
                 ->get();
@@ -450,7 +425,7 @@ class PayrollModelController extends Controller
                 $balance = $this->calcAdvanceDeduction(
                     $s->user_id,
                     $s->account_id,
-                    null // همه ژورنال‌ها
+                    null
                 );
                 $balances[] = [
                     'salaryId'  => $s->id,
@@ -475,9 +450,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * ✅ دیباگ: بررسی دقیق وضعیت پیش‌پرداخت یک کارمند
-     */
     public function debugAdvance(Request $request)
     {
         try {
@@ -485,7 +457,6 @@ class PayrollModelController extends Controller
             $accountId = $request->query('accountId');
             $salaryId  = $request->query('salaryId');
 
-            // اگر salaryId داده شد، از آن استفاده کن
             if ($salaryId) {
                 $salary = EmployeeSalary::find($salaryId);
                 if ($salary) {
@@ -509,7 +480,6 @@ class PayrollModelController extends Controller
                 ], 404);
             }
 
-            // همه ژورنال‌های مرتبط
             $journals = DB::table('journals')
                 ->where('account_id', $employeeAccountId)
                 ->whereIn('ref_type', array_merge(
@@ -519,7 +489,6 @@ class PayrollModelController extends Controller
                 ->orderBy('journal_date')
                 ->get();
 
-            // مجموع‌ها
             $row = DB::table('journals')
                 ->where('account_id', $employeeAccountId)
                 ->whereIn('ref_type', array_merge(
@@ -553,10 +522,6 @@ class PayrollModelController extends Controller
         }
     }
 
-    /**
-     * ✅ بازمحاسبه‌ی پیش‌پرداخت برای همه معاش‌های «پرداخت‌نشده» یک دوره
-     * ✅ تغییر مهم: بدون فیلتر تاریخ — همه ژورنال‌های پیش‌پرداخت جمع می‌شوند.
-     */
     private function recalcAdvanceDeductionsForPeriod(PayrollPeriod $period): int
     {
         $salaries = EmployeeSalary::where('period_id', $period->id)
@@ -566,7 +531,6 @@ class PayrollModelController extends Controller
         $changed = 0;
 
         foreach ($salaries as $salary) {
-            // ✅ null → بدون فیلتر تاریخ
             $newAdvance = $this->calcAdvanceDeduction(
                 $salary->user_id,
                 $salary->account_id,
@@ -669,7 +633,8 @@ class PayrollModelController extends Controller
                     ->get()
                     ->map(function ($s) {
                         $departmentLabel = $this->resolveDepartmentLabel($s->user, $s->account);
-                        $fields = $this->accountFields($s->account);
+                        // ✅ role به عنوان نوعیت حساب برای کاربر سیستم
+                        $fields = $this->accountFields($s->account, $s->user);
 
                         return array_merge([
                             'id'         => $s->id,
@@ -771,6 +736,11 @@ class PayrollModelController extends Controller
                     ? ($r->department_name ?? '—')
                     : ($this->categoryLabel($accCategory) ?? ($r->account_code ?? '—'));
 
+                // ✅ برای کاربر: role به عنوان نوعیت حساب؛ برای طرف‌حساب: account_type
+                $typeLabel = $r->source === 'user'
+                    ? ($this->roleLabel($r->role ?? null) ?? ($r->role ?? '—'))
+                    : $this->typeLabel($accType);
+
                 return [
                     'id'            => $uniqueId,
                     'employeeId'    => $r->employee_id,
@@ -793,10 +763,11 @@ class PayrollModelController extends Controller
                     'statusRaw'     => $r->salary_status,
 
                     'tazkiraNumber'        => $r->tazkira_number ?? null,
-                    'accountType'          => $accType,
+                    'accountType'          => $r->source === 'user' ? ($r->role ?? null) : $accType,
                     'accountCategory'      => $accCategory,
-                    'accountTypeLabel'     => $this->typeLabel($accType),
+                    'accountTypeLabel'     => $typeLabel,
                     'accountCategoryLabel' => $this->categoryLabel($accCategory),
+                    'role'                 => $r->role ?? null,
                 ];
             });
 
@@ -993,7 +964,6 @@ class PayrollModelController extends Controller
 
             $period = PayrollPeriod::findOrCreate($month, $year);
 
-            // ✅ بازمحاسبه پیش‌پرداخت — بدون فیلتر تاریخ
             try {
                 $this->recalcAdvanceDeductionsForPeriod($period);
             } catch (\Throwable $re) {
@@ -1093,7 +1063,6 @@ class PayrollModelController extends Controller
                 $taxForNet       = $enableTax ? $rawTax       : 0;
                 $insuranceForNet = $enableIns ? $rawInsurance : 0;
 
-                // ✅ پیش‌پرداخت از ژورنال — بدون فیلتر تاریخ
                 $advanceDeduction = $this->calcAdvanceDeduction(
                     $emp->source === 'user'    ? (int) $emp->employee_id : null,
                     $emp->source === 'account' ? (int) $emp->employee_id : null,
@@ -1180,7 +1149,6 @@ class PayrollModelController extends Controller
             $affectedPeriods = [];
 
             foreach ($salaries as $salary) {
-                // ✅ بازخوانی پیش‌پرداخت — بدون فیلتر تاریخ
                 $freshAdvance = $this->calcAdvanceDeduction(
                     $salary->user_id,
                     $salary->account_id,
@@ -1256,9 +1224,8 @@ class PayrollModelController extends Controller
     }
 
     // ============================================================
-    // 📉 ADVANCES — بر اساس ژورنال
+    // 📉 ADVANCES
     // ============================================================
-
     public function getAdvances(Request $request)
     {
         try {
@@ -1800,7 +1767,8 @@ class PayrollModelController extends Controller
             $sourceLabel = 'طرف‌حساب';
         }
 
-        $accFields = $this->accountFields($info->account);
+        // ✅ برای کاربر سیستم، role به عنوان نوعیت حساب
+        $accFields = $this->accountFields($info->account, $info->user);
 
         return array_merge([
             'id'            => $info->id,
@@ -1837,7 +1805,8 @@ class PayrollModelController extends Controller
 
         $department = $this->resolveDepartmentLabel($s->user, $s->account);
 
-        $accFields = $this->accountFields($s->account);
+        // ✅ برای کاربر سیستم، role به عنوان نوعیت حساب
+        $accFields = $this->accountFields($s->account, $s->user);
 
         return array_merge([
             'id'               => $s->id,

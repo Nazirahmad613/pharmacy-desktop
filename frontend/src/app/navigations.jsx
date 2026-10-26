@@ -273,25 +273,20 @@ const navigations = [
         roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
       },
       {
-        name: "معاشات کارمندان",
+        name: "تعیین معاشات کارمندان",
         path: "/material/payroll/employees",
         icon: <PeopleAltIcon />,
         roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
       },
       {
-        name: "پرداخت معاش",
+        name: "پپرداخت معاشات کارمندان",
         path: "/material/payroll/payment",
         icon: <AttachMoneyIcon />,
         roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
       },
+    
       {
-        name: "پیش‌پرداخت معاش",
-        path: "/material/payroll/advances",
-        icon: <MoneyOffIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-      },
-      {
-        name: "گزارشات معاشات",
+        name: "گزارش معاشات",
         path: "/material/payroll/reports",
         icon: <ReceiptLongIcon />,
         roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
