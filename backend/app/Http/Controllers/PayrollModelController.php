@@ -722,7 +722,27 @@ class PayrollModelController extends Controller
 
             $rows = $query->orderBy('full_name')->get();
 
-            $data = $rows->map(function ($r) {
+            // ✅ گرفتن شماره تذکره کاربران فعال از جدول users
+            $activeUserIds = $rows
+                ->where('source', 'user')
+                ->pluck('employee_id')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            $userTazkiraMap = [];
+            if (!empty($activeUserIds)) {
+                try {
+                    $userTazkiraMap = User::whereIn('id', $activeUserIds)
+                        ->pluck('tazkira_number', 'id')
+                        ->all();
+                } catch (\Throwable $ue) {
+                    Log::warning('getEmployees user tazkira fetch failed: ' . $ue->getMessage());
+                }
+            }
+
+            $data = $rows->map(function ($r) use ($userTazkiraMap) {
                 $uniqueId = $r->source . '-' . $r->employee_id;
 
                 $sourceLabel = $r->source === 'user'
@@ -740,6 +760,15 @@ class PayrollModelController extends Controller
                 $typeLabel = $r->source === 'user'
                     ? ($this->roleLabel($r->role ?? null) ?? ($r->role ?? '—'))
                     : $this->typeLabel($accType);
+
+                // ✅ برای کاربران فعال، شماره تذکره از جدول users خوانده می‌شود
+                $tazkiraNumber = $r->tazkira_number ?? null;
+                if ($r->source === 'user' && !empty($r->employee_id)) {
+                    $fromUsers = $userTazkiraMap[(int) $r->employee_id] ?? null;
+                    if (!empty($fromUsers)) {
+                        $tazkiraNumber = $fromUsers;
+                    }
+                }
 
                 return [
                     'id'            => $uniqueId,
@@ -762,7 +791,7 @@ class PayrollModelController extends Controller
                     'status'        => $r->salary_status === 'active' ? 'فعال' : 'غیرفعال',
                     'statusRaw'     => $r->salary_status,
 
-                    'tazkiraNumber'        => $r->tazkira_number ?? null,
+                    'tazkiraNumber'        => $tazkiraNumber,
                     'accountType'          => $r->source === 'user' ? ($r->role ?? null) : $accType,
                     'accountCategory'      => $accCategory,
                     'accountTypeLabel'     => $typeLabel,

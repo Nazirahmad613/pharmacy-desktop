@@ -114,7 +114,7 @@ const Users = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <input
           type="text"
-          placeholder="جستجو نام یا ایمیل..."
+          placeholder="جستجو نام، ایمیل یا نمبر تذکره..."
           value={filters.search}
           onChange={(e) => setFilters({ ...filters, search: e.target.value })}
           className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
@@ -158,6 +158,7 @@ const Users = () => {
                 <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">عکس</th>
                 <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">نام</th>
                 <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">ایمیل</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">نمبر تذکره</th>
                 <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">نقش</th>
                 <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">بخش</th>
                 <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">عملیات</th>
@@ -166,7 +167,7 @@ const Users = () => {
             <tbody>
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="text-center py-6 text-gray-500">
+                  <td colSpan="7" className="text-center py-6 text-gray-500">
                     کاربری یافت نشد
                   </td>
                 </tr>
@@ -188,6 +189,13 @@ const Users = () => {
                     </td>
                     <td className="px-4 py-3 font-medium">{user.name}</td>
                     <td className="px-4 py-3 text-gray-600">{user.email}</td>
+                    <td className="px-4 py-3 text-gray-600 font-mono text-sm">
+                      {user.tazkira_number ? (
+                        user.tazkira_number
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
                         {user.role_name || "بدون نقش"}

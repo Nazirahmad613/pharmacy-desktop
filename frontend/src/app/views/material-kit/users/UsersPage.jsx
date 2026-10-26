@@ -48,7 +48,14 @@ const extractList = (raw) => {
   return [];
 };
 
-export default function UsersPage() {
+/**
+ * ✅ mode:
+ *   "admin"   → صفحه مدیریت کاربران (همه کاربران قابل مشاهده/ویرایش/حذف)
+ *   "profile" → صفحه پروفایل خود کاربر (فقط پروفایل خودش)
+ *
+ * اگر mode ارسال نشود، به‌صورت خودکار بر اساس دسترسی تشخیص داده می‌شود.
+ */
+export default function UsersPage({ mode = null }) {
   const { user: currentUser, updateUser } = useAuth();
 
   const [users, setUsers] = useState([]);
@@ -61,8 +68,10 @@ export default function UsersPage() {
     email: "",
     role: "user",
     password: "",
+    password_confirmation: "",
     avatar: null,
     department_id: "",
+    tazkira_number: "",
   });
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -110,7 +119,21 @@ export default function UsersPage() {
     userRoles.includes("hospitalhead") ||
     userRoles.includes("hospital-head");
 
-  const hasAccess = isAdmin;
+  // ✅ تعیین حالت واقعی صفحه
+  // اگر mode ارسال شده باشد همان، در غیر این صورت خودکار
+  const resolvedMode = mode || (isAdmin ? "admin" : "profile");
+
+  // ✅ آیا این صفحه در حالت «مدیریت کاربران» است؟
+  const isAdminMode = resolvedMode === "admin" && isAdmin;
+
+  // ✅ آیا این صفحه در حالت «پروفایل شخصی» است؟
+  const isProfileMode = resolvedMode === "profile";
+
+  // ✅ فقط در حالت admin کاربر می‌تواند سایر کاربران را مدیریت کند
+  const canManageUsers = isAdminMode;
+
+  // ✅ فقط ادمین می‌تواند وارد حالت admin شود
+  const hasAccess = isAdminMode || isProfileMode;
 
   // ============================================================
   // ✅ دریافت داده‌ها
@@ -131,7 +154,7 @@ export default function UsersPage() {
       try {
         const [usersRes, rolesRes, deptsRes] = await Promise.all([
           fetchWithTimeout(api.get("/users")),
-          fetchWithTimeout(api.get("/roles")),
+          fetchWithTimeout(api.get("/roles")).catch(() => ({ data: [] })),
           fetchWithTimeout(api.get("/departments")).catch((err) => {
             console.error("Departments fetch error:", err);
             return { data: [] };
@@ -140,19 +163,21 @@ export default function UsersPage() {
 
         if (!isMounted) return;
 
-        // ✅ استخراج هوشمند کاربران
         const usersList = extractList(usersRes?.data);
         const rolesList = extractList(rolesRes?.data);
         const deptsList = extractList(deptsRes?.data);
 
-        console.log("📦 Users raw:", usersRes?.data);
-        console.log("📦 Roles raw:", rolesRes?.data);
-        console.log("📦 Departments raw:", deptsRes?.data);
-        console.log("✅ Users parsed:", usersList.length);
-        console.log("✅ Roles parsed:", rolesList.length);
-        console.log("✅ Departments parsed:", deptsList.length);
+        // ✅ حالت profile: فقط کاربر لاگین‌شده نمایش داده شود
+        if (isProfileMode) {
+          const onlyMe = usersList.filter(
+            (u) => u.id === currentUser.id
+          );
+          setUsers(onlyMe.length ? onlyMe : currentUser ? [currentUser] : []);
+        } else {
+          // ✅ حالت admin: همه کاربران
+          setUsers(usersList);
+        }
 
-        setUsers(usersList);
         setRoles(rolesList);
         setDepartments(deptsList);
       } catch (err) {
@@ -168,7 +193,7 @@ export default function UsersPage() {
     return () => {
       isMounted = false;
     };
-  }, [hasAccess, currentUser]);
+  }, [hasAccess, currentUser, isProfileMode]);
 
   // ============================================================
   // ✅ اگر currentUser لود نشده → Loading
@@ -189,7 +214,7 @@ export default function UsersPage() {
   }
 
   // ============================================================
-  // ✅ عدم دسترسی
+  // ✅ عدم دسترسی (اگر نه ادمین است و نه profile mode)
   // ============================================================
   if (!hasAccess) {
     return (
@@ -217,9 +242,9 @@ export default function UsersPage() {
   }
 
   // ============================================================
-  // ✅ رئیس شفاخانه (بدون دسترسی ادمین)
+  // ✅ رئیس شفاخانه (بدون دسترسی ادمین) — فقط در حالت admin
   // ============================================================
-  if (isHospitalHead && !isAdmin) {
+  if (isAdminMode === false && isHospitalHead && !isProfileMode) {
     return (
       <ReportLayout>
         <div className="report-page">
@@ -254,29 +279,64 @@ export default function UsersPage() {
   }
 
   // ============================================================
+  // بررسی مجوز ویرایش یک کاربر خاص
+  // ============================================================
+  const canEditUser = (targetUser) => {
+    if (!currentUser) return false;
+    if (canManageUsers) return true; // ادمین همه را می‌تواند
+    // حالت profile: فقط خودش
+    if (isProfileMode) return targetUser?.id === currentUser.id;
+    return false;
+  };
+
+  // ============================================================
+  // بررسی مجوز حذف
+  // ============================================================
+  const canDeleteUser = (targetUser) => {
+    if (!currentUser) return false;
+    // فقط در حالت admin و فقط ادمین
+    if (!canManageUsers) return false;
+    // ادمین نتواند خودش را حذف کند
+    return targetUser?.id !== currentUser.id;
+  };
+
+  // ============================================================
   // Dialog
   // ============================================================
   const handleOpenDialog = (user = null) => {
     if (user) {
+      if (!canEditUser(user)) {
+        toast.error("❌ شما فقط می‌توانید حساب خودتان را ویرایش کنید");
+        return;
+      }
+
       setEditingUser(user);
       setFormData({
         name: user.name || "",
         email: user.email || "",
-        role: user.roles?.[0]?.name || "user",
+        role: user.roles?.[0]?.name || user.role || "user",
         password: "",
+        password_confirmation: "",
         avatar: null,
         department_id: user.department_id || "",
+        tazkira_number: user.tazkira_number || "",
       });
       setAvatarPreview(user.avatar_url || null);
     } else {
+      if (!canManageUsers) {
+        toast.error("❌ شما اجازه افزودن کاربر جدید را ندارید");
+        return;
+      }
       setEditingUser(null);
       setFormData({
         name: "",
         email: "",
         role: "user",
         password: "",
+        password_confirmation: "",
         avatar: null,
         department_id: "",
+        tazkira_number: "",
       });
       setAvatarPreview(null);
     }
@@ -306,16 +366,33 @@ export default function UsersPage() {
   // ذخیره
   // ============================================================
   const handleSave = async () => {
-    if (!formData.name.trim()) {
+    // ✅ بررسی مجوز نهایی قبل از ذخیره
+    if (editingUser && !canEditUser(editingUser)) {
+      toast.error("❌ شما مجاز به ویرایش این کاربر نیستید");
+      return;
+    }
+    if (!editingUser && !canManageUsers) {
+      toast.error("❌ شما مجاز به افزودن کاربر جدید نیستید");
+      return;
+    }
+
+    if (!formData.name?.trim()) {
       toast.error("❌ نام کاربر را وارد کنید");
       return;
     }
-    if (!formData.email.trim()) {
+    if (!formData.email?.trim()) {
       toast.error("❌ ایمیل کاربر را وارد کنید");
       return;
     }
     if (!editingUser && !formData.password) {
       toast.error("❌ رمز عبور را وارد کنید");
+      return;
+    }
+    if (
+      formData.password &&
+      formData.password !== formData.password_confirmation
+    ) {
+      toast.error("❌ رمز عبور با تکرار آن مطابقت ندارد");
       return;
     }
     if (isDoctorRole && !formData.department_id) {
@@ -325,88 +402,146 @@ export default function UsersPage() {
 
     setUploading(true);
 
-    const formDataToSend = new FormData();
-    formDataToSend.append("name", formData.name);
-    formDataToSend.append("email", formData.email);
-    formDataToSend.append("role", formData.role);
-
-    if (formData.department_id) {
-      formDataToSend.append("department_id", formData.department_id);
-    }
-
-    if (formData.password && formData.password.trim() !== "") {
-      formDataToSend.append("password", formData.password);
-    }
-
-    if (formData.avatar instanceof File) {
-      formDataToSend.append("avatar", formData.avatar);
-    }
-
-    if (editingUser) {
-      formDataToSend.append("_method", "PUT");
-    }
-
     try {
-      let res;
-      if (editingUser) {
-        res = await api.post(`/users/${editingUser.id}`, formDataToSend, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        const updatedUser = res.data.user || res.data;
-        setUsers(
-          users.map((u) => (u.id === editingUser.id ? updatedUser : u))
-        );
+      const hasFile = formData.avatar instanceof File;
 
-        if (currentUser && currentUser.id === editingUser.id) {
-          updateUser(updatedUser);
-          toast.success("✅ اطلاعات شما با موفقیت به‌روزرسانی شد");
-        } else {
-          toast.success("✅ کاربر با موفقیت ویرایش شد");
+      // ✅ در حالت profile نقش و بخش دستکاری نمی‌شود
+      const payloadRole = !canManageUsers
+        ? editingUser?.roles?.[0]?.name || editingUser?.role || formData.role
+        : formData.role;
+
+      const payloadDepartmentId = !canManageUsers
+        ? editingUser?.department_id || ""
+        : formData.department_id;
+
+      if (hasFile) {
+        const fd = new FormData();
+        fd.append("name", formData.name);
+        fd.append("email", formData.email);
+        fd.append("role", payloadRole);
+
+        if (payloadDepartmentId) {
+          fd.append("department_id", payloadDepartmentId);
         }
+        if (formData.tazkira_number && formData.tazkira_number.trim() !== "") {
+          fd.append("tazkira_number", formData.tazkira_number.trim());
+        }
+        if (formData.password) {
+          fd.append("password", formData.password);
+          fd.append("password_confirmation", formData.password_confirmation);
+        }
+        fd.append("avatar", formData.avatar);
+
+        if (editingUser) {
+          fd.append("_method", "PUT");
+        }
+
+        const res = editingUser
+          ? await api.post(`/users/${editingUser.id}`, fd, {
+              headers: { "Content-Type": "multipart/form-data" },
+            })
+          : await api.post("/users", fd, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+
+        applySaveResult(res, editingUser);
       } else {
-        res = await api.post("/users", formDataToSend, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        const newUser = res.data.user || res.data;
-        setUsers([...users, newUser]);
-        toast.success("✅ کاربر با موفقیت اضافه شد");
+        const payload = {
+          name: formData.name,
+          email: formData.email,
+          role: payloadRole,
+        };
+
+        if (payloadDepartmentId) {
+          payload.department_id = payloadDepartmentId;
+        }
+        if (formData.tazkira_number && formData.tazkira_number.trim() !== "") {
+          payload.tazkira_number = formData.tazkira_number.trim();
+        }
+        if (formData.password) {
+          payload.password = formData.password;
+          payload.password_confirmation = formData.password_confirmation;
+        }
+
+        const res = editingUser
+          ? await api.put(`/users/${editingUser.id}`, payload)
+          : await api.post("/users", payload);
+
+        applySaveResult(res, editingUser);
       }
 
       handleCloseDialog();
     } catch (err) {
-      console.error("Full error:", err);
+      console.error("Error details:", err);
 
-      if (err.response) {
-        if (err.response.data?.errors) {
-          Object.values(err.response.data.errors)
-            .flat()
-            .forEach((message) => toast.error(`❌ ${message}`));
-        } else if (err.response.data?.message) {
-          toast.error(`❌ ${err.response.data.message}`);
-        } else {
-          toast.error("❌ خطا در ذخیره کاربر");
-        }
-      } else if (err.request) {
-        toast.error("❌ خطا در ارتباط با سرور");
+      if (err.response?.status === 403) {
+        toast.error("⛔ شما اجازه انجام این عملیات را ندارید");
+      } else if (err.response?.status === 422 && err.response.data?.errors) {
+        Object.values(err.response.data.errors)
+          .flat()
+          .forEach((msg) => toast.error(`❌ ${msg}`));
+      } else if (err.response?.data?.message) {
+        toast.error(`❌ ${err.response.data.message}`);
+      } else if (err.response?.status === 500) {
+        toast.error("❌ خطای سرور - لطفاً با پشتیبانی تماس بگیرید");
       } else {
-        toast.error(`❌ خطا: ${err.message}`);
+        toast.error("❌ خطا در ارتباط با سرور");
       }
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm("آیا مطمئن هستید می‌خواهید این کاربر را حذف کنید؟")) {
+  const applySaveResult = (res, isEdit) => {
+    const savedUser = res.data.user || res.data;
+
+    if (isEdit) {
+      setUsers(users.map((u) => (u.id === editingUser.id ? savedUser : u)));
+
+      // ✅ فقط کاربر لاگین‌شده می‌تواند پروفایل خودش را تغییر دهد
+      if (currentUser && currentUser.id === editingUser.id) {
+        updateUser(savedUser);
+        toast.success("✅ پروفایل شما با موفقیت به‌روزرسانی شد");
+      } else {
+        toast.success("✅ کاربر با موفقیت ویرایش شد");
+      }
+    } else {
+      setUsers([...users, savedUser]);
+      toast.success("✅ کاربر با موفقیت اضافه شد");
+    }
+  };
+
+  // ============================================================
+  // حذف
+  // ============================================================
+  const handleDelete = (user) => {
+    if (!canDeleteUser(user)) {
+      toast.error(
+        user?.id === currentUser?.id
+          ? "❌ نمی‌توانید حساب خودتان را حذف کنید"
+          : "❌ شما اجازه حذف کاربر را ندارید"
+      );
+      return;
+    }
+
+    if (
+      window.confirm(
+        `آیا مطمئن هستید می‌خواهید کاربر "${user.name}" را حذف کنید؟`
+      )
+    ) {
       api
-        .delete(`/users/${id}`)
+        .delete(`/users/${user.id}`)
         .then(() => {
-          setUsers(users.filter((u) => u.id !== id));
+          setUsers(users.filter((u) => u.id !== user.id));
           toast.success("✅ کاربر با موفقیت حذف شد");
         })
         .catch((err) => {
           console.error(err);
-          toast.error("❌ خطا در حذف کاربر");
+          if (err.response?.status === 403) {
+            toast.error("⛔ شما اجازه حذف این کاربر را ندارید");
+          } else {
+            toast.error("❌ خطا در حذف کاربر");
+          }
         });
     }
   };
@@ -419,7 +554,8 @@ export default function UsersPage() {
       const s = filters.search.toLowerCase();
       if (
         !u.name?.toLowerCase().includes(s) &&
-        !u.email?.toLowerCase().includes(s)
+        !u.email?.toLowerCase().includes(s) &&
+        !u.tazkira_number?.toLowerCase().includes(s)
       ) {
         return false;
       }
@@ -433,6 +569,11 @@ export default function UsersPage() {
     }
     return true;
   });
+
+  // ============================================================
+  // عنوان صفحه
+  // ============================================================
+  const pageTitle = isProfileMode ? "حساب کاربری من" : "مدیریت کاربران";
 
   // ============================================================
   // رندر
@@ -464,60 +605,62 @@ export default function UsersPage() {
           }}
         />
 
-        <h1 className="report-title">مدیریت کاربران</h1>
+        <h1 className="report-title">{pageTitle}</h1>
 
-        {/* ================= فیلترها ================= */}
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={12} md={4}>
-            <TextField
-              fullWidth
-              size="small"
-              label="جستجو (نام یا ایمیل)"
-              value={filters.search}
-              onChange={(e) =>
-                setFilters({ ...filters, search: e.target.value })
-              }
-            />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <FormControl fullWidth size="small">
-              <InputLabel>فیلتر بخش</InputLabel>
-              <Select
-                value={filters.department_id}
-                label="فیلتر بخش"
+        {/* ================= فیلترها — فقط در حالت admin ================= */}
+        {isAdminMode && (
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                size="small"
+                label="جستجو (نام، ایمیل یا نمبر تذکره)"
+                value={filters.search}
                 onChange={(e) =>
-                  setFilters({ ...filters, department_id: e.target.value })
+                  setFilters({ ...filters, search: e.target.value })
                 }
-              >
-                <MenuItem value="">همه بخش‌ها</MenuItem>
-                {departments.map((dept) => (
-                  <MenuItem key={dept.id} value={dept.id}>
-                    {dept.name} {dept.code ? `(${dept.code})` : ""}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>فیلتر بخش</InputLabel>
+                <Select
+                  value={filters.department_id}
+                  label="فیلتر بخش"
+                  onChange={(e) =>
+                    setFilters({ ...filters, department_id: e.target.value })
+                  }
+                >
+                  <MenuItem value="">همه بخش‌ها</MenuItem>
+                  {departments.map((dept) => (
+                    <MenuItem key={dept.id} value={dept.id}>
+                      {dept.name} {dept.code ? `(${dept.code})` : ""}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>فیلتر نقش</InputLabel>
+                <Select
+                  value={filters.role}
+                  label="فیلتر نقش"
+                  onChange={(e) =>
+                    setFilters({ ...filters, role: e.target.value })
+                  }
+                >
+                  <MenuItem value="">همه نقش‌ها</MenuItem>
+                  {roles.map((role) => (
+                    <MenuItem key={role.id} value={role.name}>
+                      {role.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
           </Grid>
-          <Grid item xs={12} md={4}>
-            <FormControl fullWidth size="small">
-              <InputLabel>فیلتر نقش</InputLabel>
-              <Select
-                value={filters.role}
-                label="فیلتر نقش"
-                onChange={(e) =>
-                  setFilters({ ...filters, role: e.target.value })
-                }
-              >
-                <MenuItem value="">همه نقش‌ها</MenuItem>
-                {roles.map((role) => (
-                  <MenuItem key={role.id} value={role.name}>
-                    {role.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
+        )}
 
         {/* ================= جدول ================= */}
         <table
@@ -535,6 +678,7 @@ export default function UsersPage() {
               <th style={thStyle}>عکس</th>
               <th style={thStyle}>نام</th>
               <th style={thStyle}>ایمیل</th>
+              <th style={thStyle}>نمبر تذکره</th>
               <th style={thStyle}>نقش</th>
               <th style={thStyle}>بخش</th>
               <th style={thStyle}>عملیات</th>
@@ -544,7 +688,7 @@ export default function UsersPage() {
             {filteredUsers.length === 0 ? (
               <tr>
                 <td
-                  colSpan="6"
+                  colSpan="7"
                   style={{
                     textAlign: "center",
                     padding: "30px",
@@ -555,110 +699,158 @@ export default function UsersPage() {
                 </td>
               </tr>
             ) : (
-              filteredUsers.map((u, index) => (
-                <tr
-                  key={u.id}
-                  style={{
-                    borderBottom:
-                      index !== filteredUsers.length - 1
-                        ? "2px solid #64b5f6"
-                        : "none",
-                    transition: "0.3s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#f0f7ff";
-                    e.currentTarget.style.transform = "translateX(-3px)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                    e.currentTarget.style.transform = "translateX(0)";
-                  }}
-                >
-                  <td style={tdStyle}>
-                    <Avatar
-                      src={u.avatar_url}
-                      alt={u.name}
-                      sx={{ width: 45, height: 45, margin: "0 auto" }}
-                    >
-                      {!u.avatar_url && <FaUserCircle />}
-                    </Avatar>
-                  </td>
-                  <td style={{ ...tdStyle, fontWeight: "500" }}>
-                    {u.name}{" "}
-                    <FaKey style={{ marginLeft: 5, color: "#0d47a1" }} />
-                  </td>
-                  <td style={{ ...tdStyle, color: "#1565c0" }}>{u.email}</td>
-                  <td style={tdStyle}>
-                    <span
+              filteredUsers.map((u, index) => {
+                const editable = canEditUser(u);
+                const deletable = canDeleteUser(u);
+
+                return (
+                  <tr
+                    key={u.id}
+                    style={{
+                      borderBottom:
+                        index !== filteredUsers.length - 1
+                          ? "2px solid #64b5f6"
+                          : "none",
+                      transition: "0.3s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "#f0f7ff";
+                      e.currentTarget.style.transform = "translateX(-3px)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.transform = "translateX(0)";
+                    }}
+                  >
+                    <td style={tdStyle}>
+                      <Avatar
+                        src={u.avatar_url}
+                        alt={u.name}
+                        sx={{ width: 45, height: 45, margin: "0 auto" }}
+                      >
+                        {!u.avatar_url && <FaUserCircle />}
+                      </Avatar>
+                    </td>
+                    <td style={{ ...tdStyle, fontWeight: "500" }}>
+                      {u.name}{" "}
+                      {u.id === currentUser?.id && (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            backgroundColor: "#fff3e0",
+                            color: "#e65100",
+                            padding: "2px 6px",
+                            borderRadius: 8,
+                            marginLeft: 4,
+                          }}
+                        >
+                          شما
+                        </span>
+                      )}
+                      <FaKey style={{ marginLeft: 5, color: "#0d47a1" }} />
+                    </td>
+                    <td style={{ ...tdStyle, color: "#1565c0" }}>
+                      {u.email}
+                    </td>
+                    <td
                       style={{
-                        backgroundColor:
-                          u.roles && u.roles[0]?.name === "super_admin"
-                            ? "#d32f2f"
-                            : "#0d47a1",
-                        color: "white",
-                        padding: "4px 12px",
-                        borderRadius: "20px",
-                        fontSize: "12px",
-                        fontWeight: "bold",
+                        ...tdStyle,
+                        fontFamily: "monospace",
+                        color: "#455a64",
                       }}
                     >
-                      {u.roles && u.roles.length > 0
-                        ? u.roles.map((r) => r.name).join(", ")
-                        : "بدون رول"}
-                    </span>
-                  </td>
-                  <td style={tdStyle}>
-                    {u.department ? (
-                      <Chip
-                        label={u.department.name}
-                        size="small"
-                        sx={{
-                          backgroundColor: "#e8f5e9",
-                          color: "#2e7d32",
+                      {u.tazkira_number ? (
+                        u.tazkira_number
+                      ) : (
+                        <span style={{ color: "#bbb" }}>—</span>
+                      )}
+                    </td>
+                    <td style={tdStyle}>
+                      <span
+                        style={{
+                          backgroundColor:
+                            u.roles && u.roles[0]?.name === "super_admin"
+                              ? "#d32f2f"
+                              : "#0d47a1",
+                          color: "white",
+                          padding: "4px 12px",
+                          borderRadius: "20px",
+                          fontSize: "12px",
                           fontWeight: "bold",
                         }}
-                      />
-                    ) : (
-                      <span style={{ color: "#bbb" }}>—</span>
-                    )}
-                  </td>
-                  <td style={tdStyle}>
-                    <IconButton
-                      color="primary"
-                      onClick={() => handleOpenDialog(u)}
-                      sx={{ color: "#0d47a1" }}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      color="error"
-                      onClick={() => handleDelete(u.id)}
-                      sx={{ color: "#d32f2f" }}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </td>
-                </tr>
-              ))
+                      >
+                        {u.roles && u.roles.length > 0
+                          ? u.roles.map((r) => r.name).join(", ")
+                          : "بدون رول"}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
+                      {u.department ? (
+                        <Chip
+                          label={u.department.name}
+                          size="small"
+                          sx={{
+                            backgroundColor: "#e8f5e9",
+                            color: "#2e7d32",
+                            fontWeight: "bold",
+                          }}
+                        />
+                      ) : (
+                        <span style={{ color: "#bbb" }}>—</span>
+                      )}
+                    </td>
+                    <td style={tdStyle}>
+                      {editable && (
+                        <IconButton
+                          color="primary"
+                          onClick={() => handleOpenDialog(u)}
+                          sx={{ color: "#0d47a1" }}
+                          title="ویرایش"
+                        >
+                          <EditIcon />
+                        </IconButton>
+                      )}
+                      {deletable && (
+                        <IconButton
+                          color="error"
+                          onClick={() => handleDelete(u)}
+                          sx={{ color: "#d32f2f" }}
+                          title="حذف"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      )}
+                      {!editable && !deletable && (
+                        <span style={{ color: "#bbb", fontSize: 12 }}>
+                          بدون دسترسی
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
 
-        <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
-          <Button
-            variant="contained"
-            onClick={() => handleOpenDialog()}
-            sx={{
-              backgroundColor: "#0d47a1",
-              color: "white",
-              padding: "10px 20px",
-              borderRadius: "8px",
-              "&:hover": { backgroundColor: "#1565c0" },
-            }}
-          >
-            افزودن کاربر جدید
-          </Button>
-        </Box>
+        {/* ✅ دکمه افزودن — فقط در حالت admin */}
+        {isAdminMode && (
+          <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
+            <Button
+              variant="contained"
+              onClick={() => handleOpenDialog()}
+              sx={{
+                backgroundColor: "#0d47a1",
+                color: "white",
+                padding: "10px 20px",
+                borderRadius: "8px",
+                "&:hover": { backgroundColor: "#1565c0" },
+              }}
+            >
+              افزودن کاربر جدید
+            </Button>
+          </Box>
+        )}
 
         {/* ================= Dialog ================= */}
         <Dialog
@@ -725,15 +917,30 @@ export default function UsersPage() {
                 setFormData({ ...formData, name: e.target.value })
               }
               fullWidth
+              required
             />
             <TextField
               label="ایمیل"
+              type="email"
               value={formData.email}
               onChange={(e) =>
                 setFormData({ ...formData, email: e.target.value })
               }
               fullWidth
+              required
             />
+
+            <TextField
+              label="نمبر تذکره"
+              value={formData.tazkira_number}
+              onChange={(e) =>
+                setFormData({ ...formData, tazkira_number: e.target.value })
+              }
+              placeholder="مثلاً 1401-1234567"
+              fullWidth
+              inputProps={{ maxLength: 50 }}
+            />
+
             <TextField
               label={editingUser ? "تغییر پسورد (اختیاری)" : "پسورد"}
               type="password"
@@ -743,8 +950,31 @@ export default function UsersPage() {
               }
               fullWidth
             />
+            <TextField
+              label={editingUser ? "تکرار پسورد (اختیاری)" : "تکرار پسورد"}
+              type="password"
+              value={formData.password_confirmation}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  password_confirmation: e.target.value,
+                })
+              }
+              fullWidth
+              error={
+                formData.password !== formData.password_confirmation &&
+                formData.password !== ""
+              }
+              helperText={
+                formData.password !== formData.password_confirmation &&
+                formData.password !== ""
+                  ? "رمز عبور مطابقت ندارد"
+                  : ""
+              }
+            />
 
-            <FormControl fullWidth>
+            {/* ✅ نقش — فقط در حالت admin قابل تغییر است */}
+            <FormControl fullWidth disabled={!isAdminMode}>
               <InputLabel>نقش</InputLabel>
               <Select
                 value={formData.role}
@@ -766,7 +996,8 @@ export default function UsersPage() {
               </Select>
             </FormControl>
 
-            <FormControl fullWidth>
+            {/* ✅ بخش — فقط در حالت admin قابل تغییر است */}
+            <FormControl fullWidth disabled={!isAdminMode}>
               <InputLabel>
                 بخش {isDoctorRole ? "*" : "(اختیاری)"}
               </InputLabel>
@@ -785,7 +1016,6 @@ export default function UsersPage() {
                 ))}
               </Select>
             </FormControl>
-
             {isDoctorRole && !formData.department_id && (
               <p style={{ color: "#d32f2f", fontSize: 13, margin: 0 }}>
                 برای نقش داکتر، انتخاب بخش الزامی است.

@@ -297,6 +297,23 @@ class JournalController extends Controller
         return substr($refType, strlen(self::USER_ROLE_PREFIX));
     }
 
+    /**
+     * ✅ جدید: گرفتن شماره تذکره کاربر از جدول users
+     */
+    private function getUserTazkiraNumber(?int $userId): ?string
+    {
+        if (empty($userId)) return null;
+
+        try {
+            $tazkira = User::where('id', $userId)->value('tazkira_number');
+            if (!empty($tazkira)) return (string) $tazkira;
+        } catch (\Throwable $e) {
+            Log::warning('getUserTazkiraNumber failed: ' . $e->getMessage());
+        }
+
+        return null;
+    }
+
     /* ============================================================
      *  ✅ نمایش لیست ژورنال‌ها
      * ============================================================ */
@@ -355,6 +372,10 @@ class JournalController extends Controller
                             $j->source_account_category = $account->account_category ?? null;
                             $j->source_account_category_label =
                                 $this->categoryLabelForAccount($account->account_category ?? null);
+
+                            if (!empty($account->tazkira_number) && empty($j->tazkira_number)) {
+                                $j->tazkira_number = $account->tazkira_number;
+                            }
                         }
                     }
 
@@ -377,6 +398,12 @@ class JournalController extends Controller
                                         $j->source_role_label =
                                             $this->roleLabel($salary->user->role ?? null);
                                     }
+
+                                    // ✅ شماره تذکره کاربر از جدول users
+                                    $userTazkira = $this->getUserTazkiraNumber((int) $salary->user_id);
+                                    if (!empty($userTazkira) && empty($j->tazkira_number)) {
+                                        $j->tazkira_number = $userTazkira;
+                                    }
                                 } elseif (!empty($salary->account_id)) {
                                     $j->source_kind = 'account';
                                     $j->account_id  = $salary->account_id;
@@ -385,6 +412,10 @@ class JournalController extends Controller
                                         $salary->account?->account_category ?? null;
                                     $j->source_account_category_label =
                                         $this->categoryLabelForAccount($salary->account?->account_category ?? null);
+
+                                    if (!empty($salary->account?->tazkira_number) && empty($j->tazkira_number)) {
+                                        $j->tazkira_number = $salary->account->tazkira_number;
+                                    }
                                 }
 
                                 if (empty($j->source_name)) {
@@ -524,6 +555,11 @@ class JournalController extends Controller
 
                         if (!empty($user->role)) {
                             $j->source_role_label = $this->roleLabel($user->role);
+                        }
+
+                        // ✅ شماره تذکره کاربر از جدول users
+                        if (!empty($user->tazkira_number) && empty($j->tazkira_number)) {
+                            $j->tazkira_number = $user->tazkira_number;
                         }
                     }
                 } catch (\Throwable $e) {
@@ -716,6 +752,14 @@ class JournalController extends Controller
                     if (empty($j->source_name) && !empty($reg->full_name)) {
                         $j->source_name = $reg->full_name;
                     }
+                }
+            }
+
+            // ✅ اگر هنوز شماره تذکره خالی است و journal.user_id موجود است، از جدول users بگیر
+            if (empty($j->tazkira_number) && !empty($j->user_id)) {
+                $userTazkira = $this->getUserTazkiraNumber((int) $j->user_id);
+                if (!empty($userTazkira)) {
+                    $j->tazkira_number = $userTazkira;
                 }
             }
 
@@ -1135,14 +1179,15 @@ class JournalController extends Controller
             $s = trim($search);
             $query->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
-                  ->orWhere('email', 'like', "%{$s}%");
+                  ->orWhere('email', 'like', "%{$s}%")
+                  ->orWhere('tazkira_number', 'like', "%{$s}%");
             });
         }
 
         $users = $query
             ->orderBy('name')
             ->limit($limit)
-            ->get(['id', 'name', 'email', 'role']);
+            ->get(['id', 'name', 'email', 'role', 'tazkira_number']);
 
         $roleLabel = self::USER_ROLE_LABELS[$role] ?? $role;
 
@@ -1151,7 +1196,8 @@ class JournalController extends Controller
                 'id'             => $u->id,
                 'name'           => $u->name ?? ('کاربر #' . $u->id),
                 'code'           => 'USR-' . str_pad($u->id, 5, '0', STR_PAD_LEFT),
-                'national_id'    => null,
+                'national_id'    => $u->tazkira_number ?? null,
+                'tazkira_number' => $u->tazkira_number ?? null,
                 'reg_id'         => null,
                 'currency'       => null,
                 'category'       => $role,
@@ -1371,6 +1417,15 @@ class JournalController extends Controller
                 'ref_id' => $validated['ref_id'],
             ]);
 
+            // ✅ اگر شماره تذکره ارسال نشده و ref_type یوزری است، از جدول users بگیر
+            $resolvedTazkira = $validated['tazkira_number']
+                ?? $reg->tazkira_number
+                ?? null;
+
+            if (empty($resolvedTazkira)) {
+                $resolvedTazkira = $this->resolveTazkiraForJournal($validated);
+            }
+
             $data = [
                 'journal_date'      => $journalDate,
                 'description'       => $validated['description'] ?? null,
@@ -1381,9 +1436,7 @@ class JournalController extends Controller
                 'pres_id'           => $validated['pres_id'] ?? null,
                 'reg_id'            => $validated['reg_id'] ?? null,
                 'parent_journal_id' => $validated['parent_journal_id'] ?? null,
-                'tazkira_number'    => $validated['tazkira_number']
-                    ?? $reg->tazkira_number
-                    ?? null,
+                'tazkira_number'    => $resolvedTazkira,
                 'user_id'           => Auth::id(),
             ];
 
@@ -1413,6 +1466,61 @@ class JournalController extends Controller
             DB::rollBack();
             LogService::create('error', 'journals', null, 'Error creating journal', ['error' => $e->getMessage()]);
             return response()->json(['message' => 'خطا در ذخیره ژورنال', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * ✅ جدید: حل شماره تذکره بر اساس ref_type/ref_id برای ژورنال
+     */
+    private function resolveTazkiraForJournal(array $validated): ?string
+    {
+        try {
+            $refType = $validated['ref_type'] ?? null;
+            $refId   = $validated['ref_id'] ?? null;
+
+            if (!$refType || !$refId) return null;
+
+            // یوزر داینامیک بر اساس نقش
+            if ($this->isDynamicUserRoleRef($refType)) {
+                return $this->getUserTazkiraNumber((int) $refId);
+            }
+
+            // معاشات: اگر حساب مستقیم نداریم، از کاربر یا حساب بگیر
+            if (isset(self::SALARY_META[$refType])) {
+                if (in_array($refType, [
+                    'salary_generation', 'salary_payable',
+                    'salary_payment', 'salary_payment_debit',
+                ], true)) {
+                    $salary = EmployeeSalary::find($refId);
+                    if ($salary) {
+                        if (!empty($salary->user_id)) {
+                            $t = $this->getUserTazkiraNumber((int) $salary->user_id);
+                            if (!empty($t)) return $t;
+                        }
+                        if (!empty($salary->account_id)) {
+                            $t = Account::where('id', $salary->account_id)->value('tazkira_number');
+                            if (!empty($t)) return (string) $t;
+                        }
+                    }
+                }
+                return null;
+            }
+
+            // حساب‌محور: از خود حساب بگیر
+            if (
+                in_array($refType, self::ACCOUNT_REF_TYPES, true)
+                || $refType === self::GENERIC_ACCOUNT_REF_TYPE
+                || $this->isDynamicAccountRef($refType)
+            ) {
+                $t = Account::where('id', $refId)->value('tazkira_number');
+                if (!empty($t)) return (string) $t;
+                return null;
+            }
+
+            return null;
+        } catch (\Throwable $e) {
+            Log::warning('resolveTazkiraForJournal failed: ' . $e->getMessage());
+            return null;
         }
     }
 
@@ -1529,6 +1637,15 @@ class JournalController extends Controller
                 'ref_id' => $validated['ref_id'],
             ]);
 
+            // ✅ اگر شماره تذکره ارسال نشده، از منابع بگیر
+            $resolvedTazkira = $validated['tazkira_number']
+                ?? $reg->tazkira_number
+                ?? null;
+
+            if (empty($resolvedTazkira)) {
+                $resolvedTazkira = $this->resolveTazkiraForJournal($validated);
+            }
+
             if ($id) {
                 $journal = Journal::find($id);
                 if (!$journal) {
@@ -1550,9 +1667,7 @@ class JournalController extends Controller
                     'pres_id'           => $validated['pres_id'] ?? null,
                     'reg_id'            => $newRegId,
                     'parent_journal_id' => $validated['parent_journal_id'] ?? null,
-                    'tazkira_number'    => $validated['tazkira_number']
-                        ?? $reg->tazkira_number
-                        ?? $journal->tazkira_number,
+                    'tazkira_number'    => $resolvedTazkira ?? $journal->tazkira_number,
                     'user_id'           => Auth::id(),
                 ];
 
@@ -1582,9 +1697,7 @@ class JournalController extends Controller
                     'pres_id'           => $validated['pres_id'] ?? null,
                     'reg_id'            => $validated['reg_id'] ?? null,
                     'parent_journal_id' => $validated['parent_journal_id'] ?? null,
-                    'tazkira_number'    => $validated['tazkira_number']
-                        ?? $reg->tazkira_number
-                        ?? null,
+                    'tazkira_number'    => $resolvedTazkira,
                     'user_id'           => Auth::id(),
                 ];
 
