@@ -16,6 +16,9 @@ import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PendingIcon from "@mui/icons-material/Pending";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { useLocation, useNavigate } from "react-router-dom";
+import { getLogicalParentPath } from "app/navigations";
 import api from "../../../../api";
 
 const ACCOUNT_TYPE_FA = {
@@ -153,6 +156,10 @@ function StatCard({ title, value, subtitle, icon, color = "#3b82f6" }) {
 }
 
 export default function PayrollDashboard() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const parentPath = getLogicalParentPath(location.pathname);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dashboard, setDashboard] = useState(null);
@@ -238,6 +245,23 @@ export default function PayrollDashboard() {
 
   return (
     <Box dir="rtl" sx={{ p: 3, background: "#0f172a", minHeight: "100vh" }}>
+      {parentPath && (
+        <Box mb={2}>
+          <Button
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate(parentPath)}
+            sx={{
+              color: "#60a5fa",
+              borderColor: "#3b82f6",
+              "&:hover": { borderColor: "#60a5fa", background: "rgba(59,130,246,0.1)" },
+            }}
+          >
+            بازگشت به صفحه قبلی
+          </Button>
+        </Box>
+      )}
+
       {/* هدر */}
       <Box
         display="flex"

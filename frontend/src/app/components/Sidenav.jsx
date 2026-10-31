@@ -1,6 +1,6 @@
 // src/app/components/Sidenav.jsx
 import React, { Fragment, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Scrollbar from "react-perfect-scrollbar";
 import styled from "@mui/material/styles/styled";
 import {
@@ -16,11 +16,11 @@ import {
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import ExpandMore from "@mui/icons-material/ExpandMore";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import HomeIcon from "@mui/icons-material/Home";
 import { useTranslation } from "react-i18next";
 
 import { useNavigation } from "app/contexts/NavigationContext";
 import { useAuth } from "app/contexts/AuthContext";
+import useBackNavigation from "../hooks/useBackNavigation";
 
 const StyledScrollBar = styled(Scrollbar)(() => ({
   paddingLeft: "0.5rem",
@@ -30,18 +30,12 @@ const StyledScrollBar = styled(Scrollbar)(() => ({
   overflowX: "hidden",
 }));
 
-// ============================================================
-// نرمال‌سازی رول
-// ============================================================
 const normalizeRole = (role) => {
   if (!role) return "";
   if (typeof role === "object") role = role.name || role.role || "";
   return String(role).trim().toLowerCase();
 };
 
-// ============================================================
-// کامپوننت بازگشتی برای یک گروه/آیتم
-// ============================================================
 function NavItem({ item, level = 0, openMap, setOpenMap, onLeafClick }) {
   const key = item.name || item.path;
   const isOpen = !!openMap[key];
@@ -56,7 +50,6 @@ function NavItem({ item, level = 0, openMap, setOpenMap, onLeafClick }) {
     }
   };
 
-  // label ها (تیتر بخش)
   if (item.type === "label" || item.label) {
     return (
       <Typography
@@ -131,24 +124,16 @@ function NavItem({ item, level = 0, openMap, setOpenMap, onLeafClick }) {
   );
 }
 
-// ============================================================
-// Sidenav
-// ============================================================
 export default function Sidenav({ children }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
-  const {
-    navigationsData,
-    groupStack,
-    selectedGroup,
-    popGroup,
-    resetToTop,
-  } = useNavigation();
+  const { navigationsData } = useNavigation();
 
-  // ============================================================
-  // رول‌های کاربر
-  // ============================================================
+  // ✅ تنها دکمه بازگشت — فقط بر اساس تاریخچه واقعی مرورگر (navigate(-1))
+  const { canGoBack, goBack } = useBackNavigation();
+
   const userRoles = useMemo(() => {
     if (!user) return [];
     const set = new Set();
@@ -176,9 +161,6 @@ export default function Sidenav({ children }) {
     [user, userRoles]
   );
 
-  // ============================================================
-  // فیلتر و ترجمه منو
-  // ============================================================
   const navigations = useMemo(() => {
     if (!Array.isArray(navigationsData)) return [];
     if (!user) return [];
@@ -215,26 +197,22 @@ export default function Sidenav({ children }) {
     return translate(navigationsData);
   }, [t, user, userRoles, isAdminUser, navigationsData]);
 
-  // ============================================================
-  // openMap: گروه‌های باز در سایدبار
-  // - به‌طور خودکار از groupStack ساخته می‌شود
-  // - کاربر می‌تواند دستی هم باز/بسته کند (localOpenMap)
-  // ============================================================
+  // openMap: گروه‌های باز در سایدبار — بر اساس pathname فعلی
   const autoOpenMap = useMemo(() => {
     const map = {};
-    groupStack.forEach((grp) => {
-      const k = grp.name || grp.path;
-      if (k) map[k] = true;
-    });
+    const path = (location.pathname || "").replace(/\/+$/, "");
+    if (!path) return map;
+    const segments = path.split("/").filter(Boolean);
+    for (let i = 1; i <= segments.length; i++) {
+      const partial = "/" + segments.slice(0, i).join("/");
+      map[partial] = true;
+    }
     return map;
-  }, [groupStack]);
+  }, [location.pathname]);
 
   const [localOpenMap, setLocalOpenMap] = React.useState({});
   const mergedOpenMap = { ...autoOpenMap, ...localOpenMap };
 
-  // ============================================================
-  // کلیک روی برگ
-  // ============================================================
   const handleLeafClick = (item) => {
     if (item.path) navigate(item.path);
   };
@@ -244,39 +222,24 @@ export default function Sidenav({ children }) {
       <StyledScrollBar options={{ suppressScrollX: true }}>
         {children}
 
-        {/* ===== دکمه‌های بازگشت ===== */}
-        {groupStack.length > 0 && (
+        {/* ===== ✅ تنها یک دکمه بازگشت — به همان صفحه‌ای که از آن آمده‌اید ===== */}
+        {canGoBack && (
           <Box sx={{ px: 1, pt: 1, pb: 0.5 }}>
             <ListItemButton
-              onClick={popGroup}
+              onClick={goBack}
               sx={{
                 borderRadius: 1,
                 color: "#fff",
                 bgcolor: "rgba(255,255,255,0.08)",
                 mb: 0.5,
+                "&:hover": { bgcolor: "rgba(255,255,255,0.14)" },
               }}
             >
               <ListItemIcon sx={{ color: "#fff", minWidth: 36 }}>
                 <ArrowBackIcon />
               </ListItemIcon>
               <ListItemText
-                primary="بازگشت"
-                primaryTypographyProps={{ fontSize: "0.85rem" }}
-              />
-            </ListItemButton>
-            <ListItemButton
-              onClick={resetToTop}
-              sx={{
-                borderRadius: 1,
-                color: "#fff",
-                bgcolor: "rgba(255,255,255,0.05)",
-              }}
-            >
-              <ListItemIcon sx={{ color: "#fff", minWidth: 36 }}>
-                <HomeIcon />
-              </ListItemIcon>
-              <ListItemText
-                primary="بازگشت به ابتدا"
+                primary="بازگشت به صفحه قبلی"
                 primaryTypographyProps={{ fontSize: "0.85rem" }}
               />
             </ListItemButton>
@@ -284,7 +247,6 @@ export default function Sidenav({ children }) {
           </Box>
         )}
 
-        {/* ===== لیست ===== */}
         <List
           component="nav"
           sx={{

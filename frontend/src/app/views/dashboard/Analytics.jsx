@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
 import { styled } from "@mui/material/styles";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
 
@@ -15,7 +15,6 @@ import BenefitsChart from "../material-kit/reports/BenefitsChart";
 import SimpleClock from "../material-kit/SimpleClock";
 import NavigationHub from "../../../modules/NavigationHub";
 import MatxLoading from "../../components/MatxLoading";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 const ContentBox = styled("div")(({ theme }) => ({
   margin: "2rem",
@@ -40,7 +39,6 @@ const LanguageSwitcher = () => {
 
 export default function Analytics() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -50,11 +48,6 @@ export default function Analytics() {
     
     return () => clearTimeout(timer);
   }, []);
-
-  // تابع بازگشت به صفحه قبلی
-  const handleGoBack = () => {
-    navigate(-1);
-  };
 
   return (
     <MainLayoutjur>
@@ -72,24 +65,6 @@ export default function Analytics() {
         >
           <SimpleClock />
           <LanguageSwitcher />
-        </Box>
-
-        {/* دکمه بازگشت */}
-        <Box sx={{ px: 3, pt: 1 }}>
-          <Button
-            variant="contained"
-            startIcon={<ArrowBackIcon />}
-            onClick={handleGoBack}
-            sx={{ 
-              backgroundColor: 'rgba(255,255,255,0.9)',
-              color: '#1a2234',
-              '&:hover': {
-                backgroundColor: '#f0f0f0'
-              }
-            }}
-          >
-            بازگشت به صفحه قبلی
-          </Button>
         </Box>
 
         {/* لودینگ ماشین در بالای صفحه */}

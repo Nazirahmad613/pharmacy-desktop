@@ -12,6 +12,9 @@ import SearchIcon from "@mui/icons-material/Search";
 import PersonIcon from "@mui/icons-material/Person";
 import BusinessIcon from "@mui/icons-material/Business";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { useLocation, useNavigate } from "react-router-dom";
+import { getLogicalParentPath } from "app/navigations";
 import api from "../../../../api";
 
 const ACCOUNT_TYPE_FA = {
@@ -76,6 +79,10 @@ const normalizeSalaryRow = (row = {}) => {
 };
 
 export default function PayrollReports() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const parentPath = getLogicalParentPath(location.pathname);
+
   const [loading, setLoading] = useState(false);
   const [loadingPeriods, setLoadingPeriods] = useState(true);
   const [error, setError] = useState(null);
@@ -494,6 +501,17 @@ export default function PayrollReports() {
   if (periods.length === 0) {
     return (
       <Box sx={{ p: 3 }}>
+        {parentPath && (
+          <Box mb={2}>
+            <Button
+              variant="outlined"
+              startIcon={<ArrowBackIcon />}
+              onClick={() => navigate(parentPath)}
+            >
+              بازگشت به صفحه قبلی
+            </Button>
+          </Box>
+        )}
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
           <Typography variant="h4" fontWeight="bold">📊 گزارشات معاشات</Typography>
           <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchPeriods}>بازخوانی</Button>
@@ -505,6 +523,18 @@ export default function PayrollReports() {
 
   return (
     <Box sx={{ p: 3 }}>
+      {parentPath && (
+        <Box mb={2}>
+          <Button
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate(parentPath)}
+          >
+            بازگشت به صفحه قبلی
+          </Button>
+        </Box>
+      )}
+
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">📊 گزارشات معاشات</Typography>
         <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchPeriods}>بازخوانی دوره‌ها</Button>

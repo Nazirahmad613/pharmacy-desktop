@@ -13,6 +13,9 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PersonIcon from "@mui/icons-material/Person";
 import BusinessIcon from "@mui/icons-material/Business";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+// ✅ مسیر اصلاح شد: دو سطح بالا (src/app/) نه سه سطح (src/)
+import useBackNavigation from "../../../hooks/useBackNavigation";
 import api from "../../../../api";
 
 const MONTHS = ["حمل", "ثور", "جوزا", "سرطان", "اسد", "سنبله", "میزان", "عقرب", "قوس", "جدی", "دلو", "حوت"];
@@ -86,6 +89,9 @@ const normalizeSalaryRow = (e = {}) => {
 };
 
 export default function SalaryPayment() {
+  // ✅ فقط دکمه بازگشت استاندارد
+  const { canGoBack, goBack } = useBackNavigation();
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -303,6 +309,19 @@ export default function SalaryPayment() {
 
   return (
     <Box sx={{ p: 3 }}>
+      {/* ✅ دکمه بازگشت استاندارد */}
+      {canGoBack && (
+        <Box mb={2}>
+          <Button
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+            onClick={goBack}
+          >
+            بازگشت به صفحه قبلی
+          </Button>
+        </Box>
+      )}
+
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">💵 پرداخت معاش</Typography>
         <Box display="flex" gap={1}>
@@ -444,7 +463,7 @@ export default function SalaryPayment() {
                 <TableRow>
                   <TableCell colSpan={15} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
-                      هیچ معاشی برای این دوره یافت نشد.
+                      هیچ معاشی برای این ماه یافت نشد.
                     </Typography>
                   </TableCell>
                 </TableRow>

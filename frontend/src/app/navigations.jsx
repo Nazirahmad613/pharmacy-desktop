@@ -21,16 +21,14 @@ import RadioIcon from "@mui/icons-material/Radio";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import LocalPharmacyIcon from "@mui/icons-material/LocalPharmacy";
 import BusinessIcon from "@mui/icons-material/Business";
-// ===== ✅ آیکون‌های جدید برای مدیریت معاشات =====
 import PaymentsIcon from "@mui/icons-material/Payments";
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SettingsIcon from "@mui/icons-material/Settings";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
-import MoneyOffIcon from "@mui/icons-material/MoneyOff";
 
 // ============================================================
-// ✅ رول‌ها - نام‌ها باید با دیتابیس شما یکسان باشند
+// ✅ رول‌ها
 // ============================================================
 export const ROLES = {
   Admin: "Admin",
@@ -45,9 +43,6 @@ export const ROLES = {
   USER: "User",
 };
 
-// ============================================================
-// ✅ Permissionها (اختیاری - اگر Permission-based کار می‌کنید)
-// ============================================================
 export const PERMISSIONS = {
   LAB_VIEW: "lab.view",
   LAB_MANAGE: "lab.manage",
@@ -62,7 +57,6 @@ export const PERMISSIONS = {
   REPORTS_VIEW: "reports.view",
   USERS_MANAGE: "users.manage",
   SETTINGS_MANAGE: "settings.manage",
-  // ✅ Permissions جدید برای معاشات
   PAYROLL_VIEW: "payroll.view",
   PAYROLL_MANAGE: "payroll.manage",
   PAYROLL_PAY: "payroll.pay",
@@ -74,282 +68,142 @@ const navigations = [
     name: "dashboard",
     path: "/dashboard/default",
     icon: <DashboardIcon />,
-    // بدون roles → برای همه
   },
-
   {
     label: "pages",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
   },
-
   {
     name: "session_auth",
     icon: <LoginIcon />,
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
     children: [
-      {
-        name: "sign_in",
-        path: "/session/signin",
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
-      {
-        name: "sign_up",
-        path: "/session/signup",
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
-      {
-        name: "forgot_password",
-        path: "/session/forgot-password",
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
-      {
-        name: "error",
-        path: "/session/404",
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
+      { name: "sign_in", path: "/session/signin", roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
+      { name: "sign_up", path: "/session/signup", roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
+      { name: "forgot_password", path: "/session/forgot-password", roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
+      { name: "error", path: "/session/404", roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
     ],
   },
-
-  // ============================================================
-  // کاربران
-  // ============================================================
   {
     label: "کاربران",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
   },
-
   {
     name: "مدیریت کاربران",
     icon: <PeopleIcon />,
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
     children: [
-      {
-        name: "مدیریت کاربران",
-        path: "/material/users",
-        icon: <PeopleIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
-      {
-        name: "مدیریت رول‌ها و پرمیشن‌ها",
-        path: "/material/roles-permissions",
-        icon: <PeopleIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
+      { name: "مدیریت کاربران", path: "/material/users", icon: <PeopleIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
+      { name: "مدیریت رول‌ها و پرمیشن‌ها", path: "/material/roles-permissions", icon: <PeopleIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
     ],
   },
-
-  // ============================================================
-  // ثبت نام
-  // ============================================================
   {
     label: "ثبت نام",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST],
   },
-
   {
     name: "ثبت نام",
     icon: <AppRegistrationIcon />,
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST],
     children: [
-      {
-        name: "RegistationForm",
-        path: "/material/registrations",
-        icon: <AppRegistrationIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST],
-      },
+      { name: "RegistationForm", path: "/material/registrations", icon: <AppRegistrationIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST] },
     ],
   },
-
-  // ============================================================
-  // ✅ لابراتوار
-  // ============================================================
   {
     label: "لابراتوار",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.LAB_TECHNICIAN],
   },
-
   {
     name: "🧪 لابراتوار",
     icon: <ScienceIcon />,
     path: "/material/lab-hematology",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.LAB_TECHNICIAN],
   },
-
-  // ============================================================
-  // ✅ رادیولوژی
-  // ============================================================
   {
     label: "رادیولوژی",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RADIOLOGIST],
   },
-
   {
     name: "📷 رادیولوژی",
     icon: <RadioIcon />,
     path: "/material/radiology",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RADIOLOGIST],
   },
-
-  // ============================================================
-  // ✅ دواخانه
-  // ============================================================
   {
     label: "دواخانه",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.PHARMACIST],
   },
-
   {
     name: "💊 دواخانه",
     icon: <LocalPharmacyIcon />,
     path: "/material/pharmacy",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.PHARMACIST],
   },
-
-  // ============================================================
-  // مدیریت مالی
-  // ============================================================
   {
     label: "مدیریت مالی",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
   },
-
   {
     name: "مدیریت مالی",
     icon: <PaymentIcon />,
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
     children: [
-      {
-        name: "parchases",
-        path: "/material/parchases",
-        icon: <ShoppingCartIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-      },
-      {
-        name: "sales_insert",
-        path: "/material/sales_insert",
-        icon: <PointOfSaleIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-      },
-      {
-        name: "addchanges",
-        path: "/material/changes",
-        icon: <ChangeCircleIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-      },
-      {
-        name: "PaymentForm",
-        path: "/material/payment",
-        icon: <PaymentIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-      },
+      { name: "parchases", path: "/material/parchases", icon: <ShoppingCartIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+      { name: "sales_insert", path: "/material/sales_insert", icon: <PointOfSaleIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+      { name: "addchanges", path: "/material/changes", icon: <ChangeCircleIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+      { name: "PaymentForm", path: "/material/payment", icon: <PaymentIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
     ],
   },
 
   // ============================================================
-  // ✅ مدیریت معاشات (Payroll) - جدید
+  // ✅ مدیریت معاشات (Payroll)
   // ============================================================
   {
     label: "مدیریت معاشات",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
   },
-
   {
     name: "💰 مدیریت معاشات",
     icon: <PaymentsIcon />,
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
     children: [
-      {
-        name: "داشبورد معاشات",
-        path: "/material/payroll",
-        icon: <DashboardIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-      },
-      {
-        name: "تعیین معاشات کارمندان",
-        path: "/material/payroll/employees",
-        icon: <PeopleAltIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-      },
-      {
-        name: "پپرداخت معاشات کارمندان",
-        path: "/material/payroll/payment",
-        icon: <AttachMoneyIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-      },
-    
-      {
-        name: "گزارش معاشات",
-        path: "/material/payroll/reports",
-        icon: <ReceiptLongIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-      },
-      {
-        name: "تنظیمات معاشات",
-        path: "/material/payroll/settings",
-        icon: <SettingsIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
+      { name: "داشبورد معاشات", path: "/material/payroll", icon: <DashboardIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+      { name: "تعیین معاشات کارمندان", path: "/material/payroll/employees", icon: <PeopleAltIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+      { name: "پرداخت معاشات کارمندان", path: "/material/payroll/payment", icon: <AttachMoneyIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+      { name: "گزارش معاشات", path: "/material/payroll/reports", icon: <ReceiptLongIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+      { name: "تنظیمات معاشات", path: "/material/payroll/settings", icon: <SettingsIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
     ],
   },
 
-  // ============================================================
-  // تنظیمات
-  // ============================================================
   {
     label: "تنظیمات",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
   },
-
   {
     name: "تنظیمات",
     icon: <CategoryIcon />,
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
     children: [
-      {
-        name: "addmedication",
-        path: "/material/addinformation",
-        icon: <VaccinesIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
-      {
-        name: "addcatagory",
-        path: "/material/addcatagory",
-        icon: <CategoryIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
-      {
-        name: "مدیریت بخش‌ها",
-        path: "/material/departments",
-        icon: <BusinessIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
-      {
-        name: "logs",
-        path: "/material/logs",
-        icon: <DescriptionIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
-      },
+      { name: "addmedication", path: "/material/addinformation", icon: <VaccinesIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
+      { name: "addcatagory", path: "/material/addcatagory", icon: <CategoryIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
+      { name: "مدیریت بخش‌ها", path: "/material/departments", icon: <BusinessIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
+      { name: "logs", path: "/material/logs", icon: <DescriptionIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN] },
     ],
   },
-
-  // ============================================================
-  // مدیریت سیستم
-  // ============================================================
   {
     label: "مدیریت سیستم",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
   },
-
   {
     name: "مدیریت سیستم",
     icon: <DashboardIcon />,
@@ -360,146 +214,138 @@ const navigations = [
         icon: <InventoryIcon />,
         roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.PHARMACIST],
         children: [
-          {
-            name: "لیست موجودی",
-            path: "/material/stock",
-            icon: <InventoryIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.PHARMACIST],
-          },
+          { name: "لیست موجودی", path: "/material/stock", icon: <InventoryIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.PHARMACIST] },
         ],
       },
-
       {
         name: "مدیریت حساب‌ها",
         icon: <AccountBalanceWalletIcon />,
         roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
         children: [
-          {
-            name: "حساب‌ها",
-            path: "/material/accounts",
-            icon: <AccountBalanceWalletIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-          },
+          { name: "حساب‌ها", path: "/material/accounts", icon: <AccountBalanceWalletIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
         ],
       },
-
       {
         name: "گزارش ها",
         icon: <AssessmentIcon />,
-        roles: [
-          ROLES.Admin,
-          ROLES.SUPER_ADMIN,
-          ROLES.ACCOUNTANT,
-          ROLES.DOCTOR,
-        ],
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.DOCTOR],
         children: [
-          {
-            name: "hospital_Report",
-            path: "/material/hospital-report",
-            icon: <LocalHospitalIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.DOCTOR],
-          },
-          {
-            name: "AccountSummaryPage",
-            path: "/material/AcountSummaryPage",
-            icon: <AccountBalanceIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-          },
-          {
-            name: "MedicationStockTable",
-            path: "/material/MedicationStockTable",
-            icon: <BarChartIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.PHARMACIST],
-          },
-          {
-            name: "SalesTable",
-            path: "/material/SalesTable",
-            icon: <BarChartIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-          },
-          {
-            name: "گزارش روزانه (جدول)",
-            path: "/material/dashboard-daily-table",
-            icon: <BarChartIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-          },
+          { name: "hospital_Report", path: "/material/hospital-report", icon: <LocalHospitalIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.DOCTOR] },
+          { name: "AccountSummaryPage", path: "/material/AcountSummaryPage", icon: <AccountBalanceIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+          { name: "MedicationStockTable", path: "/material/MedicationStockTable", icon: <BarChartIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.PHARMACIST] },
+          { name: "SalesTable", path: "/material/SalesTable", icon: <BarChartIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+          { name: "گزارش روزانه (جدول)", path: "/material/dashboard-daily-table", icon: <BarChartIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
           {
             name: "گزارشات مالی",
             icon: <BarChartIcon />,
             roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
             children: [
-              {
-                name: "فواید (جدول)",
-                path: "/reports/benefits",
-                roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-              },
+              { name: "فواید (جدول)", path: "/reports/benefits", roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
             ],
           },
         ],
       },
-
       {
         name: "charts",
         icon: <BarChartIcon />,
         roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
         children: [
-          {
-            name: "فواید (گراف)",
-            path: "/reports/benefits-chart",
-            icon: <BarChartIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-          },
-          {
-            name: "گزارش روزانه (چارت)",
-            path: "/material/dashboard-daily-chart",
-            icon: <BarChartIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-          },
-          {
-            name: "SalesChart",
-            path: "/material/SalesChart",
-            icon: <BarChartIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
-          },
-          {
-            name: "MedicationStockChart",
-            path: "/material/MedicationStockChart",
-            icon: <BarChartIcon />,
-            roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.PHARMACIST],
-          },
+          { name: "فواید (گراف)", path: "/reports/benefits-chart", icon: <BarChartIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+          { name: "گزارش روزانه (چارت)", path: "/material/dashboard-daily-chart", icon: <BarChartIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+          { name: "SalesChart", path: "/material/SalesChart", icon: <BarChartIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+          { name: "MedicationStockChart", path: "/material/MedicationStockChart", icon: <BarChartIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.PHARMACIST] },
         ],
       },
     ],
   },
-
-  // ============================================================
-  // معالجه
-  // ============================================================
   {
     label: "معالجه",
     type: "label",
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.DOCTOR],
   },
-
   {
     name: "معالجه",
     icon: <LocalHospitalIcon />,
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.DOCTOR],
     children: [
-      {
-        name: "معالجه داکتر",
-        path: "/material/examinations",
-        icon: <LocalHospitalIcon />,
-        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.DOCTOR],
-      },
+      { name: "معالجه داکتر", path: "/material/examinations", icon: <LocalHospitalIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.DOCTOR] },
     ],
   },
-
   {
     name: "documentation",
     icon: <MenuBookIcon />,
     roles: [ROLES.Admin, ROLES.SUPER_ADMIN],
   },
 ];
+
+// ============================================================
+// ✅ Helper: والد منطقی برای Breadcrumb
+//
+// ⚠️ توجه: این تابع فقط برای نمایش Breadcrumb استفاده می‌شود.
+//    برای دکمه «بازگشت به صفحه قبلی» از location.state.previousPath
+//    در useBackNavigation استفاده می‌شود (نه از این تابع).
+// ============================================================
+
+export const ROOT_PATHS = [
+  "/dashboard/default",
+  "/material/payroll",
+  "/material/lab-hematology",
+  "/material/radiology",
+  "/material/pharmacy",
+  "/material/examinations",
+  "/material/users",
+  "/material/registrations",
+  "/material/parchases",
+  "/material/sales_insert",
+  "/material/stock",
+  "/material/accounts",
+];
+
+const PARENT_OVERRIDES = {
+  "/material/payroll/employees": "/material/payroll",
+  "/material/payroll/payment": "/material/payroll",
+  "/material/payroll/reports": "/material/payroll",
+  "/material/payroll/settings": "/material/payroll",
+  "/material/pharmacy/sales": "/material/pharmacy",
+  "/material/pharmacy/prescriptions": "/material/pharmacy",
+  "/material/pharmacy/inventory": "/material/pharmacy",
+  "/material/pharmacy/medications": "/material/pharmacy",
+  "/material/pharmacy/history": "/material/pharmacy",
+  "/material/pharmacy/executions": "/material/pharmacy",
+  "/material/lab-results": "/material/lab-hematology",
+};
+
+/**
+ * والد منطقی یک مسیر (فقط برای Breadcrumb).
+ */
+export function getLogicalParentPath(pathname) {
+  if (!pathname) return null;
+  const path = pathname.replace(/\/+$/, "") || "/";
+
+  if (ROOT_PATHS.includes(path)) return null;
+  if (PARENT_OVERRIDES[path]) return PARENT_OVERRIDES[path];
+
+  const findParent = (items, parentPath = null) => {
+    for (const item of items) {
+      if (item.path === path) return parentPath;
+      if (item.children) {
+        const found = findParent(item.children, item.path ?? parentPath);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  };
+
+  const parent = findParent(navigations);
+  if (parent) return parent;
+
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length <= 2) return null;
+  return "/" + segments.slice(0, -1).join("/");
+}
+
+export function shouldShowBackButton(pathname) {
+  return getLogicalParentPath(pathname) !== null;
+}
 
 export default navigations;

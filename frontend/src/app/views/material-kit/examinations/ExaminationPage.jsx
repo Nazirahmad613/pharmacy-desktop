@@ -15,15 +15,15 @@ import Admission from "./admission/Admission";
 import OperationRoom from "./operations/OperationRoom";
 
 const STEPS = [
-  { key: 'queue', label: 'صف انتظار', icon: '📋', color: '#3b82f6' },
-  { key: 'examination', label: 'معاینه', icon: '🩺', color: '#3b82f6' },
-  { key: 'laboratory', label: 'لابراتوار', icon: '🔬', color: '#8b5cf6' },
-  { key: 'radiology', label: 'رادیولوژی', icon: '📷', color: '#ec4899' },
-  { key: 'operation', label: 'عملیات', icon: '🔪', color: '#dc2626' },
-  { key: 'pres_insert', label: 'نسخه', icon: '📝', color: '#10b981' },
-  { key: 'followup', label: 'ملاقات بعدی', icon: '📅', color: '#f59e0b' },
-  { key: 'admission', label: 'بستری', icon: '🏥', color: '#ef4444' },
-  { key: 'history', label: 'تاریخچه', icon: '📜', color: '#8b5cf6' }
+  { key: 'queue', label: 'صف انتظار', icon: '📋', color: '#2563eb' },
+  { key: 'examination', label: 'معاینه', icon: '🩺', color: '#0284c7' },
+  { key: 'laboratory', label: 'لابراتوار', icon: '🔬', color: '#6366f1' },
+  { key: 'radiology', label: 'رادیولوژی', icon: '📷', color: '#0ea5e9' },
+  { key: 'operation', label: 'عملیات', icon: '🔪', color: '#e11d48' },
+  { key: 'pres_insert', label: 'نسخه', icon: '📝', color: '#059669' },
+  { key: 'followup', label: 'ملاقات بعدی', icon: '📅', color: '#d97706' },
+  { key: 'admission', label: 'بستری', icon: '🏥', color: '#dc2626' },
+  { key: 'history', label: 'تاریخچه', icon: '📜', color: '#7c3aed' }
 ];
 
 const statusLabelsMap = {
@@ -41,14 +41,14 @@ const SELECTED_PATIENT_KEY = 'treatment_selected_patient';
 const ACTIVE_TAB_KEY = 'treatment_active_tab';
 
 const C = {
-  pageBg: '#f1f5f9',
+  pageBg: '#f8fafc',
   cardBg: '#ffffff',
-  softBg: '#f8fafc',
+  softBg: '#f1f5f9',
   border: '#e2e8f0',
-  textPrimary: '#1e293b',
-  textSecondary: '#64748b',
+  textPrimary: '#0f172a',
+  textSecondary: '#475569',
   textMuted: '#94a3b8',
-  accent: '#3b82f6',
+  accent: '#2563eb',
   accentSoft: '#eff6ff',
   success: '#10b981',
   successSoft: '#ecfdf5',
@@ -58,8 +58,9 @@ const C = {
   dangerSoft: '#fef2f2',
   purple: '#8b5cf6',
   purpleSoft: '#f5f3ff',
-  shadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
-  shadowMd: '0 2px 8px rgba(15, 23, 42, 0.08)',
+  shadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
+  shadowMd: '0 10px 15px -3px rgba(37, 99, 235, 0.1), 0 4px 6px -4px rgba(37, 99, 235, 0.05)',
+  glassBorder: 'rgba(255, 255, 255, 0.7)',
 };
 
 const STEP_REF_TABLE = {
@@ -72,23 +73,17 @@ const STEP_REF_TABLE = {
   'admission': 'admission_requests',
 };
 
-// ============================================================
-// ✅ تابع کمکی: استخراج refId از پاسخ API (توسعه‌یافته)
-// ============================================================
 const extractRefId = (returnedData) => {
   if (!returnedData || typeof returnedData !== 'object') return null;
 
-  // اگر مستقیم id دارد
   if (returnedData.id != null) return returnedData.id;
   if (returnedData.pres_id != null) return returnedData.pres_id;
 
-  // ✅ چک کردن data نستد
   const inner = returnedData.data && typeof returnedData.data === 'object' 
     ? returnedData.data 
     : {};
 
   const candidates = [
-    // مستقیم
     returnedData.examination?.id,
     returnedData.laboratory_request?.id,
     returnedData.laboratory?.id,
@@ -100,7 +95,6 @@ const extractRefId = (returnedData) => {
     returnedData.operation?.id,
     returnedData.operation_request?.id,
     returnedData.followup?.id,
-    // در inner.data
     inner.id,
     inner.pres_id,
     inner.examination?.id,
@@ -114,7 +108,6 @@ const extractRefId = (returnedData) => {
     inner.operation?.id,
     inner.operation_request?.id,
     inner.followup?.id,
-    // آرایه‌ها
     Array.isArray(returnedData.tests) ? returnedData.tests[0]?.id : null,
     Array.isArray(returnedData.radiology) ? returnedData.radiology[0]?.id : null,
     Array.isArray(returnedData.all_tests) ? returnedData.all_tests[0]?.id : null,
@@ -128,9 +121,6 @@ const extractRefId = (returnedData) => {
   return candidates.find((c) => c != null) ?? null;
 };
 
-// ============================================================
-// ✅ تابع کمکی: پاک‌سازی داده قبل از ارسال به سرور
-// ============================================================
 const sanitizeForApi = (obj) => {
   if (obj == null) return obj;
   if (Array.isArray(obj)) return obj.map(sanitizeForApi);
@@ -138,7 +128,6 @@ const sanitizeForApi = (obj) => {
     if (obj instanceof File || obj instanceof Blob || obj instanceof Date) return obj;
     const out = {};
     for (const k of Object.keys(obj)) {
-      // حذف فیلدهای غیرضروری
       if (k === '__proto__' || k === 'constructor') continue;
       out[k] = sanitizeForApi(obj[k]);
     }
@@ -147,12 +136,7 @@ const sanitizeForApi = (obj) => {
   return obj;
 };
 
-// ============================================================
-// ✅ تابع کمکی: ساخت snapshot کامل برای هر مرحله
-//    با استخراج فیلدهای خاص لابراتوار/رادیولوژی/عملیات/نسخه
-// ============================================================
 const buildHistorySnapshot = (stepKey, payload, returnedData, currentStepLabel) => {
-  // ✅ پاسخ API معمولاً در data است
   const responseData = returnedData?.data && typeof returnedData.data === 'object'
     ? returnedData.data
     : (returnedData && typeof returnedData === 'object' ? returnedData : {});
@@ -165,46 +149,19 @@ const buildHistorySnapshot = (stepKey, payload, returnedData, currentStepLabel) 
     step_label: currentStepLabel,
   };
 
-  // ==========================================================
-  // ✅ لابراتوار
-  // ==========================================================
   if (stepKey === 'laboratory') {
-    base.test_name = 
-      payload.test_name 
-      || responseData.test_name 
-      || responseData.test_type 
-      || null;
-    base.test_type = 
-      payload.test_type 
-      || responseData.test_type 
-      || null;
-    base.test_description = 
-      payload.test_description 
-      || responseData.test_description 
-      || null;
-    base.clinical_indication = 
-      payload.clinical_indication 
-      || responseData.clinical_indication 
-      || null;
-    base.special_notes = 
-      payload.special_notes 
-      || responseData.special_notes 
-      || null;
-    base.barcode = 
-      responseData.barcode 
-      || payload.barcode 
-      || null;
+    base.test_name = payload.test_name || responseData.test_name || responseData.test_type || null;
+    base.test_type = payload.test_type || responseData.test_type || null;
+    base.test_description = payload.test_description || responseData.test_description || null;
+    base.clinical_indication = payload.clinical_indication || responseData.clinical_indication || null;
+    base.special_notes = payload.special_notes || responseData.special_notes || null;
+    base.barcode = responseData.barcode || payload.barcode || null;
 
-    // اگر tests array برگشت
     if (responseData.tests && Array.isArray(responseData.tests) && responseData.tests.length > 0) {
       base.tests = responseData.tests;
       base.tests_count = responseData.tests.length;
       if (!base.test_name) {
-        base.test_name = 
-          responseData.tests[0]?.test_name 
-          || responseData.tests[0]?.test_type 
-          || responseData.tests[0]?.name 
-          || null;
+        base.test_name = responseData.tests[0]?.test_name || responseData.tests[0]?.test_type || responseData.tests[0]?.name || null;
       }
     }
     if (responseData.all_tests && Array.isArray(responseData.all_tests)) {
@@ -212,42 +169,15 @@ const buildHistorySnapshot = (stepKey, payload, returnedData, currentStepLabel) 
     }
   }
 
-  // ==========================================================
-  // ✅ رادیولوژی
-  // ==========================================================
   if (stepKey === 'radiology') {
-    base.radiology_type = 
-      payload.radiology_type 
-      || responseData.radiology_type 
-      || null;
-    base.body_part = 
-      payload.body_part 
-      || responseData.body_part 
-      || null;
-    base.reason = 
-      payload.reason 
-      || responseData.reason 
-      || null;
-    base.notes = 
-      payload.notes 
-      || responseData.notes 
-      || null;
-    base.priority = 
-      payload.priority 
-      || responseData.priority 
-      || 'normal';
-    base.clinical_indication = 
-      payload.clinical_indication 
-      || responseData.clinical_indication 
-      || null;
-    base.special_notes = 
-      payload.special_notes 
-      || responseData.special_notes 
-      || null;
-    base.barcode = 
-      responseData.barcode 
-      || payload.barcode 
-      || null;
+    base.radiology_type = payload.radiology_type || responseData.radiology_type || null;
+    base.body_part = payload.body_part || responseData.body_part || null;
+    base.reason = payload.reason || responseData.reason || null;
+    base.notes = payload.notes || responseData.notes || null;
+    base.priority = payload.priority || responseData.priority || 'normal';
+    base.clinical_indication = payload.clinical_indication || responseData.clinical_indication || null;
+    base.special_notes = payload.special_notes || responseData.special_notes || null;
+    base.barcode = responseData.barcode || payload.barcode || null;
 
     if (responseData.radiology && Array.isArray(responseData.radiology)) {
       base.radiology_list = responseData.radiology;
@@ -257,60 +187,22 @@ const buildHistorySnapshot = (stepKey, payload, returnedData, currentStepLabel) 
     }
   }
 
-  // ==========================================================
-  // ✅ عملیات
-  // ==========================================================
   if (stepKey === 'operation') {
-    base.surgery_type = 
-      payload.surgery_type 
-      || responseData.surgery_type 
-      || null;
-    base.operation_type = 
-      payload.operation_type 
-      || responseData.operation_type 
-      || null;
-    base.surgeon = 
-      payload.surgeon 
-      || responseData.surgeon 
-      || null;
-    base.surgeon_name = 
-      payload.surgeon_name 
-      || responseData.surgeon_name 
-      || null;
-    base.operation_date = 
-      payload.operation_date 
-      || responseData.operation_date 
-      || null;
-    base.scheduled_date = 
-      payload.scheduled_date 
-      || responseData.scheduled_date 
-      || null;
-    base.operation_notes = 
-      payload.operation_notes 
-      || responseData.operation_notes 
-      || null;
-    base.room_name = 
-      payload.room_name 
-      || responseData.room_name 
-      || null;
+    base.surgery_type = payload.surgery_type || responseData.surgery_type || null;
+    base.operation_type = payload.operation_type || responseData.operation_type || null;
+    base.surgeon = payload.surgeon || responseData.surgeon || null;
+    base.surgeon_name = payload.surgeon_name || responseData.surgeon_name || null;
+    base.operation_date = payload.operation_date || responseData.operation_date || null;
+    base.scheduled_date = payload.scheduled_date || responseData.scheduled_date || null;
+    base.operation_notes = payload.operation_notes || responseData.operation_notes || null;
+    base.room_name = payload.room_name || responseData.room_name || null;
   }
 
-  // ==========================================================
-  // ✅ نسخه
-  // ==========================================================
   if (stepKey === 'pres_insert' || stepKey === 'prescription') {
-    const items = 
-      responseData.items 
-      || payload.items 
-      || responseData.prescription?.items 
-      || [];
+    const items = responseData.items || payload.items || responseData.prescription?.items || [];
     base.items = items;
     base.items_count = items.length;
-
-    base.medicines = 
-      responseData.medicines 
-      || payload.medicines 
-      || null;
+    base.medicines = responseData.medicines || payload.medicines || null;
 
     if (responseData.prescription) {
       base.prescription = responseData.prescription;
@@ -320,79 +212,26 @@ const buildHistorySnapshot = (stepKey, payload, returnedData, currentStepLabel) 
     }
   }
 
-  // ==========================================================
-  // ✅ معاینه
-  // ==========================================================
   if (stepKey === 'examination') {
-    base.diagnosis = 
-      payload.diagnosis 
-      || responseData.diagnosis 
-      || null;
-    base.weight = 
-      payload.weight 
-      || responseData.weight 
-      || null;
-    base.blood_pressure = 
-      payload.blood_pressure 
-      || responseData.blood_pressure 
-      || null;
-    base.temperature = 
-      payload.temperature 
-      || responseData.temperature 
-      || null;
-    base.oxygen = 
-      payload.oxygen 
-      || responseData.oxygen 
-      || null;
-    base.clinical_notes = 
-      payload.clinical_notes 
-      || responseData.clinical_notes 
-      || null;
+    base.diagnosis = payload.diagnosis || responseData.diagnosis || null;
+    base.weight = payload.weight || responseData.weight || null;
+    base.blood_pressure = payload.blood_pressure || responseData.blood_pressure || null;
+    base.temperature = payload.temperature || responseData.temperature || null;
+    base.oxygen = payload.oxygen || responseData.oxygen || null;
+    base.clinical_notes = payload.clinical_notes || responseData.clinical_notes || null;
   }
 
-  // ==========================================================
-  // ✅ بستری
-  // ==========================================================
   if (stepKey === 'admission') {
-    base.ward_id = 
-      payload.ward_id 
-      || responseData.ward_id 
-      || null;
-    base.ward_name = 
-      payload.ward_name 
-      || responseData.ward_name 
-      || responseData.ward?.name 
-      || null;
-    base.admission_date = 
-      payload.admission_date 
-      || responseData.admission_date 
-      || null;
-    base.diagnosis = 
-      payload.diagnosis 
-      || responseData.diagnosis 
-      || null;
-    base.admission_instructions = 
-      payload.admission_instructions 
-      || responseData.admission_instructions 
-      || null;
-    base.special_notes = 
-      payload.special_notes 
-      || responseData.special_notes 
-      || null;
-    base.priority = 
-      payload.priority 
-      || responseData.priority 
-      || 'normal';
+    base.ward_id = payload.ward_id || responseData.ward_id || null;
+    base.ward_name = payload.ward_name || responseData.ward_name || responseData.ward?.name || null;
+    base.admission_date = payload.admission_date || responseData.admission_date || null;
+    base.diagnosis = payload.diagnosis || responseData.diagnosis || null;
+    base.admission_instructions = payload.admission_instructions || responseData.admission_instructions || null;
+    base.special_notes = payload.special_notes || responseData.special_notes || null;
+    base.priority = payload.priority || responseData.priority || 'normal';
   }
 
-  // ==========================================================
-  // ✅ فیس (برای همه مراحل)
-  // ==========================================================
-  const fee = 
-    responseData?.fee 
-    || returnedData?.fee 
-    || responseData?.data?.fee 
-    || null;
+  const fee = responseData?.fee || returnedData?.fee || responseData?.data?.fee || null;
   if (fee) {
     base.amount = fee.amount || fee.total_amount || base.amount;
     base.paid_amount = fee.paid_amount || base.paid_amount;
@@ -400,15 +239,9 @@ const buildHistorySnapshot = (stepKey, payload, returnedData, currentStepLabel) 
     base.payment_status = fee.payment_status || base.payment_status;
   }
 
-  // ==========================================================
-  // ✅ بارکد عمومی
-  // ==========================================================
   if (responseData?.barcode) base.barcode = responseData.barcode;
   else if (returnedData?.barcode) base.barcode = returnedData.barcode;
 
-  // ==========================================================
-  // ✅ PDF
-  // ==========================================================
   if (responseData?.pdf_url) base.pdf_url = responseData.pdf_url;
   else if (returnedData?.pdf_url) base.pdf_url = returnedData.pdf_url;
 
@@ -438,9 +271,6 @@ export default function TreatmentPage() {
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { selectedPatientIdRef.current = selectedPatientId; }, [selectedPatientId]);
 
-  // ============================================================
-  // ✅ همگام‌سازی تاریخچه — نسخه بهبود یافته
-  // ============================================================
   const syncTreatmentHistory = async (
     regId,
     stepKey = null,
@@ -479,32 +309,10 @@ export default function TreatmentPage() {
         payload.ref_table = refTable || STEP_REF_TABLE[stepKey] || null;
       }
 
-      console.log('📤 syncTreatmentHistory payload:', {
-        reg_id: payload.reg_id,
-        step_key: payload.step_key,
-        ref_id: payload.ref_id,
-        ref_table: payload.ref_table,
-        finalize: payload.finalize,
-        step_data_keys: payload.step_data ? Object.keys(payload.step_data) : [],
-      });
-
       const response = await api.post('/treatment-history/sync', payload);
 
       if (response.data?.success) {
-        console.log('✅ Treatment history synced:', regId, finalize ? 'FINALIZED' : (stepKey || 'main'), {
-          item_id: response.data?.item?.id,
-          history_id: response.data?.data?.history_id,
-          counters: {
-            exam: response.data?.data?.examinations_count,
-            lab: response.data?.data?.laboratory_tests_count,
-            rad: response.data?.data?.radiology_requests_count,
-            pres: response.data?.data?.prescriptions_count,
-            adm: response.data?.data?.admissions_count,
-          },
-        });
         return response.data.data;
-      } else {
-        console.warn('⚠️ sync returned success=false:', response.data?.message);
       }
     } catch (err) {
       console.warn('⚠️ Treatment history sync failed (non-blocking):', err?.response?.data?.message || err.message);
@@ -932,7 +740,7 @@ export default function TreatmentPage() {
       let url = "";
       let payload = { ...data };
 
-            switch (currentStep.key) {
+      switch (currentStep.key) {
         case "examination":
           url = `/doctor/examination/${regId}`;
           break;
@@ -968,11 +776,6 @@ export default function TreatmentPage() {
           url = `/doctor/prescription/${regId}`;
           break;
 
-        // ============================================================
-        // ✅ followup — اصلاح شد
-        // قبل: url = `/doctor/followup/${regId}`   ❌ POST به /doctor/followup/9 → 405
-        // بعد:  url = `/doctor/follow-up`           ✅ POST به /doctor/follow-up → 201
-        // ============================================================
         case "followup":
           url = `/doctor/follow-up`;
           payload = {
@@ -1010,12 +813,6 @@ export default function TreatmentPage() {
           url = `/doctor/${currentStep.key}/save`;
       }
 
-      console.log('📤 saveCurrentStep payload:', {
-        url,
-        step: currentStep.key,
-        payload_keys: Object.keys(payload),
-      });
-
       const response = await api.post(url, payload);
 
       if (!response.data?.success) {
@@ -1024,7 +821,6 @@ export default function TreatmentPage() {
 
       toast.success(`✅ ${currentStep.label} با موفقیت ثبت شد`);
 
-      // ✅ همگام‌سازی با تاریخچه
       try {
         const returnedData = response.data?.data || response.data || payload;
         const refId = extractRefId(returnedData);
@@ -1037,25 +833,13 @@ export default function TreatmentPage() {
           currentStep.label
         );
 
-        console.log('🔄 Syncing history:', {
-          reg_id: regId,
-          step_key: currentStep.key,
-          ref_id: refId,
-          ref_table: refTable,
-          snapshot_keys: Object.keys(historySnapshot),
-        });
-
-        const syncResult = await syncTreatmentHistory(
+        await syncTreatmentHistory(
           regId,
           currentStep.key,
           historySnapshot,
           refId,
           refTable
         );
-
-        if (!syncResult) {
-          console.warn('⚠️ History sync returned null — check backend logs');
-        }
       } catch (histErr) {
         console.warn('⚠️ History sync failed but main step saved:', histErr);
       }
@@ -1189,9 +973,6 @@ export default function TreatmentPage() {
     toast.info(`↩️ بازگشت به مرحله ${STEPS[prevIndex].label}`);
   };
 
-  // ============================================================
-  // ✅ ختم معالجه — endpoint صحیح: /doctor/complete/{reg_id}
-  // ============================================================
   const finishTreatment = async () => {
     if (!selectedPatientId) {
       toast.error("❌ مریضی انتخاب نشده است");
@@ -1216,41 +997,31 @@ export default function TreatmentPage() {
     const errors = [];
 
     try {
-      // 1. نهایی‌سازی تاریخچه (non-blocking)
       try {
         await syncTreatmentHistory(selectedPatientId, null, null, null, null, true);
-        console.log('✅ Treatment history finalized');
       } catch (finalizeErr) {
-        console.warn('⚠️ Finalize failed (non-blocking):', finalizeErr);
         errors.push(`تاریخچه: ${finalizeErr?.response?.data?.message || finalizeErr?.message}`);
       }
 
-      // 2. ختم معالجه
       try {
         await api.post(`/doctor/complete/${selectedPatientId}`, {
           completed_steps: progress.completedSteps,
           start_time: progress.startTime,
           end_time: new Date().toISOString()
         });
-        console.log('✅ Treatment completed');
       } catch (completeErr) {
-        console.warn('⚠️ treatment/complete failed:', completeErr);
         errors.push(`ختم معالجه: ${completeErr?.response?.data?.message || completeErr?.message}`);
       }
 
-      // 3. به‌روزرسانی وضعیت مراجعه
       try {
         await api.put(`/registrations/${selectedPatientId}/status`, {
           visit_status: 'Completed'
         });
-        console.log('✅ Registration status updated');
       } catch (statusErr) {
-        console.warn('⚠️ update status failed:', statusErr);
         errors.push(`وضعیت: ${statusErr?.response?.data?.message || statusErr?.message}`);
       }
 
       if (errors.length > 0) {
-        console.error('❌ Errors during finalize:', errors);
         toast.warning(
           `⚠️ بعضی از عملیات ناقص بود: ${errors.join(' | ')}`,
           { autoClose: 8000 }
@@ -1371,103 +1142,55 @@ export default function TreatmentPage() {
     const gender = patient.gender === 'male' ? 'مرد' : patient.gender === 'female' ? 'زن' : '-';
 
     return (
-      <div style={{
-        backgroundColor: C.cardBg,
-        padding: '15px 20px',
-        borderRadius: '10px',
-        marginBottom: '20px',
-        border: `1px solid ${C.border}`,
-        borderRight: `4px solid ${C.success}`,
-        boxShadow: C.shadow
+      <div className="glass-panel" style={{
+        padding: '18px 24px',
+        borderRadius: '16px',
+        marginBottom: '24px',
+        borderRight: '5px solid #0284c7',
       }}>
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
-          marginBottom: '12px',
-          borderBottom: `1px solid ${C.border}`,
-          paddingBottom: '10px'
+          gap: '12px',
+          marginBottom: '16px',
+          borderBottom: '1px solid rgba(226, 232, 240, 0.7)',
+          paddingBottom: '12px'
         }}>
-          <span style={{ fontSize: '22px' }}>👤</span>
-          <h4 style={{ color: C.success, margin: 0, fontSize: '15px', fontWeight: 'bold' }}>
-            معلومات مریض
+          <span style={{ fontSize: '24px' }}>👤</span>
+          <h4 style={{ color: '#0369a1', margin: 0, fontSize: '16px', fontWeight: '800' }}>
+            معلومات و مشخصات مریض
           </h4>
         </div>
 
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '12px'
+          gap: '14px'
         }}>
-          <div style={{
-            backgroundColor: C.softBg,
-            padding: '10px 14px',
-            borderRadius: '8px',
-            border: `1px solid ${C.border}`
-          }}>
-            <div style={{ fontSize: '11px', color: C.textSecondary, marginBottom: '4px' }}>
-              👤 نام و تخلص
-            </div>
-            <div style={{ fontSize: '14px', color: C.textPrimary, fontWeight: 'bold' }}>
-              {fullName}
-            </div>
+          <div className="glass-stat-card">
+            <div className="stat-label">👤 نام و تخلص</div>
+            <div className="stat-value">{fullName}</div>
           </div>
 
-          <div style={{
-            backgroundColor: C.softBg,
-            padding: '10px 14px',
-            borderRadius: '8px',
-            border: `1px solid ${C.border}`
-          }}>
-            <div style={{ fontSize: '11px', color: C.textSecondary, marginBottom: '4px' }}>
-              🆔 شماره تذکره
-            </div>
-            <div style={{ fontSize: '14px', color: C.textPrimary, fontWeight: 'bold' }}>
-              {nationalId}
-            </div>
+          <div className="glass-stat-card">
+            <div className="stat-label">🆔 شماره تذکره</div>
+            <div className="stat-value">{nationalId}</div>
           </div>
 
-          <div style={{
-            backgroundColor: C.softBg,
-            padding: '10px 14px',
-            borderRadius: '8px',
-            border: `1px solid ${C.border}`
-          }}>
-            <div style={{ fontSize: '11px', color: C.textSecondary, marginBottom: '4px' }}>
-              📋 شماره مراجعه
-            </div>
-            <div style={{ fontSize: '14px', color: '#b45309', fontWeight: 'bold' }}>
-              #{visitNumber}
-            </div>
+          <div className="glass-stat-card">
+            <div className="stat-label">📋 شماره مراجعه</div>
+            <div className="stat-value" style={{ color: '#0284c7' }}>#{visitNumber}</div>
           </div>
 
-          <div style={{
-            backgroundColor: C.softBg,
-            padding: '10px 14px',
-            borderRadius: '8px',
-            border: `1px solid ${C.border}`
-          }}>
-            <div style={{ fontSize: '11px', color: C.textSecondary, marginBottom: '4px' }}>
-              ⚧ جنسیت
-            </div>
-            <div style={{ fontSize: '14px', color: C.textPrimary, fontWeight: 'bold' }}>
-              {gender}
-            </div>
+          <div className="glass-stat-card">
+            <div className="stat-label">⚧ جنسیت</div>
+            <div className="stat-value">{gender}</div>
           </div>
 
           {phone !== '-' && (
-            <div style={{
-              backgroundColor: C.softBg,
-              padding: '10px 14px',
-              borderRadius: '8px',
-              border: `1px solid ${C.border}`
-            }}>
-              <div style={{ fontSize: '11px', color: C.textSecondary, marginBottom: '4px' }}>
-                📞 شماره تماس
-              </div>
-              <div style={{ fontSize: '14px', color: C.textPrimary, fontWeight: 'bold' }}>
-                {phone}
-              </div>
+            <div className="glass-stat-card">
+              <div className="stat-label">📞 شماره تماس</div>
+              <div className="stat-value">{phone}</div>
             </div>
           )}
         </div>
@@ -1501,24 +1224,28 @@ export default function TreatmentPage() {
 
     return (
       <div>
-        <div style={{ marginBottom: '20px' }}>
-          <h4 style={{ color: C.textPrimary, marginBottom: '12px', fontSize: '15px', borderBottom: `2px solid ${C.border}`, paddingBottom: '10px' }}>
-            📋 مریضان در مرحله {STEPS.find(s => s.key === activeTab)?.label}
+        <div style={{ marginBottom: '24px' }}>
+          <h4 style={{ 
+            color: C.textPrimary, 
+            marginBottom: '14px', 
+            fontSize: '15px', 
+            fontWeight: '700',
+            borderBottom: `1.5px solid ${C.border}`, 
+            paddingBottom: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <span>📋</span>
+            <span>مریضان در مرحله {STEPS.find(s => s.key === activeTab)?.label}</span>
           </h4>
           {stagePatients.length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              padding: '30px',
-              color: C.textSecondary,
-              background: C.softBg,
-              borderRadius: '10px',
-              border: `1px dashed ${C.border}`
-            }}>
-              <div style={{ fontSize: '40px', marginBottom: '8px' }}>📭</div>
-              <div>هیچ مریضی در این مرحله وجود ندارد</div>
+            <div className="glass-empty">
+              <div style={{ fontSize: '44px', marginBottom: '10px' }}>📭</div>
+              <div style={{ fontWeight: '500' }}>هیچ مریضی در این مرحله وجود ندارد</div>
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               {stagePatients.map(p => {
                 const isSelected = selectedPatientId === p.reg_id;
                 return (
@@ -1531,30 +1258,17 @@ export default function TreatmentPage() {
                       localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
                       localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
                     }}
-                    style={{
-                      backgroundColor: isSelected ? C.accentSoft : C.cardBg,
-                      padding: '12px 18px',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      border: isSelected ? `2px solid ${C.accent}` : `1px solid ${C.border}`,
-                      transition: 'all 0.3s',
-                      position: 'relative',
-                      minWidth: '220px',
-                      boxShadow: isSelected ? C.shadowMd : C.shadow
-                    }}
+                    className={`patient-card-pill ${isSelected ? 'selected' : ''}`}
                   >
                     <div>
-                      <div style={{ fontWeight: 'bold', color: isSelected ? '#1e40af' : C.textPrimary, fontSize: '14px' }}>
+                      <div style={{ fontWeight: '700', color: isSelected ? '#1e40af' : C.textPrimary, fontSize: '14px' }}>
                         {p.patient?.first_name || ''} {p.patient?.last_name || ''}
                       </div>
-                      <div style={{ fontSize: '11px', color: C.textSecondary, marginTop: '3px' }}>
+                      <div style={{ fontSize: '11px', color: C.textSecondary, marginTop: '4px' }}>
                         #{p.visit_number || p.id} | {p.patient?.national_id || '-'}
                         {activeTab === 'admission' && p.status && (
                           <span style={{
-                            marginLeft: '8px',
+                            marginRight: '6px',
                             color: p.status === 'admitted' ? C.success : C.warning,
                             fontWeight: 'bold'
                           }}>
@@ -1567,42 +1281,10 @@ export default function TreatmentPage() {
                       <span style={{ color: C.success, fontSize: '16px', marginRight: 'auto' }}>✅</span>
                     )}
                     {activeTab === 'laboratory' && p.has_lab_result && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '-5px',
-                        right: '-5px',
-                        backgroundColor: C.success,
-                        color: 'white',
-                        borderRadius: '50%',
-                        width: '22px',
-                        height: '22px',
-                        fontSize: '11px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        border: '2px solid #ffffff'
-                      }}>
-                        📋
-                      </span>
+                      <span className="badge-bubble">📋</span>
                     )}
                     {activeTab === 'radiology' && p.has_rad_result && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '-5px',
-                        right: '-5px',
-                        backgroundColor: C.success,
-                        color: 'white',
-                        borderRadius: '50%',
-                        width: '22px',
-                        height: '22px',
-                        fontSize: '11px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        border: '2px solid #ffffff'
-                      }}>
-                        📷
-                      </span>
+                      <span className="badge-bubble">📷</span>
                     )}
                   </div>
                 );
@@ -1612,20 +1294,13 @@ export default function TreatmentPage() {
         </div>
 
         {selectedPatientId && selectedRegistration ? (
-          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '20px' }}>
+          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '22px' }}>
             {renderSelectedPatientForm()}
           </div>
         ) : (
-          <div style={{
-            textAlign: 'center',
-            padding: '40px',
-            color: C.textSecondary,
-            background: C.softBg,
-            borderRadius: '10px',
-            border: `1px dashed ${C.border}`
-          }}>
-            <div style={{ fontSize: '48px', marginBottom: '12px' }}>👤</div>
-            <div>برای مشاهده فرم، یک مریض را از لیست بالا انتخاب کنید</div>
+          <div className="glass-empty" style={{ padding: '48px 20px' }}>
+            <div style={{ fontSize: '50px', marginBottom: '14px' }}>👤</div>
+            <div style={{ fontSize: '15px', fontWeight: '500' }}>برای مشاهده جزئیات و ادامه معالجه، یک مریض را انتخاب کنید</div>
           </div>
         )}
       </div>
@@ -1793,24 +1468,17 @@ export default function TreatmentPage() {
 
         if (!operationRegId) {
           return (
-            <div style={{ textAlign: 'center', padding: '40px', color: C.danger, background: C.cardBg, borderRadius: '10px' }}>
+            <div className="glass-empty" style={{ borderColor: 'rgba(239, 68, 68, 0.3)', color: C.danger }}>
               <div style={{ fontSize: '48px', marginBottom: '10px' }}>⚠️</div>
-              <p>شناسه مراجعه یافت نشد. لطفاً یک مریض را انتخاب کنید.</p>
+              <p style={{ fontWeight: 'bold' }}>شناسه مراجعه یافت نشد. لطفاً یک مریض را انتخاب کنید.</p>
               <button
                 onClick={() => {
                   setActiveTab('queue');
                   setSelectedPatientId(null);
                   setSelectedRegistration(null);
                 }}
-                style={{
-                  marginTop: '20px',
-                  padding: '10px 20px',
-                  backgroundColor: C.accent,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer'
-                }}
+                className="btn-primary"
+                style={{ marginTop: '16px' }}
               >
                 بازگشت به صف انتظار
               </button>
@@ -1846,12 +1514,7 @@ export default function TreatmentPage() {
         return (
           <>
             {renderPatientInfoHeader()}
-            <div style={{
-              backgroundColor: C.cardBg,
-              borderRadius: '10px',
-              padding: '5px',
-              color: C.textPrimary
-            }}>
+            <div style={{ color: C.textPrimary }}>
               <PrescriptionRequest
                 registration={selectedRegistration}
                 regId={regId}
@@ -1950,40 +1613,38 @@ export default function TreatmentPage() {
     const progress = Math.round((completed / totalSteps) * 100);
 
     return (
-      <div style={{
-        backgroundColor: C.cardBg,
-        padding: '15px 20px',
-        borderRadius: '10px',
+      <div className="glass-panel" style={{
+        padding: '16px 22px',
+        borderRadius: '16px',
         marginBottom: '20px',
-        border: `1px solid ${C.border}`,
-        boxShadow: C.shadow
       }}>
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '10px',
+          marginBottom: '14px',
           flexWrap: 'wrap',
-          gap: '10px'
+          gap: '12px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '20px' }}>📊</span>
-            <span style={{ color: C.textPrimary, fontSize: '14px', fontWeight: 'bold' }}>
+            <span style={{ fontSize: '22px' }}>📊</span>
+            <span style={{ color: C.textPrimary, fontSize: '14px', fontWeight: '700' }}>
               {selectedRegistration?.patient?.first_name || ''} {selectedRegistration?.patient?.last_name || ''} —
-              پیشرفت: {completed} از {totalSteps} مرحله
+              پیشرفت درمان: {completed} از {totalSteps} مرحله
             </span>
             <span style={{
-              backgroundColor: progress === 100 ? C.success : C.accent,
+              background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
               color: 'white',
-              padding: '3px 12px',
-              borderRadius: '12px',
+              padding: '3px 14px',
+              borderRadius: '20px',
               fontSize: '12px',
-              fontWeight: 'bold'
+              fontWeight: '800',
+              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)'
             }}>
               {progress}%
             </span>
           </div>
-          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {STEPS.slice(1).map((step) => {
               const isCompleted = currentProgress.completedSteps?.includes(step.key);
               const isActive = step.key === activeTab;
@@ -1993,14 +1654,15 @@ export default function TreatmentPage() {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '3px',
-                    padding: '3px 10px',
-                    borderRadius: '10px',
-                    backgroundColor: isCompleted ? C.successSoft : isActive ? C.accentSoft : C.softBg,
+                    gap: '4px',
+                    padding: '4px 10px',
+                    borderRadius: '12px',
+                    backgroundColor: isCompleted ? C.successSoft : isActive ? C.accentSoft : 'rgba(241, 245, 249, 0.8)',
                     color: isCompleted ? '#065f46' : isActive ? '#1e40af' : C.textSecondary,
-                    fontSize: '10px',
-                    fontWeight: isActive ? 'bold' : 'normal',
-                    border: isActive ? `1px solid ${C.accent}` : `1px solid ${C.border}`
+                    fontSize: '11px',
+                    fontWeight: isActive ? '700' : '500',
+                    border: isActive ? `1.5px solid ${C.accent}` : `1px solid ${C.border}`,
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
                   }}
                 >
                   {isCompleted ? '✅' : isActive ? '🔄' : '⏳'}
@@ -2012,17 +1674,19 @@ export default function TreatmentPage() {
         </div>
         <div style={{
           width: '100%',
-          height: '8px',
-          backgroundColor: C.border,
-          borderRadius: '4px',
-          overflow: 'hidden'
+          height: '10px',
+          backgroundColor: '#e2e8f0',
+          borderRadius: '10px',
+          overflow: 'hidden',
+          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)'
         }}>
           <div style={{
             width: `${progress}%`,
             height: '100%',
-            backgroundColor: progress === 100 ? C.success : C.accent,
-            transition: 'width 0.5s ease',
-            borderRadius: '4px'
+            background: 'linear-gradient(90deg, #38bdf8 0%, #0284c7 50%, #2563eb 100%)',
+            transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+            borderRadius: '10px',
+            boxShadow: '0 0 12px rgba(56, 189, 248, 0.5)'
           }} />
         </div>
       </div>
@@ -2032,19 +1696,21 @@ export default function TreatmentPage() {
   if (!isInitialized) {
     return (
       <MainLayoutjur>
-        <div style={{
+        <div className="glass-panel" style={{
           display: 'flex',
+          flexDirection: 'column',
           justifyContent: 'center',
           alignItems: 'center',
-          height: '400px',
+          gap: '16px',
+          height: '420px',
           color: C.textSecondary,
           fontSize: '18px',
-          background: C.cardBg,
-          borderRadius: '10px',
-          margin: '20px',
-          border: `1px solid ${C.border}`
+          borderRadius: '20px',
+          margin: '30px auto',
+          maxWidth: '90%'
         }}>
-          ⏳ در حال بارگذاری اطلاعات درمان...
+          <div className="water-loader"></div>
+          <span style={{ fontWeight: '600', color: '#0284c7' }}>در حال آماده‌سازی سیستم درمان...</span>
         </div>
       </MainLayoutjur>
     );
@@ -2076,44 +1742,20 @@ export default function TreatmentPage() {
         }}
       />
 
-      <div style={{
-        background: C.pageBg,
-        minHeight: '100vh',
-        padding: '20px',
-        borderRadius: '10px'
-      }}>
+      <div className="treatment-wrapper">
         <div className="form-container">
-          <h2 style={{
-            textAlign: "center",
-            marginBottom: "20px",
-            color: C.textPrimary,
-            fontSize: '20px',
-            fontWeight: 'bold',
-            background: C.cardBg,
-            padding: '15px 20px',
-            borderRadius: '10px',
-            border: `1px solid ${C.border}`,
-            boxShadow: C.shadow
-          }}>
-            🏥 معالجه داکتر
-          </h2>
+          <div className="glass-header">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '26px' }}>🏥</span>
+              <h2>معالجه و مدیریت مریضان</h2>
+            </div>
+            <p>سیستم یکپارچه ویزیت، لابراتوار، رادیولوژی، بستری و تاریخچه الکترونیک</p>
+          </div>
 
           {renderProgressBar()}
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              gap: "8px",
-              marginBottom: "20px",
-              flexWrap: "wrap",
-              background: C.cardBg,
-              padding: '15px',
-              borderRadius: '10px',
-              border: `1px solid ${C.border}`,
-              boxShadow: C.shadow
-            }}
-          >
+          {/* نوار تب شیشه‌ای با افکت پر شدن آب آبی */}
+          <div className="glass-tab-container">
             {STEPS.map((step) => {
               const isActive = activeTab === step.key;
               let patientCount = 0;
@@ -2139,123 +1781,61 @@ export default function TreatmentPage() {
                     setSelectedHistory(null);
                     localStorage.setItem(ACTIVE_TAB_KEY, step.key);
                   }}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontWeight: "bold",
-                    background: isActive ? step.color : C.cardBg,
-                    color: isActive ? "#fff" : C.textPrimary,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '12px',
-                    position: 'relative',
-                    border: isActive ? `1px solid ${step.color}` : `1px solid ${C.border}`,
-                    transition: 'all 0.3s',
-                    boxShadow: isActive ? `0 2px 8px ${step.color}40` : C.shadow
-                  }}
+                  className={`water-tab-btn ${isActive ? 'active' : ''}`}
                 >
-                  {step.icon}
-                  {step.label}
-                  {patientCount > 0 && (
-                    <span style={{
-                      backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : C.softBg,
-                      color: isActive ? '#fff' : C.textSecondary,
-                      padding: '1px 8px',
-                      borderRadius: '10px',
-                      fontSize: '10px',
-                      fontWeight: 'bold'
-                    }}>
-                      {patientCount}
-                    </span>
-                  )}
-                  {isActive && selectedPatientId && (
-                    <span style={{
-                      position: 'absolute',
-                      top: '-5px',
-                      right: '-5px',
-                      width: '10px',
-                      height: '10px',
-                      backgroundColor: C.success,
-                      borderRadius: '50%',
-                      animation: 'pulse 1.5s infinite',
-                      border: '2px solid #ffffff'
-                    }} />
-                  )}
+                  {/* لایه آب پر شونده */}
+                  <div className="water-liquid">
+                    <div className="water-wave"></div>
+                    <div className="water-wave wave-back"></div>
+                  </div>
+
+                  {/* محتوای روی تب */}
+                  <div className="tab-content-layer">
+                    <span className="tab-icon">{step.icon}</span>
+                    <span className="tab-title">{step.label}</span>
+                    {patientCount > 0 && (
+                      <span className={`tab-badge ${isActive ? 'active-badge' : ''}`}>
+                        {patientCount}
+                      </span>
+                    )}
+                    {isActive && selectedPatientId && (
+                      <span className="live-indicator-dot" />
+                    )}
+                  </div>
                 </button>
               );
             })}
           </div>
 
-          <div
-            style={{
-              background: C.cardBg,
-              borderRadius: "10px",
-              padding: "25px",
-              minHeight: "500px",
-              color: C.textPrimary,
-              border: `1px solid ${C.border}`,
-              boxShadow: C.shadow
-            }}
-          >
+          {/* بدنه محتوای فرم تب فعال */}
+          <div className="glass-panel main-content-box">
             {renderTabContent()}
           </div>
 
+          {/* دکمه‌های ناوبری مراحل */}
           {selectedPatientId && activeTab !== 'queue' && activeTab !== 'history' && !currentProgress.isComplete && activeTab !== 'admission' && (
-            <div style={{
+            <div className="glass-panel" style={{
               display: 'flex',
               justifyContent: 'space-between',
-              marginTop: '20px',
-              gap: '10px',
-              background: C.cardBg,
-              padding: '15px 20px',
-              borderRadius: '10px',
-              border: `1px solid ${C.border}`,
-              boxShadow: C.shadow
+              alignItems: 'center',
+              marginTop: '22px',
+              gap: '12px',
+              padding: '16px 24px',
+              borderRadius: '16px'
             }}>
               <button
                 onClick={goToPreviousStep}
-                style={{
-                  padding: '10px 24px',
-                  backgroundColor: C.cardBg,
-                  color: C.textPrimary,
-                  border: `1px solid ${C.border}`,
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = C.softBg}
-                onMouseLeave={(e) => e.target.style.backgroundColor = C.cardBg}
+                className="btn-secondary"
               >
-                ↩️ مرحله قبل
+                <span>↩️</span>
+                <span>مرحله قبل</span>
               </button>
               <button
                 onClick={goToNextStep}
-                style={{
-                  padding: '10px 24px',
-                  backgroundColor: C.accent,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: `0 2px 8px ${C.accent}40`,
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = C.accent}
+                className="btn-primary"
               >
-                مرحله بعد ➡️
+                <span>مرحله بعد</span>
+                <span>➡️</span>
               </button>
             </div>
           )}
@@ -2263,10 +1843,342 @@ export default function TreatmentPage() {
       </div>
 
       <style jsx>{`
-        @keyframes pulse {
+        /* ================= Glassmorphism & Liquid Styles ================= */
+        .treatment-wrapper {
+          min-height: 100vh;
+          padding: 24px;
+          background: linear-gradient(135deg, #f0fdf4 0%, #f0f9ff 50%, #eff6ff 100%);
+          font-family: inherit;
+        }
+
+        .glass-header {
+          background: rgba(255, 255, 255, 0.7);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+          border: 1px solid rgba(255, 255, 255, 0.8);
+          border-radius: 18px;
+          padding: 20px;
+          margin-bottom: 22px;
+          text-align: center;
+          box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.08), 0 8px 10px -6px rgba(37, 99, 235, 0.04);
+        }
+
+        .glass-header h2 {
+          color: #0f172a;
+          margin: 0;
+          font-size: 22px;
+          font-weight: 800;
+          background: linear-gradient(135deg, #0284c7 0%, #1e40af 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .glass-header p {
+          color: #64748b;
+          font-size: 13px;
+          margin: 6px 0 0 0;
+          font-weight: 500;
+        }
+
+        .glass-panel {
+          background: rgba(255, 255, 255, 0.75);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+          border: 1px solid rgba(255, 255, 255, 0.85);
+          box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.05), 0 4px 6px -2px rgba(15, 23, 42, 0.02);
+        }
+
+        .main-content-box {
+          border-radius: 20px;
+          padding: 28px;
+          min-height: 520px;
+          margin-top: 10px;
+        }
+
+        /* ظرف تب‌ها به شکل Glass شیشه‌ای */
+        .glass-tab-container {
+          display: flex;
+          justifyContent: center;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 22px;
+          flex-wrap: wrap;
+          background: rgba(255, 255, 255, 0.65);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          padding: 10px 14px;
+          border-radius: 20px;
+          border: 1px solid rgba(255, 255, 255, 0.9);
+          box-shadow: 0 8px 24px -4px rgba(37, 99, 235, 0.07);
+        }
+
+        /* استایل دکمه تب با افکت لیوان پر از آب */
+        .water-tab-btn {
+          position: relative;
+          overflow: hidden;
+          padding: 10px 18px;
+          border-radius: 14px;
+          cursor: pointer;
+          font-weight: 700;
+          font-size: 13px;
+          border: 1px solid rgba(226, 232, 240, 0.8);
+          background: rgba(255, 255, 255, 0.6);
+          color: #475569;
+          transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+          outline: none;
+        }
+
+        .water-tab-btn:hover {
+          transform: translateY(-2px);
+          background: rgba(255, 255, 255, 0.9);
+          border-color: rgba(186, 230, 253, 0.9);
+          box-shadow: 0 6px 14px -2px rgba(2, 132, 199, 0.15);
+        }
+
+        /* لایه مایع آبی درون تب (مانند لیوان پر شونده) */
+        .water-liquid {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          width: 100%;
+          height: 0%;
+          background: linear-gradient(180deg, #38bdf8 0%, #0284c7 60%, #1d4ed8 100%);
+          transition: height 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+          z-index: 1;
+          pointer-events: none;
+        }
+
+        /* امواج سطح آب */
+        .water-wave {
+          position: absolute;
+          top: -12px;
+          left: -50%;
+          width: 200%;
+          height: 24px;
+          background: radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 70%);
+          border-radius: 40%;
+          opacity: 0.6;
+          animation: waveRotate 5s linear infinite;
+        }
+
+        .water-wave.wave-back {
+          top: -14px;
+          opacity: 0.35;
+          animation: waveRotate 3s linear infinite reverse;
+        }
+
+        /* حالت فعال: بالا آمدن آب به 100% ارتفاع لیوان */
+        .water-tab-btn.active {
+          border-color: #38bdf8;
+          box-shadow: 0 8px 22px rgba(2, 132, 199, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+          transform: translateY(-3px);
+        }
+
+        .water-tab-btn.active .water-liquid {
+          height: 100%;
+        }
+
+        .water-tab-btn.active .tab-content-layer {
+          color: #ffffff;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+        }
+
+        /* لایه آیکون و متن تب */
+        .tab-content-layer {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          transition: color 0.3s ease;
+        }
+
+        .tab-icon {
+          font-size: 15px;
+          display: inline-flex;
+          align-items: center;
+        }
+
+        .tab-badge {
+          background: #e2e8f0;
+          color: #334155;
+          padding: 2px 7px;
+          border-radius: 12px;
+          font-size: 10px;
+          font-weight: 800;
+          transition: all 0.3s ease;
+        }
+
+        .tab-badge.active-badge {
+          background: rgba(255, 255, 255, 0.28);
+          color: #ffffff;
+          border: 1px solid rgba(255, 255, 255, 0.4);
+        }
+
+        .live-indicator-dot {
+          position: absolute;
+          top: -6px;
+          right: -6px;
+          width: 9px;
+          height: 9px;
+          background-color: #10b981;
+          border-radius: 50%;
+          border: 2px solid #ffffff;
+          box-shadow: 0 0 6px #10b981;
+          animation: pulseDot 1.6s infinite;
+        }
+
+        /* کارت مریضان با ظاهر مدرن */
+        .patient-card-pill {
+          background: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(8px);
+          padding: 12px 18px;
+          border-radius: 14px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          border: 1.5px solid rgba(226, 232, 240, 0.9);
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+          min-width: 230px;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+        }
+
+        .patient-card-pill:hover {
+          transform: translateY(-2px);
+          border-color: #93c5fd;
+          box-shadow: 0 8px 18px -4px rgba(37, 99, 235, 0.12);
+        }
+
+        .patient-card-pill.selected {
+          background: #f0f9ff;
+          border-color: #0284c7;
+          box-shadow: 0 8px 20px -3px rgba(2, 132, 199, 0.2);
+        }
+
+        .badge-bubble {
+          position: absolute;
+          top: -6px;
+          right: -6px;
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          color: white;
+          border-radius: 50%;
+          width: 22px;
+          height: 22px;
+          font-size: 11px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+        }
+
+        .glass-stat-card {
+          background: rgba(248, 250, 252, 0.8);
+          border: 1px solid rgba(226, 232, 240, 0.8);
+          padding: 12px 16px;
+          border-radius: 12px;
+          transition: all 0.2s ease;
+        }
+
+        .glass-stat-card:hover {
+          background: #ffffff;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+        }
+
+        .stat-label {
+          font-size: 11px;
+          color: #64748b;
+          font-weight: 600;
+          margin-bottom: 4px;
+        }
+
+        .stat-value {
+          font-size: 14px;
+          color: #0f172a;
+          font-weight: 800;
+        }
+
+        .glass-empty {
+          text-align: center;
+          padding: 36px 20px;
+          color: #64748b;
+          background: rgba(248, 250, 252, 0.6);
+          border-radius: 16px;
+          border: 2px dashed rgba(203, 213, 225, 0.7);
+        }
+
+        /* دکمه‌های کنترلی شیشه‌ای و مدرن */
+        .btn-primary {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 24px;
+          background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+          color: #ffffff;
+          border: none;
+          border-radius: 12px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 700;
+          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+          background: linear-gradient(135deg, #0369a1 0%, #1d4ed8 100%);
+        }
+
+        .btn-secondary {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 22px;
+          background: #ffffff;
+          color: #334155;
+          border: 1px solid #cbd5e1;
+          border-radius: 12px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 700;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+          transition: all 0.25s ease;
+        }
+
+        .btn-secondary:hover {
+          background: #f8fafc;
+          border-color: #94a3b8;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+        }
+
+        .water-loader {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          border: 4px solid #e0f2fe;
+          border-top-color: #0284c7;
+          animation: spin 1s infinite linear;
+        }
+
+        /* انیمیشن‌ها */
+        @keyframes waveRotate {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes pulseDot {
           0% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.5); opacity: 0.5; }
+          50% { transform: scale(1.4); opacity: 0.6; }
           100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
         }
       `}</style>
     </MainLayoutjur>

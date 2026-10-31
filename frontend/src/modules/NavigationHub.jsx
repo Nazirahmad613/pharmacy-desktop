@@ -1,6 +1,6 @@
 // app/components/NavigationHub.jsx
 import React, { useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Grid,
@@ -8,18 +8,15 @@ import {
   Typography,
   Box,
   Alert,
-  Button,
   Chip,
   Breadcrumbs,
   Link as MuiLink,
 } from "@mui/material";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import HomeIcon from "@mui/icons-material/Home";
-import navigationsData from "app/navigations";
+import navigationsData, { getLogicalParentPath } from "app/navigations";
 import { useAuth } from "app/contexts/AuthContext";
 import { useNavigation } from "app/contexts/NavigationContext";
 
-// ============================================================
 const renderIcon = (icon, size = 48) => {
   if (!icon) return null;
   if (React.isValidElement(icon)) {
@@ -53,21 +50,19 @@ const normalizeRole = (role) => {
   return String(role).trim().toLowerCase();
 };
 
-// ============================================================
 export default function NavigationHub() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, loading } = useAuth();
-  const {
-    breadcrumb,
-    pushGroup,
-    popGroup,
-    resetToTop,
-  } = useNavigation();
+  const { breadcrumb, pushGroup } = useNavigation();
 
-  // ============================================================
-  // رول‌ها
-  // ============================================================
+  // والد منطقی صفحه فعلی — فقط برای Breadcrumb (نه برای Back)
+  const logicalParent = useMemo(
+    () => getLogicalParentPath(location.pathname),
+    [location.pathname]
+  );
+
   const userRoles = useMemo(() => {
     if (!user) return [];
     const set = new Set();
@@ -95,9 +90,6 @@ export default function NavigationHub() {
     [user, userRoles]
   );
 
-  // ============================================================
-  // فیلتر و ترجمه منو
-  // ============================================================
   const navigations = useMemo(() => {
     if (!Array.isArray(navigationsData)) return [];
     if (!user) return [];
@@ -134,9 +126,6 @@ export default function NavigationHub() {
     return translate(navigationsData);
   }, [t, user, userRoles, isAdminUser]);
 
-  // ============================================================
-  // topLevelItems
-  // ============================================================
   const topLevelItems = useMemo(() => {
     const items = [];
     navigations.forEach((item) => {
@@ -148,9 +137,6 @@ export default function NavigationHub() {
     return items;
   }, [navigations]);
 
-  // ============================================================
-  // آیتم‌های نمایش‌داده‌شده بر اساس آخرین گروه breadcrumb
-  // ============================================================
   const currentItems = useMemo(() => {
     if (breadcrumb.length === 0) return topLevelItems;
     const current = breadcrumb[breadcrumb.length - 1];
@@ -160,23 +146,21 @@ export default function NavigationHub() {
     return topLevelItems;
   }, [breadcrumb, topLevelItems]);
 
-  // ============================================================
-  // کلیک روی کارت
-  // ============================================================
+  const safeNavigate = (targetPath) => {
+    if (!targetPath) return;
+    // ✅ ناوبری ساده — useBackNavigation خودش پشته را مدیریت می‌کند
+    navigate(targetPath);
+  };
+
   const handleItemClick = (item) => {
     const hasChildren = item.children && item.children.length > 0;
     if (hasChildren) {
-      // فقط پشته را زیاد کن — سایدبار خودکار هم‌گام می‌شود
       pushGroup(item);
     } else if (item.path) {
-      // صفحه را عوض کن — Context با useEffect خودش هم‌گام می‌شود
-      navigate(item.path);
+      safeNavigate(item.path);
     }
   };
 
-  // ============================================================
-  // Loading / No user
-  // ============================================================
   if (loading)
     return (
       <Box sx={{ p: 3 }}>
@@ -202,12 +186,8 @@ export default function NavigationHub() {
       </Box>
     );
 
-  // ============================================================
-  // رندر
-  // ============================================================
   return (
     <Box sx={{ p: 3, direction: "rtl" }}>
-      {/* ===== Breadcrumb ===== */}
       <Breadcrumbs
         separator="›"
         sx={{ mb: 2, direction: "rtl", fontSize: "0.9rem" }}
@@ -216,7 +196,7 @@ export default function NavigationHub() {
           component="button"
           underline="hover"
           color="inherit"
-          onClick={resetToTop}
+          onClick={() => navigate("/dashboard/default")}
           sx={{
             display: "flex",
             alignItems: "center",
@@ -230,21 +210,28 @@ export default function NavigationHub() {
           <HomeIcon fontSize="small" />
           خانه
         </MuiLink>
+
         {breadcrumb.map((grp, idx) => {
           const isLast = idx === breadcrumb.length - 1;
-          return isLast ? (
-            <Typography key={idx} color="text.primary">
-              {grp.name}
-            </Typography>
-          ) : (
+
+          if (isLast) {
+            return (
+              <Typography key={idx} color="text.primary">
+                {grp.name}
+              </Typography>
+            );
+          }
+
+          const targetPath = grp.path || logicalParent;
+
+          return (
             <MuiLink
               key={idx}
               component="button"
               underline="hover"
               color="inherit"
               onClick={() => {
-                const stepsBack = breadcrumb.length - 1 - idx;
-                for (let i = 0; i < stepsBack; i++) popGroup();
+                if (targetPath) safeNavigate(targetPath);
               }}
               sx={{
                 cursor: "pointer",
@@ -259,34 +246,14 @@ export default function NavigationHub() {
         })}
       </Breadcrumbs>
 
-      {/* ===== نوار بازگشت ===== */}
       {breadcrumb.length > 0 && (
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            mb: 3,
-            flexWrap: "wrap",
-            gap: 1,
-          }}
-        >
-          <Button
-            startIcon={<ArrowBackIcon />}
-            onClick={popGroup}
-            variant="outlined"
-          >
-            بازگشت
-          </Button>
-          <Button onClick={resetToTop} variant="text">
-            بازگشت به ابتدا
-          </Button>
-          <Typography variant="h5" sx={{ mr: 2, fontWeight: "bold" }}>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h5" sx={{ fontWeight: "bold" }}>
             {breadcrumb[breadcrumb.length - 1]?.name || "دسته‌بندی اصلی"}
           </Typography>
         </Box>
       )}
 
-      {/* ===== کارت‌ها ===== */}
       <Grid
         container
         spacing={2}
@@ -312,9 +279,9 @@ export default function NavigationHub() {
               sx={{ display: "flex" }}
             >
               <Card
-                {...(isLink
-                  ? { component: Link, to: item.path }
-                  : { onClick: () => handleItemClick(item) })}
+                onClick={() =>
+                  isLink ? safeNavigate(item.path) : handleItemClick(item)
+                }
                 sx={{
                   textDecoration: "none",
                   transition: "0.2s",

@@ -85,8 +85,8 @@ export default function Login() {
           </div>
 
           <div className="title-area">
-            <h2>ورود به سیستم شفاخانه</h2>
-            <p className="subtitle">سیستم جامع مدیریت اطلاعات صحی و مراقبت مریضان</p>
+            <h2>سیستم مدیریت شفاخانه الفلاح</h2>
+            
           </div>
 
           <Formik
@@ -108,7 +108,7 @@ export default function Login() {
                   <input
                     type="email"
                     name="email"
-                    placeholder="ایمیل پرسونل / کارمند"
+                    placeholder="ایمل آدرس تانرا وارد کنید"
                     value={values.email}
                     onChange={handleChange}
                     onBlur={handleBlur}
@@ -148,7 +148,7 @@ export default function Login() {
                   className="login-btn"
                   disabled={loading}
                 >
-                  {loading ? "در حال تصدیق هویت..." : "ورود"}
+                  {loading ? "در حال تائید هویت..." : "ورود"}
                 </button>
               </form> 
             )}

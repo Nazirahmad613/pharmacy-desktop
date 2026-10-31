@@ -14,6 +14,9 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import PersonIcon from "@mui/icons-material/Person";
 import BusinessIcon from "@mui/icons-material/Business";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { useLocation, useNavigate } from "react-router-dom";
+import { getLogicalParentPath } from "app/navigations";
 import api from "../../../../api";
 
 const ACCOUNT_TYPE_FA = {
@@ -80,6 +83,10 @@ const normalizeSalaryRow = (e = {}) => {
 };
 
 export default function EmployeeSalaries() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const parentPath = getLogicalParentPath(location.pathname);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -248,6 +255,18 @@ export default function EmployeeSalaries() {
 
   return (
     <Box dir="rtl" sx={{ p: 3 }}>
+      {parentPath && (
+        <Box mb={2}>
+          <Button
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate(parentPath)}
+          >
+            بازگشت به صفحه قبلی
+          </Button>
+        </Box>
+      )}
+
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">👥 معاشات کارمندان</Typography>
         <Button startIcon={<RefreshIcon />} variant="outlined" onClick={fetchEmployees}>بازخوانی</Button>
