@@ -83,4 +83,30 @@ class User extends Authenticatable
     {
         return $this->hasMany(Sales::class, 'created_by', 'id');
     }
+
+public function emergencyCasesAsDoctor()
+{
+    return $this->hasMany(EmergencyCase::class, 'doc_id', 'id');
+}
+
+public function emergencyCasesAsAdmitter()
+{
+    return $this->hasMany(EmergencyCase::class, 'admitted_by', 'id');
+}
+
+public function emergencyTriages()
+{
+    return $this->hasMany(EmergencyTriage::class, 'nurse_id', 'id');
+}
+
+public function emergencyTreatments()
+{
+    return $this->hasMany(EmergencyTreatment::class, 'doc_id', 'id');
+}
+
+public function emergencyVitals()
+{
+    return $this->hasMany(EmergencyVital::class, 'recorded_by', 'id');
+}
+    
 }

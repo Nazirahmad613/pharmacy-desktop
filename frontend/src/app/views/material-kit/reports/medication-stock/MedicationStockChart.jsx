@@ -15,6 +15,23 @@ import { styled } from "@mui/material/styles";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
+// ============================================================
+// ✅ کمکی: استخراج امن آرایه از هر ساختار پاسخ API
+// ============================================================
+function extractArray(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const candidateKeys = ["data", "items", "results", "records", "list", "rows"];
+  for (const key of candidateKeys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  // اگر هیچ کلید شناخته‌شده‌ای نبود، اولین مقدار آرایه‌ای را برگردان
+  for (const value of Object.values(payload)) {
+    if (Array.isArray(value)) return value;
+  }
+  return [];
+}
+
 // انیمیشن چشمک‌زن قوی برای کمبود شدید (قرمز)
 const blinkRed = keyframes`
   0% { 
@@ -83,87 +100,118 @@ export default function StockShortagePieChart() {
       setError("❌ لطفاً ابتدا وارد سیستم شوید");
       return;
     }
+
+    let cancelled = false;
+
     const fetchData = async () => {
       setLoading(true);
+      setError("");
       try {
         const res = await api.get("/reports/medication-stock");
-        setData(res.data || []);
+        if (cancelled) return;
+
+        // ✅ استخراج امن آرایه - پشتیبانی از هر ساختار
+        const list = extractArray(res?.data);
+
+        if (list.length === 0) {
+          // اگر داده واقعاً خالی است، خطا نده؛ فقط آرایه خالی بگذار
+          setData([]);
+        } else {
+          setData(list);
+        }
       } catch (err) {
-        console.error(err);
+        if (cancelled) return;
+        console.error("StockShortagePieChart fetch error:", err);
         setError("خطا در دریافت داده‌ها");
+        setData([]); // ✅ مهم: در صورت خطا، آرایه خالی
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
+
     fetchData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [api, user, authLoading]);
+
+  // ✅ گارد نهایی برای آرایه بودن داده‌ها
+  const safeData = Array.isArray(data) ? data : [];
 
   // آمار موجودی بر اساس محدوده
   const stockStats = useMemo(() => {
+    if (!Array.isArray(safeData)) return { low: 0, medium: 0, high: 0 };
     let low = 0, medium = 0, high = 0;
-    data.forEach(item => {
-      if (item.available_stock <= 10) low++;
-      else if (item.available_stock <= 50) medium++;
+    safeData.forEach((item) => {
+      const stock = Number(item?.available_stock ?? 0);
+      if (stock <= 10) low++;
+      else if (stock <= 50) medium++;
       else high++;
     });
     return { low, medium, high };
-  }, [data]);
+  }, [safeData]);
 
   // آمار وضعیت انقضا
   const expiryStats = useMemo(() => {
+    if (!Array.isArray(safeData)) return { expired: 0, nearExpiry: 0, valid: 0 };
     let expired = 0, nearExpiry = 0, valid = 0;
-    data.forEach(item => {
-      if (item.expiry_status === "EXPIRED") expired++;
-      else if (item.expiry_status === "NEAR_EXPIRY") nearExpiry++;
+    safeData.forEach((item) => {
+      if (item?.expiry_status === "EXPIRED") expired++;
+      else if (item?.expiry_status === "NEAR_EXPIRY") nearExpiry++;
       else valid++;
     });
     return { expired, nearExpiry, valid };
-  }, [data]);
+  }, [safeData]);
 
   // آمار موجودی بر اساس تأمین‌کننده
   const supplierStats = useMemo(() => {
+    if (!Array.isArray(safeData)) return [];
     const supplierMap = new Map();
-    
-    data.forEach(item => {
-      const supplierName = item.supplier_name || "نامشخص";
+
+    safeData.forEach((item) => {
+      const supplierName = item?.supplier_name || "نامشخص";
       const currentStock = supplierMap.get(supplierName) || 0;
-      supplierMap.set(supplierName, currentStock + (item.available_stock || 0));
+      supplierMap.set(supplierName, currentStock + (Number(item?.available_stock) || 0));
     });
-    
-    const sortedSuppliers = Array.from(supplierMap.entries())
+
+    return Array.from(supplierMap.entries())
       .map(([name, stock]) => ({ name, stock }))
       .sort((a, b) => b.stock - a.stock)
       .slice(0, 8);
-    
-    return sortedSuppliers;
-  }, [data]);
+  }, [safeData]);
 
   // آمار تعداد داروها بر اساس تأمین‌کننده
   const supplierCountStats = useMemo(() => {
+    if (!Array.isArray(safeData)) return [];
     const supplierMap = new Map();
-    
-    data.forEach(item => {
-      const supplierName = item.supplier_name || "نامشخص";
+
+    safeData.forEach((item) => {
+      const supplierName = item?.supplier_name || "نامشخص";
       const currentCount = supplierMap.get(supplierName) || 0;
       supplierMap.set(supplierName, currentCount + 1);
     });
-    
-    const sortedSuppliers = Array.from(supplierMap.entries())
+
+    return Array.from(supplierMap.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 8);
-    
-    return sortedSuppliers;
-  }, [data]);
+  }, [safeData]);
+
+  // مجموع موجودی کل برای محاسبه درصد
+  const totalStock = useMemo(
+    () => supplierStats.reduce((sum, s) => sum + (Number(s.stock) || 0), 0),
+    [supplierStats]
+  );
 
   // رنگ‌های متنوع برای چارت تأمین‌کنندگان
   const supplierColors = [
     "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF",
     "#FF9F40", "#C9CBCF", "#7BC225", "#F7464A", "#46BFBD",
-    "#FDB45C", "#949FB1", "#4D5360", "#E7E9ED", "#1E88E5"
+    "#FDB45C", "#949FB1", "#4D5360", "#E7E9ED", "#1E88E5",
   ];
 
-  // ✅ تعریف توابع navigate - فقط برای کلیک روی کارت‌ها
+  // ===== توابع navigate =====
   const handleSevereClick = () => {
     navigate("/reports/medication-stock?stockRange=0-10");
   };
@@ -176,7 +224,7 @@ export default function StockShortagePieChart() {
     navigate(`/reports/medication-stock?supplier=${encodeURIComponent(supplierName)}`);
   };
 
-  // ✅ گزینه‌های چارت بدون قابلیت کلیک (فقط نمایشی)
+  // گزینه‌های چارت بدون کلیک (فقط نمایشی)
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: true,
@@ -184,16 +232,19 @@ export default function StockShortagePieChart() {
       legend: { position: "bottom", rtl: true },
       tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} مورد` } },
     },
-    // ✅ حذف onClick از چارت‌های اصلی
   };
 
-  // ✅ گزینه‌های چارت تأمین‌کنندگان با قابلیت کلیک (برای رفتن به جزئیات)
+  // گزینه‌های چارت تأمین‌کنندگان با کلیک
   const supplierChartOptions = {
     responsive: true,
     maintainAspectRatio: true,
     plugins: {
       legend: { position: "bottom", rtl: true },
-      tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw.toLocaleString()} عدد` } },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => `${ctx.label}: ${Number(ctx.raw).toLocaleString()} عدد`,
+        },
+      },
     },
     onClick: (event, elements) => {
       if (elements && elements.length > 0) {
@@ -226,44 +277,53 @@ export default function StockShortagePieChart() {
 
   const stockPieData = {
     labels: ["کمبود شدید (≤۱۰)", "متوسط (۱۱-۵۰)", "زیاد (>۵۰)"],
-    datasets: [{
-      data: [stockStats.low, stockStats.medium, stockStats.high],
-      backgroundColor: ["#FF6384", "#FFCE56", "#36A2EB"],
-      borderColor: "#fff",
-      borderWidth: 1,
-    }],
+    datasets: [
+      {
+        data: [stockStats.low, stockStats.medium, stockStats.high],
+        backgroundColor: ["#FF6384", "#FFCE56", "#36A2EB"],
+        borderColor: "#fff",
+        borderWidth: 1,
+      },
+    ],
   };
 
   const expiryPieData = {
     labels: ["تاریخ گذشته", "نزدیک به انقضا", "معتبر"],
-    datasets: [{
-      data: [expiryStats.expired, expiryStats.nearExpiry, expiryStats.valid],
-      backgroundColor: ["#FF6384", "#FF9F40", "#4BC0C0"],
-      borderColor: "#fff",
-      borderWidth: 1,
-    }],
+    datasets: [
+      {
+        data: [expiryStats.expired, expiryStats.nearExpiry, expiryStats.valid],
+        backgroundColor: ["#FF6384", "#FF9F40", "#4BC0C0"],
+        borderColor: "#fff",
+        borderWidth: 1,
+      },
+    ],
   };
 
   const supplierPieData = {
-    labels: supplierStats.map(s => s.name),
-    datasets: [{
-      data: supplierStats.map(s => s.stock),
-      backgroundColor: supplierColors.slice(0, supplierStats.length),
-      borderColor: "#fff",
-      borderWidth: 1,
-    }],
+    labels: supplierStats.map((s) => s.name),
+    datasets: [
+      {
+        data: supplierStats.map((s) => s.stock),
+        backgroundColor: supplierColors.slice(0, supplierStats.length),
+        borderColor: "#fff",
+        borderWidth: 1,
+      },
+    ],
   };
 
   const supplierCountPieData = {
-    labels: supplierCountStats.map(s => s.name),
-    datasets: [{
-      data: supplierCountStats.map(s => s.count),
-      backgroundColor: supplierColors.slice(0, supplierCountStats.length),
-      borderColor: "#fff",
-      borderWidth: 1,
-    }],
+    labels: supplierCountStats.map((s) => s.name),
+    datasets: [
+      {
+        data: supplierCountStats.map((s) => s.count),
+        backgroundColor: supplierColors.slice(0, supplierCountStats.length),
+        borderColor: "#fff",
+        borderWidth: 1,
+      },
+    ],
   };
 
+  // ===== حالت‌های نمایش =====
   if (authLoading || loading) {
     return (
       <Box display="flex" justifyContent="center" p={4}>
@@ -280,7 +340,7 @@ export default function StockShortagePieChart() {
     );
   }
 
-  if (data.length === 0) {
+  if (safeData.length === 0) {
     return (
       <Typography textAlign="center" p={3}>
         داده‌ای برای نمایش وجود ندارد.
@@ -295,6 +355,9 @@ export default function StockShortagePieChart() {
         <Grid item xs={12} sm={6}>
           <AnimatedRedCard
             onClick={handleSevereClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleSevereClick()}
             sx={{
               backgroundColor: "#FFEBEE",
               borderLeft: "6px solid #d32f2f",
@@ -315,6 +378,9 @@ export default function StockShortagePieChart() {
         <Grid item xs={12} sm={6}>
           <AnimatedOrangeCard
             onClick={handleNearExpiryClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleNearExpiryClick()}
             sx={{
               backgroundColor: "#FFF3E0",
               borderLeft: "6px solid #ff9800",
@@ -335,7 +401,7 @@ export default function StockShortagePieChart() {
       </Grid>
 
       <Grid container spacing={3}>
-        {/* ✅ چارت توزیع موجودی - بدون کلیک (فقط نمایش) */}
+        {/* چارت توزیع موجودی - نمایشی */}
         <Grid item xs={12} md={4}>
           <Card sx={{ p: 2, height: "100%" }}>
             <Typography variant="h6" textAlign="center" gutterBottom>
@@ -347,13 +413,19 @@ export default function StockShortagePieChart() {
             <Typography variant="caption" display="block" textAlign="center" mt={1}>
               🔴 کمبود شدید &nbsp;&nbsp; 🟡 متوسط &nbsp;&nbsp; 🔵 زیاد
             </Typography>
-            <Typography variant="caption" display="block" textAlign="center" color="text.secondary" mt={0.5}>
+            <Typography
+              variant="caption"
+              display="block"
+              textAlign="center"
+              color="text.secondary"
+              mt={0.5}
+            >
               ※ برای مشاهده جزئیات روی کارت قرمز بالا کلیک کنید
             </Typography>
           </Card>
         </Grid>
 
-        {/* ✅ چارت وضعیت انقضا - بدون کلیک (فقط نمایش) */}
+        {/* چارت وضعیت انقضا - نمایشی */}
         <Grid item xs={12} md={4}>
           <Card sx={{ p: 2, height: "100%" }}>
             <Typography variant="h6" textAlign="center" gutterBottom>
@@ -365,13 +437,19 @@ export default function StockShortagePieChart() {
             <Typography variant="caption" display="block" textAlign="center" mt={1}>
               🔴 تاریخ گذشته &nbsp;&nbsp; 🟠 نزدیک به انقضا &nbsp;&nbsp; 🔵 معتبر
             </Typography>
-            <Typography variant="caption" display="block" textAlign="center" color="text.secondary" mt={0.5}>
+            <Typography
+              variant="caption"
+              display="block"
+              textAlign="center"
+              color="text.secondary"
+              mt={0.5}
+            >
               ※ برای مشاهده جزئیات روی کارت نارنجی بالا کلیک کنید
             </Typography>
           </Card>
         </Grid>
 
-        {/* ✅ چارت توزیع موجودی بر اساس تأمین‌کننده - با کلیک (برای رفتن به جزئیات) */}
+        {/* چارت توزیع موجودی بر اساس تأمین‌کننده - با کلیک */}
         <Grid item xs={12} md={4}>
           <Card sx={{ p: 2, height: "100%" }}>
             <Typography variant="h6" textAlign="center" gutterBottom>
@@ -419,54 +497,67 @@ export default function StockShortagePieChart() {
           </Card>
         </Grid>
 
-        {/* کارت خلاصه تأمین‌کنندگان - با کلیک روی هر ردیف */}
+        {/* کارت خلاصه تأمین‌کنندگان */}
         <Grid item xs={12} md={6}>
           <Card sx={{ p: 2, height: "100%" }}>
             <Typography variant="h6" textAlign="center" gutterBottom>
               🏢 لیست تأمین‌کنندگان و موجودی
             </Typography>
             <Box sx={{ maxHeight: 280, overflow: "auto" }}>
-              {supplierStats.map((supplier, index) => (
-                <Box
-                  key={index}
-                  onClick={() => supplier.name !== "نامشخص" && handleSupplierClick(supplier.name)}
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    p: 1,
-                    borderBottom: "1px solid #e0e0e0",
-                    cursor: supplier.name !== "نامشخص" ? "pointer" : "default",
-                    transition: "background-color 0.2s",
-                    "&:hover": supplier.name !== "نامشخص" ? { backgroundColor: "#f5f5f5" } : {}
-                  }}
-                >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <Box
-                      sx={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: "50%",
-                        backgroundColor: supplierColors[index % supplierColors.length]
-                      }}
-                    />
-                    <Typography variant="body2" fontWeight="500">
-                      {supplier.name}
-                    </Typography>
+              {supplierStats.map((supplier, index) => {
+                const percent =
+                  totalStock > 0 ? (supplier.stock / totalStock) * 100 : 0;
+                return (
+                  <Box
+                    key={`${supplier.name}-${index}`}
+                    onClick={() =>
+                      supplier.name !== "نامشخص" && handleSupplierClick(supplier.name)
+                    }
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      p: 1,
+                      borderBottom: "1px solid #e0e0e0",
+                      cursor: supplier.name !== "نامشخص" ? "pointer" : "default",
+                      transition: "background-color 0.2s",
+                      "&:hover":
+                        supplier.name !== "نامشخص" ? { backgroundColor: "#f5f5f5" } : {},
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: "50%",
+                          backgroundColor: supplierColors[index % supplierColors.length],
+                        }}
+                      />
+                      <Typography variant="body2" fontWeight="500">
+                        {supplier.name}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", gap: 2 }}>
+                      <Typography variant="body2" color="primary" fontWeight="bold">
+                        موجودی: {Number(supplier.stock).toLocaleString()}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {percent.toFixed(1)}%
+                      </Typography>
+                    </Box>
                   </Box>
-                  <Box sx={{ display: "flex", gap: 2 }}>
-                    <Typography variant="body2" color="primary" fontWeight="bold">
-                      موجودی: {supplier.stock.toLocaleString()}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {((supplier.stock / supplierStats.reduce((sum, s) => sum + s.stock, 0)) * 100).toFixed(1)}%
-                    </Typography>
-                  </Box>
-                </Box>
-              ))}
+                );
+              })}
             </Box>
-            <Typography variant="caption" display="block" textAlign="center" mt={2} color="text.secondary">
-              مجموع موجودی کل: {supplierStats.reduce((sum, s) => sum + s.stock, 0).toLocaleString()} عدد
+            <Typography
+              variant="caption"
+              display="block"
+              textAlign="center"
+              mt={2}
+              color="text.secondary"
+            >
+              مجموع موجودی کل: {totalStock.toLocaleString()} عدد
             </Typography>
           </Card>
         </Grid>

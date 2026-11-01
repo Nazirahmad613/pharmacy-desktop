@@ -57,6 +57,12 @@ use App\Http\Controllers\JournalRefSourceController;
 // ✅ جدید
 use App\Http\Controllers\PayrollModelController;
 
+// ✅ Emergency
+use App\Http\Controllers\EmergencyController;
+use App\Http\Controllers\EmergencyTriageController;
+use App\Http\Controllers\EmergencyTreatmentController;
+use App\Http\Controllers\EmergencyVitalController;
+
 /*
 |--------------------------------------------------------------------------
 | API Test
@@ -516,12 +522,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::post('/{id}/mark-paid', [ExternalPrescriptionController::class, 'markAsPaid'])->where('id', '[0-9]+');
         Route::post('/{id}/cancel', [ExternalPrescriptionController::class, 'cancel'])->where('id', '[0-9]+');
-    });
-
-    // ⭐ اجراآت دواخانه
+    });    // ⭐ اجراآت دواخانه
+        // ⭐ اجراآت دواخانه (ادامه)
     Route::prefix('pharmacy-executions')->group(function () {
         Route::get('/pending-for-registration', [PharmacyExecutionController::class, 'getPendingForRegistration']);
-        Route::get('/reg/{regId}', [PharmacyExecutionController::class, 'getByRegId']);
+        Route::get('/registration/{regId}', [PharmacyExecutionController::class, 'getByRegistration']);
+        Route::get('/statistics', [PharmacyExecutionController::class, 'statistics']);
+        Route::get('/pending', [PharmacyExecutionController::class, 'pending']);
 
         Route::get('/', [PharmacyExecutionController::class, 'index']);
         Route::post('/', [PharmacyExecutionController::class, 'store']);
@@ -529,207 +536,274 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{id}', [PharmacyExecutionController::class, 'update'])->where('id', '[0-9]+');
         Route::delete('/{id}', [PharmacyExecutionController::class, 'destroy'])->where('id', '[0-9]+');
 
-        Route::post('/{id}/send-to-registration', [PharmacyExecutionController::class, 'sendToRegistration'])->where('id', '[0-9]+');
-        Route::post('/{id}/collect-fee', [PharmacyExecutionController::class, 'collectFee'])->where('id', '[0-9]+');
-        Route::get('/{id}/print', [PharmacyExecutionController::class, 'printReceipt'])->where('id', '[0-9]+');
-    });
-
-    // ===== Stock & Sales Reports =====
-    Route::get('/salesd', [SalesFullDetailsController::class, 'index']);
-    Route::get('/sales-details', [SalesDetailsController::class, 'index']);
-    Route::get('/customers', [CustomersController::class, 'index']);
-
-    // ===== Categories =====
-    Route::get('/categories', [CategoryController::class, 'index']);
-    Route::post('/categories', [CategoryController::class, 'store']);
-    Route::get('/categories/{id}', [CategoryController::class, 'show']);
-    Route::put('/categories/{id}', [CategoryController::class, 'update']);
-    Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
-
-    // ===== Purchases =====
-    Route::prefix('parchases')->group(function () {
-        Route::get('/', [ParchasesController::class, 'index']);
-        Route::post('/', [ParchasesController::class, 'store']);
-        Route::get('/{parchaseid}', [ParchasesController::class, 'show']);
-        Route::put('/{parchaseid}', [ParchasesController::class, 'update']);
-        Route::delete('/{parchaseid}', [ParchasesController::class, 'destroy']);
-    });
-
-    // ===== Notifications =====
-    Route::get('/notifications', [NotificationController::class, 'index']);
-    Route::post('/notifications', [NotificationController::class, 'store']);
-    Route::put('/notifications/{id}', [NotificationController::class, 'update']);
-    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
-
-    // ============================================================
-    // مسیرهای مدیریت مراجعات
-    // ============================================================
-    Route::prefix('registrations')->group(function () {
-        Route::get('/statistics', [RegistrationsController::class, 'statistics']);
-        Route::get('/today', [RegistrationsController::class, 'todayRegistrations']);
-
-        Route::get('/', [RegistrationsController::class, 'index']);
-        Route::post('/', [RegistrationsController::class, 'store']);
-        Route::get('/{reg_id}', [RegistrationsController::class, 'show']);
-        Route::put('/{reg_id}', [RegistrationsController::class, 'update']);
-        Route::delete('/{reg_id}', [RegistrationsController::class, 'destroy']);
-
-        Route::put('/{reg_id}/status', [RegistrationsController::class, 'updateStatus']);
-    });
-
-    // ===== Sales CRUD =====
-    Route::prefix('sales')->group(function () {
-        Route::get('/', [SalesController::class, 'index']);
-        Route::post('/', [SalesController::class, 'store']);
-        Route::put('/{sales_id}', [SalesController::class, 'update']);
-        Route::delete('/{sales_id}', [SalesController::class, 'destroy']);
-    });
-
-    // ============================================================
-    // ✅ Journals (ژورنال)
-    // ============================================================
-    Route::prefix('journals')->group(function () {
-
-        // ✅ منابع ژورنال (حساب‌محور + عمومی)
-        Route::get('/ref-sources', [JournalRefSourceController::class, 'refSources']);
-
-        // ✅ جدید: گروه‌های کتگوری حساب‌ها برای dropdown داینامیک
-        Route::get('/account-ref-groups', [JournalController::class, 'getAccountRefGroups']);
-         Route::get('/user-role-groups', [JournalController::class, 'getUserRoleGroups']);
-
-        // ✅ جدید: لیست منابع از JournalController (برای نوع account و account:{category})
-        Route::get('/ref-sources-dynamic', [JournalController::class, 'getRefSources']);
-
-        Route::get('/patient-summary/{regId}', [JournalController::class, 'getPatientJournalSummary'])
-            ->where('regId', '[0-9]+');
-
-        Route::get('/', [JournalController::class, 'index']);
-        Route::post('/', [JournalController::class, 'store']);
-
-        Route::post('/upsert/{id?}', [JournalController::class, 'upsert'])->where('id', '[0-9]+');
-        Route::put('/upsert/{id?}',  [JournalController::class, 'upsert'])->where('id', '[0-9]+');
-
-        Route::get('/{id}',    [JournalController::class, 'index'])->where('id', '[0-9]+');
-        Route::put('/{id}',    [JournalController::class, 'upsert'])->where('id', '[0-9]+');
-        Route::delete('/{id}', [JournalController::class, 'destroy'])->where('id', '[0-9]+');
-    });
-
-    // ============================================================
-    // ✅ Accounts
-    // ============================================================
-    Route::prefix('accounts')->group(function () {
-        Route::get('/parents', [AccountController::class, 'parents']);
-        Route::get('/transaction-accounts', [AccountController::class, 'transactionAccounts']);
-        Route::get('/summary', [AccountController::class, 'summary']);
-        Route::get('/types', [AccountController::class, 'types']);
-        Route::get('/categories/{accountType}', [AccountController::class, 'categories']);
-        Route::get('/by-category', [AccountController::class, 'byCategory']);
-
-        Route::get('/', [AccountController::class, 'index']);
-        Route::post('/', [AccountController::class, 'store']);
-        Route::get('/{id}', [AccountController::class, 'show'])->where('id', '[0-9]+');
-        Route::put('/{id}', [AccountController::class, 'update'])->where('id', '[0-9]+');
-        Route::delete('/{id}', [AccountController::class, 'destroy'])->where('id', '[0-9]+');
-
-        Route::post('/{id}/toggle-status', [AccountController::class, 'toggleStatus'])->where('id', '[0-9]+');
+        Route::post('/{id}/execute', [PharmacyExecutionController::class, 'execute'])->where('id', '[0-9]+');
+        Route::post('/{id}/cancel', [PharmacyExecutionController::class, 'cancel'])->where('id', '[0-9]+');
+        Route::post('/{id}/mark-paid', [PharmacyExecutionController::class, 'markPaid'])->where('id', '[0-9]+');
     });
 
     // ============================================================
     // ✅ Patients
     // ============================================================
     Route::prefix('patients')->group(function () {
-        Route::get('/search', [RegistrationsController::class, 'searchPatients']);
-        Route::get('/{patient_id}/info', [RegistrationsController::class, 'getPatientInfo'])
-            ->where('patient_id', '[0-9]+');
+        Route::get('/search', [PatientController::class, 'search']);
+        Route::get('/statistics', [PatientController::class, 'statistics']);
 
         Route::get('/', [PatientController::class, 'index']);
         Route::post('/', [PatientController::class, 'store']);
         Route::get('/{id}', [PatientController::class, 'show'])->where('id', '[0-9]+');
         Route::put('/{id}', [PatientController::class, 'update'])->where('id', '[0-9]+');
         Route::delete('/{id}', [PatientController::class, 'destroy'])->where('id', '[0-9]+');
-    });
 
-    // ===== Reports / Views =====
-    Route::get('/view-inventory', [ViewInventoryController::class, 'index']);
-    Route::get('/view-medications', [ViewMedicationsController::class, 'index']);
-    Route::get('/account-summary', [AccountSummaryController::class, 'index']);
-    Route::get('/account-summary/types',          [AccountSummaryController::class, 'types']);
-    Route::get('/account-summary/{key}/journals', [AccountSummaryController::class, 'journals']);
-    Route::get('/view-profit-loss', [ViewProfitLossController::class, 'index']);
-    Route::get('/hospital-reports', [HospitalReportController::class, 'index']);
-
-    // ✅ گزارش کمبود موجودی (Protected)
-    Route::get('/reports/medication-stock',         [StockReportController::class, 'medicationStock']);
-    Route::get('/reports/medication-stock/summary', [StockReportController::class, 'summary']);
-
-    Route::get('/dashboard-daily', function () {
-        return DB::table('view_dashboard_daily')->get();
+        Route::get('/{id}/history', [PatientController::class, 'history'])->where('id', '[0-9]+');
     });
 
     // ============================================================
-    // ✅ Benefits (گزارش سود و زیان)
+    // ✅ Registrations
+    // ============================================================
+    Route::prefix('registrations')->group(function () {
+        Route::get('/today', [RegistrationsController::class, 'today']);
+        Route::get('/by-doctor', [RegistrationsController::class, 'byDoctor']);
+        Route::get('/patient/{patientId}', [RegistrationsController::class, 'byPatient'])->where('patientId', '[0-9]+');
+
+        Route::get('/', [RegistrationsController::class, 'index']);
+        Route::post('/', [RegistrationsController::class, 'store']);
+        Route::get('/{id}', [RegistrationsController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [RegistrationsController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [RegistrationsController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Customers
+    // ============================================================
+    Route::prefix('customers')->group(function () {
+        Route::get('/', [CustomersController::class, 'index']);
+        Route::post('/', [CustomersController::class, 'store']);
+        Route::get('/{id}', [CustomersController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [CustomersController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [CustomersController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Categories
+    // ============================================================
+    Route::prefix('categories')->group(function () {
+        Route::get('/', [CategoryController::class, 'index']);
+        Route::post('/', [CategoryController::class, 'store']);
+        Route::get('/{id}', [CategoryController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [CategoryController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [CategoryController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Sales / Sales Details
+    // ============================================================
+    Route::prefix('sales')->group(function () {
+        Route::get('/statistics', [SalesController::class, 'statistics']);
+        Route::get('/report', [SalesController::class, 'report']);
+
+        Route::get('/', [SalesController::class, 'index']);
+        Route::post('/', [SalesController::class, 'store']);
+        Route::get('/{id}', [SalesController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [SalesController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [SalesController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    Route::prefix('sales-details')->group(function () {
+        Route::get('/sale/{saleId}', [SalesDetailsController::class, 'bySale'])->where('saleId', '[0-9]+');
+
+        Route::get('/', [SalesDetailsController::class, 'index']);
+        Route::post('/', [SalesDetailsController::class, 'store']);
+        Route::get('/{id}', [SalesDetailsController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [SalesDetailsController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [SalesDetailsController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    Route::prefix('sales-full-details')->group(function () {
+        Route::get('/', [SalesFullDetailsController::class, 'index']);
+        Route::get('/{saleId}', [SalesFullDetailsController::class, 'show'])->where('saleId', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Purchases
+    // ============================================================
+    Route::prefix('purchases')->group(function () {
+        Route::get('/statistics', [ParchasesController::class, 'statistics']);
+
+        Route::get('/', [ParchasesController::class, 'index']);
+        Route::post('/', [ParchasesController::class, 'store']);
+        Route::get('/{id}', [ParchasesController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [ParchasesController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [ParchasesController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Inventory / Medication Views
+    // ============================================================
+    Route::prefix('inventory')->group(function () {
+        Route::get('/summary', [ViewInventoryController::class, 'summary']);
+        Route::get('/movements', [ViewInventoryController::class, 'movements']);
+        Route::get('/low-stock', [ViewInventoryController::class, 'lowStock']);
+        Route::get('/', [ViewInventoryController::class, 'index']);
+    });
+
+    Route::get('/medications-view', [ViewMedicationsController::class, 'index']);
+    Route::get('/medications-view/{id}', [ViewMedicationsController::class, 'show'])->where('id', '[0-9]+');
+
+    // ============================================================
+    // ✅ Profit & Loss
+    // ============================================================
+    Route::prefix('profit-loss')->group(function () {
+        Route::get('/', [ViewProfitLossController::class, 'index']);
+        Route::get('/summary', [ViewProfitLossController::class, 'summary']);
+        Route::get('/by-date', [ViewProfitLossController::class, 'byDateRange']);
+    });
+
+    // ============================================================
+    // ✅ Notifications
+    // ============================================================
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [NotificationController::class, 'index']);
+        Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
+        Route::post('/{id}/read', [NotificationController::class, 'markAsRead'])->where('id', '[0-9]+');
+        Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
+        Route::delete('/{id}', [NotificationController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Accounts / Account Summary / Journal
+    // ============================================================
+    Route::prefix('accounts')->group(function () {
+        Route::get('/statistics', [AccountController::class, 'statistics']);
+
+        Route::get('/', [AccountController::class, 'index']);
+        Route::post('/', [AccountController::class, 'store']);
+        Route::get('/{id}', [AccountController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [AccountController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [AccountController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    Route::prefix('account-summary')->group(function () {
+        Route::get('/', [AccountSummaryController::class, 'index']);
+        Route::get('/by-account/{accountId}', [AccountSummaryController::class, 'byAccount'])->where('accountId', '[0-9]+');
+        Route::get('/by-date', [AccountSummaryController::class, 'byDateRange']);
+    });
+
+    Route::prefix('journal')->group(function () {
+        Route::get('/statistics', [JournalController::class, 'statistics']);
+        Route::get('/by-source', [JournalController::class, 'bySource']);
+
+        Route::get('/', [JournalController::class, 'index']);
+        Route::post('/', [JournalController::class, 'store']);
+        Route::get('/{id}', [JournalController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [JournalController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [JournalController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    Route::prefix('journal-ref-sources')->group(function () {
+        Route::get('/', [JournalRefSourceController::class, 'index']);
+        Route::post('/', [JournalRefSourceController::class, 'store']);
+        Route::get('/{id}', [JournalRefSourceController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [JournalRefSourceController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [JournalRefSourceController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Reports
+    // ============================================================
+    Route::prefix('reports')->group(function () {
+        Route::get('/hospital', [HospitalReportController::class, 'index']);
+        Route::get('/hospital/summary', [HospitalReportController::class, 'summary']);
+        Route::get('/hospital/by-date', [HospitalReportController::class, 'byDateRange']);
+        Route::get('/hospital/export', [HospitalReportController::class, 'export']);
+    });
+
+    // ============================================================
+    // ✅ Benefits
     // ============================================================
     Route::prefix('benefits')->group(function () {
-        Route::get('/',        [BenefitController::class, 'index']);
-        Route::get('/chart',   [BenefitController::class, 'chart']);
-        Route::get('/summary', [BenefitController::class, 'summary']);
+        Route::get('/', [BenefitController::class, 'index']);
+        Route::post('/', [BenefitController::class, 'store']);
+        Route::get('/{id}', [BenefitController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [BenefitController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [BenefitController::class, 'destroy'])->where('id', '[0-9]+');
     });
 
     // ============================================================
-    // ✅ PAYROLL (مدیریت معاشات)
+    // ✅ Payroll
     // ============================================================
-    Route::prefix('payroll')->group(function () {
+    Route::prefix('payrolls')->group(function () {
+        Route::get('/statistics', [PayrollModelController::class, 'statistics']);
+        Route::get('/by-user/{userId}', [PayrollModelController::class, 'byUser'])->where('userId', '[0-9]+');
+        Route::post('/{id}/pay', [PayrollModelController::class, 'pay'])->where('id', '[0-9]+');
 
-        // ===== Dashboard =====
-        Route::get('/dashboard', [PayrollModelController::class, 'getDashboard']);
-
-        // ===== Employees =====
-        Route::get('/employees', [PayrollModelController::class, 'getEmployees']);
-        Route::get('/employees/{id}', [PayrollModelController::class, 'getEmployee']);
-        Route::post('/employees', [PayrollModelController::class, 'createEmployee']);
-        Route::put('/employees/{id}', [PayrollModelController::class, 'updateEmployee']);
-        Route::delete('/employees/{id}', [PayrollModelController::class, 'deleteEmployee']);
-
-        // ===== Salaries =====
-        Route::get('/salaries', [PayrollModelController::class, 'getSalaries']);
-        Route::post('/salaries/generate', [PayrollModelController::class, 'generateSalaries']);
-        Route::post('/salaries/pay-bulk', [PayrollModelController::class, 'paySalariesBulk']);
-
-        // ===== Advances (جدید — بر اساس ژورنال) =====
-        Route::get('/advances', [PayrollModelController::class, 'getAdvances']);
-        Route::post('/advances', [PayrollModelController::class, 'createAdvance']);
-        Route::patch('/advances/{id}/approve', [PayrollModelController::class, 'approveAdvance']);
-        Route::patch('/advances/{id}/reject', [PayrollModelController::class, 'rejectAdvance']);
-
-        // ✅ جدید: مانده پیش‌پرداخت همه کارمندان یک دوره (سبک — بدون تولید مجدد معاش)
-        Route::get('/advances/balances', [PayrollModelController::class, 'getEmployeeAdvanceBalances']);
-
-        // ===== Reports =====
-        Route::get('/reports', [PayrollModelController::class, 'getReports']);
-        Route::get('/report-periods', [PayrollModelController::class, 'getReportPeriods']);
-
-        // ===== Settings =====
-        Route::get('/settings', [PayrollModelController::class, 'getSettings']);
-        Route::put('/settings', [PayrollModelController::class, 'updateSettings']);
-
-        // ✅ جدید: دیباگ پیش‌پرداخت یک کارمند
-        //    GET /payroll/debug/advance?userId=5
-        //    GET /payroll/debug/advance?accountId=12
-        //    GET /payroll/debug/advance?salaryId=100
-        Route::get('/debug/advance', [PayrollModelController::class, 'debugAdvance']);
+        Route::get('/', [PayrollModelController::class, 'index']);
+        Route::post('/', [PayrollModelController::class, 'store']);
+        Route::get('/{id}', [PayrollModelController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [PayrollModelController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [PayrollModelController::class, 'destroy'])->where('id', '[0-9]+');
     });
-});
 
-/*
-|--------------------------------------------------------------------------
-| Public Routes (بدون نیاز به احراز هویت)
-|--------------------------------------------------------------------------
-*/
-Route::get('/sales-report', function (Request $request) {
-    $type = $request->get('type', 'daily');
-    $query = DB::table('view_sales_summary');
-    if ($type) {
-        $query->where('type', $type);
-    }
-    return $query->get();
-});
+    // ============================================================
+    // ✅ Laboratory (master data)
+    // ============================================================
+    Route::prefix('laboratory')->group(function () {
+        Route::get('/tests', [LaboratoryController::class, 'index']);
+        Route::post('/tests', [LaboratoryController::class, 'store']);
+        Route::get('/tests/{id}', [LaboratoryController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/tests/{id}', [LaboratoryController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/tests/{id}', [LaboratoryController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    // ============================================================
+    // ✅ Emergency
+    // ============================================================
+    Route::prefix('emergency')->group(function () {
+        // Triage
+        Route::prefix('triage')->group(function () {
+            Route::get('/queue', [EmergencyTriageController::class, 'queue']);
+            Route::get('/statistics', [EmergencyTriageController::class, 'statistics']);
+
+            Route::get('/', [EmergencyTriageController::class, 'index']);
+            Route::post('/', [EmergencyTriageController::class, 'store']);
+            Route::get('/{id}', [EmergencyTriageController::class, 'show'])->where('id', '[0-9]+');
+            Route::put('/{id}', [EmergencyTriageController::class, 'update'])->where('id', '[0-9]+');
+            Route::delete('/{id}', [EmergencyTriageController::class, 'destroy'])->where('id', '[0-9]+');
+        });
+
+        // Treatments
+        Route::prefix('treatments')->group(function () {
+            Route::get('/by-registration/{regId}', [EmergencyTreatmentController::class, 'byRegistration'])->where('regId', '[0-9]+');
+
+            Route::get('/', [EmergencyTreatmentController::class, 'index']);
+            Route::post('/', [EmergencyTreatmentController::class, 'store']);
+            Route::get('/{id}', [EmergencyTreatmentController::class, 'show'])->where('id', '[0-9]+');
+            Route::put('/{id}', [EmergencyTreatmentController::class, 'update'])->where('id', '[0-9]+');
+            Route::delete('/{id}', [EmergencyTreatmentController::class, 'destroy'])->where('id', '[0-9]+');
+        });
+
+        // Vitals
+        Route::prefix('vitals')->group(function () {
+            Route::get('/by-registration/{regId}', [EmergencyVitalController::class, 'byRegistration'])->where('regId', '[0-9]+');
+
+            Route::get('/', [EmergencyVitalController::class, 'index']);
+            Route::post('/', [EmergencyVitalController::class, 'store']);
+            Route::get('/{id}', [EmergencyVitalController::class, 'show'])->where('id', '[0-9]+');
+            Route::put('/{id}', [EmergencyVitalController::class, 'update'])->where('id', '[0-9]+');
+            Route::delete('/{id}', [EmergencyVitalController::class, 'destroy'])->where('id', '[0-9]+');
+        });
+
+        // Main emergency cases
+        Route::get('/statistics', [EmergencyController::class, 'statistics']);
+        Route::get('/active', [EmergencyController::class, 'active']);
+
+        Route::get('/', [EmergencyController::class, 'index']);
+        Route::post('/', [EmergencyController::class, 'store']);
+        Route::get('/{id}', [EmergencyController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [EmergencyController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('/{id}', [EmergencyController::class, 'destroy'])->where('id', '[0-9]+');
+
+        Route::post('/{id}/discharge', [EmergencyController::class, 'discharge'])->where('id', '[0-9]+');
+        Route::post('/{id}/admit', [EmergencyController::class, 'admit'])->where('id', '[0-9]+');
+    });
+
+}); // پایان گروه auth:sanctum

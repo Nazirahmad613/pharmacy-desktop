@@ -26,6 +26,10 @@ import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SettingsIcon from "@mui/icons-material/Settings";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
+import EmergencyIcon from "@mui/icons-material/Emergency";
+import HealingIcon from "@mui/icons-material/Healing";
+import HistoryIcon from "@mui/icons-material/History";
+import PriorityHighIcon from "@mui/icons-material/PriorityHigh";
 
 // ============================================================
 // ✅ رول‌ها
@@ -40,6 +44,7 @@ export const ROLES = {
   RADIOLOGIST: "Radiologist",
   RECEPTIONIST: "Receptionist",
   ACCOUNTANT: "Accountant",
+  EMERGENCY_NURSE: "EmergencyNurse",
   USER: "User",
 };
 
@@ -61,6 +66,11 @@ export const PERMISSIONS = {
   PAYROLL_MANAGE: "payroll.manage",
   PAYROLL_PAY: "payroll.pay",
   PAYROLL_SETTINGS: "payroll.settings",
+  EMERGENCY_VIEW: "emergency.view",
+  EMERGENCY_ADMIT: "emergency.admit",
+  EMERGENCY_TRIAGE: "emergency.triage",
+  EMERGENCY_TREAT: "emergency.treat",
+  EMERGENCY_HISTORY: "emergency.history",
 };
 
 const navigations = [
@@ -112,6 +122,59 @@ const navigations = [
       { name: "RegistationForm", path: "/material/registrations", icon: <AppRegistrationIcon />, roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST] },
     ],
   },
+
+  // ============================================================
+  // ✅ مریضان اضطراری (هم‌سطح با ثبت نام)
+  // ============================================================
+  {
+    label: "مریضان اضطراری",
+    type: "label",
+    roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
+  },
+  {
+    name: "🚨 مریضان اضطراری",
+    icon: <EmergencyIcon />,
+    roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
+    children: [
+      {
+        name: "داشبورد اضطراری",
+        path: "/material/emergency",
+        icon: <DashboardIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
+      },
+      {
+        name: "پذیرش مریض اضطراری",
+        path: "/material/emergency/admission",
+        icon: <AppRegistrationIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.EMERGENCY_NURSE],
+      },
+      {
+        name: "لیست مریضان",
+        path: "/material/emergency/patients",
+        icon: <PeopleIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
+      },
+      {
+        name: "اولویت‌بندی (Triage)",
+        path: "/material/emergency/triage",
+        icon: <PriorityHighIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
+      },
+      {
+        name: "معالجه اضطراری",
+        path: "/material/emergency/treatment",
+        icon: <HealingIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.DOCTOR],
+      },
+      {
+        name: "تاریخچه",
+        path: "/material/emergency/history",
+        icon: <HistoryIcon />,
+        roles: [ROLES.Admin, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
+      },
+    ],
+  },
+
   {
     label: "لابراتوار",
     type: "label",
@@ -280,10 +343,6 @@ const navigations = [
 
 // ============================================================
 // ✅ Helper: والد منطقی برای Breadcrumb
-//
-// ⚠️ توجه: این تابع فقط برای نمایش Breadcrumb استفاده می‌شود.
-//    برای دکمه «بازگشت به صفحه قبلی» از location.state.previousPath
-//    در useBackNavigation استفاده می‌شود (نه از این تابع).
 // ============================================================
 
 export const ROOT_PATHS = [
@@ -299,6 +358,7 @@ export const ROOT_PATHS = [
   "/material/sales_insert",
   "/material/stock",
   "/material/accounts",
+  "/material/emergency",
 ];
 
 const PARENT_OVERRIDES = {
@@ -313,6 +373,12 @@ const PARENT_OVERRIDES = {
   "/material/pharmacy/history": "/material/pharmacy",
   "/material/pharmacy/executions": "/material/pharmacy",
   "/material/lab-results": "/material/lab-hematology",
+  // ✅ Emergency
+  "/material/emergency/admission": "/material/emergency",
+  "/material/emergency/patients": "/material/emergency",
+  "/material/emergency/triage": "/material/emergency",
+  "/material/emergency/treatment": "/material/emergency",
+  "/material/emergency/history": "/material/emergency",
 };
 
 /**

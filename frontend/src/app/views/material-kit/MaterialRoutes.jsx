@@ -125,6 +125,35 @@ const AppPharmacyExecutions = Loadable(
   lazy(() => import("./pharmacy/executions/PharmacyPrescriptionExecutions"))
 );
 
+// ============================================================
+// ===== ✅ Emergency (مریضان اضطراری) — مطابق ساختار واقعی =====
+// فولدر: views/material-kit/emergency_patients/
+//   ├── page.jsx                  → Dashboard
+//   ├── admission/page.jsx
+//   ├── patients/page.jsx         (⚠️ باید ساخته شود)
+//   ├── triage/page.jsx
+//   ├── treatment/page.jsx
+//   ├── EmergencyStatsCards.jsx   (کامپوننت، نه Route)
+//   ├── PatientTable.jsx          (کامپوننت، نه Route)
+//   └── TriagePriorityChip.jsx    (کامپوننت، نه Route)
+// ============================================================
+const AppEmergencyDashboard = Loadable(
+  lazy(() => import("./emergency_patients/page"))
+);
+const AppEmergencyAdmission = Loadable(
+  lazy(() => import("./emergency_patients/admission/page"))
+);
+const AppEmergencyPatients = Loadable(
+  lazy(() => import("./emergency_patients/patients/page"))
+);
+const AppEmergencyTriage = Loadable(
+  lazy(() => import("./emergency_patients/triage/page"))
+);
+const AppEmergencyTreatment = Loadable(
+  lazy(() => import("./emergency_patients/treatment/page"))
+);
+// ⚠️ AppEmergencyHistory حذف شد — فولدر history/page.jsx وجود ندارد.
+
 // ===== Departments =====
 const AppDepartmentsPage = Loadable(
   lazy(() => import("./departments/DepartmentsPage"))
@@ -301,6 +330,69 @@ const materialRoutes = [
   },
 
   // ============================================================
+  // ===== ✅ Emergency Routes (مریضان اضطراری) =====
+  // ============================================================
+  {
+    path: "/material/emergency",
+    element: (
+      <RoleRoute
+        allowedRoles={[
+          ROLES.ADMIN,
+          ROLES.RECEPTIONIST,
+          ROLES.DOCTOR,
+          ROLES.EMERGENCY_NURSE,
+        ]}
+      >
+        <AppEmergencyDashboard />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/emergency/admission",
+    element: (
+      <RoleRoute
+        allowedRoles={[ROLES.ADMIN, ROLES.RECEPTIONIST, ROLES.EMERGENCY_NURSE]}
+      >
+        <AppEmergencyAdmission />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/emergency/patients",
+    element: (
+      <RoleRoute
+        allowedRoles={[
+          ROLES.ADMIN,
+          ROLES.RECEPTIONIST,
+          ROLES.DOCTOR,
+          ROLES.EMERGENCY_NURSE,
+        ]}
+      >
+        <AppEmergencyPatients />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/emergency/triage",
+    element: (
+      <RoleRoute
+        allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE]}
+      >
+        <AppEmergencyTriage />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/emergency/treatment",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR]}>
+        <AppEmergencyTreatment />
+      </RoleRoute>
+    ),
+  },
+  // ⚠️ Route /material/emergency/history حذف شد چون فایل مربوطه وجود ندارد.
+
+  // ============================================================
   // ===== ✅ Payroll Routes (مدیریت معاشات) =====
   // ============================================================
   {
@@ -327,7 +419,14 @@ const materialRoutes = [
       </RoleRoute>
     ),
   },
-   
+  {
+    path: "/material/payroll/advances",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+        <AppSalaryAdvances />
+      </RoleRoute>
+    ),
+  },
   {
     path: "/material/payroll/reports",
     element: (
@@ -339,131 +438,21 @@ const materialRoutes = [
   {
     path: "/material/payroll/settings",
     element: (
-      <AdminRoute>
+      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
         <AppSalarySettings />
-      </AdminRoute>
-    ),
-  },
-
-  // ===== Reports =====
-  {
-    path: "/material/hospital-report",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR]}>
-        <AppHospital_report />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/AcountSummaryPage",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
-        <AppAccountSummaryPage />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/MedicationStockTable",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST]}>
-        <AppMedicationStockTable />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/MedicationStockChart",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST]}>
-        <AppMedicationStockChart />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/SalesTable",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
-        <AppSalesTable />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/SalesChart",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
-        <AppSalesChart />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/dashboard-daily-chart",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
-        <AppDashboardDailyChart />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/dashboard-daily-table",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
-        <AppDashboardDailyTable />
       </RoleRoute>
     ),
   },
 
-  // ===== Stock (Admin + Pharmacist) =====
-  {
-    path: "/material/stock",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST]}>
-        <AppStock />
-      </RoleRoute>
-    ),
-  },
-
-  // ===== Accounts (Admin + Accountant) =====
-  {
-    path: "/material/accounts",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
-        <AppAccounts />
-      </RoleRoute>
-    ),
-  },
-
-  // ===== Laboratory (Admin + LabTechnician) =====
-  {
-    path: "/material/lab-hematology",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.LAB_TECHNICIAN]}>
-        <AppLabHematology />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/lab-results",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.LAB_TECHNICIAN]}>
-        <AppLabResults />
-      </RoleRoute>
-    ),
-  },
-
-  // ===== Radiology (Admin + Radiologist) =====
-  {
-    path: "/material/radiology",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.RADIOLOGIST]}>
-        <AppRadiology />
-      </RoleRoute>
-    ),
-  },
-
-  // ===== Pharmacy (Admin + Pharmacist) =====
+  // ============================================================
+  // ===== ✅ Pharmacy Routes (فارمسی) =====
+  // ============================================================
   {
     path: "/material/pharmacy",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST]}>
+      <RoleRoute
+        allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}
+      >
         <AppPharmacy />
       </RoleRoute>
     ),
@@ -479,7 +468,9 @@ const materialRoutes = [
   {
     path: "/material/pharmacy/prescriptions",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST]}>
+      <RoleRoute
+        allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.DOCTOR]}
+      >
         <AppPharmacyPrescriptions />
       </RoleRoute>
     ),
@@ -503,7 +494,9 @@ const materialRoutes = [
   {
     path: "/material/pharmacy/history",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST]}>
+      <RoleRoute
+        allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}
+      >
         <AppPharmacyHistory />
       </RoleRoute>
     ),
@@ -517,31 +510,165 @@ const materialRoutes = [
     ),
   },
 
-  // ===== Departments (فقط Admin) =====
+  // ============================================================
+  // ===== ✅ Stock Routes (گدام) =====
+  // ============================================================
+  {
+    path: "/material/stock",
+    element: (
+      <RoleRoute
+        allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}
+      >
+        <AppStock />
+      </RoleRoute>
+    ),
+  },
+
+  // ============================================================
+  // ===== ✅ Laboratory Routes (لابراتوار) =====
+  // ============================================================
+  {
+    path: "/material/laboratory/hematology",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.LAB_TECH]}>
+        <AppLabHematology />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/laboratory/results",
+    element: (
+      <RoleRoute
+        allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.LAB_TECH]}
+      >
+        <AppLabResults />
+      </RoleRoute>
+    ),
+  },
+
+  // ============================================================
+  // ===== ✅ Radiology Routes (رادیولوژی) =====
+  // ============================================================
+  {
+    path: "/material/radiology",
+    element: (
+      <RoleRoute
+        allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.RADIOLOGIST]}
+      >
+        <AppRadiology />
+      </RoleRoute>
+    ),
+  },
+
+  // ============================================================
+  // ===== ✅ Accounts Routes (حسابات) =====
+  // ============================================================
+  {
+    path: "/material/accounts",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+        <AppAccounts />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/reports/account-summary",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+        <AppAccountSummaryPage />
+      </RoleRoute>
+    ),
+  },
+
+  // ============================================================
+  // ===== ✅ Reports Routes (راپورها) =====
+  // ============================================================
+  {
+    path: "/material/reports/hospital",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR]}>
+        <AppHospital_report />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/reports/medication-stock/table",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}>
+        <AppMedicationStockTable />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/reports/medication-stock/chart",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}>
+        <AppMedicationStockChart />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/reports/sales/table",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+        <AppSalesTable />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/reports/sales/chart",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+        <AppSalesChart />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/reports/dashboard/daily-chart",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.ACCOUNTANT]}>
+        <AppDashboardDailyChart />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/reports/dashboard/daily-table",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.ACCOUNTANT]}>
+        <AppDashboardDailyTable />
+      </RoleRoute>
+    ),
+  },
+
+  // ============================================================
+  // ===== ✅ Users & Permissions (کاربران و صلاحیت‌ها) =====
+  // ============================================================
+  {
+    path: "/material/users",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+        <AppUsersPage />
+      </RoleRoute>
+    ),
+  },
+  {
+    path: "/material/users/roles-permissions",
+    element: (
+      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+        <AppRolesPermissionsPage />
+      </RoleRoute>
+    ),
+  },
+
+  // ============================================================
+  // ===== ✅ Departments Routes (بخش‌ها) =====
+  // ============================================================
   {
     path: "/material/departments",
     element: (
       <RoleRoute allowedRoles={[ROLES.ADMIN]}>
         <AppDepartmentsPage />
       </RoleRoute>
-    ),
-  },
-
-  // ===== Users Management (Admin Only) =====
-  {
-    path: "/material/users",
-    element: (
-      <AdminRoute>
-        <AppUsersPage />
-      </AdminRoute>
-    ),
-  },
-  {
-    path: "/material/roles-permissions",
-    element: (
-      <AdminRoute>
-        <AppRolesPermissionsPage />
-      </AdminRoute>
     ),
   },
 ];

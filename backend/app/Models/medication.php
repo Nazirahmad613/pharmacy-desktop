@@ -60,4 +60,11 @@ class Medication extends Model
         }
         return ['status' => 'موجود', 'color' => 'green', 'icon' => '✅'];
     }
+
+
+public function emergencyTreatments()
+{
+    return $this->hasMany(EmergencyTreatment::class, 'med_id', 'med_id');
+}
+
 }

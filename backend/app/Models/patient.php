@@ -83,4 +83,17 @@ class Patient extends Model
     {
         return $this->belongsTo(User::class, 'updated_by');
     }
+
+
+
+    public function emergencyCases()
+{
+    return $this->hasMany(EmergencyCase::class, 'patient_id', 'patient_id');
+}
+
+public function latestEmergencyCase()
+{
+    return $this->hasOne(EmergencyCase::class, 'patient_id', 'patient_id')
+        ->latestOfMany('emergency_id');
+}
 }

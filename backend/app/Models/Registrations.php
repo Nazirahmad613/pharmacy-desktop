@@ -240,6 +240,16 @@ class Registrations extends Model
     | Reg Name
     |--------------------------------------------------------------------------
     */
+    public function emergencyCases()
+{
+    return $this->hasMany(EmergencyCase::class, 'reg_id', 'reg_id');
+}
+
+public function latestEmergencyCase()
+{
+    return $this->hasOne(EmergencyCase::class, 'reg_id', 'reg_id')
+        ->latestOfMany('emergency_id');
+}
 
     public function getRegNameAttribute(): string
     {
@@ -275,6 +285,10 @@ class Registrations extends Model
     |--------------------------------------------------------------------------
     */
 
+
+
+
+    
     public function getTreatmentProgressAttribute(): ?array
     {
         $progress = $this->treatmentProgress;
