@@ -14,7 +14,7 @@ import {
   Alert,
   Snackbar,
 } from "@mui/material";
-import TriagePriorityChip from "../components/TriagePriorityChip";
+import TriagePriorityChip from "../TriagePriorityChip";
 
 const initialPatients = [
   { id: 1, caseNumber: "EMG-006", name: "حسن احمدی", age: "۶۲", chiefComplaint: "تنگی نفس شدید", currentPriority: null },

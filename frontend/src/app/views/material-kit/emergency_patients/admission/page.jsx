@@ -1,7 +1,7 @@
 // src/app/material/emergency/admission/page.jsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -18,15 +18,34 @@ import {
   DialogContentText,
   DialogActions,
   IconButton,
+  Chip,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  TableContainer,
+  Stack,
+  Tooltip,
 } from "@mui/material";
 import AppRegistrationIcon from "@mui/icons-material/AppRegistration";
 import CloseIcon from "@mui/icons-material/Close";
+import DeleteIcon from "@mui/icons-material/Delete";
+import { addAdmission, removeAdmission, updateAdmissionStatus } from "@/lib/emergencyStore";
+import { useEmergencyAdmissions } from "@/lib/useEmergencyAdmissions";
 
 const triageOptions = [
-  { value: "critical", label: "بحرانی — نیاز فوری به معالجه" },
-  { value: "urgent", label: "فوری — نیاز به معالجه در اسرع وقت" },
-  { value: "semi_urgent", label: "نیمه‌فوری — قابل تأخیر کوتاه" },
-  { value: "non_urgent", label: "غیرفوری — قابل تأخیر" },
+  { value: "critical", label: "بحرانی — نیاز فوری به معالجه", color: "error" },
+  { value: "urgent", label: "فوری — نیاز به معالجه در اسرع وقت", color: "warning" },
+  { value: "semi_urgent", label: "نیمه‌فوری — قابل تأخیر کوتاه", color: "info" },
+  { value: "non_urgent", label: "غیرفوری — قابل تأخیر", color: "success" },
+];
+
+const statusOptions = [
+  { value: "waiting", label: "در انتظار" },
+  { value: "in_treatment", label: "زیر معالجه" },
+  { value: "admitted", label: "بستر شده" },
+  { value: "discharged", label: "ترخیص" },
 ];
 
 const emptyForm = {
@@ -39,11 +58,16 @@ const emptyForm = {
   triageLevel: "urgent",
 };
 
+const triageMeta = Object.fromEntries(triageOptions.map((o) => [o.value, o]));
+const statusMeta = Object.fromEntries(statusOptions.map((o) => [o.value, o]));
+
 export default function EmergencyAdmissionPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+
+  const admissions = useEmergencyAdmissions();
 
   useEffect(() => {
     setIsMounted(true);
@@ -55,27 +79,42 @@ export default function EmergencyAdmissionPage() {
 
   const handleOpenConfirm = useCallback(() => {
     if (!form.firstName || !form.lastName || !form.chiefComplaint) {
-      setSnackbar({ open: true, message: "لطفاً فیلدهای الزامی (نام، تخلص، شکایت اصلی) را پر کنید", severity: "error" });
+      setSnackbar({
+        open: true,
+        message: "لطفاً فیلدهای الزامی (نام، تخلص، شکایت اصلی) را پر کنید",
+        severity: "error",
+      });
       return;
     }
     setConfirmOpen(true);
   }, [form]);
 
-  const handleCloseConfirm = useCallback(() => {
-    setConfirmOpen(false);
-  }, []);
-
-  const handleConfirmExited = useCallback(() => {
-    // پاک‌سازی در صورت نیاز
-  }, []);
+  const handleCloseConfirm = useCallback(() => setConfirmOpen(false), []);
 
   const handleSubmit = useCallback(() => {
-    // در پروژه واقعی: ارسال به API
-    console.log("Admission data:", form);
+    addAdmission(form); // ← ذخیره‌ی واقعی
     setConfirmOpen(false);
     setForm(emptyForm);
     setSnackbar({ open: true, message: "مریض با موفقیت پذیرش شد", severity: "success" });
   }, [form]);
+
+  const handleDelete = useCallback((id) => {
+    removeAdmission(id);
+    setSnackbar({ open: true, message: "رکورد حذف شد", severity: "info" });
+  }, []);
+
+  const handleStatusChange = useCallback((id, status) => {
+    updateAdmissionStatus(id, status);
+    setSnackbar({ open: true, message: "وضعیت به‌روزرسانی شد", severity: "success" });
+  }, []);
+
+  const stats = useMemo(() => {
+    return {
+      total: admissions.length,
+      waiting: admissions.filter((a) => a.status === "waiting").length,
+      critical: admissions.filter((a) => a.triageLevel === "critical").length,
+    };
+  }, [admissions]);
 
   if (!isMounted) return null;
 
@@ -124,23 +163,77 @@ export default function EmergencyAdmissionPage() {
         </Grid>
       </Paper>
 
-      <Dialog
-        open={confirmOpen}
-        onClose={handleCloseConfirm}
-        maxWidth="xs"
-        fullWidth
-        aria-labelledby="confirm-admission-dialog-title"
-        disableRestoreFocus
-        closeAfterTransition={false}
-        onExited={handleConfirmExited}
-      >
-        <DialogTitle id="confirm-admission-dialog-title" sx={{ pr: 6 }}>
+      {/* لیست مریضان اضطراری ثبت‌شده */}
+      <Paper sx={{ p: 3, mt: 3 }}>
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+          <Typography variant="h6" fontWeight="bold">مریضان پذیرش‌شده</Typography>
+          <Chip label={`مجموع: ${stats.total}`} />
+          <Chip color="warning" label={`در انتظار: ${stats.waiting}`} />
+          <Chip color="error" label={`بحرانی: ${stats.critical}`} />
+        </Stack>
+
+        {admissions.length === 0 ? (
+          <Alert severity="info">هنوز مریضی پذیرش نشده است. فرم بالا را پر کنید.</Alert>
+        ) : (
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>کد</TableCell>
+                  <TableCell>نام</TableCell>
+                  <TableCell>سن/جنسیت</TableCell>
+                  <TableCell>شکایت</TableCell>
+                  <TableCell>اولویت</TableCell>
+                  <TableCell>وضعیت</TableCell>
+                  <TableCell>زمان ثبت</TableCell>
+                  <TableCell align="center">عملیات</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {admissions.map((a) => (
+                  <TableRow key={a.id} hover>
+                    <TableCell>{a.id}</TableCell>
+                    <TableCell>{a.firstName} {a.lastName}</TableCell>
+                    <TableCell>
+                      {a.age || "-"} / {a.gender === "male" ? "مذکر" : a.gender === "female" ? "مؤنث" : "-"}
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <Tooltip title={a.chiefComplaint}><span>{a.chiefComplaint}</span></Tooltip>
+                    </TableCell>
+                    <TableCell>
+                      <Chip size="small" color={triageMeta[a.triageLevel]?.color || "default"} label={triageMeta[a.triageLevel]?.label?.split(" — ")[0] || a.triageLevel} />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        select
+                        size="small"
+                        value={a.status}
+                        onChange={(e) => handleStatusChange(a.id, e.target.value)}
+                        sx={{ minWidth: 130 }}
+                      >
+                        {statusOptions.map((s) => (
+                          <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+                        ))}
+                      </TextField>
+                    </TableCell>
+                    <TableCell>{new Date(a.createdAt).toLocaleString("fa-IR")}</TableCell>
+                    <TableCell align="center">
+                      <IconButton size="small" color="error" onClick={() => handleDelete(a.id)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+
+      <Dialog open={confirmOpen} onClose={handleCloseConfirm} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pr: 6 }}>
           تأیید پذیرش
-          <IconButton
-            aria-label="close"
-            onClick={handleCloseConfirm}
-            sx={{ position: "absolute", right: 8, top: 8 }}
-          >
+          <IconButton aria-label="close" onClick={handleCloseConfirm} sx={{ position: "absolute", right: 8, top: 8 }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>

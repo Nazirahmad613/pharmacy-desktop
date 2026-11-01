@@ -23,7 +23,7 @@ import {
 } from "@mui/material";
 import HealingIcon from "@mui/icons-material/Healing";
 import CloseIcon from "@mui/icons-material/Close";
-import TriagePriorityChip from "../components/TriagePriorityChip";
+import TriagePriorityChip from "../TriagePriorityChip";
 
 const patientsForTreatment = [
   { id: 1, caseNumber: "EMG-001", name: "احمد رضایی", age: "۴۵", chiefComplaint: "درد قفسه سینه", triageLevel: "critical" },

@@ -804,6 +804,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::post('/{id}/discharge', [EmergencyController::class, 'discharge'])->where('id', '[0-9]+');
         Route::post('/{id}/admit', [EmergencyController::class, 'admit'])->where('id', '[0-9]+');
+
+
+        // ✅ تاریخ مریضان اضطراری (باید قبل از /{id} باشد)
+Route::get('/history', [EmergencyController::class, 'history']);
+Route::get('/history/statistics', [EmergencyController::class, 'historyStatistics']);
+Route::get('/history/export', [EmergencyController::class, 'exportHistory']);
     });
 
 }); // پایان گروه auth:sanctum

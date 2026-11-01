@@ -126,16 +126,17 @@ const AppPharmacyExecutions = Loadable(
 );
 
 // ============================================================
-// ===== ✅ Emergency (مریضان اضطراری) — مطابق ساختار واقعی =====
+// ===== ✅ Emergency (مریضان اضطراری) =====
 // فولدر: views/material-kit/emergency_patients/
 //   ├── page.jsx                  → Dashboard
 //   ├── admission/page.jsx
-//   ├── patients/page.jsx         (⚠️ باید ساخته شود)
+//   ├── patients/page.jsx
 //   ├── triage/page.jsx
 //   ├── treatment/page.jsx
-//   ├── EmergencyStatsCards.jsx   (کامپوننت، نه Route)
-//   ├── PatientTable.jsx          (کامپوننت، نه Route)
-//   └── TriagePriorityChip.jsx    (کامپوننت، نه Route)
+//   ├── history/page.jsx          → ✅ جدید: تاریخ مریضان اضطراری
+//   ├── EmergencyStatsCards.jsx   (کامپوننت)
+//   ├── PatientTable.jsx          (کامپوننت)
+//   └── TriagePriorityChip.jsx    (کامپوننت)
 // ============================================================
 const AppEmergencyDashboard = Loadable(
   lazy(() => import("./emergency_patients/page"))
@@ -152,7 +153,10 @@ const AppEmergencyTriage = Loadable(
 const AppEmergencyTreatment = Loadable(
   lazy(() => import("./emergency_patients/treatment/page"))
 );
-// ⚠️ AppEmergencyHistory حذف شد — فولدر history/page.jsx وجود ندارد.
+// ✅ جدید: تاریخ مریضان اضطراری
+const AppEmergencyHistory = Loadable(
+  lazy(() => import("../material-kit/emergency_patients/EmergencyHistory"))
+);
 
 // ===== Departments =====
 const AppDepartmentsPage = Loadable(
@@ -390,7 +394,23 @@ const materialRoutes = [
       </RoleRoute>
     ),
   },
-  // ⚠️ Route /material/emergency/history حذف شد چون فایل مربوطه وجود ندارد.
+  // ✅ جدید: تاریخ مریضان اضطراری
+  {
+    path: "/material/emergency/history",
+    element: (
+      <RoleRoute
+        allowedRoles={[
+          ROLES.ADMIN,
+          ROLES.DOCTOR,
+          ROLES.EMERGENCY_NURSE,
+          ROLES.ACCOUNTANT,
+          ROLES.RECEPTIONIST,
+        ]}
+      >
+        <AppEmergencyHistory />
+      </RoleRoute>
+    ),
+  },
 
   // ============================================================
   // ===== ✅ Payroll Routes (مدیریت معاشات) =====
