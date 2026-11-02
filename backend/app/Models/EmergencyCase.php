@@ -72,9 +72,10 @@ class EmergencyCase extends Model
      *  روابط
      * ============================================================ */
 
+    // ✅ اصلاح شد: ownerKey = 'id' (نه 'patient_id')
     public function patient()
     {
-        return $this->belongsTo(Patient::class, 'patient_id', 'patient_id');
+        return $this->belongsTo(Patient::class, 'patient_id', 'id');
     }
 
     public function registration()
@@ -302,9 +303,6 @@ class EmergencyCase extends Model
         ], true);
     }
 
-    /**
-     * به‌روزرسانی مجموع مبلغ بر اساس treatments
-     */
     public function recalcTotal(): void
     {
         $this->total_amount = (float) $this->treatments()
@@ -313,9 +311,6 @@ class EmergencyCase extends Model
         $this->save();
     }
 
-    /**
-     * هماهنگ‌سازی triage_level با triage_score
-     */
     public function syncTriageScore(): void
     {
         if (!$this->triage_level) return;
@@ -346,9 +341,6 @@ class EmergencyCase extends Model
         ][$score] ?? self::TRIAGE_MODERATE;
     }
 
-    /**
-     * تولید شماره پرونده اضطراری یکتا
-     */
     public static function generateEmergencyNo(): string
     {
         $date = now()->format('Ymd');
@@ -366,9 +358,6 @@ class EmergencyCase extends Model
         return sprintf('EMG-%s-%04d', $date, $seq);
     }
 
-    /**
-     * بررسی امکان حذف — بدون سوابق
-     */
     public function canBeDeleted(): bool
     {
         return !$this->triages()->exists()

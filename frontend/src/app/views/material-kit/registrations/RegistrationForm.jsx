@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import MainLayoutjur from "../../../../components/MainLayoutjur";
-import MatxLoading from "../../../components/MatxLogo"; // ✅ اضافه شد
+import MatxLoading from "../../../components/MatxLogo";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useAuth } from "app/contexts/AuthContext";
@@ -217,7 +217,6 @@ export default function RegistrationForm() {
         console.log("📦 Raw doctors response:", docRes.data);
         console.log("📦 Doctors count (raw):", doctorsData.length);
 
-        // ✅ فیلتر نرم: هر نقشی که شامل doctor/داکتر باشد
         doctorsData = doctorsData.filter((user) => {
           const roles = user.roles || [];
           const roleNames = roles.map((r) =>
@@ -294,17 +293,14 @@ export default function RegistrationForm() {
     );
 
     const deptDoctors = doctors.filter((doc) => {
-      // ۱. department_id مستقیم
       if (doc.department_id !== undefined && doc.department_id !== null) {
         if (parseInt(doc.department_id) === deptId) return true;
       }
 
-      // ۲. department.id
       if (doc.department && parseInt(doc.department?.id) === deptId) {
         return true;
       }
 
-      // ۳. departments (آرایه)
       if (Array.isArray(doc.departments) && doc.departments.length > 0) {
         return doc.departments.some(
           (d) =>
@@ -319,7 +315,6 @@ export default function RegistrationForm() {
 
     setFilteredDoctors(deptDoctors);
 
-    // اگر داکتر انتخاب‌شده فعلی در بخش جدید نیست، پاک کن
     if (form.doctor_id) {
       const doctorExists = deptDoctors.some(
         (d) => parseInt(d.id) === parseInt(form.doctor_id)
@@ -648,6 +643,15 @@ export default function RegistrationForm() {
         (parseInt(form.oxygen) < 0 || parseInt(form.oxygen) > 100)
       ) {
         toast.error("❌ اکسیجن باید بین 0 تا 100 درصد باشد");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // ✅ اصلاح: اگر وضعیت Doctor انتخاب شد، داکتر باید انتخاب شده باشد
+      if (form.visit_status === "Doctor" && !form.doctor_id) {
+        toast.error(
+          "❌ برای ارسال به داکتر، ابتدا داکتر معالج را انتخاب کنید"
+        );
         setIsSubmitting(false);
         return;
       }
@@ -1056,6 +1060,7 @@ export default function RegistrationForm() {
     }
   };
 
+  // ✅ اصلاح ۱: Discharged اضافه شد
   const getStatusText = (status) => {
     const statusMap = {
       Waiting: "در انتظار",
@@ -1070,10 +1075,12 @@ export default function RegistrationForm() {
       Billing: "حسابداری",
       Completed: "تکمیل شده",
       Cancelled: "لغو شده",
+      Discharged: "ترخیص شده",   // ✅ اضافه شد
     };
     return statusMap[status] || status || "-";
   };
 
+  // ✅ اصلاح ۲: Discharged اضافه شد
   const getStatusColor = (status) => {
     const colorMap = {
       Waiting: "#f59e0b",
@@ -1088,6 +1095,7 @@ export default function RegistrationForm() {
       Billing: "#6366f1",
       Completed: "#22c55e",
       Cancelled: "#6b7280",
+      Discharged: "#14b8a6",   // ✅ اضافه شد
     };
     return colorMap[status] || "#6b7280";
   };
@@ -1098,7 +1106,7 @@ export default function RegistrationForm() {
     return registrations.filter((r) => {
       const fullName = getPatientFullName(r.patient).toLowerCase();
       const mobile = r.patient?.mobile?.toLowerCase() || "";
-      const visitNum = r.visit_number?.toLowerCase() || "";
+      const visitNum = String(r.visit_number || "").toLowerCase();
       return (
         fullName.includes(term) ||
         mobile.includes(term) ||
@@ -1523,7 +1531,6 @@ export default function RegistrationForm() {
     );
   };
 
-  // ============ رندر تب‌های اصلی ============
   const renderMainTabs = () => {
     const tabs = [
       { key: "registration", label: "📋 ثبت مراجعه", icon: "📋" },
@@ -1571,7 +1578,6 @@ export default function RegistrationForm() {
     );
   };
 
-  // ============ رندر محتوای تب‌ها ============
   const renderMainContent = () => {
     switch (activeMainTab) {
       case "registration":
@@ -1591,7 +1597,6 @@ export default function RegistrationForm() {
     }
   };
 
-  // ============ رندر تب ثبت مراجعه ============
   const renderRegistrationTab = () => {
     return (
       <>
@@ -2444,6 +2449,7 @@ export default function RegistrationForm() {
                 <option value="Billing">حسابداری</option>
                 <option value="Completed">تکمیل شده</option>
                 <option value="Cancelled">لغو شده</option>
+                <option value="Discharged">ترخیص شده</option>  {/* ✅ اضافه شد */}
               </select>
             </div>
 
@@ -2745,6 +2751,7 @@ export default function RegistrationForm() {
                       "Admission",
                       "Ward",
                       "Operation",
+                      "Discharged",   // ✅ اضافه شد — بعد از ترخیص، دکمه ارسال به داکتر نباشد
                     ].includes(r.visit_status);
 
                     return (

@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/EmergencyTreatmentController.php
 
 namespace App\Http\Controllers;
 
@@ -12,61 +11,86 @@ use App\Models\EmergencyTreatment;
 
 class EmergencyTreatmentController extends Controller
 {
-    public function index($caseId)
+    /* GET /emergency/treatments?emergency_id=X   یا   ?case_id=Y */
+    public function index(Request $request)
     {
-        $case = EmergencyCase::findOrFail($caseId);
+        $validator = Validator::make($request->all(), [
+            'emergency_id' => ['nullable', 'string'],
+            'case_id'      => ['nullable', 'integer'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
 
+        $query = EmergencyTreatment::with(['doctor', 'nurse', 'medication'])
+            ->orderByDesc('performed_at');
+
+        if ($request->filled('case_id')) {
+            $case = EmergencyCase::findOrFail($request->case_id);
+            $query->where('emergency_id', $case->emergency_id);
+        } elseif ($request->filled('emergency_id')) {
+            $query->where('emergency_id', $request->emergency_id);
+        } else {
+            return response()->json([
+                'errors' => ['case_id' => ['case_id یا emergency_id الزامی است.']],
+            ], 422);
+        }
+
+        return response()->json(['data' => $query->get()]);
+    }
+
+    /* GET /emergency/treatments/by-registration/{regId} */
+    public function byRegistration($regId)
+    {
+        $case = EmergencyCase::where('registration_id', $regId)->firstOrFail();
         $items = EmergencyTreatment::with(['doctor', 'nurse', 'medication'])
             ->where('emergency_id', $case->emergency_id)
             ->orderByDesc('performed_at')
             ->get();
-
         return response()->json(['data' => $items]);
     }
 
-    public function store(Request $request, $caseId)
+    /* POST /emergency/treatments   با body شامل case_id */
+    public function store(Request $request)
     {
-        $case = EmergencyCase::findOrFail($caseId);
-
         $validator = Validator::make($request->all(), [
+            'case_id'        => ['required', 'integer', 'exists:emergency_cases,id'],
             'treatment_type' => ['required', 'in:medication,procedure,surgery,observation,referral,lab,imaging,other'],
             'title'          => ['required', 'string', 'max:255'],
             'description'    => ['nullable', 'string', 'max:5000'],
-
-            'med_id'          => ['nullable', 'integer', 'exists:medications,med_id'],
-            'medication_name' => ['nullable', 'string', 'max:255'],
-            'dosage'          => ['nullable', 'string', 'max:100'],
-            'frequency'       => ['nullable', 'string', 'max:100'],
-            'route'           => ['nullable', 'string', 'max:50'],
-
-            'quantity'   => ['nullable', 'integer', 'min:0'],
-            'unit_price' => ['nullable', 'numeric', 'min:0'],
-
-            'performed_at' => ['required', 'date'],
-            'is_billable'  => ['nullable', 'boolean'],
+            'med_id'         => ['nullable', 'integer', 'exists:medications,med_id'],
+            'medication_name'=> ['nullable', 'string', 'max:255'],
+            'dosage'         => ['nullable', 'string', 'max:100'],
+            'frequency'      => ['nullable', 'string', 'max:100'],
+            'route'          => ['nullable', 'string', 'max:50'],
+            'quantity'       => ['nullable', 'integer', 'min:0'],
+            'unit_price'     => ['nullable', 'numeric', 'min:0'],
+            'performed_at'   => ['required', 'date'],
+            'is_billable'    => ['nullable', 'boolean'],
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        $case = EmergencyCase::findOrFail($request->case_id);
         $data = $validator->validated();
+        unset($data['case_id']);
         $data['emergency_id'] = $case->emergency_id;
         $data['doc_id']       = $request->user()->id;
 
         try {
             $treatment = EmergencyTreatment::create($data);
 
-            /* انتقال به وضعیت معالجه */
             if (in_array($case->status, [
                 EmergencyCase::STATUS_WAITING,
                 EmergencyCase::STATUS_IN_TRIAGE,
             ], true)) {
                 $case->update(['status' => EmergencyCase::STATUS_IN_TREATMENT]);
             }
-
-            /* بازتاب مجموع قیمت */
-            $case->recalcTotal();
+            if (method_exists($case, 'recalcTotal')) {
+                $case->recalcTotal();
+            }
 
             return response()->json([
                 'message' => 'معالجه ثبت شد.',
@@ -80,15 +104,32 @@ class EmergencyTreatmentController extends Controller
         }
     }
 
-    public function destroy($caseId, $treatmentId)
+    public function show($id)
     {
-        $case = EmergencyCase::findOrFail($caseId);
+        return response()->json(['data' => EmergencyTreatment::with(['doctor','medication'])->findOrFail($id)]);
+    }
 
-        $treatment = EmergencyTreatment::where('emergency_id', $case->emergency_id)
-            ->findOrFail($treatmentId);
+    public function update(Request $request, $id)
+    {
+        $treatment = EmergencyTreatment::findOrFail($id);
+        $validator = Validator::make($request->all(), [
+            'title'       => ['sometimes', 'string', 'max:255'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'dosage'      => ['sometimes', 'nullable', 'string', 'max:100'],
+            'frequency'   => ['sometimes', 'nullable', 'string', 'max:100'],
+            'route'       => ['sometimes', 'nullable', 'string', 'max:50'],
+            'performed_at'=> ['sometimes', 'date'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+        $treatment->update($validator->validated());
+        return response()->json(['message' => 'به‌روزرسانی شد.', 'data' => $treatment->fresh()]);
+    }
 
-        $treatment->delete();
-
+    public function destroy($id)
+    {
+        EmergencyTreatment::findOrFail($id)->delete();
         return response()->json(['message' => 'معالجه حذف شد.']);
     }
 }

@@ -184,14 +184,14 @@ $validated['visit_date'] = $visitDate;
 
 $validated['queue_number'] = null;
 $validated['queue_date'] = null;
+$validated['queue_status'] = null;   // ✅ اضافه شد — تا ارسال به داکتر null می‌ماند
 
-         // اگر مریض مستقیم به داکتر ارسال شد
+// اگر مریض مستقیم به داکتر ارسال شد
 if (
     isset($validated['visit_status']) &&
     $validated['visit_status'] === 'Doctor' &&
     !empty($validated['doctor_id'])
 ) {
-
     $validated['sent_to_doctor_at'] = now();
 
     $queueDate = now()->toDateString();
@@ -200,10 +200,9 @@ if (
         ->whereDate('queue_date', $queueDate)
         ->max('queue_number');
 
-
     $validated['queue_number'] = ($lastQueue ?? 0) + 1;
-
-    $validated['queue_date'] = $queueDate;
+    $validated['queue_date']   = $queueDate;
+    $validated['queue_status'] = 'Waiting';   // ✅ اضافه شد — صف ساخته شد و در انتظار است
 }
 
             /*

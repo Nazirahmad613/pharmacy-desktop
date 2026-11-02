@@ -47,6 +47,10 @@ export function getSnapshot() {
   return load();
 }
 
+// Backwards-compatible alias. Must share identity with getSnapshot so
+// useSyncExternalStore doesn't loop. Do NOT wrap in a new function.
+export const getAdmissions = getSnapshot;
+
 export function addAdmission(data) {
   const record = {
     id: `EMG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,

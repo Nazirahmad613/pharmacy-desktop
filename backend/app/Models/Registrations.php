@@ -122,6 +122,7 @@ class Registrations extends Model
         'doctor_id' => 'integer',
 
         'queue_number' => 'integer',
+        'visit_number' => 'integer',   // ✅ اضافه شد — شماره مراجعه عددی
         'status' => 'integer',
     ];
 
@@ -237,19 +238,34 @@ class Registrations extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | Reg Name
+    | Emergency Cases
+    |--------------------------------------------------------------------------
+    |
+    | یک مراجعه می‌تواند چند پرونده اضطراری داشته باشد (مثلاً مراجعه مجدد
+    | در همان روز). آخرین پرونده اضطراری با latestEmergencyCase قابل
+    | دسترسی است.
+    |
+    | نکته: از emergency_no استفاده می‌کنیم (نه emergency_id که PK است)
+    | برای مرتب‌سازی آخرین پرونده.
+    |
+    */
+
+    public function emergencyCases(): HasMany
+    {
+        return $this->hasMany(EmergencyCase::class, 'reg_id', 'reg_id');
+    }
+
+    public function latestEmergencyCase(): HasOne
+    {
+        return $this->hasOne(EmergencyCase::class, 'reg_id', 'reg_id')
+            ->latestOfMany('emergency_no');   // ✅ اصلاح شد — emergency_no به‌جای emergency_id
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reg Name (Accessor)
     |--------------------------------------------------------------------------
     */
-    public function emergencyCases()
-{
-    return $this->hasMany(EmergencyCase::class, 'reg_id', 'reg_id');
-}
-
-public function latestEmergencyCase()
-{
-    return $this->hasOne(EmergencyCase::class, 'reg_id', 'reg_id')
-        ->latestOfMany('emergency_id');
-}
 
     public function getRegNameAttribute(): string
     {
@@ -285,10 +301,6 @@ public function latestEmergencyCase()
     |--------------------------------------------------------------------------
     */
 
-
-
-
-    
     public function getTreatmentProgressAttribute(): ?array
     {
         $progress = $this->treatmentProgress;

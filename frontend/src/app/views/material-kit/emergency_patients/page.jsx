@@ -3,160 +3,159 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Box,
-  Typography,
-  Grid,
-  Paper,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  IconButton,
+  Box, Typography, Grid, Paper, Button, Dialog, DialogTitle,
+  DialogContent, DialogActions, IconButton, CircularProgress, Alert,
+  Chip, Stack, Divider,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import EmergencyStatsCards from "./EmergencyStatsCards";
 import PatientTable from "./PatientTable";
 import TriagePriorityChip from "./TriagePriorityChip";
+import { useAuth } from "app/contexts/AuthContext";
 
-// داده نمونه — در پروژه واقعی از API می‌آید
-const recentPatients = [
-  {
-    id: 1,
-    caseNumber: "EMG-001",
-    name: "احمد رضایی",
-    age: "۴۵",
-    chiefComplaint: "درد قفسه سینه",
-    triageLevel: "critical",
-    admissionTime: "۰۸:۳۰",
-  },
-  {
-    id: 2,
-    caseNumber: "EMG-002",
-    name: "مریم حسینی",
-    age: "۳۲",
-    chiefComplaint: "تنگی نفس",
-    triageLevel: "urgent",
-    admissionTime: "۰۸:۴۵",
-  },
-  {
-    id: 3,
-    caseNumber: "EMG-003",
-    name: "علی کریمی",
-    age: "۲۸",
-    chiefComplaint: "زخم سطحی",
-    triageLevel: "non_urgent",
-    admissionTime: "۰۹:۱۰",
-  },
-];
+const STATUS_LABEL = {
+  waiting: "در انتظار",
+  in_triage: "در تریاژ",
+  in_treatment: "زیر معالجه",
+  admitted: "بستری",
+  discharged: "ترخیص",
+  completed: "تکمیل",
+  cancelled: "لغو",
+};
 
 export default function EmergencyDashboardPage() {
-  // ============================================================
-  // ✅ تمام هوک‌ها بدون شرط در بالای کامپوننت تعریف می‌شوند
-  // ============================================================
+  const { api, user, loading: authLoading } = useAuth();
   const [isMounted, setIsMounted] = useState(false);
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // اطمینان از mount شدن در کلاینت (جلوگیری از خطای Hydration در Next.js)
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  useEffect(() => { setIsMounted(true); }, []);
 
-  // باز کردن مودال
+  const fetchActive = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await api.get("/emergency/active");
+      const payload = res?.data?.data || res?.data || [];
+      setPatients(Array.isArray(payload) ? payload : []);
+    } catch (err) {
+      console.error("Failed to load active emergencies", err);
+      setError(
+        err?.response?.data?.message ||
+        "خطا در دریافت لیست مریضان اضطراری"
+      );
+      setPatients([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [api, user]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+    fetchActive();
+  }, [authLoading, user, fetchActive]);
+
   const handleOpenDialog = useCallback((patient) => {
     setSelectedPatient(patient);
     setDialogOpen(true);
   }, []);
 
-  // بستن مودال — بدون setTimeout برای جلوگیری از خطای state update on unmounted
   const handleCloseDialog = useCallback(() => {
     setDialogOpen(false);
   }, []);
 
-  // پاک‌سازی selectedPatient پس از پایان انیمیشن بستن
-  // (با استفاده از onExited خود Dialog انجام می‌شود، نه setTimeout)
   const handleDialogExited = useCallback(() => {
     setSelectedPatient(null);
   }, []);
 
-  // ✅ return شرطی فقط بعد از تعریف تمام هوک‌ها
   if (!isMounted) return null;
+
+  if (authLoading) {
+    return (
+      <Box display="flex" justifyContent="center" p={4}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Box p={3}>
+        <Alert severity="warning">لطفاً ابتدا وارد سیستم شوید.</Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" fontWeight="bold" gutterBottom>
-        🚨 داشبورد اضطراری
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        نمای کلی وضعیت بخش اورژانس
-      </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+        <Box>
+          <Typography variant="h4" fontWeight="bold" gutterBottom>
+            🚨 داشبورد اضطراری
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            نمای کلی وضعیت بخش اورژانس
+          </Typography>
+        </Box>
+        <IconButton onClick={fetchActive} disabled={loading}>
+          <RefreshIcon />
+        </IconButton>
+      </Stack>
 
       <EmergencyStatsCards />
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
+          {error}
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         <Grid item xs={12} lg={8}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              آخرین مریضان پذیرش‌شده
+              آخرین مریضان فعال
             </Typography>
-            <PatientTable patients={recentPatients} onView={handleOpenDialog} />
+            <PatientTable
+              patients={patients}
+              loading={loading}
+              onView={handleOpenDialog}
+              onTreat={handleOpenDialog}
+            />
           </Paper>
         </Grid>
         <Grid item xs={12} lg={4}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              توزیع اولویت‌ها
+              توزیع اولویت‌ها (فعال)
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 2 }}>
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <TriagePriorityChip priority="critical" />
-                <Typography fontWeight="bold">۳ نفر</Typography>
-              </Box>
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <TriagePriorityChip priority="urgent" />
-                <Typography fontWeight="bold">۵ نفر</Typography>
-              </Box>
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <TriagePriorityChip priority="semi_urgent" />
-                <Typography fontWeight="bold">۸ نفر</Typography>
-              </Box>
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <TriagePriorityChip priority="non_urgent" />
-                <Typography fontWeight="bold">۸ نفر</Typography>
-              </Box>
+              {[1, 2, 3, 4, 5].map((lvl) => {
+                const count = patients.filter((p) => Number(p.triage_level) === lvl).length;
+                return (
+                  <Box
+                    key={lvl}
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <TriagePriorityChip priority={lvl} />
+                    <Typography fontWeight="bold">{count} نفر</Typography>
+                  </Box>
+                );
+              })}
             </Box>
           </Paper>
         </Grid>
       </Grid>
 
-      {/* ============================================================
-          ✅ مودال با پراپ‌های اصلاح‌کننده خطای aria-hidden و focus
-          ============================================================ */}
       <Dialog
         open={dialogOpen}
         onClose={handleCloseDialog}
@@ -182,24 +181,50 @@ export default function EmergencyDashboardPage() {
           {selectedPatient ? (
             <Box>
               <Typography variant="body1" sx={{ mb: 1 }}>
-                <strong>نام:</strong> {selectedPatient.name}
+                <strong>شماره پرونده:</strong>{" "}
+                {selectedPatient.emergency_id || selectedPatient.case_number || `#${selectedPatient.id}`}
               </Typography>
               <Typography variant="body1" sx={{ mb: 1 }}>
-                <strong>شماره پرونده:</strong> {selectedPatient.caseNumber}
+                <strong>نام:</strong>{" "}
+                {selectedPatient.patient?.name ||
+                  selectedPatient.patient_name ||
+                  (selectedPatient.patient?.first_name
+                    ? `${selectedPatient.patient.first_name} ${selectedPatient.patient.last_name || ""}`
+                    : "—")}
               </Typography>
               <Typography variant="body1" sx={{ mb: 1 }}>
-                <strong>سن:</strong> {selectedPatient.age}
+                <strong>سن:</strong>{" "}
+                {selectedPatient.patient?.age ?? selectedPatient.age ?? "—"}
               </Typography>
               <Typography variant="body1" sx={{ mb: 1 }}>
-                <strong>شکایت اصلی:</strong> {selectedPatient.chiefComplaint}
+                <strong>شکایت اصلی:</strong>{" "}
+                {selectedPatient.chief_complaint || "—"}
               </Typography>
               <Typography variant="body1" sx={{ mb: 1 }}>
-                <strong>زمان پذیرش:</strong> {selectedPatient.admissionTime}
+                <strong>زمان پذیرش:</strong>{" "}
+                {selectedPatient.arrival_at
+                  ? new Date(selectedPatient.arrival_at).toLocaleString("fa-IR")
+                  : "—"}
               </Typography>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
                 <strong>اولویت:</strong>
-                <TriagePriorityChip priority={selectedPatient.triageLevel} />
+                <TriagePriorityChip priority={selectedPatient.triage_level} />
               </Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
+                <strong>وضعیت:</strong>
+                <Chip
+                  size="small"
+                  label={STATUS_LABEL[selectedPatient.status] || selectedPatient.status || "—"}
+                />
+              </Box>
+              {selectedPatient.notes && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    <strong>یادداشت:</strong> {selectedPatient.notes}
+                  </Typography>
+                </>
+              )}
             </Box>
           ) : (
             <Typography>در حال بارگذاری...</Typography>

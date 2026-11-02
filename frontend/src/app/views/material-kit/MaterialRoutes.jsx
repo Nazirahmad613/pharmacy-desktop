@@ -84,7 +84,7 @@ const AppRadiology = Loadable(lazy(() => import("./radiology/Radiology")));
 // ===== Accounts =====
 const AppAccounts = Loadable(lazy(() => import("./accounts/accounts")));
 
-// ===== ✅ Payroll (مدیریت معاشات) =====
+// ===== ✅ Payroll =====
 const AppPayrollDashboard = Loadable(
   lazy(() => import("./payroll/PayrollDashboard"))
 );
@@ -133,7 +133,8 @@ const AppPharmacyExecutions = Loadable(
 //   ├── patients/page.jsx
 //   ├── triage/page.jsx
 //   ├── treatment/page.jsx
-//   ├── history/page.jsx          → ✅ جدید: تاریخ مریضان اضطراری
+//   ├── vitals/page.jsx           ← ✅ جدید
+//   ├── history/page.jsx          ← ✅ جدید
 //   ├── EmergencyStatsCards.jsx   (کامپوننت)
 //   ├── PatientTable.jsx          (کامپوننت)
 //   └── TriagePriorityChip.jsx    (کامپوننت)
@@ -153,9 +154,11 @@ const AppEmergencyTriage = Loadable(
 const AppEmergencyTreatment = Loadable(
   lazy(() => import("./emergency_patients/treatment/page"))
 );
-// ✅ جدید: تاریخ مریضان اضطراری
+const AppEmergencyVitals = Loadable(
+  lazy(() => import("./emergency_patients/vitals/page"))
+);
 const AppEmergencyHistory = Loadable(
-  lazy(() => import("../material-kit/emergency_patients/EmergencyHistory"))
+  lazy(() => import("./emergency_patients/page"))
 );
 
 // ===== Departments =====
@@ -362,6 +365,21 @@ const materialRoutes = [
     ),
   },
   {
+    path: "/material/emergency/vitals",
+    element: (
+      <RoleRoute
+        allowedRoles={[
+          ROLES.ADMIN,
+          ROLES.RECEPTIONIST,
+          ROLES.EMERGENCY_NURSE,
+          ROLES.DOCTOR,
+        ]}
+      >
+        <AppEmergencyVitals />
+      </RoleRoute>
+    ),
+  },
+  {
     path: "/material/emergency/patients",
     element: (
       <RoleRoute
@@ -394,7 +412,6 @@ const materialRoutes = [
       </RoleRoute>
     ),
   },
-  // ✅ جدید: تاریخ مریضان اضطراری
   {
     path: "/material/emergency/history",
     element: (
@@ -413,7 +430,7 @@ const materialRoutes = [
   },
 
   // ============================================================
-  // ===== ✅ Payroll Routes (مدیریت معاشات) =====
+  // ===== ✅ Payroll Routes =====
   // ============================================================
   {
     path: "/material/payroll",
@@ -465,7 +482,7 @@ const materialRoutes = [
   },
 
   // ============================================================
-  // ===== ✅ Pharmacy Routes (فارمسی) =====
+  // ===== ✅ Pharmacy Routes =====
   // ============================================================
   {
     path: "/material/pharmacy",
@@ -531,7 +548,7 @@ const materialRoutes = [
   },
 
   // ============================================================
-  // ===== ✅ Stock Routes (گدام) =====
+  // ===== ✅ Stock Routes =====
   // ============================================================
   {
     path: "/material/stock",
@@ -545,7 +562,7 @@ const materialRoutes = [
   },
 
   // ============================================================
-  // ===== ✅ Laboratory Routes (لابراتوار) =====
+  // ===== ✅ Laboratory Routes =====
   // ============================================================
   {
     path: "/material/laboratory/hematology",
@@ -558,16 +575,14 @@ const materialRoutes = [
   {
     path: "/material/laboratory/results",
     element: (
-      <RoleRoute
-        allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.LAB_TECH]}
-      >
+      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.LAB_TECH]}>
         <AppLabResults />
       </RoleRoute>
     ),
   },
 
   // ============================================================
-  // ===== ✅ Radiology Routes (رادیولوژی) =====
+  // ===== ✅ Radiology Routes =====
   // ============================================================
   {
     path: "/material/radiology",
@@ -581,7 +596,7 @@ const materialRoutes = [
   },
 
   // ============================================================
-  // ===== ✅ Accounts Routes (حسابات) =====
+  // ===== ✅ Accounts Routes =====
   // ============================================================
   {
     path: "/material/accounts",
@@ -601,7 +616,7 @@ const materialRoutes = [
   },
 
   // ============================================================
-  // ===== ✅ Reports Routes (راپورها) =====
+  // ===== ✅ Reports Routes =====
   // ============================================================
   {
     path: "/material/reports/hospital",
@@ -661,7 +676,7 @@ const materialRoutes = [
   },
 
   // ============================================================
-  // ===== ✅ Users & Permissions (کاربران و صلاحیت‌ها) =====
+  // ===== ✅ Users & Permissions =====
   // ============================================================
   {
     path: "/material/users",
@@ -681,7 +696,7 @@ const materialRoutes = [
   },
 
   // ============================================================
-  // ===== ✅ Departments Routes (بخش‌ها) =====
+  // ===== ✅ Departments Routes =====
   // ============================================================
   {
     path: "/material/departments",
