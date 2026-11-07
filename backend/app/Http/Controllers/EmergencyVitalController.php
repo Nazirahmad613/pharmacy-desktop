@@ -47,44 +47,55 @@ class EmergencyVitalController extends Controller
         return response()->json(['data' => $items]);
     }
 
-    public function store(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'case_id'           => ['required', 'integer', 'exists:emergency_cases,id'],
-            'recorded_at'       => ['required', 'date'],
-            'temperature'       => ['nullable', 'numeric', 'between:25,50'],
-            'heart_rate'        => ['nullable', 'integer', 'between:20,300'],
-            'blood_pressure'    => ['nullable', 'string', 'max:20'],
-            'respiratory_rate'  => ['nullable', 'integer', 'between:5,80'],
-            'oxygen_saturation' => ['nullable', 'integer', 'between:0,100'],
-            'blood_sugar'       => ['nullable', 'numeric', 'between:0,900'],
-            'pain_scale'        => ['nullable', 'integer', 'between:0,10'],
-            'notes'             => ['nullable', 'string', 'max:1000'],
-        ]);
+   public function store(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'case_id'           => ['required', 'integer'],   // ← exists را بردار
+        'recorded_at'       => ['required', 'date'],
+        'temperature'       => ['nullable', 'numeric', 'between:25,50'],
+        'heart_rate'        => ['nullable', 'integer', 'between:20,300'],
+        'blood_pressure'    => ['nullable', 'string', 'max:20'],
+        'respiratory_rate'  => ['nullable', 'integer', 'between:5,80'],
+        'oxygen_saturation' => ['nullable', 'integer', 'between:0,100'],
+        'blood_sugar'       => ['nullable', 'numeric', 'between:0,900'],
+        'pain_scale'        => ['nullable', 'integer', 'between:0,10'],
+        'notes'             => ['nullable', 'string', 'max:1000'],
+    ]);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $case = EmergencyCase::findOrFail($request->case_id);
-        $data = $validator->validated();
-        unset($data['case_id']);
-        $data['emergency_id'] = $case->emergency_id;
-        $data['recorded_by']  = $request->user()->id;
-
-        try {
-            $vital = EmergencyVital::create($data);
-            return response()->json([
-                'message' => 'علائم حیاتی ثبت شد.',
-                'data'    => $vital->load('recordedBy'),
-            ], 201);
-        } catch (\Throwable $e) {
-            Log::error('Vital store failed: ' . $e->getMessage());
-            return response()->json([
-                'message' => 'خطا در ثبت علائم: ' . $e->getMessage(),
-            ], 500);
-        }
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
     }
+
+    // ✅ پذیرش هر دو حالت: id یا emergency_id
+    $case = EmergencyCase::where('id', $request->case_id)
+        ->orWhere('emergency_id', $request->case_id)
+        ->first();
+
+    if (!$case) {
+        return response()->json([
+            'errors' => ['case_id' => ['پرونده اضطراری با این شناسه یافت نشد.']],
+        ], 422);
+    }
+
+    $data = $validator->validated();
+    unset($data['case_id']);
+    // ✅ اگر emergency_id NULL بود، از id استفاده کن
+    $data['emergency_id'] = $case->emergency_id ?? $case->id;
+    $data['recorded_by']  = $request->user()->id;
+
+    try {
+        $vital = EmergencyVital::create($data);
+        return response()->json([
+            'message' => 'علائم حیاتی ثبت شد.',
+            'data'    => $vital->load('recordedBy'),
+        ], 201);
+    } catch (\Throwable $e) {
+        Log::error('Vital store failed: ' . $e->getMessage());
+        return response()->json([
+            'message' => 'خطا در ثبت علائم: ' . $e->getMessage(),
+        ], 500);
+    }
+}
 
     public function show($id)
     {

@@ -191,6 +191,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/treatment/active', [DoctorTreatmentController::class,'activePatients']);
         Route::get('/queue', [DoctorTreatmentController::class, 'doctorQueue']);
+        Route::get('/doctor/emergency-queue', [DoctorQueueController::class, 'emergencyQueue']);
         Route::post('/treatment/progress/save', [DoctorTreatmentController::class, 'saveProgress']);
         Route::get('/treatment/progress/{registrationId}', [DoctorTreatmentController::class, 'getProgress']);
         Route::get('/patient/{reg_id}', [DoctorTreatmentController::class, 'show']);
@@ -772,7 +773,7 @@ Route::middleware('auth:sanctum')->group(function () {
  // ============================================================
 // ✅ Emergency (مریضان اضطراری)
 // ============================================================
-Route::prefix('emergency')->group(function () {
+Route::prefix('emergency')->group(function () {                
 
     /* ----------------------------------------------------------
      | Triage (اولویت‌بندی)

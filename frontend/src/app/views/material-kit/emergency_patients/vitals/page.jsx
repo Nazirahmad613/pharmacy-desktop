@@ -18,11 +18,51 @@ const EMPTY_FORM = () => ({
   oxygen_saturation: "", blood_sugar: "", pain_scale: "", notes: "",
 });
 
+const NUMERIC_FIELDS = [
+  "temperature", "heart_rate", "respiratory_rate",
+  "oxygen_saturation", "blood_sugar", "pain_scale",
+];
+
 function extractError(err) {
   const data = err?.response?.data;
-  if (data?.errors) return Object.values(data.errors).flat().join(" | ");
-  return data?.message || "خطای نامشخص";
+  if (data?.errors) {
+    return Object.entries(data.errors)
+      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`)
+      .join(" | ");
+  }
+  return data?.message || `HTTP ${err?.response?.status || ""} — خطای نامشخص`;
 }
+
+const patientName = (p) => {
+  if (!p) return "—";
+  if (p.patient_name) return p.patient_name;
+  if (p.patient?.first_name || p.patient?.last_name) {
+    return `${p.patient.first_name || ""} ${p.patient.last_name || ""}`.trim() || "—";
+  }
+  return "—";
+};
+
+const patientAge = (p) => p?.patient_age ?? p?.age_display ?? p?.patient?.age ?? "—";
+
+const patientGenderLabel = (p) => {
+  const g = p?.patient_gender ?? p?.patient?.gender ?? p?.gender;
+  if (g === "Male" || g === "male") return "مذکر";
+  if (g === "Female" || g === "female") return "مؤنث";
+  return "—";
+};
+
+// ⚠️ نکته: case_id باید id واقعی جدول emergency_cases باشد (نه emergency_id)
+// اگر بک‌اند id را برنمی‌گرداند، باید در بک‌اند اضافه شود.
+const caseIdOf = (p) => {
+  if (!p) return null;
+  if (typeof p === "number" || typeof p === "string") return p;
+  return (
+    p.case_id ??      // اگر بک‌اند فرستاد
+    p.id ??           // ⚠️ مهم‌ترین: id واقعی جدول
+    p.emergency_id ?? // fallback (اگر emergency_id همان id است)
+    null
+  );
+};
 
 export default function EmergencyVitalsPage() {
   const { api, user, loading: authLoading } = useAuth();
@@ -31,6 +71,7 @@ export default function EmergencyVitalsPage() {
   const [loading, setLoading] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [vitals, setVitals] = useState([]);
+  const [vitalsLoading, setVitalsLoading] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
@@ -42,24 +83,49 @@ export default function EmergencyVitalsPage() {
     setLoading(true);
     try {
       const res = await api.get("/emergency/active");
-      const list = res?.data?.data || [];
-      setPatients(Array.isArray(list) ? list : []);
-      if (!selectedPatient && list.length > 0) setSelectedPatient(list[0]);
+      let list = [];
+      if (Array.isArray(res?.data?.data)) list = res.data.data;
+      else if (Array.isArray(res?.data)) list = res.data;
+
+      // ✅ لاگ تشخیصی: بررسی وجود id
+      if (list.length > 0) {
+        console.log("[vitals] first patient keys:", Object.keys(list[0]));
+        console.log("[vitals] id?", list[0].id, "| emergency_id?", list[0].emergency_id);
+      }
+
+      setPatients(list);
+      setSelectedPatient((prev) => {
+        const prevId = caseIdOf(prev);
+        if (prevId != null) {
+          const found = list.find((x) => caseIdOf(x) === prevId);
+          if (found) return found;
+        }
+        return list[0] || null;
+      });
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load active patients:", err?.response?.status, err?.response?.data || err);
+      setPatients([]);
+      setSelectedPatient(null);
+      setSnackbar({ open: true, severity: "error", message: extractError(err) });
     } finally {
       setLoading(false);
     }
-  }, [api, user, selectedPatient]);
+  }, [api, user]);
 
   const fetchVitals = useCallback(async (caseId) => {
-    if (!caseId) return;
+    if (!caseId) { setVitals([]); return; }
+    setVitalsLoading(true);
     try {
       const res = await api.get("/emergency/vitals", { params: { case_id: caseId } });
-      setVitals(res?.data?.data || []);
+      let list = [];
+      if (Array.isArray(res?.data?.data)) list = res.data.data;
+      else if (Array.isArray(res?.data)) list = res.data;
+      setVitals(list);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load vitals:", err?.response?.status, err?.response?.data || err);
       setVitals([]);
+    } finally {
+      setVitalsLoading(false);
     }
   }, [api]);
 
@@ -69,32 +135,89 @@ export default function EmergencyVitalsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user]);
 
-  useEffect(() => { if (selectedPatient?.id) fetchVitals(selectedPatient.id); }, [selectedPatient, fetchVitals]);
+  useEffect(() => {
+    const id = caseIdOf(selectedPatient);
+    if (id) fetchVitals(id);
+    else setVitals([]);
+  }, [selectedPatient, fetchVitals]);
 
   const handleChange = useCallback((e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    if (!selectedPatient) return;
+    const caseId = caseIdOf(selectedPatient);
+    if (!caseId) {
+      setSnackbar({
+        open: true,
+        severity: "error",
+        message: "شناسه پرونده اضطراری پیدا نشد. کنسول را بررسی کنید.",
+      });
+      return;
+    }
+
+    // ✅ اعتبارسنجی سمت کلاینت + تبدیل به عدد
+    const payload = { case_id: Number(caseId) };
+    for (const [k, v] of Object.entries(form)) {
+      if (v === "" || v === null || v === undefined) continue;
+      if (NUMERIC_FIELDS.includes(k)) {
+        const num = Number(v);
+        if (Number.isNaN(num)) {
+          setSnackbar({
+            open: true,
+            severity: "error",
+            message: `مقدار فیلد ${k} عددی نیست.`,
+          });
+          return;
+        }
+        payload[k] = num;
+      } else {
+        payload[k] = v;
+      }
+    }
+
+    // ✅ محدوده‌های بک‌اند را قبل از ارسال چک کن
+    const ranges = {
+      temperature: [25, 50],
+      heart_rate: [20, 300],
+      respiratory_rate: [5, 80],
+      oxygen_saturation: [0, 100],
+      blood_sugar: [0, 900],
+      pain_scale: [0, 10],
+    };
+    for (const [field, [min, max]] of Object.entries(ranges)) {
+      if (payload[field] != null && (payload[field] < min || payload[field] > max)) {
+        setSnackbar({
+          open: true,
+          severity: "error",
+          message: `مقدار ${field} باید بین ${min} و ${max} باشد.`,
+        });
+        return;
+      }
+    }
+
+    console.log("[vitals] POST payload:", payload);
+
     setSaving(true);
     try {
-      const payload = { case_id: selectedPatient.id };
-      Object.entries(form).forEach(([k, v]) => {
-        if (v !== "" && v !== null) payload[k] = v;
-      });
       await api.post("/emergency/vitals", payload);
       setForm(EMPTY_FORM());
       setSnackbar({ open: true, message: "علائم حیاتی ثبت شد", severity: "success" });
-      await fetchVitals(selectedPatient.id);
+      await fetchVitals(caseId);
     } catch (err) {
-      setSnackbar({ open: true, message: extractError(err), severity: "error" });
+      const status = err?.response?.status;
+      console.error("[vitals] POST failed:", status, err?.response?.data || err);
+      setSnackbar({
+        open: true,
+        severity: "error",
+        message: status === 500
+          ? `خطای سرور (500): ${extractError(err)}`
+          : extractError(err),
+      });
     } finally {
       setSaving(false);
     }
   }, [api, selectedPatient, form, fetchVitals]);
-
-  const patientName = (p) => p?.patient?.name || "—";
 
   if (!isMounted) return null;
   if (authLoading) return <Box display="flex" justifyContent="center" p={4}><CircularProgress /></Box>;
@@ -106,7 +229,9 @@ export default function EmergencyVitalsPage() {
           <MonitorHeartIcon sx={{ mr: 1, verticalAlign: "middle" }} />
           علائم حیاتی اضطراری
         </Typography>
-        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={fetchPatients} disabled={loading}>بروزرسانی</Button>
+        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={fetchPatients} disabled={loading}>
+          بروزرسانی
+        </Button>
       </Stack>
 
       <Grid container spacing={3}>
@@ -119,14 +244,33 @@ export default function EmergencyVitalsPage() {
               <Typography variant="body2" color="text.secondary">مریض فعالی وجود ندارد.</Typography>
             ) : (
               <List>
-                {patients.map((p) => (
-                  <ListItem key={p.id} onClick={() => setSelectedPatient(p)}
-                    sx={{ borderRadius: 1, mb: 1, cursor: "pointer",
-                      bgcolor: selectedPatient?.id === p.id ? "action.selected" : "transparent" }}>
-                    <ListItemText primary={patientName(p)} secondary={p.emergency_id || `#${p.id}`} />
-                    <TriagePriorityChip priority={p.triage_level} />
-                  </ListItem>
-                ))}
+                {patients.map((p, idx) => {
+                  const pid = caseIdOf(p);
+                  const safeKey = pid != null ? `case-${pid}` : `row-${idx}`;
+                  const isSelected = pid != null && caseIdOf(selectedPatient) === pid;
+                  return (
+                    <ListItem
+                      key={safeKey}
+                      onClick={() => setSelectedPatient(p)}
+                      sx={{
+                        borderRadius: 1, mb: 1, cursor: "pointer",
+                        bgcolor: isSelected ? "action.selected" : "transparent",
+                      }}
+                    >
+                      <ListItemText
+                        primary={patientName(p)}
+                        secondary={
+                          <>
+                            {p.emergency_no || (pid != null ? `#${pid}` : "—")}
+                            {" · "}
+                            {patientAge(p)} / {patientGenderLabel(p)}
+                          </>
+                        }
+                      />
+                      <TriagePriorityChip priority={p.triage_score ?? p.triage_level} />
+                    </ListItem>
+                  );
+                })}
               </List>
             )}
           </Paper>
@@ -136,8 +280,14 @@ export default function EmergencyVitalsPage() {
           <Paper sx={{ p: 3 }}>
             {selectedPatient ? (
               <>
-                <Typography variant="h6" gutterBottom>{patientName(selectedPatient)}</Typography>
+                <Typography variant="h6" gutterBottom>
+                  {patientName(selectedPatient)}
+                  <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                    ({selectedPatient.emergency_no || `#${caseIdOf(selectedPatient) ?? "—"}`} — {patientAge(selectedPatient)} / {patientGenderLabel(selectedPatient)})
+                  </Typography>
+                </Typography>
                 <Divider sx={{ mb: 2 }} />
+
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
                     <TextField fullWidth type="datetime-local" label="زمان ثبت" name="recorded_at"
@@ -145,11 +295,11 @@ export default function EmergencyVitalsPage() {
                       InputLabelProps={{ shrink: true }} />
                   </Grid>
                   <Grid item xs={6} sm={3}>
-                    <TextField fullWidth label="دما (°C)" name="temperature" type="number"
+                    <TextField fullWidth label="دما (°C)" name="temperature" type="number" inputProps={{ min: 25, max: 50, step: "0.1" }}
                       value={form.temperature} onChange={handleChange} size="small" />
                   </Grid>
                   <Grid item xs={6} sm={3}>
-                    <TextField fullWidth label="نبض (bpm)" name="heart_rate" type="number"
+                    <TextField fullWidth label="نبض (bpm)" name="heart_rate" type="number" inputProps={{ min: 20, max: 300 }}
                       value={form.heart_rate} onChange={handleChange} size="small" />
                   </Grid>
                   <Grid item xs={6} sm={4}>
@@ -157,19 +307,19 @@ export default function EmergencyVitalsPage() {
                       value={form.blood_pressure} onChange={handleChange} size="small" />
                   </Grid>
                   <Grid item xs={6} sm={4}>
-                    <TextField fullWidth label="تنفس" name="respiratory_rate" type="number"
+                    <TextField fullWidth label="تنفس" name="respiratory_rate" type="number" inputProps={{ min: 5, max: 80 }}
                       value={form.respiratory_rate} onChange={handleChange} size="small" />
                   </Grid>
                   <Grid item xs={6} sm={4}>
-                    <TextField fullWidth label="SpO₂ (%)" name="oxygen_saturation" type="number"
+                    <TextField fullWidth label="SpO₂ (%)" name="oxygen_saturation" type="number" inputProps={{ min: 0, max: 100 }}
                       value={form.oxygen_saturation} onChange={handleChange} size="small" />
                   </Grid>
                   <Grid item xs={6} sm={4}>
-                    <TextField fullWidth label="قند خون" name="blood_sugar" type="number"
+                    <TextField fullWidth label="قند خون" name="blood_sugar" type="number" inputProps={{ min: 0, max: 900 }}
                       value={form.blood_sugar} onChange={handleChange} size="small" />
                   </Grid>
                   <Grid item xs={6} sm={4}>
-                    <TextField fullWidth label="درد (0-10)" name="pain_scale" type="number"
+                    <TextField fullWidth label="درد (0-10)" name="pain_scale" type="number" inputProps={{ min: 0, max: 10 }}
                       value={form.pain_scale} onChange={handleChange} size="small" />
                   </Grid>
                   <Grid item xs={12}>
@@ -186,7 +336,10 @@ export default function EmergencyVitalsPage() {
 
                 <Divider sx={{ my: 3 }} />
                 <Typography variant="subtitle1" fontWeight="bold" gutterBottom>سابقه ثبت‌شده</Typography>
-                {vitals.length === 0 ? (
+
+                {vitalsLoading ? (
+                  <Box display="flex" justifyContent="center" p={2}><CircularProgress size={22} /></Box>
+                ) : vitals.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">هنوز علائمی ثبت نشده است.</Typography>
                 ) : (
                   <TableContainer>
@@ -199,8 +352,8 @@ export default function EmergencyVitalsPage() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {vitals.map((v) => (
-                          <TableRow key={v.id}>
+                        {vitals.map((v, idx) => (
+                          <TableRow key={v.id ?? `v-${idx}`}>
                             <TableCell>{v.recorded_at ? new Date(v.recorded_at).toLocaleString("fa-IR") : "—"}</TableCell>
                             <TableCell>{v.temperature ?? "—"}</TableCell>
                             <TableCell>{v.heart_rate ?? "—"}</TableCell>
@@ -225,7 +378,7 @@ export default function EmergencyVitalsPage() {
         </Grid>
       </Grid>
 
-      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>
+      <Snackbar open={snackbar.open} autoHideDuration={8000} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>
         <Alert severity={snackbar.severity} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>
           {snackbar.message}
         </Alert>

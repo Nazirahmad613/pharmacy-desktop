@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Registrations;
 use App\Models\Patient;
 use App\Models\Examination;
+use App\Models\EmergencyCase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -76,8 +77,21 @@ class DoctorTreatmentController extends Controller
             ->orderBy('queue_number', 'asc')
             ->get();
 
+            // ✅ نگاشت پرونده‌های اضطراری مرتبط با همین reg_idها
+            $regIds = $registrations->pluck('reg_id')->filter()->all();
+            $emergencyMap = collect();
+            if (!empty($regIds)) {
+                $emergencyMap = EmergencyCase::whereIn('reg_id', $regIds)
+                    ->get()
+                    ->keyBy('reg_id');
+            }
+
             // تبدیل داده‌ها به فرمت مناسب برای فرانت‌اند
-            $formattedData = $registrations->map(function ($registration) {
+            $formattedData = $registrations->map(function ($registration) use ($emergencyMap) {
+                $emCase = $emergencyMap->get($registration->reg_id);
+                $isEmergency = (bool) $emCase
+                    || (string) $registration->visit_type === 'Emergency';
+
                 return [
                     'reg_id' => $registration->reg_id,
                     'queue_number' => $registration->queue_number,
@@ -92,6 +106,16 @@ class DoctorTreatmentController extends Controller
                     'temperature' => $registration->temperature,
                     'oxygen' => $registration->oxygen,
                     'note' => $registration->note,
+
+                    // ✅ فیلدهای اضطراری
+                    'visit_type' => $registration->visit_type,
+                    'is_emergency' => $isEmergency,
+                    'emergency_id' => $emCase->emergency_id ?? null,
+                    'case_id' => $emCase->id ?? null,
+                    'triage_score' => $emCase->triage_score ?? null,
+                    'triage_level' => $emCase->triage_level ?? null,
+                    'chief_complaint' => $emCase->chief_complaint ?? $registration->chief_complaint,
+                    'arrival_time' => $emCase->arrival_time ?? null,
 
                     'patient' => $registration->patient ? [
                         'id' => $registration->patient->id,
@@ -128,6 +152,114 @@ class DoctorTreatmentController extends Controller
                 'success' => false,
                 'message' => 'خطا در دریافت صف داکتر',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    /**
+     * ✅ دریافت صف اضطراری برای داکتر
+     * فقط پرونده‌های اضطراری فعال که به داکتر فعلی ارجاع شده‌اند یا داکتر ندارند
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function emergencyQueue()
+    {
+        try {
+
+            $doctorId = Auth::id();
+
+            // وضعیت‌های فعال اضطراری
+            $activeStatuses = ['waiting', 'in_triage', 'in_treatment'];
+
+            $cases = EmergencyCase::with(['patient'])
+                ->whereIn('status', $activeStatuses)
+                ->where(function ($q) use ($doctorId) {
+                    $q->where('doc_id', $doctorId)
+                      ->orWhereNull('doc_id');
+                })
+                ->orderByRaw('COALESCE(triage_score, 99) ASC') // 1 = بحرانی‌ترین
+                ->orderBy('arrival_time', 'asc')
+                ->get();
+
+            // نگاشت رجیستریشن‌های مرتبط
+            $regIds = $cases->pluck('reg_id')->filter()->all();
+            $registrations = collect();
+            if (!empty($regIds)) {
+                $registrations = Registrations::whereIn('reg_id', $regIds)
+                    ->get()
+                    ->keyBy('reg_id');
+            }
+
+            $formatted = $cases->map(function ($case) use ($registrations) {
+                $reg = $registrations->get($case->reg_id);
+                $patient = $case->patient;
+
+                return [
+                    'reg_id' => $case->reg_id ?? $reg->reg_id ?? null,
+                    'visit_number' => $reg->visit_number ?? null,
+                    'visit_status' => $reg->visit_status ?? 'InProgress',
+                    'visit_date' => $reg->visit_date ?? null,
+                    'registration_fee' => $reg->registration_fee ?? 0,
+                    'queue_number' => $reg->queue_number ?? null,
+                    'queue_date' => $reg->queue_date ?? null,
+                    'sent_to_doctor_at' => $reg->sent_to_doctor_at ?? null,
+
+                    // ✅ فیلدهای اضطراری
+                    'is_emergency' => true,
+                    'visit_type' => 'Emergency',
+                    'emergency_id' => $case->emergency_id,
+                    'case_id' => $case->id,
+                    'triage_score' => $case->triage_score,
+                    'triage_level' => $case->triage_level,
+                    'chief_complaint' => $case->chief_complaint,
+                    'arrival_time' => $case->arrival_time,
+                    'arrival_mode' => $case->arrival_mode,
+                    'status' => $case->status,
+
+                    'patient' => $patient ? [
+                        'id' => $patient->id,
+                        'first_name' => $patient->first_name,
+                        'last_name' => $patient->last_name,
+                        'father_name' => $patient->father_name,
+                        'mobile' => $patient->mobile,
+                        'national_id' => $patient->national_id,
+                        'gender' => $patient->gender,
+                        'age' => $patient->age,
+                        'blood_group' => $patient->blood_group,
+                        'address' => $patient->address,
+                    ] : ($case->patient_id ? [
+                        'id' => $case->patient_id,
+                        'first_name' => $case->patient_name ? explode(' ', $case->patient_name)[0] : null,
+                        'last_name' => $case->patient_name ? (explode(' ', $case->patient_name)[1] ?? null) : null,
+                        'father_name' => null,
+                        'mobile' => $case->patient_phone,
+                        'national_id' => $case->tazkira_number,
+                        'gender' => $case->patient_gender,
+                        'age' => $case->patient_age,
+                        'blood_group' => $case->patient_blood_group,
+                        'address' => null,
+                    ] : null),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $formatted,
+                'count' => $formatted->count(),
+            ]);
+
+        } catch (\Exception $e) {
+
+            Log::error('Doctor emergency queue error: ' . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در دریافت صف اضطراری',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -172,6 +304,11 @@ class DoctorTreatmentController extends Controller
                 $reg_id
             )->latest()->first();
 
+            // ✅ بررسی اضطراری بودن
+            $emCase = EmergencyCase::where('reg_id', $reg_id)->first();
+            $isEmergency = (bool) $emCase
+                || (string) $registration->visit_type === 'Emergency';
+
             $data = [
                 'registration' => [
                     'reg_id' => $registration->reg_id,
@@ -179,12 +316,21 @@ class DoctorTreatmentController extends Controller
                     'queue_number' => $registration->queue_number,
                     'visit_date' => $registration->visit_date,
                     'status' => $registration->visit_status,
+                    'visit_type' => $registration->visit_type,
 
                     'department' => $registration->department ? [
                         'id' => $registration->department->id,
                         'name' => $registration->department->name,
                         'code' => $registration->department->code
                     ] : null,
+
+                    // ✅ فیلدهای اضطراری در رجیستریشن
+                    'is_emergency' => $isEmergency,
+                    'emergency_id' => $emCase->emergency_id ?? null,
+                    'triage_score' => $emCase->triage_score ?? null,
+                    'triage_level' => $emCase->triage_level ?? null,
+                    'chief_complaint' => $emCase->chief_complaint ?? null,
+                    'arrival_time' => $emCase->arrival_time ?? null,
                 ],
 
                 'patient' => [
@@ -356,6 +502,16 @@ class DoctorTreatmentController extends Controller
                 'visit_status' => 'Completed',
                 'completed_at' => now()
             ]);
+
+            // ✅ اگر پرونده اضطراری مرتبط هست، وضعیت آن را هم به‌روزرسانی کن
+            try {
+                $emCase = EmergencyCase::where('reg_id', $reg_id)->first();
+                if ($emCase && in_array($emCase->status, ['waiting', 'in_triage', 'in_treatment'], true)) {
+                    $emCase->update(['status' => 'discharged']);
+                }
+            } catch (\Throwable $emErr) {
+                Log::warning('Emergency case status sync failed (non-blocking): ' . $emErr->getMessage());
+            }
 
             return response()->json([
                 'success' => true,

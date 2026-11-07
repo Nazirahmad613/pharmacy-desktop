@@ -10,7 +10,7 @@ import {
 import GroupsIcon from "@mui/icons-material/Groups";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { useAuth } from "app/contexts/AuthContext";
-import TriagePriorityChip from "../components/TriagePriorityChip";
+import TriagePriorityChip from "../TriagePriorityChip";
 
 export default function EmergencyPatientsPage() {
   const { api, user, loading: authLoading } = useAuth();
