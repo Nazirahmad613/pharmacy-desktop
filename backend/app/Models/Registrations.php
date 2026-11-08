@@ -23,19 +23,13 @@ class Registrations extends Model
     | Table
     |--------------------------------------------------------------------------
     */
-
     protected $table = 'registrations';
 
     /*
     |--------------------------------------------------------------------------
     | Primary Key
     |--------------------------------------------------------------------------
-    |
-    | Registration هیچ ستون id ندارد.
-    | کلید اصلی فقط reg_id است.
-    |
     */
-
     protected $primaryKey = 'reg_id';
 
     public $incrementing = true;
@@ -47,9 +41,7 @@ class Registrations extends Model
     | Fillable
     |--------------------------------------------------------------------------
     */
-
     protected $fillable = [
-
         // نوع مراجعه
         'reg_type',
 
@@ -58,7 +50,7 @@ class Registrations extends Model
         'department_id',
         'doctor_id',
 
-        // معلومات مراجعه
+        // اطلاعات مراجعه
         'visit_number',
         'visit_type',
 
@@ -78,13 +70,14 @@ class Registrations extends Model
         // فیس
         'registration_fee',
 
-        // تاریخ
+        // تاریخ و زمان مراجعه
         'visit_date',
+        'visit_time',           // ✅ جدید
 
         // یادداشت
         'note',
 
-        // معلومات طبی
+        // اطلاعات طبی
         'diagnosis',
         'weight',
         'blood_pressure',
@@ -100,30 +93,32 @@ class Registrations extends Model
     | Casts
     |--------------------------------------------------------------------------
     */
-
     protected $casts = [
-
         'sent_to_doctor_at' => 'datetime',
         'doctor_started_at' => 'datetime',
-        'queue_expired_at' => 'datetime',
+        'queue_expired_at'  => 'datetime',
 
         'visit_date' => 'date',
         'queue_date' => 'date',
 
+        // ✅ visit_time به‌صورت string ذخیره/بازیابی می‌شود (HH:MM:SS)
+        // از cast زمان استفاده نمی‌کنیم تا در JSON به‌صورت رشته بماند
+        // 'visit_time' => 'datetime:H:i:s',   // ← اگر خواستید Date بگیرید این را فعال کنید
+
         'registration_fee' => 'decimal:2',
 
-        'weight' => 'decimal:2',
+        'weight'      => 'decimal:2',
         'temperature' => 'decimal:1',
 
         'oxygen' => 'integer',
 
-        'patient_id' => 'integer',
+        'patient_id'    => 'integer',
         'department_id' => 'integer',
-        'doctor_id' => 'integer',
+        'doctor_id'     => 'integer',
 
         'queue_number' => 'integer',
-        'visit_number' => 'integer',   // ✅ اضافه شد — شماره مراجعه عددی
-        'status' => 'integer',
+        'visit_number' => 'integer',
+        'status'       => 'integer',
     ];
 
     /*
@@ -131,14 +126,9 @@ class Registrations extends Model
     | Patient
     |--------------------------------------------------------------------------
     */
-
     public function patient(): BelongsTo
     {
-        return $this->belongsTo(
-            Patient::class,
-            'patient_id',
-            'id'
-        );
+        return $this->belongsTo(Patient::class, 'patient_id', 'id');
     }
 
     /*
@@ -146,14 +136,9 @@ class Registrations extends Model
     | Department
     |--------------------------------------------------------------------------
     */
-
     public function department(): BelongsTo
     {
-        return $this->belongsTo(
-            Department::class,
-            'department_id',
-            'id'
-        );
+        return $this->belongsTo(Department::class, 'department_id', 'id');
     }
 
     /*
@@ -161,14 +146,9 @@ class Registrations extends Model
     | Doctor
     |--------------------------------------------------------------------------
     */
-
     public function doctor(): BelongsTo
     {
-        return $this->belongsTo(
-            User::class,
-            'doctor_id',
-            'id'
-        );
+        return $this->belongsTo(User::class, 'doctor_id', 'id');
     }
 
     /*
@@ -176,27 +156,17 @@ class Registrations extends Model
     | Journal
     |--------------------------------------------------------------------------
     */
-
     public function journals(): HasMany
     {
-        return $this->hasMany(
-            Journal::class,
-            'ref_id',
-            'reg_id'
-        )->where('ref_type', 'patient');
+        return $this->hasMany(Journal::class, 'ref_id', 'reg_id')
+            ->where('ref_type', 'patient');
     }
 
     /*
     |--------------------------------------------------------------------------
     | Laboratory Requests
     |--------------------------------------------------------------------------
-    |
-    | laboratory_requests.registration_id
-    |                 ↓
-    | registrations.reg_id
-    |
     */
-
     public function laboratoryRequests(): HasMany
     {
         return $this->hasMany(
@@ -211,7 +181,6 @@ class Registrations extends Model
     | Laboratory Fees
     |--------------------------------------------------------------------------
     */
-
     public function laboratoryFees(): HasMany
     {
         return $this->hasMany(
@@ -226,7 +195,6 @@ class Registrations extends Model
     | Treatment Progress
     |--------------------------------------------------------------------------
     */
-
     public function treatmentProgress(): HasOne
     {
         return $this->hasOne(
@@ -240,16 +208,7 @@ class Registrations extends Model
     |--------------------------------------------------------------------------
     | Emergency Cases
     |--------------------------------------------------------------------------
-    |
-    | یک مراجعه می‌تواند چند پرونده اضطراری داشته باشد (مثلاً مراجعه مجدد
-    | در همان روز). آخرین پرونده اضطراری با latestEmergencyCase قابل
-    | دسترسی است.
-    |
-    | نکته: از emergency_no استفاده می‌کنیم (نه emergency_id که PK است)
-    | برای مرتب‌سازی آخرین پرونده.
-    |
     */
-
     public function emergencyCases(): HasMany
     {
         return $this->hasMany(EmergencyCase::class, 'reg_id', 'reg_id');
@@ -258,7 +217,7 @@ class Registrations extends Model
     public function latestEmergencyCase(): HasOne
     {
         return $this->hasOne(EmergencyCase::class, 'reg_id', 'reg_id')
-            ->latestOfMany('emergency_no');   // ✅ اصلاح شد — emergency_no به‌جای emergency_id
+            ->latestOfMany('emergency_no');
     }
 
     /*
@@ -266,7 +225,6 @@ class Registrations extends Model
     | Reg Name (Accessor)
     |--------------------------------------------------------------------------
     */
-
     public function getRegNameAttribute(): string
     {
         if (!$this->patient) {
@@ -284,7 +242,6 @@ class Registrations extends Model
     | Scopes
     |--------------------------------------------------------------------------
     */
-
     public function scopePatients($query)
     {
         return $query->where('reg_type', 'patient');
@@ -300,7 +257,6 @@ class Registrations extends Model
     | Treatment Progress Attribute
     |--------------------------------------------------------------------------
     */
-
     public function getTreatmentProgressAttribute(): ?array
     {
         $progress = $this->treatmentProgress;
@@ -327,13 +283,11 @@ class Registrations extends Model
     | Start / Continue Treatment
     |--------------------------------------------------------------------------
     */
-
     public function startOrContinueTreatment(): TreatmentProgress
     {
         $progress = $this->treatmentProgress;
 
         if (!$progress) {
-
             $progress = TreatmentProgress::create([
                 'registration_id' => $this->reg_id,
             ]);

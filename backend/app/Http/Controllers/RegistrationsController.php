@@ -16,7 +16,9 @@ use Illuminate\Validation\Rule;
 
 class RegistrationsController extends Controller
 {
-
+    /**
+     * ثبت مراجعه جدید
+     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -33,22 +35,17 @@ class RegistrationsController extends Controller
             ],
 
             // معلومات مریض جدید
-            'first_name' => 'nullable|string|max:255',
-            'last_name' => 'nullable|string|max:255',
+            'first_name'  => 'nullable|string|max:255',
+            'last_name'   => 'nullable|string|max:255',
             'father_name' => 'nullable|string|max:255',
-            'mobile' => 'nullable|string|max:30',
+            'mobile'      => 'nullable|string|max:30',
             'national_id' => 'nullable|string|max:255',
-            'gender' => 'nullable|string|max:50',
-            'age' => [
-                'nullable',
-                'integer',
-                'min:0',
-                'max:150'
-            ],
+            'gender'      => 'nullable|string|max:50',
+            'age'         => 'nullable|integer|min:0|max:150',
             'blood_group' => 'nullable|string',
-            'address' => 'nullable|string',
+            'address'     => 'nullable|string',
 
-            // معلومات مراجعه
+            // اطلاعات مراجعه
             'department_id' => [
                 'nullable',
                 'exists:departments,id'
@@ -72,30 +69,19 @@ class RegistrationsController extends Controller
 
             'visit_status' => [
                 'nullable',
-               'in:Waiting,Doctor,Examining,Laboratory,Radiology,Admission,Ward,Operation,Pharmacy,Billing,Completed,Cancelled,Discharged'
+                'in:Waiting,Doctor,Examining,Laboratory,Radiology,Admission,Ward,Operation,Pharmacy,Billing,Completed,Cancelled,Discharged'
             ],
 
             'diagnosis' => 'nullable|string',
-            'weight' => [
-                'nullable',
-                'numeric',
-                'min:0',
-                'max:300'
-            ],
+            'weight' => 'nullable|numeric|min:0|max:300',
             'blood_pressure' => 'nullable|string|max:20',
-            'temperature' => [
-                'nullable',
-                'numeric',
-                'min:30',
-                'max:45'
-            ],
-            'oxygen' => [
-                'nullable',
-                'integer',
-                'min:0',
-                'max:100'
-            ],
+            'temperature' => 'nullable|numeric|min:30|max:45',
+            'oxygen' => 'nullable|integer|min:0|max:100',
             'visit_date' => 'nullable|date',
+
+            // ✅ جدید: زمان مراجعه (HH:MM یا HH:MM:SS)
+            'visit_time' => ['nullable', 'date_format:H:i,H:i:s'],
+
             'note' => 'nullable|string',
         ]);
 
@@ -109,29 +95,28 @@ class RegistrationsController extends Controller
             | ایجاد مریض جدید یا انتخاب مریض موجود
             |--------------------------------------------------------------------------
             */
-
             if ($request->boolean('is_new_patient') || !$request->patient_id) {
                 $gender = $request->gender;
 
-                if ($gender == 'male' || $gender == 'Male' || $gender == 'other') {
+                if (in_array($gender, ['male', 'Male', 'other'])) {
                     $gender = 'Male';
-                } elseif ($gender == 'female' || $gender == 'Female') {
+                } elseif (in_array($gender, ['female', 'Female'])) {
                     $gender = 'Female';
                 }
 
                 $patient = Patient::create([
-                    'uuid' => Str::uuid(),
+                    'uuid'         => Str::uuid(),
                     'patient_code' => 'P-' . time(),
-                    'first_name' => $request->first_name,
-                    'last_name' => $request->last_name,
-                    'father_name' => $request->father_name,
-                    'mobile' => $request->mobile,
-                    'national_id' => $request->national_id,
-                    'gender' => $gender,
-                    'age' => $request->age,
-                    'blood_group' => $request->blood_group,
-                    'address' => $request->address,
-                    'created_by' => Auth::id(),
+                    'first_name'   => $request->first_name,
+                    'last_name'    => $request->last_name,
+                    'father_name'  => $request->father_name,
+                    'mobile'       => $request->mobile,
+                    'national_id'  => $request->national_id,
+                    'gender'       => $gender,
+                    'age'          => $request->age,
+                    'blood_group'  => $request->blood_group,
+                    'address'      => $request->address,
+                    'created_by'   => Auth::id(),
                 ]);
 
                 $patient_id = $patient->id;
@@ -148,69 +133,61 @@ class RegistrationsController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | تولید خودکار شماره مراجعه و شماره صف
+            | تولید شماره مراجعه، تاریخ و زمان
             |--------------------------------------------------------------------------
             */
-
             $validated['patient_id'] = $patient_id;
-            $validated['reg_type'] = 'patient';
+            $validated['reg_type']   = 'patient';
 
-            // شماره مراجعه کل سیستم
             $validated['visit_number'] = (Registrations::max('visit_number') ?? 0) + 1;
 
-          $visitDate = $request->visit_date ?? now()->toDateString();
+            // تاریخ: اگر ارسال نشده، از امروز
+            $visitDate = $request->visit_date ?? now()->toDateString();
+            $validated['visit_date'] = $visitDate;
 
-$validated['visit_date'] = $visitDate;
- 
+            // ✅ زمان: اگر ارسال نشده، از اکنون
+            if (empty($validated['visit_time'])) {
+                $validated['visit_time'] = now()->format('H:i:s');
+            } else {
+                // نرمال‌سازی به HH:MM:SS
+                $t = $validated['visit_time'];
+                if (strlen($t) === 5) {
+                    $validated['visit_time'] = $t . ':00';
+                }
+            }
+
             /*
             |--------------------------------------------------------------------------
-            | شماره صف بر اساس داکتر و تاریخ
+            | شماره صف (فقط اگر مستقیم به داکتر ارسال شود)
             |--------------------------------------------------------------------------
             */
-            
-    /*
-|--------------------------------------------------------------------------
-| شماره صف داکتر
-| هر داکتر روزانه از 1 شروع می‌شود
-|--------------------------------------------------------------------------
-*/
+            $validated['queue_number'] = null;
+            $validated['queue_date']   = null;
+            $validated['queue_status'] = null;
 
- /*
-|--------------------------------------------------------------------------
-| شماره صف
-| فقط هنگام ارسال به داکتر ساخته می‌شود
-|--------------------------------------------------------------------------
-*/
+            if (
+                isset($validated['visit_status']) &&
+                $validated['visit_status'] === 'Doctor' &&
+                !empty($validated['doctor_id'])
+            ) {
+                $validated['sent_to_doctor_at'] = now();
 
-$validated['queue_number'] = null;
-$validated['queue_date'] = null;
-$validated['queue_status'] = null;   // ✅ اضافه شد — تا ارسال به داکتر null می‌ماند
+                $queueDate = now()->toDateString();
 
-// اگر مریض مستقیم به داکتر ارسال شد
-if (
-    isset($validated['visit_status']) &&
-    $validated['visit_status'] === 'Doctor' &&
-    !empty($validated['doctor_id'])
-) {
-    $validated['sent_to_doctor_at'] = now();
+                $lastQueue = Registrations::where('doctor_id', $validated['doctor_id'])
+                    ->whereDate('queue_date', $queueDate)
+                    ->max('queue_number');
 
-    $queueDate = now()->toDateString();
-
-    $lastQueue = Registrations::where('doctor_id', $validated['doctor_id'])
-        ->whereDate('queue_date', $queueDate)
-        ->max('queue_number');
-
-    $validated['queue_number'] = ($lastQueue ?? 0) + 1;
-    $validated['queue_date']   = $queueDate;
-    $validated['queue_status'] = 'Waiting';   // ✅ اضافه شد — صف ساخته شد و در انتظار است
-}
+                $validated['queue_number'] = ($lastQueue ?? 0) + 1;
+                $validated['queue_date']   = $queueDate;
+                $validated['queue_status'] = 'Waiting';
+            }
 
             /*
             |--------------------------------------------------------------------------
             | ثبت مراجعه
             |--------------------------------------------------------------------------
             */
-
             $registration = Registrations::create($validated);
 
             /*
@@ -218,16 +195,15 @@ if (
             | ثبت فیس در ژورنال
             |--------------------------------------------------------------------------
             */
-
             if ($registration->registration_fee > 0) {
                 $journal = Journal::create([
                     'journal_date' => $registration->visit_date,
-                    'description' => "فیس مراجعه مریض - ID: {$registration->reg_id}",
-                    'entry_type' => 'debit',
-                    'amount' => $registration->registration_fee,
-                    'ref_type' => 'patient',
-                    'ref_id' => $registration->reg_id,
-                    'user_id' => Auth::id(),
+                    'description'  => "فیس مراجعه مریض - ID: {$registration->reg_id}",
+                    'entry_type'   => 'debit',
+                    'amount'       => $registration->registration_fee,
+                    'ref_type'     => 'patient',
+                    'ref_id'       => $registration->reg_id,
+                    'user_id'      => Auth::id(),
                 ]);
 
                 try {
@@ -238,17 +214,16 @@ if (
                         'Registration fee journal created',
                         $journal->toArray()
                     );
-                } catch(\Exception $e){
-                    Log::error("Journal log failed: ".$e->getMessage());
+                } catch (\Exception $e) {
+                    Log::error("Journal log failed: " . $e->getMessage());
                 }
             }
 
             /*
             |--------------------------------------------------------------------------
-            | ثبت لاگ مراجعه
+            | لاگ
             |--------------------------------------------------------------------------
             */
-
             try {
                 LogService::create(
                     'create',
@@ -257,15 +232,15 @@ if (
                     'Patient registration created',
                     $registration->toArray()
                 );
-            } catch(\Exception $e){
-                Log::error("Registration log failed: ".$e->getMessage());
+            } catch (\Exception $e) {
+                Log::error("Registration log failed: " . $e->getMessage());
             }
 
             DB::commit();
 
             return response()->json([
-                'message'=>'مراجعه مریض موفقانه ثبت شد',
-                'data'=>$registration->load([
+                'message' => 'مراجعه مریض موفقانه ثبت شد',
+                'data'    => $registration->load([
                     'patient',
                     'department',
                     'doctor',
@@ -273,18 +248,18 @@ if (
                 ])
             ], 201);
 
-        } catch(\Exception $e){
+        } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Registration store error: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
             return response()->json([
-                'message'=>'خطا در ثبت مراجعه مریض',
-                'error'=>$e->getMessage()
+                'message' => 'خطا در ثبت مراجعه مریض',
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت لیست تمام مراجعات
+     * لیست مراجعات
      */
     public function index(Request $request)
     {
@@ -295,8 +270,8 @@ if (
                 'doctor',
                 'journals'
             ])
-            ->orderBy('reg_id', 'desc')
-            ->get();
+                ->orderBy('reg_id', 'desc')
+                ->get();
 
             return response()->json([
                 'data' => $registrations
@@ -305,13 +280,13 @@ if (
             Log::error('Error fetching registrations: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت لیست مراجعات',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت یک مراجعه خاص
+     * نمایش یک مراجعه
      */
     public function show($reg_id)
     {
@@ -329,93 +304,53 @@ if (
                 ], 404);
             }
 
-            return response()->json([
-                'data' => $registration
-            ]);
+            return response()->json(['data' => $registration]);
         } catch (\Exception $e) {
             Log::error('Error showing registration: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت اطلاعات مراجعه',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * به‌روزرسانی یک مراجعه
+     * به‌روزرسانی مراجعه
      */
     public function update(Request $request, $reg_id)
     {
         $validated = $request->validate([
             // اطلاعات مریض
-            'patient_id' => [
-                'nullable',
-                'exists:patients,id'
-            ],
-            'first_name' => 'nullable|string|max:255',
-            'last_name' => 'nullable|string|max:255',
+            'patient_id'  => 'nullable|exists:patients,id',
+            'first_name'  => 'nullable|string|max:255',
+            'last_name'   => 'nullable|string|max:255',
             'father_name' => 'nullable|string|max:255',
-            'mobile' => 'nullable|string|max:30',
+            'mobile'      => 'nullable|string|max:30',
             'national_id' => 'nullable|string|max:255',
-            'gender' => 'nullable|string|max:50',
-            'age' => 'nullable|integer|min:0|max:150',
+            'gender'      => 'nullable|string|max:50',
+            'age'         => 'nullable|integer|min:0|max:150',
             'blood_group' => 'nullable|string',
-            'address' => 'nullable|string',
+            'address'     => 'nullable|string',
 
-            // معلومات مراجعه
-            'department_id' => [
-                'nullable',
-                'exists:departments,id'
-            ],
-            'doctor_id' => [
-                'nullable',
-                'exists:users,id'
-            ],
-            'visit_number' => [
-                'nullable',
-                'string',
-                'max:50'
-            ],
-            'visit_type' => [
-                'nullable',
-                'in:OPD,IPD,Emergency,Laboratory,Radiology,Pharmacy'
-            ],
-            'queue_number' => [
-                'nullable',
-                'integer',
-                'min:1'
-            ],
-            'registration_fee' => [
-                'nullable',
-                'numeric',
-                'min:0'
-            ],
-            'visit_status' => [
-                'nullable',
-                 'in:Waiting,Doctor,Examining,Laboratory,Radiology,Admission,Ward,Operation,Pharmacy,Billing,Completed,Cancelled,Discharged'
-            ],
-            'diagnosis' => 'nullable|string',
-            'weight' => [
-                'nullable',
-                'numeric',
-                'min:0',
-                'max:300'
-            ],
+            // اطلاعات مراجعه
+            'department_id' => 'nullable|exists:departments,id',
+            'doctor_id'     => 'nullable|exists:users,id',
+            'visit_number'  => 'nullable|string|max:50',
+            'visit_type'    => 'nullable|in:OPD,IPD,Emergency,Laboratory,Radiology,Pharmacy',
+            'queue_number'  => 'nullable|integer|min:1',
+            'registration_fee' => 'nullable|numeric|min:0',
+            'visit_status'  => 'nullable|in:Waiting,Doctor,Examining,Laboratory,Radiology,Admission,Ward,Operation,Pharmacy,Billing,Completed,Cancelled,Discharged',
+            'diagnosis'     => 'nullable|string',
+            'weight'        => 'nullable|numeric|min:0|max:300',
             'blood_pressure' => 'nullable|string|max:20',
-            'temperature' => [
-                'nullable',
-                'numeric',
-                'min:30',
-                'max:45'
-            ],
-            'oxygen' => [
-                'nullable',
-                'integer',
-                'min:0',
-                'max:100'
-            ],
-            'visit_date' => 'nullable|date',
-            'note' => 'nullable|string',
+            'temperature'   => 'nullable|numeric|min:30|max:45',
+            'oxygen'        => 'nullable|integer|min:0|max:100',
+            'visit_date'    => 'nullable|date',
+
+            // ✅ جدید
+            'visit_time'    => ['nullable', 'date_format:H:i,H:i:s'],
+
+            'note'          => 'nullable|string',
         ]);
 
         DB::beginTransaction();
@@ -431,72 +366,81 @@ if (
 
             /*
             |--------------------------------------------------------------------------
-            | بروزرسانی اطلاعات مریض
+            | به‌روزرسانی اطلاعات مریض
             |--------------------------------------------------------------------------
             */
-
             if ($registration->patient) {
                 $gender = $request->gender;
-                if ($gender == 'male' || $gender == 'Male' || $gender == 'other') {
+                if (in_array($gender, ['male', 'Male', 'other'])) {
                     $gender = 'Male';
-                } elseif ($gender == 'female' || $gender == 'Female') {
+                } elseif (in_array($gender, ['female', 'Female'])) {
                     $gender = 'Female';
                 }
 
                 $patientData = [];
 
-if ($request->filled('first_name')) {
-    $patientData['first_name'] = $request->first_name;
-}
+                if ($request->filled('first_name'))  $patientData['first_name']  = $request->first_name;
+                if ($request->filled('last_name'))   $patientData['last_name']   = $request->last_name;
+                if ($request->filled('father_name')) $patientData['father_name'] = $request->father_name;
+                if ($request->filled('mobile'))      $patientData['mobile']      = $request->mobile;
+                if ($request->filled('national_id')) $patientData['national_id'] = $request->national_id;
+                if ($request->filled('gender'))      $patientData['gender']      = $gender;
+                if ($request->filled('age'))         $patientData['age']         = $request->age;
+                if ($request->filled('blood_group')) $patientData['blood_group'] = $request->blood_group;
+                if ($request->filled('address'))     $patientData['address']     = $request->address;
 
-if ($request->filled('last_name')) {
-    $patientData['last_name'] = $request->last_name;
-}
-
-if ($request->filled('father_name')) {
-    $patientData['father_name'] = $request->father_name;
-}
-
-// ...
-
-if (!empty($patientData)) {
-    $registration->patient->update($patientData);
-}
-            }
-
-            // اگر داکتر تغییر کرده باشد، شماره صف را به‌روز می‌کنیم
-            if ($request->has('doctor_id') && $request->doctor_id != $registration->doctor_id) {
-                $visitDate = $request->visit_date ?? $registration->visit_date;
-                $doctorId = $request->doctor_id;
-                
-                if ($doctorId) {
-            $queueDate = now()->toDateString();
-
-$lastQueue = Registrations::where('doctor_id', $doctorId)
-    ->whereDate('queue_date', $queueDate)
-    ->max('queue_number');
-
-$validated['queue_number'] = ($lastQueue ?? 0) + 1;
-$validated['queue_date'] = $queueDate;
+                if (!empty($patientData)) {
+                    $registration->patient->update($patientData);
                 }
             }
 
             /*
             |--------------------------------------------------------------------------
-            | بروزرسانی مراجعه
+            | شماره صف اگر داکتر عوض شده
             |--------------------------------------------------------------------------
             */
+            if ($request->has('doctor_id') && $request->doctor_id != $registration->doctor_id) {
+                $doctorId = $request->doctor_id;
 
-            $registration->update($validated);
+                if ($doctorId) {
+                    $queueDate = now()->toDateString();
 
+                    $lastQueue = Registrations::where('doctor_id', $doctorId)
+                        ->whereDate('queue_date', $queueDate)
+                        ->max('queue_number');
 
+                    $validated['queue_number'] = ($lastQueue ?? 0) + 1;
+                    $validated['queue_date']   = $queueDate;
+                } else {
+                    $validated['queue_number'] = null;
+                    $validated['queue_date']   = null;
+                    $validated['queue_status'] = null;
+                }
+            }
 
             /*
             |--------------------------------------------------------------------------
-            | بروزرسانی ژورنال
+            | نرمال‌سازی visit_time
             |--------------------------------------------------------------------------
             */
+            if (isset($validated['visit_time']) && $validated['visit_time']) {
+                if (strlen($validated['visit_time']) === 5) {
+                    $validated['visit_time'] .= ':00';
+                }
+            }
 
+            /*
+            |--------------------------------------------------------------------------
+            | به‌روزرسانی مراجعه
+            |--------------------------------------------------------------------------
+            */
+            $registration->update($validated);
+
+            /*
+            |--------------------------------------------------------------------------
+            | ژورنال
+            |--------------------------------------------------------------------------
+            */
             if ($request->has('registration_fee') && $request->registration_fee > 0) {
                 $journal = Journal::where('ref_type', 'patient')
                     ->where('ref_id', $registration->reg_id)
@@ -504,30 +448,29 @@ $validated['queue_date'] = $queueDate;
 
                 if ($journal) {
                     $journal->update([
-                        'amount' => $request->registration_fee,
+                        'amount'       => $request->registration_fee,
                         'journal_date' => $request->visit_date ?? $journal->journal_date,
-                        'description' => "فیس مراجعه مریض - ID: {$registration->reg_id} (به‌روزرسانی)"
+                        'description'  => "فیس مراجعه مریض - ID: {$registration->reg_id} (به‌روزرسانی)"
                     ]);
                 } else {
                     Journal::create([
-                        'journal_date' => $request->visit_date ?? now(),
-                        'description' => "فیس مراجعه مریض - ID: {$registration->reg_id}",
-                        'entry_type' => 'debit',
-                        'amount' => $request->registration_fee,
-                        'ref_type' => 'patient',
-                        'ref_id' => $registration->reg_id,
-                        'registration_id' => $registration->reg_id,
-                        'user_id' => Auth::id(),
+                        'journal_date'      => $request->visit_date ?? now(),
+                        'description'       => "فیس مراجعه مریض - ID: {$registration->reg_id}",
+                        'entry_type'        => 'debit',
+                        'amount'            => $request->registration_fee,
+                        'ref_type'          => 'patient',
+                        'ref_id'            => $registration->reg_id,
+                        'registration_id'   => $registration->reg_id,
+                        'user_id'           => Auth::id(),
                     ]);
                 }
             }
 
             /*
             |--------------------------------------------------------------------------
-            | ثبت لاگ
+            | لاگ
             |--------------------------------------------------------------------------
             */
-
             try {
                 LogService::create(
                     'update',
@@ -544,7 +487,7 @@ $validated['queue_date'] = $queueDate;
 
             return response()->json([
                 'message' => 'مراجعه مریض موفقانه به‌روزرسانی شد',
-                'data' => $registration->fresh()->load([
+                'data'    => $registration->fresh()->load([
                     'patient',
                     'department',
                     'doctor',
@@ -557,13 +500,13 @@ $validated['queue_date'] = $queueDate;
             Log::error('Registration update error: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
             return response()->json([
                 'message' => 'خطا در به‌روزرسانی مراجعه مریض',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * حذف یک مراجعه
+     * حذف مراجعه
      */
     public function destroy($reg_id)
     {
@@ -578,17 +521,12 @@ $validated['queue_date'] = $queueDate;
                 ], 404);
             }
 
-            // ذخیره اطلاعات برای لاگ
             $registrationData = $registration->toArray();
 
-            // حذف ژورنال‌های مرتبط
             Journal::where('ref_type', 'patient')
                 ->where('ref_id', $registration->reg_id)
                 ->delete();
 
-            
-
-            // حذف مراجعه
             $registration->delete();
 
             try {
@@ -614,13 +552,13 @@ $validated['queue_date'] = $queueDate;
             Log::error('Registration delete error: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
             return response()->json([
                 'message' => 'خطا در حذف مراجعه مریض',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * جستجوی مریض‌ها (برای استفاده در فرانت‌اند)
+     * جستجوی مریض‌ها
      */
     public function searchPatients(Request $request)
     {
@@ -629,9 +567,7 @@ $validated['queue_date'] = $queueDate;
             $searchType = $request->get('type', 'all');
 
             if (empty($searchTerm)) {
-                return response()->json([
-                    'data' => []
-                ]);
+                return response()->json(['data' => []]);
             }
 
             $query = Patient::query();
@@ -644,14 +580,14 @@ $validated['queue_date'] = $queueDate;
                     $query->where('mobile', 'LIKE', "%{$searchTerm}%");
                     break;
                 case 'name':
-                    $query->where(function($q) use ($searchTerm) {
+                    $query->where(function ($q) use ($searchTerm) {
                         $q->where('first_name', 'LIKE', "%{$searchTerm}%")
                           ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
                           ->orWhere(DB::raw("CONCAT(first_name, ' ', last_name)"), 'LIKE', "%{$searchTerm}%");
                     });
                     break;
                 default:
-                    $query->where(function($q) use ($searchTerm) {
+                    $query->where(function ($q) use ($searchTerm) {
                         $q->where('first_name', 'LIKE', "%{$searchTerm}%")
                           ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
                           ->orWhere('national_id', 'LIKE', "%{$searchTerm}%")
@@ -661,54 +597,46 @@ $validated['queue_date'] = $queueDate;
                     break;
             }
 
-            $patients = $query->orderBy('first_name')
-                ->limit(20)
-                ->get();
+            $patients = $query->orderBy('first_name')->limit(20)->get();
 
-            return response()->json([
-                'data' => $patients
-            ]);
+            return response()->json(['data' => $patients]);
 
         } catch (\Exception $e) {
             Log::error('Patient search error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در جستجوی مریض',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت اطلاعات کامل یک مریض با شماره ID
+     * اطلاعات کامل یک مریض
      */
     public function getPatientInfo($patient_id)
     {
         try {
-            $patient = Patient::with(['registrations' => function($query) {
+            $patient = Patient::with(['registrations' => function ($query) {
                 $query->orderBy('reg_id', 'desc')->limit(5);
             }])->find($patient_id);
 
             if (!$patient) {
-                return response()->json([
-                    'message' => 'مریض مورد نظر یافت نشد'
-                ], 404);
+                return response()->json(['message' => 'مریض مورد نظر یافت نشد'], 404);
             }
 
-            return response()->json([
-                'data' => $patient
-            ]);
+            return response()->json(['data' => $patient]);
 
         } catch (\Exception $e) {
             Log::error('Patient info error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت اطلاعات مریض',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت آمار مراجعات
+     * آمار مراجعات
      */
     public function statistics(Request $request)
     {
@@ -719,9 +647,9 @@ $validated['queue_date'] = $queueDate;
             $todayPatients = Registrations::whereDate('visit_date', $today)
                 ->orWhereDate('created_at', $today)
                 ->count();
-            $waitingPatients = Registrations::where('visit_status', 'Waiting')->count();
+            $waitingPatients   = Registrations::where('visit_status', 'Waiting')->count();
             $completedPatients = Registrations::where('visit_status', 'Completed')->count();
-            $totalFees = Registrations::sum('registration_fee');
+            $totalFees         = Registrations::sum('registration_fee');
 
             $statusDistribution = Registrations::select('visit_status', DB::raw('count(*) as count'))
                 ->groupBy('visit_status')
@@ -734,10 +662,10 @@ $validated['queue_date'] = $queueDate;
                 ->groupBy('department_id')
                 ->with('department')
                 ->get()
-                ->map(function($item) {
+                ->map(function ($item) {
                     return [
                         'department_name' => $item->department ? $item->department->name : 'نامشخص',
-                        'count' => $item->count
+                        'count'           => $item->count
                     ];
                 });
 
@@ -752,93 +680,72 @@ $validated['queue_date'] = $queueDate;
                 ->count();
 
             return response()->json([
-                'total_patients' => $totalPatients,
-                'today_patients' => $todayPatients,
-                'waiting_patients' => $waitingPatients,
-                'completed_patients' => $completedPatients,
-                'total_fees' => $totalFees,
-                'status_distribution' => $statusDistribution,
+                'total_patients'         => $totalPatients,
+                'today_patients'         => $todayPatients,
+                'waiting_patients'       => $waitingPatients,
+                'completed_patients'     => $completedPatients,
+                'total_fees'             => $totalFees,
+                'status_distribution'    => $statusDistribution,
                 'department_distribution' => $departmentDistribution,
                 'last_week_registrations' => $lastWeekRegistrations,
-                'repeat_patients' => $repeatPatients,
-                'date' => $today
+                'repeat_patients'        => $repeatPatients,
+                'date'                   => $today
             ]);
 
         } catch (\Exception $e) {
             Log::error('Statistics error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت آمار',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت مراجعات یک مریض خاص
+     * مراجعات یک مریض خاص
      */
     public function patientRegistrations($patient_id)
     {
         try {
-            $registrations = Registrations::with([
-                'department',
-                'doctor',
-                'journals'
-            ])
-            ->where('patient_id', $patient_id)
-            ->orderBy('reg_id', 'desc')
-            ->get();
+            $registrations = Registrations::with(['department', 'doctor', 'journals'])
+                ->where('patient_id', $patient_id)
+                ->orderBy('reg_id', 'desc')
+                ->get();
 
-            return response()->json([
-                'data' => $registrations
-            ]);
+            return response()->json(['data' => $registrations]);
 
         } catch (\Exception $e) {
             Log::error('Patient registrations error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت مراجعات مریض',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت مراجعات بر اساس وضعیت
+     * مراجعات بر اساس وضعیت
      */
     public function getByStatus($status)
     {
         try {
-           $validStatuses = [
-    'Waiting',
-    'Doctor',
-    'Examining',
-    'Laboratory',
-    'Radiology',
-    'Admission',
-    'Ward',
-    'Operation',
-    'Pharmacy',
-    'Billing',
-    'Completed',
-    'Cancelled',
-    'Discharged'
-];
+            $validStatuses = [
+                'Waiting', 'Doctor', 'Examining', 'Laboratory', 'Radiology',
+                'Admission', 'Ward', 'Operation', 'Pharmacy', 'Billing',
+                'Completed', 'Cancelled', 'Discharged'
+            ];
+
             if (!in_array($status, $validStatuses)) {
-                return response()->json([
-                    'message' => 'وضعیت نامعتبر است'
-                ], 422);
+                return response()->json(['message' => 'وضعیت نامعتبر است'], 422);
             }
 
-            $registrations = Registrations::with([
-                'patient',
-                'department',
-                'doctor'
-            ])
-            ->where('visit_status', $status)
-            ->orderBy('reg_id', 'desc')
-            ->get();
+            $registrations = Registrations::with(['patient', 'department', 'doctor'])
+                ->where('visit_status', $status)
+                ->orderBy('reg_id', 'desc')
+                ->get();
 
             return response()->json([
-                'data' => $registrations,
+                'data'  => $registrations,
                 'count' => $registrations->count()
             ]);
 
@@ -846,28 +753,24 @@ $validated['queue_date'] = $queueDate;
             Log::error('Get by status error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت مراجعات بر اساس وضعیت',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت مراجعات یک داکتر خاص
+     * مراجعات یک داکتر خاص
      */
     public function getByDoctor($doctor_id)
     {
         try {
-            $registrations = Registrations::with([
-                'patient',
-                'department',
-                'journals'
-            ])
-            ->where('doctor_id', $doctor_id)
-            ->orderBy('reg_id', 'desc')
-            ->get();
+            $registrations = Registrations::with(['patient', 'department', 'journals'])
+                ->where('doctor_id', $doctor_id)
+                ->orderBy('reg_id', 'desc')
+                ->get();
 
             return response()->json([
-                'data' => $registrations,
+                'data'  => $registrations,
                 'count' => $registrations->count()
             ]);
 
@@ -875,28 +778,24 @@ $validated['queue_date'] = $queueDate;
             Log::error('Get by doctor error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت مراجعات داکتر',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت مراجعات یک بخش خاص
+     * مراجعات یک بخش خاص
      */
     public function getByDepartment($department_id)
     {
         try {
-            $registrations = Registrations::with([
-                'patient',
-                'doctor',
-                'journals'
-            ])
-            ->where('department_id', $department_id)
-            ->orderBy('reg_id', 'desc')
-            ->get();
+            $registrations = Registrations::with(['patient', 'doctor', 'journals'])
+                ->where('department_id', $department_id)
+                ->orderBy('reg_id', 'desc')
+                ->get();
 
             return response()->json([
-                'data' => $registrations,
+                'data'  => $registrations,
                 'count' => $registrations->count()
             ]);
 
@@ -904,30 +803,27 @@ $validated['queue_date'] = $queueDate;
             Log::error('Get by department error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت مراجعات بخش',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت گزارش مالی مراجعات
+     * گزارش مالی
      */
     public function financialReport(Request $request)
     {
         try {
             $startDate = $request->get('start_date', date('Y-m-01'));
-            $endDate = $request->get('end_date', date('Y-m-d'));
+            $endDate   = $request->get('end_date', date('Y-m-d'));
 
-            $registrations = Registrations::with([
-                'patient',
-                'journals'
-            ])
-            ->whereBetween('visit_date', [$startDate, $endDate])
-            ->orderBy('reg_id', 'desc')
-            ->get();
+            $registrations = Registrations::with(['patient', 'journals'])
+                ->whereBetween('visit_date', [$startDate, $endDate])
+                ->orderBy('reg_id', 'desc')
+                ->get();
 
             $totalFees = $registrations->sum('registration_fee');
-            $totalPaid = $registrations->sum(function($reg) {
+            $totalPaid = $registrations->sum(function ($reg) {
                 return $reg->journals->sum('amount');
             });
 
@@ -937,11 +833,11 @@ $validated['queue_date'] = $queueDate;
                 'data' => $registrations,
                 'summary' => [
                     'total_registrations' => $registrations->count(),
-                    'total_fees' => $totalFees,
-                    'total_paid' => $totalPaid,
-                    'pending_payments' => $pendingPayments,
-                    'start_date' => $startDate,
-                    'end_date' => $endDate
+                    'total_fees'          => $totalFees,
+                    'total_paid'          => $totalPaid,
+                    'pending_payments'    => $pendingPayments,
+                    'start_date'          => $startDate,
+                    'end_date'            => $endDate
                 ]
             ]);
 
@@ -949,189 +845,167 @@ $validated['queue_date'] = $queueDate;
             Log::error('Financial report error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت گزارش مالی',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * دریافت خلاصه روزانه مراجعات
+     * خلاصه روزانه
      */
     public function dailySummary(Request $request)
     {
         try {
             $date = $request->get('date', date('Y-m-d'));
 
-            $registrations = Registrations::with([
-                'patient',
-                'department',
-                'doctor'
-            ])
-            ->whereDate('visit_date', $date)
-            ->orWhereDate('created_at', $date)
-            ->get();
+            $registrations = Registrations::with(['patient', 'department', 'doctor'])
+                ->whereDate('visit_date', $date)
+                ->orWhereDate('created_at', $date)
+                ->get();
 
             $statusCounts = $registrations->groupBy('visit_status')
-                ->map(function($group) {
-                    return $group->count();
-                });
+                ->map(fn($group) => $group->count());
 
             $totalFees = $registrations->sum('registration_fee');
 
             return response()->json([
-                'date' => $date,
+                'date'                => $date,
                 'total_registrations' => $registrations->count(),
-                'total_fees' => $totalFees,
-                'status_breakdown' => $statusCounts,
-                'registrations' => $registrations
+                'total_fees'          => $totalFees,
+                'status_breakdown'    => $statusCounts,
+                'registrations'       => $registrations
             ]);
 
         } catch (\Exception $e) {
             Log::error('Daily summary error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت خلاصه روزانه',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * به‌روزرسانی وضعیت مراجعه (سریع)
+     * به‌روزرسانی سریع وضعیت
      */
-  /**
- * به‌روزرسانی وضعیت مراجعه (سریع)
- */
-public function updateStatus(Request $request, $reg_id)
-{
-    try {
-        $validated = $request->validate([
-            'visit_status' => [
-                'required',
-                'in:Waiting,Doctor,Examining,Laboratory,Radiology,Admission,Ward,Operation,Pharmacy,Billing,Completed,Cancelled,Discharged'
-            ]
-        ]);
-
-        $registration = Registrations::find($reg_id);
-
-        if (!$registration) {
-            return response()->json([
-                'message' => 'مراجعه مورد نظر یافت نشد'
-            ], 404);
-        }
-
-        $oldStatus = $registration->visit_status;
-        
-        // ============================================================
-        // اصلاح: تصحیح مقدار visit_status اگر اشتباه ارسال شده باشد
-        // ============================================================
-        $newStatus = $validated['visit_status'];
-        
-        // اگر مقدار به اشتباه 'examined' ارسال شده بود، به 'Examining' تبدیل کن
-        if (strtolower($newStatus) === 'Examining') {
-            $newStatus = 'Examining';
-        }
-        
-        // اگر مقدار 'Examining' ارسال شده، مطمئن شو که با حرف بزرگ E است
-        if (strtolower($newStatus) === 'examining') {
-            $newStatus = 'Examining';
-        }
-        
-        // مطمئن شو که مقدار در لیست مجاز است
-        $allowedStatuses = [
-            'Waiting', 'Doctor', 'Examining', 'Laboratory', 'Radiology',
-            'Admission', 'Ward', 'Operation', 'Pharmacy', 'Billing',
-            'Completed', 'Cancelled', 'Discharged'
-        ];
-        
-        if (!in_array($newStatus, $allowedStatuses)) {
-            return response()->json([
-                'message' => 'وضعیت نامعتبر است',
-                'received' => $newStatus,
-                'allowed' => $allowedStatuses
-            ], 422);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | ارسال به داکتر = ساخت شماره صف
-        |--------------------------------------------------------------------------
-        */
-        if ($newStatus === 'Doctor' &&
-            $registration->visit_status !== 'Doctor' &&
-            $registration->doctor_id) {
-
-            $queueDate = now()->toDateString();
-            $lastQueue = Registrations::where('doctor_id', $registration->doctor_id)
-                ->whereDate('queue_date', $queueDate)
-                ->max('queue_number');
-
-            $registration->queue_number = ($lastQueue ?? 0) + 1;
-            $registration->queue_date = $queueDate;
-            $registration->sent_to_doctor_at = now();
-        }
-        
-        // به‌روزرسانی وضعیت با مقدار اصلاح شده
-        $registration->visit_status = $newStatus;
-        $registration->save();
-
+    public function updateStatus(Request $request, $reg_id)
+    {
         try {
-            LogService::create(
-                'update',
-                'registrations',
-                $registration->reg_id,
-                "وضعیت مراجعه از {$oldStatus} به {$newStatus} تغییر یافت",
-                [
-                    'old_status' => $oldStatus,
-                    'new_status' => $newStatus,
-                    'changed_by' => Auth::id()
+            $validated = $request->validate([
+                'visit_status' => [
+                    'required',
+                    'in:Waiting,Doctor,Examining,Laboratory,Radiology,Admission,Ward,Operation,Pharmacy,Billing,Completed,Cancelled,Discharged'
                 ]
-            );
+            ]);
+
+            $registration = Registrations::find($reg_id);
+
+            if (!$registration) {
+                return response()->json(['message' => 'مراجعه مورد نظر یافت نشد'], 404);
+            }
+
+            $oldStatus = $registration->visit_status;
+            $newStatus = $validated['visit_status'];
+
+            // نرمال‌سازی
+            if (strtolower($newStatus) === 'examining') {
+                $newStatus = 'Examining';
+            }
+
+            $allowedStatuses = [
+                'Waiting', 'Doctor', 'Examining', 'Laboratory', 'Radiology',
+                'Admission', 'Ward', 'Operation', 'Pharmacy', 'Billing',
+                'Completed', 'Cancelled', 'Discharged'
+            ];
+
+            if (!in_array($newStatus, $allowedStatuses)) {
+                return response()->json([
+                    'message' => 'وضعیت نامعتبر است',
+                    'received' => $newStatus,
+                    'allowed'  => $allowedStatuses
+                ], 422);
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | ارسال به داکتر = ساخت شماره صف
+            |--------------------------------------------------------------------------
+            */
+            if (
+                $newStatus === 'Doctor' &&
+                $registration->visit_status !== 'Doctor' &&
+                $registration->doctor_id
+            ) {
+                $queueDate = now()->toDateString();
+
+                $lastQueue = Registrations::where('doctor_id', $registration->doctor_id)
+                    ->whereDate('queue_date', $queueDate)
+                    ->max('queue_number');
+
+                $registration->queue_number      = ($lastQueue ?? 0) + 1;
+                $registration->queue_date        = $queueDate;
+                $registration->queue_status      = 'Waiting';
+                $registration->sent_to_doctor_at = now();
+            }
+
+            $registration->visit_status = $newStatus;
+            $registration->save();
+
+            try {
+                LogService::create(
+                    'update',
+                    'registrations',
+                    $registration->reg_id,
+                    "وضعیت مراجعه از {$oldStatus} به {$newStatus} تغییر یافت",
+                    [
+                        'old_status' => $oldStatus,
+                        'new_status' => $newStatus,
+                        'changed_by' => Auth::id()
+                    ]
+                );
+            } catch (\Exception $e) {
+                Log::error("Status update log failed: " . $e->getMessage());
+            }
+
+            return response()->json([
+                'message' => 'وضعیت مراجعه موفقانه به‌روزرسانی شد',
+                'data'    => $registration->load(['patient', 'department', 'doctor'])
+            ]);
+
         } catch (\Exception $e) {
-            Log::error("Status update log failed: " . $e->getMessage());
+            Log::error('Update status error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'خطا در به‌روزرسانی وضعیت',
+                'error'   => $e->getMessage()
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'وضعیت مراجعه موفقانه به‌روزرسانی شد',
-            'data' => $registration->load(['patient', 'department', 'doctor'])
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Update status error: ' . $e->getMessage());
-        return response()->json([
-            'message' => 'خطا در به‌روزرسانی وضعیت',
-            'error' => $e->getMessage()
-        ], 500);
     }
-}
+
     /**
-     * دریافت مراجعات امروز برای داشبورد
+     * مراجعات امروز
      */
     public function todayRegistrations()
     {
         try {
             $today = date('Y-m-d');
 
-            $registrations = Registrations::with([
-                'patient',
-                'department',
-                'doctor'
-            ])
-            ->whereDate('visit_date', $today)
-            ->orWhereDate('created_at', $today)
-            ->orderBy('reg_id', 'desc')
-            ->get();
+            $registrations = Registrations::with(['patient', 'department', 'doctor'])
+                ->whereDate('visit_date', $today)
+                ->orWhereDate('created_at', $today)
+                ->orderBy('reg_id', 'desc')
+                ->get();
 
             return response()->json([
-                'data' => $registrations,
+                'data'  => $registrations,
                 'count' => $registrations->count(),
-                'date' => $today
+                'date'  => $today
             ]);
 
         } catch (\Exception $e) {
             Log::error('Today registrations error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت مراجعات امروز',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
@@ -1140,38 +1014,27 @@ public function updateStatus(Request $request, $reg_id)
     // متدهای مدیریت دیپارتمنت‌ها
     // ============================================================
 
-    /**
-     * دریافت لیست تمام دیپارتمنت‌ها
-     */
     public function getDepartments(Request $request)
     {
         try {
             $status = $request->get('status', 'all');
-            
             $query = Department::query();
-            
             if ($status !== 'all') {
                 $query->where('status', $status);
             }
-            
             $departments = $query->orderBy('name')->get();
 
-            return response()->json([
-                'data' => $departments
-            ]);
+            return response()->json(['data' => $departments]);
 
         } catch (\Exception $e) {
             Log::error('Error fetching departments: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت لیست بخش‌ها',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * دریافت دیپارتمنت‌های فعال
-     */
     public function getActiveDepartments()
     {
         try {
@@ -1180,111 +1043,88 @@ public function updateStatus(Request $request, $reg_id)
                 ->orderBy('name')
                 ->get();
 
-            return response()->json([
-                'data' => $departments
-            ]);
+            return response()->json(['data' => $departments]);
 
         } catch (\Exception $e) {
             Log::error('Error fetching active departments: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت بخش‌های فعال',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * دریافت یک دیپارتمنت خاص
-     */
     public function getDepartment($id)
     {
         try {
             $department = Department::withCount('registrations')->find($id);
 
             if (!$department) {
-                return response()->json([
-                    'message' => 'بخش مورد نظر یافت نشد'
-                ], 404);
+                return response()->json(['message' => 'بخش مورد نظر یافت نشد'], 404);
             }
 
-            return response()->json([
-                'data' => $department
-            ]);
+            return response()->json(['data' => $department]);
 
         } catch (\Exception $e) {
             Log::error('Error getting department: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت اطلاعات بخش',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * ایجاد دیپارتمنت جدید
-     */
     public function createDepartment(Request $request)
     {
         try {
             $validated = $request->validate([
-                'name' => 'required|string|max:255|unique:departments,name',
-                'code' => 'required|string|max:20|unique:departments,code',
+                'name'        => 'required|string|max:255|unique:departments,name',
+                'code'        => 'required|string|max:20|unique:departments,code',
                 'description' => 'nullable|string',
-                'status' => ['nullable', Rule::in(['Active', 'Inactive'])],
+                'status'      => ['nullable', Rule::in(['Active', 'Inactive'])],
             ]);
 
             $department = Department::create([
-                'uuid' => Str::uuid(),
-                'code' => $validated['code'],
-                'name' => $validated['name'],
+                'uuid'        => Str::uuid(),
+                'code'        => $validated['code'],
+                'name'        => $validated['name'],
                 'description' => $validated['description'] ?? null,
-                'status' => $validated['status'] ?? 'Active',
-                'created_by' => Auth::id(),
+                'status'      => $validated['status'] ?? 'Active',
+                'created_by'  => Auth::id(),
             ]);
 
             try {
-                LogService::create(
-                    'create',
-                    'departments',
-                    $department->id,
-                    'Department created',
-                    $department->toArray()
-                );
+                LogService::create('create', 'departments', $department->id, 'Department created', $department->toArray());
             } catch (\Exception $e) {
                 Log::error("Department log failed: " . $e->getMessage());
             }
 
             return response()->json([
                 'message' => 'بخش با موفقیت ایجاد شد',
-                'data' => $department
+                'data'    => $department
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'message' => 'خطا در اعتبارسنجی اطلاعات',
-                'errors' => $e->errors()
+                'errors'  => $e->errors()
             ], 422);
         } catch (\Exception $e) {
             Log::error('Error creating department: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در ایجاد بخش',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * به‌روزرسانی دیپارتمنت
-     */
     public function updateDepartment(Request $request, $id)
     {
         try {
             $department = Department::find($id);
 
             if (!$department) {
-                return response()->json([
-                    'message' => 'بخش مورد نظر یافت نشد'
-                ], 404);
+                return response()->json(['message' => 'بخش مورد نظر یافت نشد'], 404);
             }
 
             $validated = $request->validate([
@@ -1301,94 +1141,77 @@ public function updateStatus(Request $request, $reg_id)
                     Rule::unique('departments', 'code')->ignore($department->id)
                 ],
                 'description' => 'nullable|string',
-                'status' => ['nullable', Rule::in(['Active', 'Inactive'])],
+                'status'      => ['nullable', Rule::in(['Active', 'Inactive'])],
             ]);
 
             $oldData = $department->toArray();
 
             $department->update([
-                'name' => $validated['name'],
-                'code' => $validated['code'],
+                'name'        => $validated['name'],
+                'code'        => $validated['code'],
                 'description' => $validated['description'] ?? $department->description,
-                'status' => $validated['status'] ?? $department->status,
-                'updated_by' => Auth::id(),
+                'status'      => $validated['status'] ?? $department->status,
+                'updated_by'  => Auth::id(),
             ]);
 
             try {
-                LogService::create(
-                    'update',
-                    'departments',
-                    $department->id,
-                    'Department updated',
-                    [
-                        'old' => $oldData,
-                        'new' => $department->toArray()
-                    ]
-                );
+                LogService::create('update', 'departments', $department->id, 'Department updated', [
+                    'old' => $oldData,
+                    'new' => $department->toArray()
+                ]);
             } catch (\Exception $e) {
                 Log::error("Department update log failed: " . $e->getMessage());
             }
 
             return response()->json([
                 'message' => 'بخش با موفقیت به‌روزرسانی شد',
-                'data' => $department
+                'data'    => $department
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'message' => 'خطا در اعتبارسنجی اطلاعات',
-                'errors' => $e->errors()
+                'errors'  => $e->errors()
             ], 422);
         } catch (\Exception $e) {
             Log::error('Error updating department: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در به‌روزرسانی بخش',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * حذف دیپارتمنت
-     */
     public function deleteDepartment($id)
     {
         try {
             $department = Department::find($id);
 
             if (!$department) {
-                return response()->json([
-                    'message' => 'بخش مورد نظر یافت نشد'
-                ], 404);
+                return response()->json(['message' => 'بخش مورد نظر یافت نشد'], 404);
             }
 
             $hasRegistrations = $department->registrations()->exists();
-            
+
             if ($hasRegistrations) {
                 $oldStatus = $department->status;
                 $department->update([
-                    'status' => 'Inactive',
+                    'status'     => 'Inactive',
                     'updated_by' => Auth::id(),
                 ]);
 
                 try {
-                    LogService::create(
-                        'update',
-                        'departments',
-                        $department->id,
-                        'Department deactivated due to existing registrations',
-                        [
-                            'old_status' => $oldStatus,
-                            'new_status' => 'Inactive'
-                        ]
-                    );
+                    LogService::create('update', 'departments', $department->id, 'Department deactivated due to existing registrations', [
+                        'old_status' => $oldStatus,
+                        'new_status' => 'Inactive'
+                    ]);
                 } catch (\Exception $e) {
                     Log::error("Department deactivation log failed: " . $e->getMessage());
                 }
 
                 return response()->json([
                     'message' => 'بخش به دلیل استفاده در مراجعات، غیرفعال شد',
-                    'data' => $department
+                    'data'    => $department
                 ]);
             }
 
@@ -1396,82 +1219,66 @@ public function updateStatus(Request $request, $reg_id)
             $department->delete();
 
             try {
-                LogService::create(
-                    'delete',
-                    'departments',
-                    $id,
-                    'Department deleted',
-                    $departmentData
-                );
+                LogService::create('delete', 'departments', $id, 'Department deleted', $departmentData);
             } catch (\Exception $e) {
                 Log::error("Department delete log failed: " . $e->getMessage());
             }
 
-            return response()->json([
-                'message' => 'بخش با موفقیت حذف شد'
-            ]);
+            return response()->json(['message' => 'بخش با موفقیت حذف شد']);
 
         } catch (\Exception $e) {
             Log::error('Error deleting department: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در حذف بخش',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * دریافت آمار دیپارتمنت‌ها
-     */
     public function departmentStatistics()
     {
         try {
-            $total = Department::count();
-            $active = Department::where('status', 'Active')->count();
+            $total    = Department::count();
+            $active   = Department::where('status', 'Active')->count();
             $inactive = Department::where('status', 'Inactive')->count();
-            
+
             $departmentUsage = Department::withCount('registrations')
                 ->orderBy('registrations_count', 'desc')
                 ->get()
-                ->map(function($dept) {
-                    return [
-                        'id' => $dept->id,
-                        'name' => $dept->name,
-                        'code' => $dept->code,
-                        'registration_count' => $dept->registrations_count,
-                        'status' => $dept->status
-                    ];
-                });
+                ->map(fn($dept) => [
+                    'id'                 => $dept->id,
+                    'name'               => $dept->name,
+                    'code'               => $dept->code,
+                    'registration_count' => $dept->registrations_count,
+                    'status'             => $dept->status
+                ]);
 
             return response()->json([
-                'total' => $total,
-                'active' => $active,
+                'total'    => $total,
+                'active'   => $active,
                 'inactive' => $inactive,
-                'usage' => $departmentUsage
+                'usage'    => $departmentUsage
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error fetching department statistics: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در دریافت آمار بخش‌ها',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * جستجوی دیپارتمنت‌ها
-     */
     public function searchDepartments(Request $request)
     {
         try {
             $searchTerm = $request->get('q', '');
-            $status = $request->get('status', 'all');
+            $status     = $request->get('status', 'all');
 
             $query = Department::query();
 
             if (!empty($searchTerm)) {
-                $query->where(function($q) use ($searchTerm) {
+                $query->where(function ($q) use ($searchTerm) {
                     $q->where('name', 'LIKE', "%{$searchTerm}%")
                       ->orWhere('code', 'LIKE', "%{$searchTerm}%")
                       ->orWhere('description', 'LIKE', "%{$searchTerm}%");
@@ -1485,7 +1292,7 @@ public function updateStatus(Request $request, $reg_id)
             $departments = $query->orderBy('name')->get();
 
             return response()->json([
-                'data' => $departments,
+                'data'  => $departments,
                 'count' => $departments->count()
             ]);
 
@@ -1493,14 +1300,11 @@ public function updateStatus(Request $request, $reg_id)
             Log::error('Error searching departments: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در جستجوی بخش‌ها',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * تغییر وضعیت دیپارتمنت
-     */
     public function toggleDepartmentStatus(Request $request, $id)
     {
         try {
@@ -1511,9 +1315,7 @@ public function updateStatus(Request $request, $reg_id)
             $department = Department::find($id);
 
             if (!$department) {
-                return response()->json([
-                    'message' => 'بخش مورد نظر یافت نشد'
-                ], 404);
+                return response()->json(['message' => 'بخش مورد نظر یافت نشد'], 404);
             }
 
             if ($validated['status'] === 'Inactive' && $department->registrations()->exists()) {
@@ -1525,15 +1327,12 @@ public function updateStatus(Request $request, $reg_id)
 
             $oldStatus = $department->status;
             $department->update([
-                'status' => $validated['status'],
+                'status'     => $validated['status'],
                 'updated_by' => Auth::id(),
             ]);
 
             try {
-                LogService::create(
-                    'update',
-                    'departments',
-                    $department->id,
+                LogService::create('update', 'departments', $department->id,
                     "Department status changed from {$oldStatus} to {$validated['status']}",
                     [
                         'old_status' => $oldStatus,
@@ -1546,35 +1345,33 @@ public function updateStatus(Request $request, $reg_id)
 
             return response()->json([
                 'message' => "وضعیت بخش با موفقیت به {$validated['status']} تغییر یافت",
-                'data' => $department
+                'data'    => $department
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'message' => 'خطا در اعتبارسنجی اطلاعات',
-                'errors' => $e->errors()
+                'errors'  => $e->errors()
             ], 422);
         } catch (\Exception $e) {
             Log::error('Error toggling department status: ' . $e->getMessage());
             return response()->json([
                 'message' => 'خطا در تغییر وضعیت بخش',
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage()
             ], 500);
         }
     }
-   
+
+    /**
+     * صف انتظار داکتر
+     */
     public function doctorQueue()
     {
         try {
-
-            $registrations = Registrations::with([
-                    'patient',
-                    'department',
-                    'doctor'
-                ])
+            $registrations = Registrations::with(['patient', 'department', 'doctor'])
                 ->where('sent_to_doctor_at', '!=', null)
-               ->where('visit_status', 'Doctor')
-               ->where('queue_date', today())
+                ->where('visit_status', 'Doctor')
+                ->where('queue_date', today())
                 ->where('doctor_id', Auth::id())
                 ->orderBy('sent_to_doctor_at', 'asc')
                 ->orderBy('queue_number', 'asc')
@@ -1587,7 +1384,6 @@ public function updateStatus(Request $request, $reg_id)
             ], 200);
 
         } catch (\Exception $e) {
-
             Log::error('Doctor Queue Error', [
                 'message' => $e->getMessage(),
                 'file'    => $e->getFile(),
@@ -1598,19 +1394,16 @@ public function updateStatus(Request $request, $reg_id)
                 'success' => false,
                 'message' => 'خطا در دریافت صف انتظار داکتر',
             ], 500);
-
         }
     }
 
+    /**
+     * نمایش مراجعه برای داکتر
+     */
     public function doctorShow($reg_id)
     {
         try {
-
-            $registration = Registrations::with([
-                    'patient',
-                    'department',
-                    'doctor'
-                ])
+            $registration = Registrations::with(['patient', 'department', 'doctor'])
                 ->where('reg_id', $reg_id)
                 ->where('sent_to_doctor_at', '!=', null)
                 ->where('visit_status', 'Doctor')
@@ -1618,21 +1411,18 @@ public function updateStatus(Request $request, $reg_id)
                 ->first();
 
             if (!$registration) {
-
                 return response()->json([
                     'success' => false,
                     'message' => 'مراجعه مورد نظر یافت نشد یا به شما تعلق ندارد.'
                 ], 404);
-
             }
 
             return response()->json([
                 'success' => true,
-                'data' => $registration
+                'data'    => $registration
             ], 200);
 
         } catch (\Exception $e) {
-
             Log::error('Doctor Show Error', [
                 'reg_id'  => $reg_id,
                 'message' => $e->getMessage(),
@@ -1644,7 +1434,6 @@ public function updateStatus(Request $request, $reg_id)
                 'success' => false,
                 'message' => 'خطا در دریافت معلومات مراجعه.'
             ], 500);
-
         }
     }
 }

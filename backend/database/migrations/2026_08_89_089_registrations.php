@@ -20,7 +20,6 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | نوع ثبت‌نام
             |--------------------------------------------------------------------------
-            | فعلاً 'patient' — در کنترلر hardcode شده
             */
             $table->string('reg_type', 20)
                 ->default('patient')
@@ -44,7 +43,6 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | اطلاعات مراجعه
             |--------------------------------------------------------------------------
-            | visit_number در کنترلر با max('visit_number') + 1 ساخته می‌شود
             */
             $table->string('visit_number', 30)->nullable()
                 ->comment('شماره مراجعه (تولید خودکار)');
@@ -62,9 +60,6 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | صف (Queue)
             |--------------------------------------------------------------------------
-            | queue_number و queue_date فقط هنگام ارسال به داکتر set می‌شوند
-            | queue_status nullable است — تا ارسال به داکتر null می‌ماند
-            | (این اصلاح باگ default 'Waiting' است)
             */
             $table->integer('queue_number')->nullable()
                 ->comment('شماره در صف (فقط بعد از ارسال به داکتر)');
@@ -97,7 +92,11 @@ return new class extends Migration
                 ->comment('Waiting, Doctor, Examining, Laboratory, Radiology, Admission, Ward, Operation, Pharmacy, Billing, Completed, Cancelled, Discharged');
 
             $table->date('visit_date')->nullable()
-                ->comment('تاریخ مراجعه');
+                ->comment('تاریخ مراجعه (میلادی — نمایش شمسی در فرانت)');
+
+            // ✅ جدید: زمان مراجعه
+            $table->time('visit_time')->nullable()
+                ->comment('زمان مراجعه (HH:MM:SS)');
 
             $table->text('note')->nullable()
                 ->comment('یادداشت');
@@ -126,8 +125,6 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             | وضعیت رکورد
             |--------------------------------------------------------------------------
-            | در کنترلر و فرانت فعلی استفاده نمی‌شود
-            | ولی برای آینده (soft-disable) نگه داشته می‌شود
             */
             $table->integer('status')
                 ->default(1)
@@ -165,6 +162,7 @@ return new class extends Migration
             $table->index('doctor_id');
             $table->index('queue_date');
             $table->index('visit_date');
+            $table->index('visit_time');        
             $table->index('visit_status');
             $table->index('queue_status');
             $table->index('status');

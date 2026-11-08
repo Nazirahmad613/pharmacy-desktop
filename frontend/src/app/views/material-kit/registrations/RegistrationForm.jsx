@@ -1,6 +1,7 @@
 // src/app/pages/registration/RegistrationForm.jsx
 
 import { useState, useEffect, useMemo, useRef } from "react";
+ 
 import MainLayoutjur from "../../../../components/MainLayoutjur";
 import MatxLoading from "../../../components/MatxLogo";
 import { toast, ToastContainer } from "react-toastify";
@@ -14,6 +15,64 @@ import RadiologyFeeTab from "./radiologyFeesRequest/RadiologyFeeTab";
 import OperationFeeTab from "./operationFeesRequest/OperationFeeTab";
 import AdmissionFeeTab from "./admissionFeesRequest/AdmissionFeeTab";
 
+// ============================================================
+// ✅ توابع کمکی تاریخ شمسی (افغانستان)
+// ============================================================
+const toJalali = (dateString) => {
+  if (!dateString) return "-";
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return "-";
+    const jd = new JalaliDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    const y = jd.getFullYear();
+    const m = String(jd.getMonth() + 1).padStart(2, "0");
+    const day = String(jd.getDate()).padStart(2, "0");
+    return `${y}/${m}/${day}`;
+  } catch (e) {
+    console.error("toJalali error:", e);
+    return "-";
+  }
+};
+
+const toJalaliWithTime = (dateString) => {
+  if (!dateString) return "-";
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return "-";
+    const jd = new JalaliDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    const y = jd.getFullYear();
+    const m = String(jd.getMonth() + 1).padStart(2, "0");
+    const day = String(jd.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${y}/${m}/${day} - ${hh}:${mm}`;
+  } catch (e) {
+    console.error("toJalaliWithTime error:", e);
+    return "-";
+  }
+};
+
+const fromJalali = (jalaliStr) => {
+  if (!jalaliStr) return "";
+  try {
+    const parts = String(jalaliStr).split("/");
+    if (parts.length !== 3) return "";
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    if (!y || !m || !d) return "";
+    const jd = new JalaliDate(y, m - 1, d);
+    const g = jd.toGregorian();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${g[0]}-${pad(g[1])}-${pad(g[2])}`;
+  } catch (e) {
+    console.error("fromJalali error:", e);
+    return "";
+  }
+};
+
+const todayJalali = () => toJalali(new Date().toISOString());
+
 export default function RegistrationForm() {
   const { api } = useAuth();
   const printRef = useRef();
@@ -24,6 +83,11 @@ export default function RegistrationForm() {
 
   // ============ state برای regId جاری ============
   const [currentRegId, setCurrentRegId] = useState(null);
+
+  // ============ ✅ ref برای جلوگیری از اجرای debounce بعد از انتخاب مریض ============
+  const isSelectingRef = useRef(false);
+  // ✅ نگه‌داشتن آخرین درخواست برای لغو درخواست‌های قدیمی
+  const searchRequestIdRef = useRef(0);
 
   const departmentNames = {
     Emergency: "اورژانس",
@@ -112,6 +176,8 @@ export default function RegistrationForm() {
     temperature: "",
     oxygen: "",
     visit_date: "",
+    visit_date_jalali: "",
+    visit_time: "",
     note: "",
     search_tazkira: "",
     search_name: "",
@@ -446,7 +512,7 @@ export default function RegistrationForm() {
   };
 
   // ============================================================
-  // جستجوی مریض
+  // ✅ جستجوی مریض
   // ============================================================
   const searchExistingPatients = async () => {
     const { search_tazkira, search_name, search_phone } = form;
@@ -458,16 +524,21 @@ export default function RegistrationForm() {
       return;
     }
 
+    const requestId = ++searchRequestIdRef.current;
+
     setSearching(true);
 
     try {
       const params = new URLSearchParams();
-      if (search_tazkira) params.append("q", search_tazkira);
-      if (search_name) params.append("q", search_name);
-      if (search_phone) params.append("q", search_phone);
+
+      if (search_tazkira) params.append("national_id", search_tazkira);
+      if (search_name) params.append("name", search_name);
+      if (search_phone) params.append("mobile", search_phone);
       params.append("type", "all");
 
       const response = await api.get(`/patients/search?${params.toString()}`);
+
+      if (requestId !== searchRequestIdRef.current) return;
 
       let results = [];
       if (Array.isArray(response.data)) {
@@ -485,16 +556,27 @@ export default function RegistrationForm() {
         toast.success(`✅ ${results.length} مریض پیدا شد`);
       }
     } catch (err) {
+      if (requestId !== searchRequestIdRef.current) return;
       console.error("خطا در جستجو:", err);
       setSearchResults([]);
       setShowSearchResults(false);
       toast.error("❌ خطا در جستجوی مریض");
     } finally {
-      setSearching(false);
+      if (requestId === searchRequestIdRef.current) {
+        setSearching(false);
+      }
     }
   };
 
+  // ============================================================
+  // ✅ Debounce جستجو
+  // ============================================================
   useEffect(() => {
+    if (isSelectingRef.current) {
+      isSelectingRef.current = false;
+      return;
+    }
+
     const delayDebounceFn = setTimeout(() => {
       const { search_tazkira, search_name, search_phone } = form;
       if (search_tazkira || search_name || search_phone) {
@@ -509,7 +591,13 @@ export default function RegistrationForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.search_tazkira, form.search_name, form.search_phone]);
 
+  // ============================================================
+  // ✅ انتخاب مریض
+  // ============================================================
   const selectExistingPatient = (patient) => {
+    isSelectingRef.current = true;
+    searchRequestIdRef.current++;
+
     setSelectedPatient(patient);
     setForm((prev) => ({
       ...prev,
@@ -539,6 +627,9 @@ export default function RegistrationForm() {
   };
 
   const clearSearchFields = () => {
+    isSelectingRef.current = true;
+    searchRequestIdRef.current++;
+
     setForm((prev) => ({
       ...prev,
       search_tazkira: "",
@@ -565,6 +656,8 @@ export default function RegistrationForm() {
       temperature: "",
       oxygen: "",
       visit_date: "",
+      visit_date_jalali: "",
+      visit_time: "",
       note: "",
       search_tazkira: "",
       search_name: "",
@@ -588,232 +681,287 @@ export default function RegistrationForm() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+
+    // ✅ اگر تاریخ شمسی تغییر کرد، معادل میلادی را هم ذخیره کن
+    if (name === "visit_date_jalali") {
+      const gregorian = fromJalali(value);
+      setForm((prev) => ({
+        ...prev,
+        visit_date_jalali: value,
+        visit_date: gregorian || "",
+      }));
+      return;
+    }
+
     setForm({ ...form, [name]: value });
   };
 
   // ============================================================
   // ارسال فرم
   // ============================================================
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsSubmitting(true);
 
-    try {
-      if (!form.patient_id && !showNewPatientForm) {
-        toast.error("❌ لطفاً یک مریض را انتخاب کنید یا مریض جدید ثبت کنید");
+  try {
+    if (!form.patient_id && !showNewPatientForm) {
+      toast.error("❌ لطفاً یک مریض را انتخاب کنید یا مریض جدید ثبت کنید");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (showNewPatientForm) {
+      if (!form.new_first_name || !form.new_last_name) {
+        toast.error("❌ نام و نام خانوادگی مریض جدید الزامی است");
         setIsSubmitting(false);
         return;
       }
+    }
 
-      if (showNewPatientForm) {
-        if (!form.new_first_name || !form.new_last_name) {
-          toast.error("❌ نام و نام خانوادگی مریض جدید الزامی است");
-          setIsSubmitting(false);
-          return;
-        }
-      }
+    // ✅ برای اضطراری، فیس اجباری نیست
+    const isEmergency = form.visit_type === "Emergency";
+    const feeValue = parseFloat(form.registration_fee);
 
-      if (!form.registration_fee || parseFloat(form.registration_fee) < 0) {
+    if (!isEmergency) {
+      if (!form.registration_fee || isNaN(feeValue) || feeValue < 0) {
         toast.error("❌ لطفاً مبلغ فیس مراجعه را وارد کنید");
         setIsSubmitting(false);
         return;
       }
-
-      if (
-        form.weight &&
-        (parseFloat(form.weight) < 0 || parseFloat(form.weight) > 300)
-      ) {
-        toast.error("❌ وزن باید بین 0 تا 300 کیلوگرم باشد");
+    } else {
+      // برای اضطراری، اگر فیس وارد شده بود باید معتبر باشد (ولی خالی مجاز است)
+      if (form.registration_fee !== "" && (isNaN(feeValue) || feeValue < 0)) {
+        toast.error("❌ مبلغ فیس وارد شده نامعتبر است");
         setIsSubmitting(false);
         return;
       }
-
-      if (
-        form.temperature &&
-        (parseFloat(form.temperature) < 30 ||
-          parseFloat(form.temperature) > 45)
-      ) {
-        toast.error("❌ حرارت باید بین 30 تا 45 درجه سانتی‌گراد باشد");
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (
-        form.oxygen &&
-        (parseInt(form.oxygen) < 0 || parseInt(form.oxygen) > 100)
-      ) {
-        toast.error("❌ اکسیجن باید بین 0 تا 100 درصد باشد");
-        setIsSubmitting(false);
-        return;
-      }
-
-      // ✅ اصلاح: اگر وضعیت Doctor انتخاب شد، داکتر باید انتخاب شده باشد
-      if (form.visit_status === "Doctor" && !form.doctor_id) {
-        toast.error(
-          "❌ برای ارسال به داکتر، ابتدا داکتر معالج را انتخاب کنید"
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      const submitData = { ...form };
-      delete submitData.search_tazkira;
-      delete submitData.search_name;
-      delete submitData.search_phone;
-
-      if (showNewPatientForm) {
-        delete submitData.patient_id;
-        submitData.first_name = submitData.new_first_name;
-        submitData.last_name = submitData.new_last_name;
-        submitData.father_name = submitData.new_father_name || null;
-        submitData.mobile = submitData.new_mobile || null;
-        submitData.national_id = submitData.new_national_id || null;
-        submitData.gender = submitData.new_gender || null;
-        submitData.age = submitData.new_age || null;
-        submitData.blood_group = submitData.new_blood_group || null;
-        submitData.address = submitData.new_address || null;
-        delete submitData.new_first_name;
-        delete submitData.new_last_name;
-        delete submitData.new_father_name;
-        delete submitData.new_mobile;
-        delete submitData.new_national_id;
-        delete submitData.new_gender;
-        delete submitData.new_age;
-        delete submitData.new_blood_group;
-        delete submitData.new_address;
-        submitData.is_new_patient = true;
-      } else {
-        delete submitData.new_first_name;
-        delete submitData.new_last_name;
-        delete submitData.new_father_name;
-        delete submitData.new_mobile;
-        delete submitData.new_national_id;
-        delete submitData.new_gender;
-        delete submitData.new_age;
-        delete submitData.new_blood_group;
-        delete submitData.new_address;
-        submitData.is_new_patient = false;
-      }
-
-      Object.keys(submitData).forEach((key) => {
-        if (submitData[key] === "") {
-          submitData[key] = null;
-        }
-      });
-
-      let response;
-      let newRegistration = null;
-
-      if (editingId) {
-        response = await api.put(`/registrations/${editingId}`, submitData);
-        toast.success("✅ معلومات مراجعه و مریض با موفقیت تصحیح شد");
-        newRegistration = response.data?.data || response.data;
-
-        if (newRegistration?.patient) {
-          setPatients((prev) => {
-            const index = prev.findIndex(
-              (p) => p.id === newRegistration.patient.id
-            );
-            if (index !== -1) {
-              const updated = [...prev];
-              updated[index] = newRegistration.patient;
-              return updated;
-            }
-            return prev;
-          });
-          setSelectedPatient(newRegistration.patient);
-          setForm((prev) => ({
-            ...prev,
-            search_tazkira: newRegistration.patient.national_id || "",
-            search_name:
-              (newRegistration.patient.first_name || "") +
-              " " +
-              (newRegistration.patient.last_name || ""),
-            search_phone: newRegistration.patient.mobile || "",
-            new_first_name: newRegistration.patient.first_name || "",
-            new_last_name: newRegistration.patient.last_name || "",
-            new_father_name: newRegistration.patient.father_name || "",
-            new_mobile: newRegistration.patient.mobile || "",
-            new_national_id: newRegistration.patient.national_id || "",
-            new_gender: newRegistration.patient.gender || "",
-            new_age: newRegistration.patient.age || "",
-            new_blood_group: newRegistration.patient.blood_group || "",
-            new_address: newRegistration.patient.address || "",
-          }));
-        }
-        setCurrentRegId(editingId);
-      } else {
-        console.log("FINAL DATA SEND:", submitData);
-        response = await api.post("/registrations", submitData);
-        toast.success("✅ مراجعه با موفقیت ثبت شد");
-        newRegistration = response.data?.data || response.data;
-
-        if (showNewPatientForm && newRegistration?.patient) {
-          setPatients((prev) => {
-            const exists = prev.some(
-              (p) => p.id === newRegistration.patient.id
-            );
-            if (exists) return prev;
-            return [newRegistration.patient, ...prev];
-          });
-          setSelectedPatient(newRegistration.patient);
-          setForm((prev) => ({
-            ...prev,
-            patient_id: newRegistration.patient.id,
-            search_tazkira: newRegistration.patient.national_id || "",
-            search_name:
-              (newRegistration.patient.first_name || "") +
-              " " +
-              (newRegistration.patient.last_name || ""),
-            search_phone: newRegistration.patient.mobile || "",
-          }));
-          toast.success(
-            `✅ مریض جدید ${newRegistration.patient.first_name} ${newRegistration.patient.last_name} با موفقیت ثبت شد`
-          );
-        }
-
-        if (newRegistration?.registration_fee > 0) {
-          toast.info(
-            `💰 فیس مراجعه به مبلغ ${parseFloat(
-              newRegistration.registration_fee
-            ).toFixed(2)} افغانی در ژورنال ثبت شد`
-          );
-        }
-
-        if (newRegistration?.reg_id) {
-          setCurrentRegId(newRegistration.reg_id);
-        }
-
-        if (form.doctor_id) {
-          const regRes = await api.get(
-            `/registrations/${newRegistration.reg_id}`
-          );
-          const fullReg = regRes.data?.data || regRes.data;
-          setSelectedRegistration(fullReg);
-          setShowSendModal(true);
-        }
-      }
-
-      await fetchRegistrations();
-      await fetchStatistics();
-      clearForm();
-    } catch (err) {
-      console.log("STATUS:", err.response?.status);
-      console.log("DATA:", err.response?.data);
-
-      if (err.response?.status === 422 && err.response?.data?.errors) {
-        Object.entries(err.response.data.errors).forEach(
-          ([field, messages]) => {
-            toast.error(`❌ ${messages[0]}`);
-          }
-        );
-      } else {
-        toast.error(err.response?.data?.message || "❌ خطا در ذخیره معلومات");
-      }
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+
+    if (
+      form.weight &&
+      (parseFloat(form.weight) < 0 || parseFloat(form.weight) > 300)
+    ) {
+      toast.error("❌ وزن باید بین 0 تا 300 کیلوگرم باشد");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (
+      form.temperature &&
+      (parseFloat(form.temperature) < 30 ||
+        parseFloat(form.temperature) > 45)
+    ) {
+      toast.error("❌ حرارت باید بین 30 تا 45 درجه سانتی‌گراد باشد");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (
+      form.oxygen &&
+      (parseInt(form.oxygen) < 0 || parseInt(form.oxygen) > 100)
+    ) {
+      toast.error("❌ اکسیجن باید بین 0 تا 100 درصد باشد");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (form.visit_status === "Doctor" && !form.doctor_id) {
+      toast.error(
+        "❌ برای ارسال به داکتر، ابتدا داکتر معالج را انتخاب کنید"
+      );
+      setIsSubmitting(false);
+      return;
+    }
+
+    const submitData = { ...form };
+    delete submitData.search_tazkira;
+    delete submitData.search_name;
+    delete submitData.search_phone;
+    delete submitData.visit_date_jalali;
+
+    // ✅ اگر تاریخ شمسی وارد شده اما معادل میلادی ساخته نشده، از امروز استفاده کن
+    if (!submitData.visit_date && form.visit_date_jalali) {
+      const g = fromJalali(form.visit_date_jalali);
+      if (g) submitData.visit_date = g;
+    }
+
+    if (showNewPatientForm) {
+      delete submitData.patient_id;
+      submitData.first_name = submitData.new_first_name;
+      submitData.last_name = submitData.new_last_name;
+      submitData.father_name = submitData.new_father_name || null;
+      submitData.mobile = submitData.new_mobile || null;
+      submitData.national_id = submitData.new_national_id || null;
+      submitData.gender = submitData.new_gender || null;
+      submitData.age = submitData.new_age || null;
+      submitData.blood_group = submitData.new_blood_group || null;
+      submitData.address = submitData.new_address || null;
+      delete submitData.new_first_name;
+      delete submitData.new_last_name;
+      delete submitData.new_father_name;
+      delete submitData.new_mobile;
+      delete submitData.new_national_id;
+      delete submitData.new_gender;
+      delete submitData.new_age;
+      delete submitData.new_blood_group;
+      delete submitData.new_address;
+      submitData.is_new_patient = true;
+    } else {
+      delete submitData.new_first_name;
+      delete submitData.new_last_name;
+      delete submitData.new_father_name;
+      delete submitData.new_mobile;
+      delete submitData.new_national_id;
+      delete submitData.new_gender;
+      delete submitData.new_age;
+      delete submitData.new_blood_group;
+      delete submitData.new_address;
+      submitData.is_new_patient = false;
+    }
+
+    // ✅ اضطراری: اگر فیس خالی بود، ۰ بگذار تا بک‌اند رد نکند
+    if (isEmergency) {
+      if (
+        submitData.registration_fee === "" ||
+        submitData.registration_fee === null ||
+        submitData.registration_fee === undefined ||
+        isNaN(parseFloat(submitData.registration_fee))
+      ) {
+        submitData.registration_fee = 0;
+      }
+    }
+
+    // ✅ اضطراری: بلافاصله به داکتر ارسال شود، بدون توجه به فیس
+    if (isEmergency && form.doctor_id) {
+      submitData.visit_status = "Doctor";
+    }
+
+    Object.keys(submitData).forEach((key) => {
+      if (submitData[key] === "") {
+        submitData[key] = null;
+      }
+    });
+
+    let response;
+    let newRegistration = null;
+
+    if (editingId) {
+      response = await api.put(`/registrations/${editingId}`, submitData);
+      toast.success("✅ معلومات مراجعه و مریض با موفقیت تصحیح شد");
+      newRegistration = response.data?.data || response.data;
+
+      if (newRegistration?.patient) {
+        setPatients((prev) => {
+          const index = prev.findIndex(
+            (p) => p.id === newRegistration.patient.id
+          );
+          if (index !== -1) {
+            const updated = [...prev];
+            updated[index] = newRegistration.patient;
+            return updated;
+          }
+          return prev;
+        });
+        setSelectedPatient(newRegistration.patient);
+        setForm((prev) => ({
+          ...prev,
+          search_tazkira: newRegistration.patient.national_id || "",
+          search_name:
+            (newRegistration.patient.first_name || "") +
+            " " +
+            (newRegistration.patient.last_name || ""),
+          search_phone: newRegistration.patient.mobile || "",
+          new_first_name: newRegistration.patient.first_name || "",
+          new_last_name: newRegistration.patient.last_name || "",
+          new_father_name: newRegistration.patient.father_name || "",
+          new_mobile: newRegistration.patient.mobile || "",
+          new_national_id: newRegistration.patient.national_id || "",
+          new_gender: newRegistration.patient.gender || "",
+          new_age: newRegistration.patient.age || "",
+          new_blood_group: newRegistration.patient.blood_group || "",
+          new_address: newRegistration.patient.address || "",
+        }));
+      }
+      setCurrentRegId(editingId);
+    } else {
+      console.log("FINAL DATA SEND:", submitData);
+      response = await api.post("/registrations", submitData);
+      toast.success("✅ مراجعه با موفقیت ثبت شد");
+      newRegistration = response.data?.data || response.data;
+
+      if (showNewPatientForm && newRegistration?.patient) {
+        setPatients((prev) => {
+          const exists = prev.some(
+            (p) => p.id === newRegistration.patient.id
+          );
+          if (exists) return prev;
+          return [newRegistration.patient, ...prev];
+        });
+        setSelectedPatient(newRegistration.patient);
+        setForm((prev) => ({
+          ...prev,
+          patient_id: newRegistration.patient.id,
+          search_tazkira: newRegistration.patient.national_id || "",
+          search_name:
+            (newRegistration.patient.first_name || "") +
+            " " +
+            (newRegistration.patient.last_name || ""),
+          search_phone: newRegistration.patient.mobile || "",
+        }));
+        toast.success(
+          `✅ مریض جدید ${newRegistration.patient.first_name} ${newRegistration.patient.last_name} با موفقیت ثبت شد`
+        );
+      }
+
+      if (newRegistration?.registration_fee > 0) {
+        toast.info(
+          `💰 فیس مراجعه به مبلغ ${parseFloat(
+            newRegistration.registration_fee
+          ).toFixed(2)} افغانی در ژورنال ثبت شد`
+        );
+      }
+
+      if (newRegistration?.reg_id) {
+        setCurrentRegId(newRegistration.reg_id);
+      }
+
+      // ✅ باز کردن مودال ارسال به داکتر
+      const isEmergencyVisit = submitData.visit_type === "Emergency";
+      const shouldSendToDoctor =
+        form.doctor_id &&
+        (isEmergencyVisit ||
+          parseFloat(submitData.registration_fee || 0) > 0);
+
+      if (shouldSendToDoctor) {
+        const regRes = await api.get(
+          `/registrations/${newRegistration.reg_id}`
+        );
+        const fullReg = regRes.data?.data || regRes.data;
+        setSelectedRegistration(fullReg);
+        setShowSendModal(true);
+      }
+    }
+
+    await fetchRegistrations();
+    await fetchStatistics();
+    clearForm();
+  } catch (err) {
+    console.log("STATUS:", err.response?.status);
+    console.log("DATA:", err.response?.data);
+
+    if (err.response?.status === 422 && err.response?.data?.errors) {
+      Object.entries(err.response.data.errors).forEach(
+        ([field, messages]) => {
+          toast.error(`❌ ${messages[0]}`);
+        }
+      );
+    } else {
+      toast.error(err.response?.data?.message || "❌ خطا در ذخیره معلومات");
+    }
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // ============================================================
   // ارسال به داکتر
@@ -969,6 +1117,9 @@ export default function RegistrationForm() {
 
   const handleEdit = (reg) => {
     const patient = reg.patient || null;
+    const visitTime = reg.visit_time
+      ? String(reg.visit_time).slice(0, 5)
+      : "";
 
     setForm({
       patient_id: reg.patient_id || "",
@@ -983,6 +1134,8 @@ export default function RegistrationForm() {
       temperature: reg.temperature || "",
       oxygen: reg.oxygen || "",
       visit_date: reg.visit_date || "",
+      visit_date_jalali: reg.visit_date ? toJalali(reg.visit_date) : "",
+      visit_time: visitTime,
       note: reg.note || "",
       search_tazkira: patient?.national_id || "",
       search_name: patient
@@ -1060,7 +1213,6 @@ export default function RegistrationForm() {
     }
   };
 
-  // ✅ اصلاح ۱: Discharged اضافه شد
   const getStatusText = (status) => {
     const statusMap = {
       Waiting: "در انتظار",
@@ -1075,12 +1227,11 @@ export default function RegistrationForm() {
       Billing: "حسابداری",
       Completed: "تکمیل شده",
       Cancelled: "لغو شده",
-      Discharged: "ترخیص شده",   // ✅ اضافه شد
+      Discharged: "ترخیص شده",
     };
     return statusMap[status] || status || "-";
   };
 
-  // ✅ اصلاح ۲: Discharged اضافه شد
   const getStatusColor = (status) => {
     const colorMap = {
       Waiting: "#f59e0b",
@@ -1095,7 +1246,7 @@ export default function RegistrationForm() {
       Billing: "#6366f1",
       Completed: "#22c55e",
       Cancelled: "#6b7280",
-      Discharged: "#14b8a6",   // ✅ اضافه شد
+      Discharged: "#14b8a6",
     };
     return colorMap[status] || "#6b7280";
   };
@@ -1404,12 +1555,20 @@ export default function RegistrationForm() {
             }}
           >
             <strong style={{ color: "#2563eb" }}>تاریخ مراجعه:</strong>
-            <span>
-              {printData.visit_date
-                ? new Date(printData.visit_date).toLocaleDateString("fa-IR")
-                : "-"}
-            </span>
+            <span>{toJalali(printData.visit_date)}</span>
           </p>
+          {printData.visit_time && (
+            <p
+              style={{
+                margin: "3px 0",
+                display: "flex",
+                justifyContent: "space-between",
+              }}
+            >
+              <strong style={{ color: "#2563eb" }}>زمان مراجعه:</strong>
+              <span dir="ltr">{String(printData.visit_time).slice(0, 5)}</span>
+            </p>
+          )}
           <p
             style={{
               margin: "6px 0 3px 0",
@@ -1520,8 +1679,7 @@ export default function RegistrationForm() {
           }}
         >
           <p style={{ margin: "0" }}>
-            🖨️ تاریخ چاپ: {new Date().toLocaleDateString("fa-IR")} -{" "}
-            {new Date().toLocaleTimeString("fa-IR")}
+            🖨️ تاریخ چاپ: {toJalaliWithTime(new Date().toISOString())}
           </p>
           <p style={{ margin: "2px 0 0 0", fontSize: "7px", color: "#94a3b8" }}>
             سیستم مدیریت بهداشت و درمان
@@ -2359,7 +2517,6 @@ export default function RegistrationForm() {
               </select>
             </div>
 
-            {/* ✅ انتخاب داکتر - فیلتر شده بر اساس بخش */}
             <div>
               <label>داکتر معالج</label>
               <select
@@ -2427,6 +2584,17 @@ export default function RegistrationForm() {
                 <option value="Radiology">Radiology</option>
                 <option value="Pharmacy">Pharmacy</option>
               </select>
+              {form.visit_type === "Emergency" && (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "#fbbf24",
+                    marginTop: "4px",
+                  }}
+                >
+                  ⚡ اضطراری: بلافاصله به داکتر ارسال می‌شود (بدون توجه به فیس)
+                </div>
+              )}
             </div>
 
             <div>
@@ -2449,34 +2617,66 @@ export default function RegistrationForm() {
                 <option value="Billing">حسابداری</option>
                 <option value="Completed">تکمیل شده</option>
                 <option value="Cancelled">لغو شده</option>
-                <option value="Discharged">ترخیص شده</option>  {/* ✅ اضافه شد */}
+                <option value="Discharged">ترخیص شده</option>
               </select>
             </div>
 
             <div>
-              <label>تاریخ مراجعه</label>
+              <label>تاریخ مراجعه (شمسی)</label>
               <input
-                type="date"
-                name="visit_date"
-                value={form.visit_date}
+                type="text"
+                name="visit_date_jalali"
+                value={form.visit_date_jalali}
                 onChange={handleChange}
                 className="form-control"
+                placeholder="1404/08/17"
+                dir="ltr"
+              />
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "#9ca3af",
+                  marginTop: "4px",
+                }}
+              >
+                فرمت: YYYY/MM/DD — مثال: {todayJalali()}
+              </div>
+            </div>
+
+            <div>
+              <label>زمان مراجعه</label>
+              <input
+                type="time"
+                name="visit_time"
+                value={form.visit_time}
+                onChange={handleChange}
+                className="form-control"
+                dir="ltr"
               />
             </div>
 
             <div>
               <label>فیس مراجعه (افغانی) *</label>
               <input
-                type="number"
-                step="0.01"
-                name="registration_fee"
-                value={form.registration_fee}
-                onChange={handleChange}
-                className="form-control"
-                placeholder="مبلغ فیس مراجعه"
-                min="0"
-                required
-              />
+  type="number"
+  step="0.01"
+  name="registration_fee"
+  value={form.registration_fee}
+  onChange={handleChange}
+  className="form-control"
+  placeholder={
+    form.visit_type === "Emergency"
+      ? "برای اضطراری اختیاری است (پیش‌فرض 0)"
+      : "مبلغ فیس مراجعه"
+  }
+  min="0"
+  required={form.visit_type !== "Emergency"}   // ✅ فقط برای غیراضطراری اجباری
+/>
+{form.visit_type === "Emergency" && (
+  <div style={{ fontSize: "11px", color: "#22c55e", marginTop: "4px" }}>
+    ✅ اضطراری: فیس اختیاری است و بلافاصله به داکتر ارسال می‌شود
+  </div>
+)}
             </div>
 
             <div>
@@ -2637,7 +2837,7 @@ export default function RegistrationForm() {
           <div style={{ overflowX: "auto" }}>
             <table
               className="w-full text-white border-collapse"
-              style={{ minWidth: "1200px" }}
+              style={{ minWidth: "1300px" }}
             >
               <thead>
                 <tr className="bg-gray-700">
@@ -2670,6 +2870,18 @@ export default function RegistrationForm() {
                     style={{ minWidth: "120px" }}
                   >
                     شماره مراجعه
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right"
+                    style={{ minWidth: "110px" }}
+                  >
+                    تاریخ مراجعه
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right"
+                    style={{ minWidth: "90px" }}
+                  >
+                    زمان
                   </th>
                   <th
                     className="px-3 py-2 text-right"
@@ -2719,7 +2931,7 @@ export default function RegistrationForm() {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan="12"
+                      colSpan="14"
                       style={{ padding: "0", position: "relative" }}
                     >
                       <div
@@ -2751,7 +2963,7 @@ export default function RegistrationForm() {
                       "Admission",
                       "Ward",
                       "Operation",
-                      "Discharged",   // ✅ اضافه شد — بعد از ترخیص، دکمه ارسال به داکتر نباشد
+                      "Discharged",
                     ].includes(r.visit_status);
 
                     return (
@@ -2771,6 +2983,12 @@ export default function RegistrationForm() {
                         </td>
                         <td className="px-3 py-2 text-center">
                           {r.visit_number || "-"}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {toJalali(r.visit_date)}
+                        </td>
+                        <td className="px-3 py-2 text-center" dir="ltr">
+                          {r.visit_time ? String(r.visit_time).slice(0, 5) : "-"}
                         </td>
                         <td className="px-3 py-2">{department?.name || "-"}</td>
                         <td className="px-3 py-2">{doctorName}</td>
@@ -2888,7 +3106,7 @@ export default function RegistrationForm() {
                 ) : (
                   <tr>
                     <td
-                      colSpan="12"
+                      colSpan="14"
                       style={{ textAlign: "center", padding: "20px" }}
                     >
                       هیچ مراجعه‌ای ثبت نشده است
