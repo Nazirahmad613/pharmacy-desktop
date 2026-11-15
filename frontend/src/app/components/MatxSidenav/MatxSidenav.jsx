@@ -10,13 +10,16 @@ const SideNav = styled("div")(({ theme, width }) => ({
   overflow: "hidden",
   position: "relative",
   transition: "width 250ms ease",
-  background: theme.palette.background.default,
+  // گرادیانت آبی کبود (Slate) عمیق
+  background: "linear-gradient(180deg, #334155 0%, #1e293b 55%, #0f172a 100%)",
+  borderRight: "1px solid rgba(255, 255, 255, 0.12)",
+  boxShadow: "6px 0 30px rgba(8, 15, 28, 0.65)",
   [theme.breakpoints.down("sm")]: {
     top: 0,
     left: 0,
     bottom: 0,
-    position: "absolute"
-  }
+    position: "absolute",
+  },
 }));
 
 const SideNavOverlay = styled("div")(() => ({
@@ -24,10 +27,17 @@ const SideNavOverlay = styled("div")(() => ({
   width: "100%",
   height: "100%",
   position: "absolute",
-  background: "rgba(0, 0, 0, 0.74)"
+  background: "rgba(15, 23, 42, 0.76)",
+  backdropFilter: "blur(3px)",
 }));
 
-export default function MatxSidenav({ sx, open, children, toggleSidenav, width = "220px" }) {
+export default function MatxSidenav({
+  sx,
+  open,
+  children,
+  toggleSidenav,
+  width = "240px",
+}) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
