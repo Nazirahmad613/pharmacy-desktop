@@ -1,5 +1,5 @@
- // src/app/components/Sidenav.jsx
-import React, { Fragment, useMemo, useState, useRef, useEffect, useCallback } from "react";
+// src/app/components/Sidenav.jsx
+import React, { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import styled from "@mui/material/styles/styled";
 import { keyframes } from "@mui/system";
@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigation } from "app/contexts/NavigationContext";
 import { useAuth } from "app/contexts/AuthContext";
 import useBackNavigation from "../hooks/useBackNavigation";
+import defaultNavigations, { getLogicalParentPath } from "app/navigations";
 
 // انیمیشن تاب خوردن ملایم فانوس هنگام حرکت
 const swingAnimation = keyframes`
@@ -36,9 +37,6 @@ const flickerAnimation = keyframes`
   0%, 100% { opacity: 0.95; transform: scale(1); }
   50% { opacity: 0.78; transform: scale(0.94); }
 `;
-
-// شعاع اثر نور فانوس (هرچه بیشتر، بخش‌های بیشتری روشن می‌مانند)
-const LIGHT_SPAN = 170;
 
 const LanternViewport = styled(Box)(() => ({
   position: "relative",
@@ -109,6 +107,50 @@ const normalizeRole = (role) => {
   return String(role).trim().toLowerCase();
 };
 
+const normalizePath = (p) => {
+  if (!p) return "";
+  return p.replace(/\/+$/, "") || "/";
+};
+
+/**
+ * پیدا کردن تمام کلیدهای والد (گروه‌ها) که یک مسیر در زیرمجموعه آن‌ها قرار دارد
+ */
+function findAncestorKeys(items, targetPath, parents = []) {
+  const cleanTarget = normalizePath(targetPath);
+  for (const item of items) {
+    const key = item.path || item.name;
+    if (item.path && normalizePath(item.path) === cleanTarget) {
+      return parents;
+    }
+    if (Array.isArray(item.children) && item.children.length > 0) {
+      const found = findAncestorKeys(item.children, cleanTarget, [...parents, key]);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * فیلتر کردن آیتم‌های منو بر اساس نقش کاربر
+ */
+function filterNavByRoles(items, userRolesSet, isAdminOrSuper) {
+  if (isAdminOrSuper) return items;
+  return items
+    .map((item) => {
+      if (item.roles && Array.isArray(item.roles) && item.roles.length > 0) {
+        const allowed = item.roles.some((r) => userRolesSet.has(normalizeRole(r)));
+        if (!allowed) return null;
+      }
+      if (Array.isArray(item.children)) {
+        const filteredChildren = filterNavByRoles(item.children, userRolesSet, isAdminOrSuper);
+        if (filteredChildren.length === 0 && !item.path) return null;
+        return { ...item, children: filteredChildren };
+      }
+      return item;
+    })
+    .filter(Boolean);
+}
+
 function NavItem({
   item,
   level = 0,
@@ -117,34 +159,13 @@ function NavItem({
   onLeafClick,
   onGroupToggle,
   currentPath,
-  lanternY,
-  scrollOffset,
+  litKey,
 }) {
-  const key = item.name || item.path;
+  const key = item.path || item.name;
   const isOpen = !!openMap[key];
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
-  const isActive = item.path && currentPath === item.path;
-  const itemRef = useRef(null);
-  // پیش‌فرض: کمترین روشنایی (نزدیک به تاریکی کامل) تا افکت محسوس باشد
-  const [brightness, setBrightness] = useState(0.2);
-
-  // محاسبه شدت روشنایی بر اساس فاصله عمودی از فانوس
-  useEffect(() => {
-    if (!itemRef.current) return;
-    const el = itemRef.current;
-    const itemCenterY = el.offsetTop - scrollOffset + el.offsetHeight / 2;
-    const flameY = lanternY + 28;
-    const distance = Math.abs(itemCenterY - flameY);
-
-    // نرخ کاهش به صورت غیرخطی: هرچه دورتر، سریع‌تر تاریک می‌شود
-    const ratio = Math.max(0, 1 - distance / LIGHT_SPAN);
-
-    // range از 0.18 (تاریک) تا 1.0 (روشن کامل)
-    const boosted = Math.pow(ratio, 1.25);
-    const computed = 0.18 + boosted * 0.82;
-
-    setBrightness(computed);
-  }, [lanternY, scrollOffset, isOpen]);
+  const isActive = item.path && normalizePath(currentPath) === normalizePath(item.path);
+  const isLit = litKey === key || isActive;
 
   const handleClick = (e) => {
     const clickedEl = e.currentTarget;
@@ -159,19 +180,12 @@ function NavItem({
     }
   };
 
-  // شدت تابش: آیتم فعال همیشه 100% روشن است
-  const effectiveLight = isActive ? 1 : brightness;
-
-  // اختلاف با حالت روشن کامل: هرچه دورتر، تیره‌تر
-  const glow = Math.max(0, effectiveLight - 0.55);
-
-  // رنگ متن: از تاریکی تا سفید کامل
-  const textAlpha = Math.min(1, 0.28 + effectiveLight * 0.72);
+  const textAlpha = isLit ? 1 : 0.35;
+  const navPathAttr = item.path ? normalizePath(item.path) : `GROUP:${key}`;
 
   if (item.type === "label" || item.label) {
     return (
       <Typography
-        ref={itemRef}
         variant="caption"
         sx={{
           display: "block",
@@ -179,11 +193,11 @@ function NavItem({
           pt: 2.2,
           pb: 0.6,
           pl: "44px",
-          color: `rgba(255, 255, 255, ${textAlpha * 0.9})`,
+          color: "rgba(255,255,255,0.28)",
           fontSize: "0.7rem",
           fontWeight: 700,
           letterSpacing: 1.2,
-          transition: "color 0.25s ease",
+          transition: "color 0.2s ease",
         }}
       >
         {(item.label || item.name || "").toUpperCase()}
@@ -194,8 +208,10 @@ function NavItem({
   return (
     <>
       <ListItemButton
-        ref={itemRef}
         onClick={handleClick}
+        data-nav-key={key}
+        data-nav-path={navPathAttr}
+        data-nav-has-children={hasChildren ? "1" : "0"}
         sx={{
           borderRadius: "10px",
           my: 0.35,
@@ -203,22 +219,20 @@ function NavItem({
           pr: 1.5,
           py: 0.95,
           position: "relative",
-          color: isActive ? "#ffffff" : `rgba(255, 255, 255, ${textAlpha})`,
-          textShadow:
-            glow > 0.05
-              ? `0 0 ${6 + glow * 18}px rgba(255, 255, 255, ${glow * 0.95})`
-              : "none",
+          color: `rgba(255, 255, 255, ${textAlpha})`,
+          textShadow: isLit ? "0 0 14px rgba(255,255,255,0.85)" : "none",
           background: isActive
-            ? `linear-gradient(90deg, rgba(255,255,255,${0.12 + glow * 0.25}) 0%, rgba(255,255,255,0.02) 100%)`
-            : glow > 0.05
-            ? `linear-gradient(90deg, rgba(255,255,255,${glow * 0.08}) 0%, transparent 100%)`
+            ? "linear-gradient(90deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 100%)"
+            : isLit
+            ? "linear-gradient(90deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.02) 100%)"
             : "transparent",
-          boxShadow:
-            glow > 0.15
-              ? `inset 2px 0 0 rgba(255,255,255,${glow * 0.9})`
-              : "none",
+          boxShadow: isActive
+            ? "inset 3px 0 0 #ffffff"
+            : isLit
+            ? "inset 2px 0 0 rgba(255,255,255,0.7)"
+            : "none",
           transition:
-            "color 0.25s ease, text-shadow 0.25s ease, background 0.25s ease, box-shadow 0.25s ease",
+            "color 0.2s ease, text-shadow 0.2s ease, background 0.2s ease, box-shadow 0.2s ease",
           "&:hover": {
             bgcolor: "rgba(255, 255, 255, 0.12)",
             color: "#ffffff",
@@ -229,15 +243,12 @@ function NavItem({
         {item.icon && (
           <ListItemIcon
             sx={{
-              color: isActive
-                ? "#ffffff"
-                : `rgba(255, 255, 255, ${textAlpha})`,
+              color: `rgba(255, 255, 255, ${textAlpha})`,
               minWidth: 32,
-              filter:
-                glow > 0.1
-                  ? `drop-shadow(0 0 ${4 + glow * 10}px rgba(200, 220, 255, ${glow}))`
-                  : "none",
-              transition: "color 0.25s ease, filter 0.25s ease",
+              filter: isLit
+                ? "drop-shadow(0 0 8px rgba(200, 220, 255, 0.9))"
+                : "none",
+              transition: "color 0.2s ease, filter 0.2s ease",
               "& .MuiSvgIcon-root": { fontSize: 20 },
             }}
           >
@@ -249,22 +260,21 @@ function NavItem({
           primary={item.name}
           primaryTypographyProps={{
             fontSize: level === 0 ? "0.92rem" : "0.84rem",
-            fontWeight: isActive || effectiveLight > 0.85 ? 700 : effectiveLight > 0.5 ? 500 : 400,
+            fontWeight: isLit ? 700 : 400,
             color: "#ffffff",
             noWrap: true,
           }}
         />
 
-        {(isActive || glow > 0.4) && (
+        {isActive && (
           <Box
             sx={{
-              width: 5,
-              height: 5,
+              width: 7,
+              height: 7,
               borderRadius: "50%",
               bgcolor: "#ffffff",
-              boxShadow: `0 0 ${6 + glow * 12}px ${1 + glow * 3}px rgba(255, 255, 255, ${0.6 + glow * 0.4})`,
+              boxShadow: "0 0 12px 2px rgba(255, 255, 255, 0.95)",
               ml: 1,
-              opacity: 0.3 + effectiveLight * 0.7,
             }}
           />
         )}
@@ -276,7 +286,7 @@ function NavItem({
               display: "flex",
               color: "#ffffff",
               opacity: textAlpha,
-              transition: "opacity 0.25s ease",
+              transition: "opacity 0.2s ease",
             }}
           >
             {isOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
@@ -285,7 +295,7 @@ function NavItem({
       </ListItemButton>
 
       {hasChildren && (
-        <Collapse in={isOpen} timeout={240} unmountOnExit>
+        <Collapse in={isOpen} timeout={220} unmountOnExit>
           <List component="div" disablePadding>
             {item.children.map((child, idx) => (
               <NavItem
@@ -297,8 +307,7 @@ function NavItem({
                 onLeafClick={onLeafClick}
                 onGroupToggle={onGroupToggle}
                 currentPath={currentPath}
-                lanternY={lanternY}
-                scrollOffset={scrollOffset}
+                litKey={litKey}
               />
             ))}
           </List>
@@ -306,6 +315,64 @@ function NavItem({
       )}
     </>
   );
+}
+
+/**
+ * پیدا کردن المان DOM متناظر با مسیر فعلی
+ */
+function resolveSyncTarget(container, rawPath) {
+  if (!container || !rawPath) return { targetNode: null, targetKey: null };
+  const path = normalizePath(rawPath);
+
+  const byPath = (p) => {
+    try {
+      return container.querySelector(`[data-nav-path="${CSS.escape(p)}"]`);
+    } catch {
+      return null;
+    }
+  };
+
+  // ۱. تطبیق دقیق با مسیر فعلی
+  const exact = byPath(path);
+  if (exact) {
+    return {
+      targetNode: exact,
+      targetKey: exact.getAttribute("data-nav-key"),
+    };
+  }
+
+  // ۲. تطبیق با والد منطقی
+  const parentPath = getLogicalParentPath(path);
+  if (parentPath) {
+    const byParent = byPath(normalizePath(parentPath));
+    if (byParent) {
+      return {
+        targetNode: byParent,
+        targetKey: byParent.getAttribute("data-nav-key"),
+      };
+    }
+  }
+
+  // ۳. تطبیق پیشوندی (طولانی‌ترین مسیر مشترک)
+  const allNodes = Array.from(container.querySelectorAll("[data-nav-path]"));
+  let bestPrefix = null;
+  let bestLen = -1;
+  for (const el of allNodes) {
+    const np = el.getAttribute("data-nav-path") || "";
+    if (np.startsWith("GROUP:")) continue;
+    if (path.startsWith(np) && np.length > bestLen) {
+      bestPrefix = el;
+      bestLen = np.length;
+    }
+  }
+  if (bestPrefix) {
+    return {
+      targetNode: bestPrefix,
+      targetKey: bestPrefix.getAttribute("data-nav-key"),
+    };
+  }
+
+  return { targetNode: null, targetKey: null };
 }
 
 export default function Sidenav({ children }) {
@@ -319,10 +386,12 @@ export default function Sidenav({ children }) {
   const viewportRef = useRef(null);
   const contentRef = useRef(null);
 
+  const [openMap, setOpenMap] = useState({});
   const [lanternY, setLanternY] = useState(20);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [isSwinging, setIsSwinging] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [litKey, setLitKey] = useState(null);
 
   const swingTimeout = useRef(null);
   const dragStartY = useRef(0);
@@ -334,24 +403,76 @@ export default function Sidenav({ children }) {
     swingTimeout.current = setTimeout(() => setIsSwinging(false), 850);
   }, []);
 
-  const updatePositionByLantern = useCallback((rawLanternY) => {
-    if (!viewportRef.current || !contentRef.current) return;
+  // محاسبه آیتم نزدیک به نور فانوس هنگام درگ دستی
+  const highlightItemNearLantern = useCallback((currentLanternY, currentScroll) => {
+    if (!contentRef.current) return;
+    const beamCenterInContent = currentScroll + currentLanternY + 28;
+    const nodes = contentRef.current.querySelectorAll("[data-nav-key]");
+    let closestKey = null;
+    let minDiff = Infinity;
 
-    const viewportHeight = viewportRef.current.clientHeight;
-    const contentHeight = contentRef.current.scrollHeight;
+    nodes.forEach((node) => {
+      const nodeCenter = node.offsetTop + node.offsetHeight / 2;
+      const diff = Math.abs(nodeCenter - beamCenterInContent);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestKey = node.getAttribute("data-nav-key");
+      }
+    });
 
-    const minY = 16;
-    const maxY = Math.max(60, viewportHeight - 85);
-    const clampedY = Math.min(maxY, Math.max(minY, rawLanternY));
-
-    const progress = maxY > minY ? (clampedY - minY) / (maxY - minY) : 0;
-    const maxScroll = Math.max(0, contentHeight - viewportHeight + 50);
-    const syncedScroll = progress * maxScroll;
-
-    setLanternY(clampedY);
-    setScrollOffset(syncedScroll);
+    if (closestKey && minDiff < 45) {
+      setLitKey(closestKey);
+    }
   }, []);
 
+  const updatePositionByLantern = useCallback(
+    (rawLanternY) => {
+      if (!viewportRef.current || !contentRef.current) return;
+
+      const viewportHeight = viewportRef.current.clientHeight;
+      const contentHeight = contentRef.current.scrollHeight;
+
+      const minY = 16;
+      const maxY = Math.max(60, viewportHeight - 85);
+      const clampedY = Math.min(maxY, Math.max(minY, rawLanternY));
+
+      const progress = maxY > minY ? (clampedY - minY) / (maxY - minY) : 0;
+      const maxScroll = Math.max(0, contentHeight - viewportHeight + 60);
+      const syncedScroll = progress * maxScroll;
+
+      setLanternY(clampedY);
+      setScrollOffset(syncedScroll);
+      highlightItemNearLantern(clampedY, syncedScroll);
+    },
+    [highlightItemNearLantern]
+  );
+
+  // حرکت دادن خودکار فانوس و اسکرول به سمت یک آیتم مشخص (المان DOM)
+  const moveLanternToNode = useCallback(
+    (targetNode, targetKey) => {
+      if (!viewportRef.current || !contentRef.current || !targetNode) return;
+
+      const viewportHeight = viewportRef.current.clientHeight;
+      const contentHeight = contentRef.current.scrollHeight;
+      const maxScroll = Math.max(0, contentHeight - viewportHeight + 60);
+
+      const nodeCenter = targetNode.offsetTop + targetNode.offsetHeight / 2;
+      const idealViewportY = Math.min(Math.max(nodeCenter, 80), viewportHeight * 0.45);
+      const desiredScroll = Math.min(maxScroll, Math.max(0, nodeCenter - idealViewportY));
+
+      const minY = 16;
+      const maxY = Math.max(60, viewportHeight - 85);
+      const exactLanternY = Math.min(maxY, Math.max(minY, nodeCenter - desiredScroll - 28));
+
+      setScrollOffset(desiredScroll);
+      setLanternY(exactLanternY);
+      if (targetKey) setLitKey(targetKey);
+      triggerSwing();
+    },
+    [triggerSwing]
+  );
+
+  // درگ فانوس
   const handleLanternPointerDown = (e) => {
     e.stopPropagation();
     e.preventDefault();
@@ -406,9 +527,10 @@ export default function Sidenav({ children }) {
     setTimeout(() => {
       updatePositionByLantern(lanternY);
       triggerSwing();
-    }, 260);
+    }, 240);
   }, [lanternY, updatePositionByLantern, triggerSwing]);
 
+  // استخراج رول‌های کاربر
   const userRoles = useMemo(() => {
     if (!user) return [];
     const set = new Set();
@@ -427,101 +549,122 @@ export default function Sidenav({ children }) {
     return Array.from(set);
   }, [user]);
 
-  const isAdminUser = useMemo(
-    () =>
-      user?.isAdmin === true ||
-      user?.isSuperAdmin === true ||
-      userRoles.includes("admin") ||
-      userRoles.includes("super_admin"),
-    [user, userRoles]
+  const filteredNavigations = useMemo(() => {
+    const source =
+      Array.isArray(navigationsData) && navigationsData.length > 0
+        ? navigationsData
+        : defaultNavigations;
+    const roleSet = new Set(userRoles);
+    const isAdminOrSuper =
+      roleSet.has("admin") || roleSet.has("super_admin") || roleSet.size === 0;
+    return filterNavByRoles(source, roleSet, isAdminOrSuper);
+  }, [navigationsData, userRoles]);
+
+  // ✅ ۱. کلیک روی آیتم سایدبار -> تغییر فوری وسط صفحه + تنظیم فانوس
+  const handleLeafClick = useCallback(
+    (item, clickedEl) => {
+      if (!item?.path) return;
+      const key = item.path || item.name;
+      setLitKey(key);
+      if (clickedEl) {
+        moveLanternToNode(clickedEl, key);
+      }
+      if (normalizePath(location.pathname) !== normalizePath(item.path)) {
+        navigate(item.path);
+      }
+    },
+    [location.pathname, moveLanternToNode, navigate]
   );
 
-  const navigations = useMemo(() => {
-    if (!Array.isArray(navigationsData)) return [];
-    if (!user) return [];
+  // ✅ ۲. تغییر مسیر از وسط صفحه (یا URL/Back) -> باز کردن خودکار والدها و حرکت فانوس روی همان آیتم
+  useEffect(() => {
+    const currentPath = normalizePath(location.pathname);
+    const effectivePath =
+      resolveSyncTarget(contentRef.current, currentPath).targetNode?.getAttribute(
+        "data-nav-path"
+      ) ||
+      getLogicalParentPath(currentPath) ||
+      currentPath;
 
-    const hasAccess = (item) => {
-      if (!item.roles || item.roles.length === 0) return true;
-      if (isAdminUser) return true;
-      return item.roles.map(normalizeRole).some((r) => userRoles.includes(r));
-    };
+    const ancestors =
+      findAncestorKeys(filteredNavigations, currentPath) ||
+      findAncestorKeys(filteredNavigations, effectivePath);
 
-    const translate = (items) => {
-      const out = [];
-      for (const item of items) {
-        if (!hasAccess(item)) continue;
-        const translated = {
-          ...item,
-          name: item.name ? t(item.name) : undefined,
-          label: item.label ? t(item.label) : undefined,
-          children: Array.isArray(item.children)
-            ? translate(item.children)
-            : undefined,
-        };
-        if (
-          translated.children &&
-          translated.children.length === 0 &&
-          !translated.path
-        )
-          continue;
-        out.push(translated);
-      }
-      return out;
-    };
-
-    return translate(navigationsData);
-  }, [t, user, userRoles, isAdminUser, navigationsData]);
-
-  const autoOpenMap = useMemo(() => {
-    const map = {};
-    const path = (location.pathname || "").replace(/\/+$/, "");
-    if (!path) return map;
-    const segments = path.split("/").filter(Boolean);
-    for (let i = 1; i <= segments.length; i++) {
-      const partial = "/" + segments.slice(0, i).join("/");
-      map[partial] = true;
+    if (ancestors && ancestors.length > 0) {
+      setOpenMap((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        ancestors.forEach((k) => {
+          if (!next[k]) {
+            next[k] = true;
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
     }
-    return map;
-  }, [location.pathname]);
 
-  const [localOpenMap, setLocalOpenMap] = useState({});
-  const mergedOpenMap = { ...autoOpenMap, ...localOpenMap };
+    const timer = setTimeout(() => {
+      const { targetNode, targetKey } = resolveSyncTarget(
+        contentRef.current,
+        currentPath
+      );
+      if (targetNode) {
+        moveLanternToNode(targetNode, targetKey);
+      }
+    }, 260);
 
-  const handleLeafClick = (item) => {
-    if (item.path) navigate(item.path);
-  };
+    return () => clearTimeout(timer);
+  }, [location.pathname, filteredNavigations, moveLanternToNode]);
 
   return (
-    <Fragment>
-      <LanternViewport ref={viewportRef} onWheel={handleWheel}>
-        {/* هاله نور فانوس - قوی‌تر و بزرگ‌تر */}
-        <Box
-          sx={{
-            position: "absolute",
-            left: "-60px",
-            top: `${lanternY - 100}px`,
-            width: "340px",
-            height: "300px",
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(210, 225, 255, 0.32) 0%, rgba(148, 163, 184, 0.18) 30%, rgba(71, 85, 105, 0.06) 55%, transparent 75%)",
-            pointerEvents: "none",
-            transition: isDragging ? "none" : "top 0.16s ease-out",
-            zIndex: 1,
-          }}
-        />
+    <Box
+      sx={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        bgcolor: "#0f294a",
+        color: "#ffffff",
+      }}
+    >
+      {/* دکمه بازگشت منطقی در بالای سایدبار */}
+      {canGoBack && (
+        <Box sx={{ px: 2, pt: 1.5, pb: 0.5 }}>
+          <ListItemButton
+            onClick={goBack}
+            sx={{
+              borderRadius: "8px",
+              py: 0.75,
+              bgcolor: "rgba(255,255,255,0.08)",
+              color: "#ffffff",
+              "&:hover": { bgcolor: "rgba(255,255,255,0.16)" },
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 30, color: "#ffffff" }}>
+              <ArrowBackIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText
+              primary={t("back") || "بازگشت"}
+              primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: 600 }}
+            />
+          </ListItemButton>
+          <Divider sx={{ mt: 1, borderColor: "rgba(255,255,255,0.12)" }} />
+        </Box>
+      )}
 
-        {/* میله عمودی فانوس */}
+      {/* محوطه منو و فانوس */}
+      <LanternViewport ref={viewportRef} onWheel={handleWheel}>
+        {/* ریل عمودی حرکت فانوس */}
         <Box
           onClick={handleTrackClick}
           sx={{
             position: "absolute",
-            left: "12px",
-            top: 0,
-            bottom: 0,
-            width: "28px",
+            left: 16,
+            top: 12,
+            bottom: 12,
+            width: 16,
             cursor: "pointer",
-            zIndex: 3,
+            zIndex: 10,
             display: "flex",
             justifyContent: "center",
           }}
@@ -530,87 +673,56 @@ export default function Sidenav({ children }) {
             sx={{
               width: "2px",
               height: "100%",
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.18) 50%, rgba(255,255,255,0.08) 100%)",
+              bgcolor: "rgba(255,255,255,0.14)",
+              borderRadius: "2px",
             }}
           />
         </Box>
 
-        {/* فانوس آویزان */}
+        {/* فانوس قابل درگ */}
         <Box
           onMouseDown={handleLanternPointerDown}
           onTouchStart={handleLanternPointerDown}
-          title="فانوس را بگیرید و به پایین بکشید"
           sx={{
             position: "absolute",
-            left: "8px",
+            left: 6,
             top: `${lanternY}px`,
-            zIndex: 4,
+            zIndex: 20,
             cursor: isDragging ? "grabbing" : "grab",
-            transition: isDragging ? "none" : "top 0.16s ease-out",
-            padding: "2px",
+            transition: isDragging ? "none" : "top 0.35s cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           <HangingLanternSVG isSwinging={isSwinging} isDragging={isDragging} />
         </Box>
 
-        {/* محتوای منوها */}
+        {/* محتوای اسکرول‌شونده منوها */}
         <Box
           ref={contentRef}
           sx={{
-            position: "relative",
-            zIndex: 2,
             transform: `translateY(-${scrollOffset}px)`,
-            transition: isDragging ? "none" : "transform 0.16s ease-out",
-            pt: 1,
+            transition: isDragging
+              ? "none"
+              : "transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)",
             pb: 6,
           }}
         >
           {children}
-
-          {canGoBack && (
-            <Box sx={{ pl: "36px", pr: 1, pt: 1, pb: 0.5 }}>
-              <ListItemButton
-                onClick={goBack}
-                sx={{
-                  borderRadius: "10px",
-                  color: "#ffffff",
-                  bgcolor: "rgba(255, 255, 255, 0.1)",
-                  border: "1px solid rgba(255, 255, 255, 0.2)",
-                  mb: 0.5,
-                  "&:hover": { bgcolor: "rgba(255, 255, 255, 0.18)" },
-                }}
-              >
-                <ListItemIcon sx={{ color: "#ffffff", minWidth: 32 }}>
-                  <ArrowBackIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText
-                  primary="بازگشت به صفحه قبلی"
-                  primaryTypographyProps={{ fontSize: "0.82rem", color: "#ffffff" }}
-                />
-              </ListItemButton>
-              <Divider sx={{ bgcolor: "rgba(255,255,255,0.12)", my: 1 }} />
-            </Box>
-          )}
-
           <List component="nav" disablePadding>
-            {navigations.map((item, idx) => (
+            {filteredNavigations.map((item, index) => (
               <NavItem
-                key={item.path || item.name || idx}
+                key={item.path || item.name || item.label || index}
                 item={item}
-                level={0}
-                openMap={mergedOpenMap}
-                setOpenMap={setLocalOpenMap}
+                openMap={openMap}
+                setOpenMap={setOpenMap}
                 onLeafClick={handleLeafClick}
                 onGroupToggle={handleGroupToggle}
                 currentPath={location.pathname}
-                lanternY={lanternY}
-                scrollOffset={scrollOffset}
+                litKey={litKey}
               />
             ))}
           </List>
         </Box>
       </LanternViewport>
-    </Fragment>
+    </Box>
   );
 }

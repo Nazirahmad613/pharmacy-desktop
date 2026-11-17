@@ -26,11 +26,6 @@ import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SettingsIcon from "@mui/icons-material/Settings";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
-import EmergencyIcon from "@mui/icons-material/Emergency";
-import HealingIcon from "@mui/icons-material/Healing";
-import HistoryIcon from "@mui/icons-material/History";
-import PriorityHighIcon from "@mui/icons-material/PriorityHigh";
-import MonitorHeartIcon from "@mui/icons-material/MonitorHeart";
 import GroupsIcon from "@mui/icons-material/Groups";
 
 // ============================================================
@@ -47,7 +42,6 @@ export const ROLES = {
   RADIOLOGIST: "Radiologist",
   RECEPTIONIST: "Receptionist",
   ACCOUNTANT: "Accountant",
-  EMERGENCY_NURSE: "EmergencyNurse",
   USER: "User",
 };
 
@@ -69,12 +63,6 @@ export const PERMISSIONS = {
   PAYROLL_MANAGE: "payroll.manage",
   PAYROLL_PAY: "payroll.pay",
   PAYROLL_SETTINGS: "payroll.settings",
-  EMERGENCY_VIEW: "emergency.view",
-  EMERGENCY_ADMIT: "emergency.admit",
-  EMERGENCY_TRIAGE: "emergency.triage",
-  EMERGENCY_VITALS: "emergency.vitals",
-  EMERGENCY_TREAT: "emergency.treat",
-  EMERGENCY_HISTORY: "emergency.history",
 };
 
 const navigations = [
@@ -110,7 +98,7 @@ const navigations = [
     roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN],
     children: [
       { name: "مدیریت کاربران", path: "/material/users", icon: <PeopleIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN] },
-      { name: "مدیریت رول‌ها و پرمیشن‌ها", path: "/material/roles-permissions", icon: <PeopleIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN] },
+      { name: "مدیریت رول‌ها و پرمیشن‌ها", path: "/material/users/roles-permissions", icon: <PeopleIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN] },
     ],
   },
   {
@@ -127,64 +115,6 @@ const navigations = [
     ],
   },
 
-  // ============================================================
-  // ✅ مریضان اضطراری
-  // ============================================================
-  {
-    label: "مریضان اضطراری",
-    type: "label",
-    roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
-  },
-  {
-    name: "🚨 مریضان اضطراری",
-    icon: <EmergencyIcon />,
-    roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
-    children: [
-      {
-        name: "داشبورد اضطراری",
-        path: "/material/emergency",
-        icon: <DashboardIcon />,
-        roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
-      },
-      {
-        name: "پذیرش مریض اضطراری",
-        path: "/material/emergency/admission",
-        icon: <AppRegistrationIcon />,
-        roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.EMERGENCY_NURSE],
-      },
-      {
-        name: "علائم حیاتی",
-        path: "/material/emergency/vitals",
-        icon: <MonitorHeartIcon />,
-        roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.EMERGENCY_NURSE, ROLES.DOCTOR],
-      },
-      {
-        name: "لیست مریضان",
-        path: "/material/emergency/patients",
-        icon: <GroupsIcon />,
-        roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
-      },
-      {
-        name: "اولویت‌بندی (Triage)",
-        path: "/material/emergency/triage",
-        icon: <PriorityHighIcon />,
-        roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE],
-      },
-      {
-        name: "معالجه اضطراری",
-        path: "/material/emergency/treatment",
-        icon: <HealingIcon />,
-        roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.DOCTOR],
-      },
-      {
-        name: "تاریخچه",
-        path: "/material/emergency/history",
-        icon: <HistoryIcon />,
-        roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE, ROLES.ACCOUNTANT],
-      },
-    ],
-  },
-
   {
     label: "لابراتوار",
     type: "label",
@@ -193,7 +123,7 @@ const navigations = [
   {
     name: "🧪 لابراتوار",
     icon: <ScienceIcon />,
-    path: "/material/lab-hematology",
+    path: "/material/laboratory/hematology",
     roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.LAB_TECH],
   },
   {
@@ -247,6 +177,7 @@ const navigations = [
       { name: "داشبورد معاشات", path: "/material/payroll", icon: <DashboardIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
       { name: "تعیین معاشات کارمندان", path: "/material/payroll/employees", icon: <PeopleAltIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
       { name: "پرداخت معاشات کارمندان", path: "/material/payroll/payment", icon: <AttachMoneyIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+      { name: "مساعده معاشات", path: "/material/payroll/advances", icon: <AttachMoneyIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
       { name: "گزارش معاشات", path: "/material/payroll/reports", icon: <ReceiptLongIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
       { name: "تنظیمات معاشات", path: "/material/payroll/settings", icon: <SettingsIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN] },
     ],
@@ -298,11 +229,11 @@ const navigations = [
         icon: <AssessmentIcon />,
         roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.DOCTOR],
         children: [
-          { name: "hospital_Report", path: "/material/hospital-report", icon: <LocalHospitalIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.DOCTOR] },
-          { name: "AccountSummaryPage", path: "/material/AcountSummaryPage", icon: <AccountBalanceIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
-          { name: "MedicationStockTable", path: "/material/MedicationStockTable", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.PHARMACIST] },
-          { name: "SalesTable", path: "/material/SalesTable", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
-          { name: "گزارش روزانه (جدول)", path: "/material/dashboard-daily-table", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+          { name: "hospital_Report", path: "/material/reports/hospital", icon: <LocalHospitalIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.DOCTOR] },
+          { name: "AccountSummaryPage", path: "/material/reports/account-summary", icon: <AccountBalanceIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+          { name: "MedicationStockTable", path: "/material/reports/medication-stock/table", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.PHARMACIST] },
+          { name: "SalesTable", path: "/material/reports/sales/table", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+          { name: "گزارش روزانه (جدول)", path: "/material/reports/dashboard/daily-table", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
           {
             name: "گزارشات مالی",
             icon: <BarChartIcon />,
@@ -319,9 +250,9 @@ const navigations = [
         roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT],
         children: [
           { name: "فواید (گراف)", path: "/reports/benefits-chart", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
-          { name: "گزارش روزانه (چارت)", path: "/material/dashboard-daily-chart", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
-          { name: "SalesChart", path: "/material/SalesChart", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
-          { name: "MedicationStockChart", path: "/material/MedicationStockChart", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.PHARMACIST] },
+          { name: "گزارش روزانه (چارت)", path: "/material/reports/dashboard/daily-chart", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+          { name: "SalesChart", path: "/material/reports/sales/chart", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT] },
+          { name: "MedicationStockChart", path: "/material/reports/medication-stock/chart", icon: <BarChartIcon />, roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.PHARMACIST] },
         ],
       },
     ],
@@ -341,18 +272,19 @@ const navigations = [
   },
   {
     name: "documentation",
+    path: "/documentation",
     icon: <MenuBookIcon />,
     roles: [ROLES.ADMIN, ROLES.SUPER_ADMIN],
   },
 ];
 
 // ============================================================
-// ✅ Helper: والد منطقی برای Breadcrumb
+// ✅ Helper: والد منطقی برای Breadcrumb و همگام‌سازی سایدبار
 // ============================================================
 export const ROOT_PATHS = [
   "/dashboard/default",
   "/material/payroll",
-  "/material/lab-hematology",
+  "/material/laboratory/hematology",
   "/material/radiology",
   "/material/pharmacy",
   "/material/examinations",
@@ -362,12 +294,12 @@ export const ROOT_PATHS = [
   "/material/sales_insert",
   "/material/stock",
   "/material/accounts",
-  "/material/emergency",
 ];
 
 const PARENT_OVERRIDES = {
   "/material/payroll/employees": "/material/payroll",
   "/material/payroll/payment": "/material/payroll",
+  "/material/payroll/advances": "/material/payroll",
   "/material/payroll/reports": "/material/payroll",
   "/material/payroll/settings": "/material/payroll",
   "/material/pharmacy/sales": "/material/pharmacy",
@@ -376,14 +308,8 @@ const PARENT_OVERRIDES = {
   "/material/pharmacy/medications": "/material/pharmacy",
   "/material/pharmacy/history": "/material/pharmacy",
   "/material/pharmacy/executions": "/material/pharmacy",
-  "/material/lab-results": "/material/lab-hematology",
-  // ✅ Emergency
-  "/material/emergency/admission": "/material/emergency",
-  "/material/emergency/patients": "/material/emergency",
-  "/material/emergency/triage": "/material/emergency",
-  "/material/emergency/treatment": "/material/emergency",
-  "/material/emergency/history": "/material/emergency",
-  "/material/emergency/vitals": "/material/emergency",
+  "/material/laboratory/results": "/material/laboratory/hematology",
+  "/material/users/roles-permissions": "/material/users",
 };
 
 export function getLogicalParentPath(pathname) {

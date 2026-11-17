@@ -10,10 +10,10 @@ const SideNav = styled("div")(({ theme, width }) => ({
   overflow: "hidden",
   position: "relative",
   transition: "width 250ms ease",
-  // گرادیانت آبی کبود (Slate) عمیق
-  background: "linear-gradient(180deg, #334155 0%, #1e293b 55%, #0f172a 100%)",
-  borderRight: "1px solid rgba(255, 255, 255, 0.12)",
-  boxShadow: "6px 0 30px rgba(8, 15, 28, 0.65)",
+  // پس‌زمینه تیره عمیق برای کنتراست با نور فانوس
+  background: "linear-gradient(180deg, #1e293b 0%, #0f172a 55%, #020617 100%)",
+  borderRight: "1px solid rgba(255, 255, 255, 0.1)",
+  boxShadow: "6px 0 30px rgba(2, 6, 23, 0.8)",
   [theme.breakpoints.down("sm")]: {
     top: 0,
     left: 0,
@@ -27,7 +27,7 @@ const SideNavOverlay = styled("div")(() => ({
   width: "100%",
   height: "100%",
   position: "absolute",
-  background: "rgba(15, 23, 42, 0.76)",
+  background: "rgba(2, 6, 23, 0.8)",
   backdropFilter: "blur(3px)",
 }));
 

@@ -26,7 +26,7 @@ export default function SidenavTheme({ children }) {
           },
           primary: {
             ...baseTheme.palette.primary,
-            main: "#240852", // رنگ اکسنت آبی کبود
+            main: "#031240", // رنگ اکسنت آبی کبود
           },
         },
       }),

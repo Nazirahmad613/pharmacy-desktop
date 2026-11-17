@@ -1,7 +1,6 @@
-// app/routes/materialRoutes.js
+// src/app/routes/materialRoutes.js
 import { lazy } from "react";
 import Loadable from "app/components/Loadable";
-import AdminRoute from "./AdminRoute";
 import RoleRoute from "./RoleRoute";
 import { ROLES } from "app/navigations";
 
@@ -125,46 +124,12 @@ const AppPharmacyExecutions = Loadable(
   lazy(() => import("./pharmacy/executions/PharmacyPrescriptionExecutions"))
 );
 
-// ============================================================
-// ===== ✅ Emergency (مریضان اضطراری) =====
-// فولدر: views/material-kit/emergency_patients/
-//   ├── page.jsx                  → Dashboard
-//   ├── admission/page.jsx
-//   ├── patients/page.jsx
-//   ├── triage/page.jsx
-//   ├── treatment/page.jsx
-//   ├── vitals/page.jsx           ← ✅ جدید
-//   ├── history/page.jsx          ← ✅ جدید
-//   ├── EmergencyStatsCards.jsx   (کامپوننت)
-//   ├── PatientTable.jsx          (کامپوننت)
-//   └── TriagePriorityChip.jsx    (کامپوننت)
-// ============================================================
-const AppEmergencyDashboard = Loadable(
-  lazy(() => import("./emergency_patients/page"))
-);
-const AppEmergencyAdmission = Loadable(
-  lazy(() => import("./emergency_patients/admission/page"))
-);
-const AppEmergencyPatients = Loadable(
-  lazy(() => import("./emergency_patients/patients/page"))
-);
-const AppEmergencyTriage = Loadable(
-  lazy(() => import("./emergency_patients/triage/page"))
-);
-const AppEmergencyTreatment = Loadable(
-  lazy(() => import("./emergency_patients/treatment/page"))
-);
-const AppEmergencyVitals = Loadable(
-  lazy(() => import("./emergency_patients/vitals/page"))
-);
-const AppEmergencyHistory = Loadable(
-  lazy(() => import("./emergency_patients/page"))
-);
-
 // ===== Departments =====
 const AppDepartmentsPage = Loadable(
   lazy(() => import("./departments/DepartmentsPage"))
 );
+
+const ADMINS = [ROLES.ADMIN, ROLES.SUPER_ADMIN];
 
 // ============================================================
 // ===== Routes =====
@@ -174,7 +139,7 @@ const materialRoutes = [
   {
     path: "/material/form",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppForm />
       </RoleRoute>
     ),
@@ -182,7 +147,7 @@ const materialRoutes = [
   {
     path: "/material/icons",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppIcon />
       </RoleRoute>
     ),
@@ -190,7 +155,7 @@ const materialRoutes = [
   {
     path: "/material/progress",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppProgress />
       </RoleRoute>
     ),
@@ -198,7 +163,7 @@ const materialRoutes = [
   {
     path: "/material/menu",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppMenu />
       </RoleRoute>
     ),
@@ -206,7 +171,7 @@ const materialRoutes = [
   {
     path: "/material/checkbox",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppCheckbox />
       </RoleRoute>
     ),
@@ -214,7 +179,7 @@ const materialRoutes = [
   {
     path: "/material/switch",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppSwitch />
       </RoleRoute>
     ),
@@ -222,7 +187,7 @@ const materialRoutes = [
   {
     path: "/material/radio",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppRadio />
       </RoleRoute>
     ),
@@ -230,7 +195,7 @@ const materialRoutes = [
   {
     path: "/material/slider",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppSlider />
       </RoleRoute>
     ),
@@ -238,7 +203,7 @@ const materialRoutes = [
   {
     path: "/material/expansion-panel",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppExpansionPanel />
       </RoleRoute>
     ),
@@ -246,7 +211,7 @@ const materialRoutes = [
   {
     path: "/material/dialog",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppDialog />
       </RoleRoute>
     ),
@@ -254,7 +219,7 @@ const materialRoutes = [
   {
     path: "/material/snackbar",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppSnackbar />
       </RoleRoute>
     ),
@@ -264,7 +229,7 @@ const materialRoutes = [
   {
     path: "/material/examinations",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.DOCTOR]}>
         <ExaminationPage />
       </RoleRoute>
     ),
@@ -274,7 +239,7 @@ const materialRoutes = [
   {
     path: "/material/addinformation",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppAddmedication />
       </RoleRoute>
     ),
@@ -282,7 +247,7 @@ const materialRoutes = [
   {
     path: "/material/changes",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppAddchanges />
       </RoleRoute>
     ),
@@ -290,7 +255,7 @@ const materialRoutes = [
   {
     path: "/material/pres_insert",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.DOCTOR]}>
         <AppAddprescriptions />
       </RoleRoute>
     ),
@@ -298,7 +263,7 @@ const materialRoutes = [
   {
     path: "/material/sales_insert",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppAddsales />
       </RoleRoute>
     ),
@@ -306,7 +271,7 @@ const materialRoutes = [
   {
     path: "/material/parchases",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppAddparchases />
       </RoleRoute>
     ),
@@ -314,7 +279,7 @@ const materialRoutes = [
   {
     path: "/material/addcatagory",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppAddcatagory />
       </RoleRoute>
     ),
@@ -322,7 +287,7 @@ const materialRoutes = [
   {
     path: "/material/registrations",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.RECEPTIONIST]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.RECEPTIONIST]}>
         <AppRegistrationForm />
       </RoleRoute>
     ),
@@ -330,101 +295,8 @@ const materialRoutes = [
   {
     path: "/material/logs",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppAddlogs />
-      </RoleRoute>
-    ),
-  },
-
-  // ============================================================
-  // ===== ✅ Emergency Routes (مریضان اضطراری) =====
-  // ============================================================
-  {
-    path: "/material/emergency",
-    element: (
-      <RoleRoute
-        allowedRoles={[
-          ROLES.ADMIN,
-          ROLES.RECEPTIONIST,
-          ROLES.DOCTOR,
-          ROLES.EMERGENCY_NURSE,
-        ]}
-      >
-        <AppEmergencyDashboard />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/emergency/admission",
-    element: (
-      <RoleRoute
-        allowedRoles={[ROLES.ADMIN, ROLES.RECEPTIONIST, ROLES.EMERGENCY_NURSE]}
-      >
-        <AppEmergencyAdmission />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/emergency/vitals",
-    element: (
-      <RoleRoute
-        allowedRoles={[
-          ROLES.ADMIN,
-          ROLES.RECEPTIONIST,
-          ROLES.EMERGENCY_NURSE,
-          ROLES.DOCTOR,
-        ]}
-      >
-        <AppEmergencyVitals />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/emergency/patients",
-    element: (
-      <RoleRoute
-        allowedRoles={[
-          ROLES.ADMIN,
-          ROLES.RECEPTIONIST,
-          ROLES.DOCTOR,
-          ROLES.EMERGENCY_NURSE,
-        ]}
-      >
-        <AppEmergencyPatients />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/emergency/triage",
-    element: (
-      <RoleRoute
-        allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.EMERGENCY_NURSE]}
-      >
-        <AppEmergencyTriage />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/emergency/treatment",
-    element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR]}>
-        <AppEmergencyTreatment />
-      </RoleRoute>
-    ),
-  },
-  {
-    path: "/material/emergency/history",
-    element: (
-      <RoleRoute
-        allowedRoles={[
-          ROLES.ADMIN,
-          ROLES.DOCTOR,
-          ROLES.EMERGENCY_NURSE,
-          ROLES.ACCOUNTANT,
-          ROLES.RECEPTIONIST,
-        ]}
-      >
-        <AppEmergencyHistory />
       </RoleRoute>
     ),
   },
@@ -435,7 +307,7 @@ const materialRoutes = [
   {
     path: "/material/payroll",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppPayrollDashboard />
       </RoleRoute>
     ),
@@ -443,7 +315,7 @@ const materialRoutes = [
   {
     path: "/material/payroll/employees",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppEmployeeSalaries />
       </RoleRoute>
     ),
@@ -451,7 +323,7 @@ const materialRoutes = [
   {
     path: "/material/payroll/payment",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppSalaryPayment />
       </RoleRoute>
     ),
@@ -459,7 +331,7 @@ const materialRoutes = [
   {
     path: "/material/payroll/advances",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppSalaryAdvances />
       </RoleRoute>
     ),
@@ -467,7 +339,7 @@ const materialRoutes = [
   {
     path: "/material/payroll/reports",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppPayrollReports />
       </RoleRoute>
     ),
@@ -475,7 +347,7 @@ const materialRoutes = [
   {
     path: "/material/payroll/settings",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppSalarySettings />
       </RoleRoute>
     ),
@@ -488,7 +360,7 @@ const materialRoutes = [
     path: "/material/pharmacy",
     element: (
       <RoleRoute
-        allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}
+        allowedRoles={[...ADMINS, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}
       >
         <AppPharmacy />
       </RoleRoute>
@@ -497,7 +369,7 @@ const materialRoutes = [
   {
     path: "/material/pharmacy/sales",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.PHARMACIST]}>
         <AppPharmacySales />
       </RoleRoute>
     ),
@@ -506,7 +378,7 @@ const materialRoutes = [
     path: "/material/pharmacy/prescriptions",
     element: (
       <RoleRoute
-        allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.DOCTOR]}
+        allowedRoles={[...ADMINS, ROLES.PHARMACIST, ROLES.DOCTOR]}
       >
         <AppPharmacyPrescriptions />
       </RoleRoute>
@@ -515,7 +387,7 @@ const materialRoutes = [
   {
     path: "/material/pharmacy/inventory",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.PHARMACIST]}>
         <AppPharmacyInventory />
       </RoleRoute>
     ),
@@ -523,7 +395,7 @@ const materialRoutes = [
   {
     path: "/material/pharmacy/medications",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.PHARMACIST]}>
         <AppPharmacyMedications />
       </RoleRoute>
     ),
@@ -532,7 +404,7 @@ const materialRoutes = [
     path: "/material/pharmacy/history",
     element: (
       <RoleRoute
-        allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}
+        allowedRoles={[...ADMINS, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}
       >
         <AppPharmacyHistory />
       </RoleRoute>
@@ -541,7 +413,7 @@ const materialRoutes = [
   {
     path: "/material/pharmacy/executions",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.PHARMACIST]}>
         <AppPharmacyExecutions />
       </RoleRoute>
     ),
@@ -554,7 +426,7 @@ const materialRoutes = [
     path: "/material/stock",
     element: (
       <RoleRoute
-        allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}
+        allowedRoles={[...ADMINS, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}
       >
         <AppStock />
       </RoleRoute>
@@ -567,7 +439,7 @@ const materialRoutes = [
   {
     path: "/material/laboratory/hematology",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.LAB_TECH]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.DOCTOR, ROLES.LAB_TECH]}>
         <AppLabHematology />
       </RoleRoute>
     ),
@@ -575,7 +447,7 @@ const materialRoutes = [
   {
     path: "/material/laboratory/results",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.LAB_TECH]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.DOCTOR, ROLES.LAB_TECH]}>
         <AppLabResults />
       </RoleRoute>
     ),
@@ -588,7 +460,7 @@ const materialRoutes = [
     path: "/material/radiology",
     element: (
       <RoleRoute
-        allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.RADIOLOGIST]}
+        allowedRoles={[...ADMINS, ROLES.DOCTOR, ROLES.RADIOLOGIST]}
       >
         <AppRadiology />
       </RoleRoute>
@@ -601,7 +473,7 @@ const materialRoutes = [
   {
     path: "/material/accounts",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppAccounts />
       </RoleRoute>
     ),
@@ -609,7 +481,7 @@ const materialRoutes = [
   {
     path: "/material/reports/account-summary",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppAccountSummaryPage />
       </RoleRoute>
     ),
@@ -621,7 +493,7 @@ const materialRoutes = [
   {
     path: "/material/reports/hospital",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.DOCTOR]}>
         <AppHospital_report />
       </RoleRoute>
     ),
@@ -629,7 +501,7 @@ const materialRoutes = [
   {
     path: "/material/reports/medication-stock/table",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}>
         <AppMedicationStockTable />
       </RoleRoute>
     ),
@@ -637,7 +509,7 @@ const materialRoutes = [
   {
     path: "/material/reports/medication-stock/chart",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.PHARMACIST, ROLES.ACCOUNTANT]}>
         <AppMedicationStockChart />
       </RoleRoute>
     ),
@@ -645,7 +517,7 @@ const materialRoutes = [
   {
     path: "/material/reports/sales/table",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppSalesTable />
       </RoleRoute>
     ),
@@ -653,7 +525,7 @@ const materialRoutes = [
   {
     path: "/material/reports/sales/chart",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.ACCOUNTANT]}>
         <AppSalesChart />
       </RoleRoute>
     ),
@@ -661,7 +533,7 @@ const materialRoutes = [
   {
     path: "/material/reports/dashboard/daily-chart",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.DOCTOR, ROLES.ACCOUNTANT]}>
         <AppDashboardDailyChart />
       </RoleRoute>
     ),
@@ -669,7 +541,7 @@ const materialRoutes = [
   {
     path: "/material/reports/dashboard/daily-table",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.DOCTOR, ROLES.ACCOUNTANT]}>
+      <RoleRoute allowedRoles={[...ADMINS, ROLES.DOCTOR, ROLES.ACCOUNTANT]}>
         <AppDashboardDailyTable />
       </RoleRoute>
     ),
@@ -681,7 +553,7 @@ const materialRoutes = [
   {
     path: "/material/users",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppUsersPage />
       </RoleRoute>
     ),
@@ -689,7 +561,7 @@ const materialRoutes = [
   {
     path: "/material/users/roles-permissions",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppRolesPermissionsPage />
       </RoleRoute>
     ),
@@ -701,7 +573,7 @@ const materialRoutes = [
   {
     path: "/material/departments",
     element: (
-      <RoleRoute allowedRoles={[ROLES.ADMIN]}>
+      <RoleRoute allowedRoles={ADMINS}>
         <AppDepartmentsPage />
       </RoleRoute>
     ),
