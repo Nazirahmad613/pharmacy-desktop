@@ -118,7 +118,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/profile', [ProfileController::class, 'getProfile']);
 
     // ===== Logs =====
-    Route::get('/logs', [LogController::class, 'index'])->middleware('can:view-logs');
+    Route::get('/logs', [LogController::class, 'index']);
 
     // ============================================================
     // ✅ Users Management

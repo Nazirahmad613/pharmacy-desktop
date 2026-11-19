@@ -8,40 +8,26 @@ import React, {
   useCallback,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import navigationsData from "app/navigations";
+import navigationsData, { getLogicalParentPath } from "app/navigations";
 
 const NavigationContext = createContext(null);
 
-// ============================================================
-// پیدا کردن زنجیره‌ی گروه‌ها برای یک path مشخص
-// خروجی: آرایه‌ای از گروه‌ها از ریشه تا گروهی که path در آن است
-// ============================================================
-export const findChainByPath = (items, targetPath, chain = []) => {
-  for (const item of items) {
-    // اگر خود آیتم path دارد و منطبق است
-    if (item.path === targetPath) {
-      return chain;
-    }
-    // اگر فرزند دارد، عمیق‌تر جستجو کن
-    if (Array.isArray(item.children) && item.children.length > 0) {
-      const found = findChainByPath(item.children, targetPath, [
-        ...chain,
-        item,
-      ]);
-      if (found) return found;
-    }
-  }
-  return null;
+const normalizePath = (p) => {
+  if (!p) return "";
+  return p.replace(/\/+$/, "") || "/";
 };
 
 // ============================================================
-// پیدا کردن همه گروه‌های والد برای یک path (برای باز کردن سایدبار)
+// پیدا کردن همه گروه‌های والد برای یک path (برای باز کردن سایدبار و Breadcrumb)
 // ============================================================
 export const findParentChain = (items, targetPath, chain = []) => {
+  const cleanTarget = normalizePath(targetPath);
   for (const item of items) {
-    if (item.path === targetPath) return chain;
+    if (item.path && normalizePath(item.path) === cleanTarget) {
+      return chain;
+    }
     if (Array.isArray(item.children) && item.children.length > 0) {
-      const found = findParentChain(item.children, targetPath, [
+      const found = findParentChain(item.children, cleanTarget, [
         ...chain,
         item,
       ]);
@@ -51,44 +37,46 @@ export const findParentChain = (items, targetPath, chain = []) => {
   return null;
 };
 
-// ============================================================
-// Provider
-// ============================================================
 export function NavigationProvider({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // گروه‌های انتخاب‌شده (زنجیره از ریشه تا گروه فعلی) — هم برای وسط صفحه، هم برای سایدبار
+  // زنجیره گروه‌های انتخاب‌شده (هم برای وسط صفحه، هم برای همگام‌سازی سایدبار)
   const [groupStack, setGroupStack] = useState([]);
 
-  // ============================================================
-  // هر وقت مسیر عوض شد، گروه‌ها را بر اساس path هم‌گام کن
-  // ============================================================
+  // همگام‌سازی خودکار با تغییر URL
   useEffect(() => {
-    const chain = findParentChain(navigationsData, location.pathname);
+    const cleanPath = normalizePath(location.pathname);
+    let chain = findParentChain(navigationsData, cleanPath);
+
+    // اگر مسیر دقیق در منو نبود (مثل صفحات جزئیات/ویرایش)، والد منطقی را بررسی کن
+    if (!chain) {
+      const parentPath = getLogicalParentPath(cleanPath);
+      if (parentPath) {
+        chain = findParentChain(navigationsData, parentPath);
+      }
+    }
+
     if (chain) {
       setGroupStack(chain);
-    } else {
-      // اگر path در منو نیست (مثلاً /dashboard/default) → ریست کن
+    } else if (cleanPath === "/dashboard/default" || cleanPath === "/navigation-hub") {
       setGroupStack([]);
     }
   }, [location.pathname]);
 
-  // ============================================================
   // ورود به یک زیرگروه (با کلیک روی کارت در وسط صفحه)
-  // ============================================================
   const pushGroup = useCallback((group) => {
     if (!group) return;
     setGroupStack((prev) => {
-      // جلوگیری از تکراری
-      if (prev.length > 0 && prev[prev.length - 1] === group) return prev;
+      const last = prev[prev.length - 1];
+      if (last && (last.path || last.name) === (group.path || group.name)) {
+        return prev;
+      }
       return [...prev, group];
     });
   }, []);
 
-  // ============================================================
   // بازگشت یک مرحله
-  // ============================================================
   const popGroup = useCallback(() => {
     setGroupStack((prev) => {
       if (prev.length === 0) return prev;
@@ -98,20 +86,14 @@ export function NavigationProvider({ children }) {
     });
   }, []);
 
-  // ============================================================
   // بازگشت به ابتدا
-  // ============================================================
   const resetToTop = useCallback(() => {
     setGroupStack([]);
     navigate("/navigation-hub");
   }, [navigate]);
 
-  // ============================================================
-  // Breadcrumb
-  // ============================================================
   const breadcrumb = useMemo(() => groupStack, [groupStack]);
 
-  // گروه فعلی = آخرین عضو پشته
   const selectedGroup = useMemo(
     () => (groupStack.length > 0 ? groupStack[groupStack.length - 1] : null),
     [groupStack]

@@ -112,13 +112,19 @@ const normalizePath = (p) => {
   return p.replace(/\/+$/, "") || "/";
 };
 
+// ساخت کلید یکتا و پایدار برای هر آیتم (چه گروه و چه صفحه)
+const getItemUniqueKey = (item) => {
+  if (!item) return "";
+  return item.path ? normalizePath(item.path) : `GROUP:${item.name}`;
+};
+
 /**
  * پیدا کردن تمام کلیدهای والد (گروه‌ها) که یک مسیر در زیرمجموعه آن‌ها قرار دارد
  */
 function findAncestorKeys(items, targetPath, parents = []) {
   const cleanTarget = normalizePath(targetPath);
   for (const item of items) {
-    const key = item.path || item.name;
+    const key = getItemUniqueKey(item);
     if (item.path && normalizePath(item.path) === cleanTarget) {
       return parents;
     }
@@ -151,6 +157,16 @@ function filterNavByRoles(items, userRolesSet, isAdminOrSuper) {
     .filter(Boolean);
 }
 
+/**
+ * محاسبه دقیق مرکز عمودی یک المان نسبت به کانتینر محتوای سایدبار (بدون خطای Collapse)
+ */
+function getRelativeNodeCenter(contentEl, nodeEl) {
+  if (!contentEl || !nodeEl) return 0;
+  const contentRect = contentEl.getBoundingClientRect();
+  const nodeRect = nodeEl.getBoundingClientRect();
+  return nodeRect.top - contentRect.top + nodeRect.height / 2;
+}
+
 function NavItem({
   item,
   level = 0,
@@ -161,7 +177,8 @@ function NavItem({
   currentPath,
   litKey,
 }) {
-  const key = item.path || item.name;
+  const { t } = useTranslation();
+  const key = getItemUniqueKey(item);
   const isOpen = !!openMap[key];
   const hasChildren = Array.isArray(item.children) && item.children.length > 0;
   const isActive = item.path && normalizePath(currentPath) === normalizePath(item.path);
@@ -173,7 +190,7 @@ function NavItem({
       const nextState = !isOpen;
       setOpenMap((prev) => ({ ...prev, [key]: nextState }));
       if (onGroupToggle) {
-        onGroupToggle(clickedEl, nextState);
+        onGroupToggle(clickedEl, key, nextState);
       }
     } else if (item.path) {
       onLeafClick(item, clickedEl);
@@ -181,7 +198,7 @@ function NavItem({
   };
 
   const textAlpha = isLit ? 1 : 0.35;
-  const navPathAttr = item.path ? normalizePath(item.path) : `GROUP:${key}`;
+  const navPathAttr = item.path ? normalizePath(item.path) : `GROUP:${item.name}`;
 
   if (item.type === "label" || item.label) {
     return (
@@ -200,7 +217,7 @@ function NavItem({
           transition: "color 0.2s ease",
         }}
       >
-        {(item.label || item.name || "").toUpperCase()}
+        {(t(item.label || item.name || "") || "").toUpperCase()}
       </Typography>
     );
   }
@@ -257,7 +274,7 @@ function NavItem({
         )}
 
         <ListItemText
-          primary={item.name}
+          primary={t(item.name)}
           primaryTypographyProps={{
             fontSize: level === 0 ? "0.92rem" : "0.84rem",
             fontWeight: isLit ? 700 : 400,
@@ -295,11 +312,11 @@ function NavItem({
       </ListItemButton>
 
       {hasChildren && (
-        <Collapse in={isOpen} timeout={220} unmountOnExit>
+        <Collapse in={isOpen} timeout={200} unmountOnExit>
           <List component="div" disablePadding>
             {item.children.map((child, idx) => (
               <NavItem
-                key={child.path || child.name || idx}
+                key={getItemUniqueKey(child) || idx}
                 item={child}
                 level={level + 1}
                 openMap={openMap}
@@ -318,22 +335,31 @@ function NavItem({
 }
 
 /**
- * پیدا کردن المان DOM متناظر با مسیر فعلی
+ * پیدا کردن المان DOM متناظر با مسیر یا کلید فعلی
  */
-function resolveSyncTarget(container, rawPath) {
-  if (!container || !rawPath) return { targetNode: null, targetKey: null };
-  const path = normalizePath(rawPath);
+function resolveSyncTarget(container, rawPathOrKey) {
+  if (!container || !rawPathOrKey) return { targetNode: null, targetKey: null };
 
-  const byPath = (p) => {
+  const queryByAttr = (attr, val) => {
     try {
-      return container.querySelector(`[data-nav-path="${CSS.escape(p)}"]`);
+      return container.querySelector(`[${attr}="${CSS.escape(val)}"]`);
     } catch {
       return null;
     }
   };
 
+  // اگر کلید مستقیم گروه باشد (مثلاً GROUP:مدیریت مالی)
+  if (rawPathOrKey.startsWith("GROUP:")) {
+    const byKey = queryByAttr("data-nav-key", rawPathOrKey);
+    if (byKey) {
+      return { targetNode: byKey, targetKey: rawPathOrKey };
+    }
+  }
+
+  const path = normalizePath(rawPathOrKey);
+
   // ۱. تطبیق دقیق با مسیر فعلی
-  const exact = byPath(path);
+  const exact = queryByAttr("data-nav-path", path);
   if (exact) {
     return {
       targetNode: exact,
@@ -344,7 +370,7 @@ function resolveSyncTarget(container, rawPath) {
   // ۲. تطبیق با والد منطقی
   const parentPath = getLogicalParentPath(path);
   if (parentPath) {
-    const byParent = byPath(normalizePath(parentPath));
+    const byParent = queryByAttr("data-nav-path", normalizePath(parentPath));
     if (byParent) {
       return {
         targetNode: byParent,
@@ -353,14 +379,14 @@ function resolveSyncTarget(container, rawPath) {
     }
   }
 
-  // ۳. تطبیق پیشوندی (طولانی‌ترین مسیر مشترک)
+  // ۳. تطبیق پیشوندی (طولانی‌ترین مسیر مشترک برای صفحات جزئیات)
   const allNodes = Array.from(container.querySelectorAll("[data-nav-path]"));
   let bestPrefix = null;
   let bestLen = -1;
   for (const el of allNodes) {
     const np = el.getAttribute("data-nav-path") || "";
     if (np.startsWith("GROUP:")) continue;
-    if (path.startsWith(np) && np.length > bestLen) {
+    if ((path === np || path.startsWith(np + "/")) && np.length > bestLen) {
       bestPrefix = el;
       bestLen = np.length;
     }
@@ -380,7 +406,7 @@ export default function Sidenav({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { navigationsData } = useNavigation();
+  const { navigationsData, groupStack } = useNavigation();
   const { canGoBack, goBack } = useBackNavigation();
 
   const viewportRef = useRef(null);
@@ -397,13 +423,16 @@ export default function Sidenav({ children }) {
   const dragStartY = useRef(0);
   const dragStartLanternY = useRef(20);
 
+  // نگهداری آخرین هدف همگام‌سازی تا در صورت تغییر ارتفاع (باز شدن Collapse) فانوس دقیق روی آن بماند
+  const activeSyncTargetRef = useRef(null);
+
   const triggerSwing = useCallback(() => {
     setIsSwinging(true);
     if (swingTimeout.current) clearTimeout(swingTimeout.current);
     swingTimeout.current = setTimeout(() => setIsSwinging(false), 850);
   }, []);
 
-  // محاسبه آیتم نزدیک به نور فانوس هنگام درگ دستی
+  // محاسبه آیتم نزدیک به نور فانوس هنگام درگ یا اسکرول دستی
   const highlightItemNearLantern = useCallback((currentLanternY, currentScroll) => {
     if (!contentRef.current) return;
     const beamCenterInContent = currentScroll + currentLanternY + 28;
@@ -412,7 +441,7 @@ export default function Sidenav({ children }) {
     let minDiff = Infinity;
 
     nodes.forEach((node) => {
-      const nodeCenter = node.offsetTop + node.offsetHeight / 2;
+      const nodeCenter = getRelativeNodeCenter(contentRef.current, node);
       const diff = Math.abs(nodeCenter - beamCenterInContent);
       if (diff < minDiff) {
         minDiff = diff;
@@ -447,16 +476,17 @@ export default function Sidenav({ children }) {
     [highlightItemNearLantern]
   );
 
-  // حرکت دادن خودکار فانوس و اسکرول به سمت یک آیتم مشخص (المان DOM)
+  // حرکت دادن خودکار فانوس و اسکرول دقیق به سمت یک المان DOM مشخص
   const moveLanternToNode = useCallback(
-    (targetNode, targetKey) => {
+    (targetNode, targetKey, withSwing = true) => {
       if (!viewportRef.current || !contentRef.current || !targetNode) return;
 
       const viewportHeight = viewportRef.current.clientHeight;
       const contentHeight = contentRef.current.scrollHeight;
       const maxScroll = Math.max(0, contentHeight - viewportHeight + 60);
 
-      const nodeCenter = targetNode.offsetTop + targetNode.offsetHeight / 2;
+      const nodeCenter = getRelativeNodeCenter(contentRef.current, targetNode);
+
       const idealViewportY = Math.min(Math.max(nodeCenter, 80), viewportHeight * 0.45);
       const desiredScroll = Math.min(maxScroll, Math.max(0, nodeCenter - idealViewportY));
 
@@ -467,7 +497,7 @@ export default function Sidenav({ children }) {
       setScrollOffset(desiredScroll);
       setLanternY(exactLanternY);
       if (targetKey) setLitKey(targetKey);
-      triggerSwing();
+      if (withSwing) triggerSwing();
     },
     [triggerSwing]
   );
@@ -476,6 +506,7 @@ export default function Sidenav({ children }) {
   const handleLanternPointerDown = (e) => {
     e.stopPropagation();
     e.preventDefault();
+    activeSyncTargetRef.current = null;
     setIsDragging(true);
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     dragStartY.current = clientY;
@@ -511,6 +542,7 @@ export default function Sidenav({ children }) {
 
   const handleTrackClick = (e) => {
     if (!viewportRef.current) return;
+    activeSyncTargetRef.current = null;
     const rect = viewportRef.current.getBoundingClientRect();
     const clickY = e.clientY - rect.top - 28;
     updatePositionByLantern(clickY);
@@ -518,17 +550,23 @@ export default function Sidenav({ children }) {
   };
 
   const handleWheel = (e) => {
+    activeSyncTargetRef.current = null;
     const step = e.deltaY * 0.25;
     updatePositionByLantern(lanternY + step);
     triggerSwing();
   };
 
-  const handleGroupToggle = useCallback(() => {
-    setTimeout(() => {
-      updatePositionByLantern(lanternY);
-      triggerSwing();
-    }, 240);
-  }, [lanternY, updatePositionByLantern, triggerSwing]);
+  // کلیک روی گروه در سایدبار -> فانوس دقیقاً روی همان گروه قرار گیرد
+  const handleGroupToggle = useCallback(
+    (clickedEl, key) => {
+      activeSyncTargetRef.current = key;
+      setLitKey(key);
+      if (clickedEl) {
+        moveLanternToNode(clickedEl, key, true);
+      }
+    },
+    [moveLanternToNode]
+  );
 
   // استخراج رول‌های کاربر
   const userRoles = useMemo(() => {
@@ -560,14 +598,15 @@ export default function Sidenav({ children }) {
     return filterNavByRoles(source, roleSet, isAdminOrSuper);
   }, [navigationsData, userRoles]);
 
-  // ✅ ۱. کلیک روی آیتم سایدبار -> تغییر فوری وسط صفحه + تنظیم فانوس
+  // ✅ ۱. کلیک روی آیتم صفحه در سایدبار
   const handleLeafClick = useCallback(
     (item, clickedEl) => {
       if (!item?.path) return;
-      const key = item.path || item.name;
+      const key = getItemUniqueKey(item);
+      activeSyncTargetRef.current = key;
       setLitKey(key);
       if (clickedEl) {
-        moveLanternToNode(clickedEl, key);
+        moveLanternToNode(clickedEl, key, true);
       }
       if (normalizePath(location.pathname) !== normalizePath(item.path)) {
         navigate(item.path);
@@ -576,25 +615,34 @@ export default function Sidenav({ children }) {
     [location.pathname, moveLanternToNode, navigate]
   );
 
-  // ✅ ۲. تغییر مسیر از وسط صفحه (یا URL/Back) -> باز کردن خودکار والدها و حرکت فانوس روی همان آیتم
+  // ✅ ۲. همگام‌سازی یکپارچه با مسیر فعلی (صفحات فرعی) و گروه انتخاب‌شده در وسط صفحه
   useEffect(() => {
     const currentPath = normalizePath(location.pathname);
-    const effectivePath =
-      resolveSyncTarget(contentRef.current, currentPath).targetNode?.getAttribute(
-        "data-nav-path"
-      ) ||
+
+    // الف) اولویت اول: اگر مسیر فعلی خود یک صفحه مشخص در منو است (مثل /material/parchases)،
+    // حتماً والدهای آن را باز کن و چراغ را به خود صفحه فرعی ببر (نه سرگروه!)
+    const directMatch = resolveSyncTarget(contentRef.current, currentPath);
+    const targetPathForAncestors =
+      directMatch.targetNode?.getAttribute("data-nav-path") ||
       getLogicalParentPath(currentPath) ||
       currentPath;
 
-    const ancestors =
+    const pathAncestors =
       findAncestorKeys(filteredNavigations, currentPath) ||
-      findAncestorKeys(filteredNavigations, effectivePath);
+      findAncestorKeys(filteredNavigations, targetPathForAncestors);
 
-    if (ancestors && ancestors.length > 0) {
+    // ب) گروه‌های بازشده از طریق کارت‌های وسط صفحه (NavigationHub)
+    const stackKeys = Array.isArray(groupStack)
+      ? groupStack.map((grp) => getItemUniqueKey(grp)).filter(Boolean)
+      : [];
+
+    const allKeysToOpen = new Set([...(pathAncestors || []), ...stackKeys]);
+
+    if (allKeysToOpen.size > 0) {
       setOpenMap((prev) => {
         const next = { ...prev };
         let changed = false;
-        ancestors.forEach((k) => {
+        allKeysToOpen.forEach((k) => {
           if (!next[k]) {
             next[k] = true;
             changed = true;
@@ -604,18 +652,52 @@ export default function Sidenav({ children }) {
       });
     }
 
-    const timer = setTimeout(() => {
+    // تعیین هدف نهایی برای چراغ فانوس:
+    // اگر در یک صفحه فرعی/برگ هستیم (مثل /material/parchases)، هدف خود آن صفحه است.
+    // فقط زمانی که در صفحه هاب (/navigation-hub یا /dashboard/default) هستیم و روی کارت گروه کلیک شده، هدف آخرین گروه است.
+    const isHubOrDashboard =
+      currentPath === "/navigation-hub" || currentPath === "/dashboard/default";
+
+    const desiredTarget =
+      isHubOrDashboard && stackKeys.length > 0
+        ? stackKeys[stackKeys.length - 1]
+        : currentPath;
+
+    activeSyncTargetRef.current = desiredTarget;
+
+    const syncLantern = (withSwing = true) => {
       const { targetNode, targetKey } = resolveSyncTarget(
         contentRef.current,
-        currentPath
+        desiredTarget
       );
       if (targetNode) {
-        moveLanternToNode(targetNode, targetKey);
+        moveLanternToNode(targetNode, targetKey, withSwing);
       }
-    }, 260);
+    };
+
+    // اجرای فوری + اجرای مجدد بعد از باز شدن انیمیشن Collapse (230ms)
+    syncLantern(true);
+    const timer = setTimeout(() => syncLantern(false), 230);
 
     return () => clearTimeout(timer);
-  }, [location.pathname, filteredNavigations, moveLanternToNode]);
+  }, [location.pathname, groupStack, filteredNavigations, moveLanternToNode]);
+
+  // ✅ ۳. پایش تغییر ارتفاع محتوای سایدبار (هنگام باز/بسته شدن زیرمنوها) برای تثبیت دقیق جای چراغ
+  useEffect(() => {
+    if (!contentRef.current || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      const target = activeSyncTargetRef.current;
+      if (!target || isDragging) return;
+      const { targetNode, targetKey } = resolveSyncTarget(contentRef.current, target);
+      if (targetNode) {
+        moveLanternToNode(targetNode, targetKey, false);
+      }
+    });
+
+    observer.observe(contentRef.current);
+    return () => observer.disconnect();
+  }, [isDragging, moveLanternToNode]);
 
   return (
     <Box
@@ -710,7 +792,7 @@ export default function Sidenav({ children }) {
           <List component="nav" disablePadding>
             {filteredNavigations.map((item, index) => (
               <NavItem
-                key={item.path || item.name || item.label || index}
+                key={getItemUniqueKey(item) || item.label || index}
                 item={item}
                 openMap={openMap}
                 setOpenMap={setOpenMap}

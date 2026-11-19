@@ -1,5 +1,5 @@
 // src/app/pages/treatment/TreatmentPage.jsx
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import MainLayoutjur from "../../../../components/Mainlayoutjur";
 import { useAuth } from "app/contexts/AuthContext";
 import { toast, ToastContainer } from "react-toastify";
@@ -106,7 +106,6 @@ const sanitizeForApi = (obj) => {
   return obj;
 };
 
-// ✅ شناسایی پرونده اضطراری از رکورد صف
 const isEmergencyRecord = (p) =>
   Boolean(
     p?.is_emergency ||
@@ -187,18 +186,115 @@ const buildHistorySnapshot = (stepKey, payload, returnedData, currentStepLabel) 
   return sanitizeForApi(base);
 };
 
+// ✅ استخراج تمام شناسه‌های داکتر از رکورد
+const extractRecordDoctorIds = (record) => {
+  if (!record || typeof record !== 'object') return [];
+  const rawIds = [
+    record.doctor_id,
+    record.assigned_doctor_id,
+    record.doctor_user_id,
+    record.doctorId,
+    record.doctor?.id,
+    record.doctor?.user_id,
+    record.doctor?.doctor_id,
+    record.registration?.doctor_id,
+    record.registration?.assigned_doctor_id,
+    record.registration?.doctor_user_id,
+    record.registration?.doctor?.id,
+    record.registration?.doctor?.user_id,
+    record.emergency_case?.doctor_id,
+    record.emergency_case?.assigned_doctor_id,
+    record.emergency_case?.doctor?.id,
+    record.emergency_case?.doctor?.user_id,
+  ];
+  return Array.from(
+    new Set(
+      rawIds
+        .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
+        .map((v) => String(v).trim())
+    )
+  );
+};
+
+// ✅ استخراج نام داکتر از رکورد (در صورت نبودن ID)
+const extractRecordDoctorNames = (record) => {
+  if (!record || typeof record !== 'object') return [];
+  const names = [
+    record.doctor_name,
+    record.doctor?.name,
+    record.doctor?.full_name,
+    record.doctor?.first_name && record.doctor?.last_name
+      ? `${record.doctor.first_name} ${record.doctor.last_name}`
+      : null,
+    record.registration?.doctor_name,
+    record.registration?.doctor?.name,
+  ];
+  return Array.from(
+    new Set(
+      names
+        .filter((v) => typeof v === 'string' && v.trim() !== '')
+        .map((v) => v.trim().toLowerCase())
+    )
+  );
+};
+
+// ✅ استخراج تمام شناسه‌های داکتر لاگین‌شده
+const extractCurrentDoctorIds = (user) => {
+  if (!user || typeof user !== 'object') return [];
+  const rawIds = [
+    user.doctor_id,
+    user.doctor?.id,
+    user.doctor?.doctor_id,
+    user.doctor?.user_id,
+    user.id,
+    user.user_id,
+  ];
+  return Array.from(
+    new Set(
+      rawIds
+        .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
+        .map((v) => String(v).trim())
+    )
+  );
+};
+
+// ✅ استخراج نام‌های داکتر لاگین‌شده
+const extractCurrentDoctorNames = (user) => {
+  if (!user || typeof user !== 'object') return [];
+  const names = [
+    user.name,
+    user.full_name,
+    user.doctor?.name,
+    user.doctor?.full_name,
+    user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : null,
+  ];
+  return Array.from(
+    new Set(
+      names
+        .filter((v) => typeof v === 'string' && v.trim() !== '')
+        .map((v) => v.trim().toLowerCase())
+    )
+  );
+};
+
 export default function TreatmentPage() {
-  const { api } = useAuth();
+  const { api, user } = useAuth();
+
+  const currentDoctorIds = useMemo(() => extractCurrentDoctorIds(user), [user]);
+  const currentDoctorNames = useMemo(() => extractCurrentDoctorNames(user), [user]);
+  const currentDoctorId = user?.doctor_id ?? user?.doctor?.id ?? user?.id ?? user?.user_id ?? null;
+
+  const doctorStorageSuffix = currentDoctorIds[0] ? `_${currentDoctorIds[0]}` : '';
 
   const [queue, setQueue] = useState([]);
-  const [emergencyQueue, setEmergencyQueue] = useState([]); // ✅ صف اضطراری جداگانه
+  const [emergencyQueue, setEmergencyQueue] = useState([]);
   const [loading, setLoading] = useState(false);
   const [emergencyLoading, setEmergencyLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeTab, setActiveTab] = useState('queue');
-  const [queueFilter, setQueueFilter] = useState('normal'); // 'normal' | 'emergency'
+  const [queueFilter, setQueueFilter] = useState('normal');
   const [activePatients, setActivePatients] = useState({});
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState(null);
@@ -208,10 +304,36 @@ export default function TreatmentPage() {
   const activePatientsRef = useRef({});
   const activeTabRef = useRef('queue');
   const selectedPatientIdRef = useRef(null);
+  const currentDoctorIdRef = useRef(null);
 
   useEffect(() => { activePatientsRef.current = activePatients; }, [activePatients]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { selectedPatientIdRef.current = selectedPatientId; }, [selectedPatientId]);
+  useEffect(() => { currentDoctorIdRef.current = currentDoctorId; }, [currentDoctorId]);
+
+  // ✅ فیلتر دقیق و متعادل:
+  // ۱. اگر رکورد دارای شناسه داکتر باشد -> باید با یکی از شناسه‌های داکتر لاگین‌شده برابر باشد (وگرنه رد می‌شود).
+  // ۲. اگر رکورد شناسه ندارد ولی نام داکتر دارد -> باید با نام داکتر لاگین‌شده برابر باشد.
+  // ۳. اگر سرور اصلاً فیلد داکتر در JSON نفرستاده (چون از توکن Auth سمت بک‌اند فیلتر کرده) -> نمایش داده می‌شود.
+  const belongsToCurrentDoctor = useCallback(
+    (record) => {
+      if (!record) return false;
+
+      const recDocIds = extractRecordDoctorIds(record);
+      if (recDocIds.length > 0) {
+        if (currentDoctorIds.length === 0) return true;
+        return recDocIds.some((id) => currentDoctorIds.includes(id));
+      }
+
+      const recDocNames = extractRecordDoctorNames(record);
+      if (recDocNames.length > 0 && currentDoctorNames.length > 0) {
+        return recDocNames.some((n) => currentDoctorNames.includes(n));
+      }
+
+      return true;
+    },
+    [currentDoctorIds, currentDoctorNames]
+  );
 
   const syncTreatmentHistory = async (regId, stepKey = null, stepData = null, refId = null, refTable = null, finalize = false) => {
     if (!regId) return null;
@@ -245,21 +367,28 @@ export default function TreatmentPage() {
   const saveState = (patients, tab, patientId) => {
     try {
       const data = { patients, activeTab: tab || activeTab, selectedPatientId: patientId || selectedPatientId };
-      localStorage.setItem(ACTIVE_PATIENTS_KEY, JSON.stringify(data));
-      if (tab) localStorage.setItem(ACTIVE_TAB_KEY, tab);
-      if (patientId) localStorage.setItem(SELECTED_PATIENT_KEY, String(patientId));
+      localStorage.setItem(`${ACTIVE_PATIENTS_KEY}${doctorStorageSuffix}`, JSON.stringify(data));
+      if (tab) localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, tab);
+      if (patientId) localStorage.setItem(`${SELECTED_PATIENT_KEY}${doctorStorageSuffix}`, String(patientId));
     } catch (err) { console.error("خطا در ذخیره وضعیت:", err); }
   };
 
   const loadState = () => {
     try {
-      const saved = localStorage.getItem(ACTIVE_PATIENTS_KEY);
+      const saved = localStorage.getItem(`${ACTIVE_PATIENTS_KEY}${doctorStorageSuffix}`);
       if (saved) {
         const data = JSON.parse(saved);
+        const filteredPatients = {};
+        for (const [id, p] of Object.entries(data.patients || {})) {
+          const reg = p?.registration;
+          if (!reg || belongsToCurrentDoctor(reg)) {
+            filteredPatients[id] = p;
+          }
+        }
         return {
-          patients: data.patients || {},
+          patients: filteredPatients,
           activeTab: data.activeTab || 'queue',
-          selectedPatientId: data.selectedPatientId || null,
+          selectedPatientId: filteredPatients[data.selectedPatientId] ? data.selectedPatientId : null,
         };
       }
     } catch (err) { console.error("خطا در بازیابی وضعیت:", err); }
@@ -291,6 +420,10 @@ export default function TreatmentPage() {
       const response = await api.get(`/doctor/patient/${registrationId}`);
       const data = response.data?.data || response.data;
       if (data) {
+        if (!belongsToCurrentDoctor(data)) {
+          console.warn(`⛔ مریض ${registrationId} متعلق به داکتر دیگری است - نادیده گرفته شد`);
+          return null;
+        }
         setActivePatients(prev => {
           const updated = { ...prev };
           if (!updated[registrationId]) {
@@ -317,16 +450,20 @@ export default function TreatmentPage() {
       if (response.data?.data) {
         const requests = response.data.data.data || response.data.data;
         const data = Array.isArray(requests) ? requests : [];
-        setAllAdmissionRequests(data);
-        return data;
+        const filtered = data.filter((r) => belongsToCurrentDoctor(r));
+        setAllAdmissionRequests(filtered);
+        return filtered;
       }
+      setAllAdmissionRequests([]);
       return [];
     } catch (err) { console.error("خطا در دریافت درخواست‌های بستری:", err); return []; }
   };
 
   const loadAllPatientData = async (registrationId) => {
     try {
-      await fetchPatientRegistration(registrationId);
+      const regData = await fetchPatientRegistration(registrationId);
+      if (!regData) return;
+
       try {
         const examResponse = await api.get(`/doctor/examination/${registrationId}`);
         if (examResponse.data?.success) {
@@ -396,14 +533,14 @@ export default function TreatmentPage() {
       let data = [];
       if (Array.isArray(response.data)) data = response.data;
       else if (response.data?.data && Array.isArray(response.data.data)) data = response.data.data;
-      setQueue(data);
+      const filtered = data.filter((p) => belongsToCurrentDoctor(p));
+      setQueue(filtered);
     } catch (err) {
       console.error("خطا در دریافت صف:", err);
       toast.error("❌ خطا در دریافت لیست مریضان");
     } finally { setLoading(false); }
   };
 
-  // ✅ دریافت صف اضطراری از endpoint جدید
   const fetchEmergencyQueue = async () => {
     setEmergencyLoading(true);
     try {
@@ -411,16 +548,18 @@ export default function TreatmentPage() {
       let data = [];
       if (Array.isArray(response.data)) data = response.data;
       else if (response.data?.data && Array.isArray(response.data.data)) data = response.data.data;
-      setEmergencyQueue(data);
+      const filtered = data.filter((p) => belongsToCurrentDoctor(p));
+      setEmergencyQueue(filtered);
     } catch (err) {
-      // اگر endpoint هنوز آماده نیست، fallback به فیلتر از صف عادی
       console.warn("⚠️ Emergency queue endpoint not ready, falling back to filter:", err?.response?.status);
       try {
         const response = await api.get("/doctor/queue");
         let all = [];
         if (Array.isArray(response.data)) all = response.data;
         else if (response.data?.data && Array.isArray(response.data.data)) all = response.data.data;
-        const emergencies = all.filter((p) => isEmergencyRecord(p));
+        const emergencies = all
+          .filter((p) => isEmergencyRecord(p))
+          .filter((p) => belongsToCurrentDoctor(p));
         setEmergencyQueue(emergencies);
       } catch (fallbackErr) {
         console.error("Fallback failed too:", fallbackErr);
@@ -431,14 +570,34 @@ export default function TreatmentPage() {
 
   const handleSelectPatient = async (registration) => {
     if (!registration?.reg_id) { toast.error("❌ اطلاعات مریض معتبر نیست"); return; }
+
+    if (!belongsToCurrentDoctor(registration)) {
+      toast.error("⛔ این مریض به شما ارسال نشده است");
+      return;
+    }
+
     const regId = registration.reg_id;
     setSelectedPatientId(regId);
     setSelectedRegistration(registration);
 
     const emergencyMeta = isEmergencyRecord(registration) ? emergencyMetaOf(registration) : null;
 
-    let patientData = activePatients[regId];
-    if (!patientData) {
+    const existingPatient = activePatients[regId];
+    const existingProgress = existingPatient?.progress;
+    const isActivelyInTreatment =
+      !!existingProgress &&
+      !existingProgress.isComplete &&
+      Array.isArray(existingProgress.completedSteps) &&
+      existingProgress.completedSteps.includes('examination');
+
+    let nextTab = 'examination';
+    if (isActivelyInTreatment) {
+      const curIdx = existingProgress.currentStepIndex;
+      const stepKey = (curIdx > 0 && STEPS[curIdx]?.key) ? STEPS[curIdx].key : 'examination';
+      nextTab = (stepKey === 'queue' || stepKey === 'history') ? 'examination' : stepKey;
+    }
+
+    if (!existingPatient) {
       const newProgress = {
         currentStepIndex: 1,
         completedSteps: ['queue'],
@@ -453,7 +612,7 @@ export default function TreatmentPage() {
       setActivePatients(prev => {
         const updated = { ...prev };
         updated[regId] = { registration, progress: newProgress, data: {} };
-        saveState(updated, 'examination', regId);
+        saveState(updated, nextTab, regId);
         return updated;
       });
       await loadAllPatientData(regId);
@@ -466,22 +625,19 @@ export default function TreatmentPage() {
           if (emergencyMeta) {
             updated[regId].progress = { ...updated[regId].progress, isEmergency: true, emergencyMeta };
           }
+          if (isActivelyInTreatment && nextTab !== 'examination') {
+            const idx = STEPS.findIndex(s => s.key === nextTab);
+            if (idx >= 0) updated[regId].progress = { ...updated[regId].progress, currentStepIndex: idx };
+          }
         }
-        saveState(updated, activeTab, regId);
+        saveState(updated, nextTab, regId);
         return updated;
       });
     }
 
-    // ✅ اگر مریض قبلاً در حال معالجه است، همان مرحله فعلی حفظ شود
-    // در غیر این صورت، همیشه از معاینه شروع شود
-    const existingProgress = activePatients[regId]?.progress;
-    const hasStartedTreatment = existingProgress?.completedSteps?.includes('examination');
-    const nextTab = hasStartedTreatment
-      ? (STEPS[existingProgress.currentStepIndex]?.key || 'examination')
-      : 'examination';
     setActiveTab(nextTab);
-    localStorage.setItem(ACTIVE_TAB_KEY, nextTab);
-    localStorage.setItem(SELECTED_PATIENT_KEY, String(regId));
+    localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, nextTab);
+    localStorage.setItem(`${SELECTED_PATIENT_KEY}${doctorStorageSuffix}`, String(regId));
 
     if (registration.visit_status !== "InProgress") {
       try { await api.put(`/registrations/${regId}/status`, { visit_status: "InProgress" }); }
@@ -504,6 +660,9 @@ export default function TreatmentPage() {
       const patientIds = Object.keys(activePatients);
       for (const id of patientIds) {
         const patient = activePatients[id];
+        if (!patient) continue;
+        if (patient.registration && !belongsToCurrentDoctor(patient.registration)) continue;
+
         const progress = patient?.progress;
         if (progress) {
           const currentIdx = progress.currentStepIndex || 0;
@@ -527,6 +686,7 @@ export default function TreatmentPage() {
       }
       if (allAdmissionRequests && allAdmissionRequests.length > 0) {
         for (const request of allAdmissionRequests) {
+          if (!belongsToCurrentDoctor(request)) continue;
           const regId = request.reg_id;
           if (!admittedPatients.find(p => p.reg_id === regId)) {
             admittedPatients.push({
@@ -544,12 +704,16 @@ export default function TreatmentPage() {
       }
       return admittedPatients;
     }
+
     const stageIndex = STEPS.findIndex(s => s.key === stage);
     if (stageIndex === -1) return [];
     const patients = [];
     const patientIds = Object.keys(activePatients);
     for (const id of patientIds) {
       const patient = activePatients[id];
+      if (!patient) continue;
+      if (patient.registration && !belongsToCurrentDoctor(patient.registration)) continue;
+
       const progress = patient?.progress;
       if (progress) {
         const currentIdx = progress.currentStepIndex || 0;
@@ -575,6 +739,10 @@ export default function TreatmentPage() {
 
   const saveCurrentStep = async (data) => {
     if (!selectedPatientId) { toast.error("❌ مریضی انتخاب نشده است"); return null; }
+    if (selectedRegistration && !belongsToCurrentDoctor(selectedRegistration)) {
+      toast.error("⛔ شما اجازه ثبت اطلاعات برای مریض داکتر دیگر را ندارید");
+      return null;
+    }
     setIsSubmitting(true);
     try {
       const regId = selectedPatientId;
@@ -615,7 +783,7 @@ export default function TreatmentPage() {
           payload = {
             reg_id: regId,
             patient_id: selectedRegistration?.patient_id || selectedRegistration?.patient?.id || null,
-            doctor_id: selectedRegistration?.doctor_id || null,
+            doctor_id: selectedRegistration?.doctor_id || currentDoctorId || null,
             follow_up_date: data.follow_up_date,
             follow_up_time: data.follow_up_time || null,
             reason: data.reason || '',
@@ -688,7 +856,7 @@ export default function TreatmentPage() {
       return updated;
     });
     setActiveTab(STEPS[nextIndex].key);
-    localStorage.setItem(ACTIVE_TAB_KEY, STEPS[nextIndex].key);
+    localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, STEPS[nextIndex].key);
     setTimeout(() => syncTreatmentHistory(selectedPatientId), 300);
     toast.info(`➡️ رفتن به مرحله ${STEPS[nextIndex].label}`);
   };
@@ -702,8 +870,8 @@ export default function TreatmentPage() {
     const prevIndex = currentIndex - 1;
     if (prevIndex < 1) {
       setActiveTab('queue');
-      localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
-      localStorage.removeItem(SELECTED_PATIENT_KEY);
+      localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, 'queue');
+      localStorage.removeItem(`${SELECTED_PATIENT_KEY}${doctorStorageSuffix}`);
       toast.info("↩️ بازگشت به صف انتظار");
       return;
     }
@@ -715,7 +883,7 @@ export default function TreatmentPage() {
       return updated;
     });
     setActiveTab(STEPS[prevIndex].key);
-    localStorage.setItem(ACTIVE_TAB_KEY, STEPS[prevIndex].key);
+    localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, STEPS[prevIndex].key);
     setTimeout(() => syncTreatmentHistory(selectedPatientId), 300);
     toast.info(`↩️ بازگشت به مرحله ${STEPS[prevIndex].label}`);
   };
@@ -756,8 +924,8 @@ export default function TreatmentPage() {
       setSelectedPatientId(null);
       setSelectedRegistration(null);
       setActiveTab('queue');
-      localStorage.removeItem(SELECTED_PATIENT_KEY);
-      localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+      localStorage.removeItem(`${SELECTED_PATIENT_KEY}${doctorStorageSuffix}`);
+      localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, 'queue');
       await fetchQueue();
       await fetchEmergencyQueue();
       await fetchAllAdmissions();
@@ -782,15 +950,32 @@ export default function TreatmentPage() {
       setActivePatients(patients);
       await fetchAllAdmissions();
       if (savedPatientId && patients[savedPatientId]) {
-        setSelectedPatientId(savedPatientId);
-        setActiveTab(savedTab);
-        const regData = await fetchPatientRegistration(savedPatientId);
-        if (regData) setSelectedRegistration(regData);
-        await loadAllPatientData(savedPatientId);
+        const reg = patients[savedPatientId]?.registration;
+        if (reg && !belongsToCurrentDoctor(reg)) {
+          setActiveTab('queue');
+          localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, 'queue');
+          localStorage.removeItem(`${SELECTED_PATIENT_KEY}${doctorStorageSuffix}`);
+        } else {
+          setSelectedPatientId(savedPatientId);
+          const validTab = STEPS.some(s => s.key === savedTab) && savedTab !== 'history'
+            ? savedTab
+            : 'examination';
+          setActiveTab(validTab);
+          localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, validTab);
+          const regData = await fetchPatientRegistration(savedPatientId);
+          if (regData) {
+            setSelectedRegistration(regData);
+            await loadAllPatientData(savedPatientId);
+          } else {
+            setSelectedPatientId(null);
+            setSelectedRegistration(null);
+            setActiveTab('queue');
+          }
+        }
       } else {
         setActiveTab('queue');
-        localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
-        localStorage.removeItem(SELECTED_PATIENT_KEY);
+        localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, 'queue');
+        localStorage.removeItem(`${SELECTED_PATIENT_KEY}${doctorStorageSuffix}`);
       }
       await fetchQueue();
       await fetchEmergencyQueue();
@@ -798,7 +983,10 @@ export default function TreatmentPage() {
     finally { setIsInitialized(true); }
   };
 
-  useEffect(() => { restoreState(); }, []);
+  useEffect(() => {
+    restoreState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDoctorIds.join(','), currentDoctorNames.join(',')]);
 
   const getCurrentProgress = () => {
     if (!selectedPatientId || !activePatients[selectedPatientId]) {
@@ -873,7 +1061,7 @@ export default function TreatmentPage() {
           queueFilter={queueFilter}
           onFilterChange={(val) => {
             setQueueFilter(val);
-            localStorage.setItem(QUEUE_FILTER_KEY, val);
+            localStorage.setItem(`${QUEUE_FILTER_KEY}${doctorStorageSuffix}`, val);
           }}
           loading={loading}
           emergencyLoading={emergencyLoading}
@@ -884,7 +1072,15 @@ export default function TreatmentPage() {
       );
     }
     if (activeTab === 'history') {
-      return <HistoryList api={api} onSelectHistory={setSelectedHistory} />;
+      return (
+        <HistoryList
+          api={api}
+          doctorId={currentDoctorId}
+          doctorIds={currentDoctorIds}
+          belongsToCurrentDoctor={belongsToCurrentDoctor}
+          onSelectHistory={setSelectedHistory}
+        />
+      );
     }
     const stagePatients = getPatientsInStage(activeTab);
     return (
@@ -915,8 +1111,8 @@ export default function TreatmentPage() {
                       setSelectedPatientId(p.reg_id);
                       setSelectedRegistration(p);
                       setActiveTab(activeTab);
-                      localStorage.setItem(SELECTED_PATIENT_KEY, String(p.reg_id));
-                      localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+                      localStorage.setItem(`${SELECTED_PATIENT_KEY}${doctorStorageSuffix}`, String(p.reg_id));
+                      localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, activeTab);
                     }}
                     className={`patient-card-pill ${isSelected ? 'selected' : ''}`}
                     style={em ? { borderColor: '#dc2626', background: 'rgba(254, 226, 226, 0.4)' } : undefined}
@@ -975,8 +1171,8 @@ export default function TreatmentPage() {
         setActiveTab('queue');
         setSelectedPatientId(null);
         setSelectedRegistration(null);
-        localStorage.removeItem(SELECTED_PATIENT_KEY);
-        localStorage.setItem(ACTIVE_TAB_KEY, 'queue');
+        localStorage.removeItem(`${SELECTED_PATIENT_KEY}${doctorStorageSuffix}`);
+        localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, 'queue');
       },
       onRefresh: refreshData,
       api,
@@ -1187,12 +1383,10 @@ export default function TreatmentPage() {
               let emCount = 0;
               if (step.key === 'queue') {
                 const activeIds = Object.keys(activePatients);
-                const normalQueue = queue.filter(p => !activeIds.includes(String(p.reg_id)) && !isEmergencyRecord(p) && p.visit_status !== "Completed" && p.visit_status !== "InProgress");
-                const emQueue = emergencyQueue.filter(p => !activeIds.includes(String(p.reg_id)) && p.visit_status !== "Completed" && p.visit_status !== "InProgress");
+                const normalQueue = queue.filter(p => belongsToCurrentDoctor(p) && !activeIds.includes(String(p.reg_id)) && !isEmergencyRecord(p) && p.visit_status !== "Completed" && p.visit_status !== "InProgress");
+                const emQueue = emergencyQueue.filter(p => belongsToCurrentDoctor(p) && !activeIds.includes(String(p.reg_id)) && p.visit_status !== "Completed" && p.visit_status !== "InProgress");
                 patientCount = normalQueue.length + emQueue.length;
                 emCount = emQueue.length;
-              } else if (step.key === 'admission') {
-                patientCount = allAdmissionRequests.length;
               } else if (step.key !== 'history') {
                 patientCount = getPatientsInStage(step.key).length;
               }
@@ -1200,7 +1394,7 @@ export default function TreatmentPage() {
                 <button key={step.key} onClick={() => {
                   setActiveTab(step.key);
                   setSelectedHistory(null);
-                  localStorage.setItem(ACTIVE_TAB_KEY, step.key);
+                  localStorage.setItem(`${ACTIVE_TAB_KEY}${doctorStorageSuffix}`, step.key);
                 }} className={`water-tab-btn ${isActive ? 'active' : ''}`}>
                   <div className="water-liquid">
                     <div className="water-wave"></div>
