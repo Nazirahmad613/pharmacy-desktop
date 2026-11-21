@@ -1000,58 +1000,6 @@ export default function TreatmentPage() {
   const nextStep = currentProgress.currentStepIndex < STEPS.length - 1 ? STEPS[currentProgress.currentStepIndex + 1] : null;
   const prevStep = currentProgress.currentStepIndex > 1 ? STEPS[currentProgress.currentStepIndex - 1] : null;
 
-  const renderPatientInfoHeader = () => {
-    if (!selectedRegistration) return null;
-    const patient = selectedRegistration.patient || selectedRegistration;
-    const firstName = patient.first_name || '';
-    const lastName = patient.last_name || '';
-    const fullName = `${firstName} ${lastName}`.trim() || 'نامشخص';
-    const nationalId = patient.national_id || selectedRegistration.patient?.national_id || '-';
-    const visitNumber = selectedRegistration.visit_number || selectedRegistration.id || selectedRegistration.reg_id || '-';
-    const phone = patient.phone || patient.mobile || '-';
-    const gender = patient.gender === 'male' ? 'مرد' : patient.gender === 'female' ? 'زن' : '-';
-    const isEm = currentProgress.isEmergency;
-    const emMeta = currentProgress.emergencyMeta || {};
-
-    return (
-      <div className="glass-panel" style={{
-        padding: '18px 24px',
-        borderRadius: '16px',
-        marginBottom: '24px',
-        borderRight: isEm ? '5px solid #dc2626' : '5px solid #0284c7',
-        background: isEm ? 'rgba(254, 226, 226, 0.4)' : undefined,
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px',
-          borderBottom: '1px solid rgba(226, 232, 240, 0.7)', paddingBottom: '12px',
-        }}>
-          <span style={{ fontSize: '24px' }}>{isEm ? '🚨' : '👤'}</span>
-          <h4 style={{ color: isEm ? '#b91c1c' : '#0369a1', margin: 0, fontSize: '16px', fontWeight: '800' }}>
-            {isEm ? 'مریض اضطراری' : 'معلومات و مشخصات مریض'}
-          </h4>
-          {isEm && emMeta.triage_score != null && (
-            <span style={{
-              background: '#dc2626', color: 'white', padding: '2px 10px',
-              borderRadius: '12px', fontSize: '11px', fontWeight: '700',
-            }}>
-              درجه عاجلیت: {emMeta.triage_score}
-              {emMeta.triage_level ? ` (${emMeta.triage_level})` : ''}
-            </span>
-          )}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
-          <div className="glass-stat-card"><div className="stat-label">👤 نام و تخلص</div><div className="stat-value">{fullName}</div></div>
-          <div className="glass-stat-card"><div className="stat-label">🆔 شماره تذکره</div><div className="stat-value">{nationalId}</div></div>
-          <div className="glass-stat-card"><div className="stat-label">📋 شماره مراجعه</div><div className="stat-value" style={{ color: '#0284c7' }}>#{visitNumber}</div></div>
-          <div className="glass-stat-card"><div className="stat-label">⚧ جنسیت</div><div className="stat-value">{gender}</div></div>
-          {phone !== '-' && <div className="glass-stat-card"><div className="stat-label">📞 شماره تماس</div><div className="stat-value">{phone}</div></div>}
-          {isEm && emMeta.emergency_id && <div className="glass-stat-card"><div className="stat-label">🚨 شماره پرونده اضطراری</div><div className="stat-value" style={{ color: '#b91c1c' }}>{emMeta.emergency_id}</div></div>}
-          {isEm && emMeta.chief_complaint && <div className="glass-stat-card" style={{ gridColumn: '1 / -1' }}><div className="stat-label">📝 شکایت اصلی</div><div className="stat-value">{emMeta.chief_complaint}</div></div>}
-        </div>
-      </div>
-    );
-  };
-
   const renderTabContent = () => {
     if (activeTab === 'queue') {
       return (
@@ -1187,107 +1135,86 @@ export default function TreatmentPage() {
     switch (activeTab) {
       case "examination":
         return (
-          <>
-            {renderPatientInfoHeader()}
-            <ExaminationForm
-              registration={selectedRegistration}
-              {...commonProps}
-              savedData={patientData.examination?.data || null}
-              allExaminations={patientData.examination?.allExaminations || []}
-              isExamined={patientData.examination?.isExamined || false}
-              setIsExamined={(val) => updatePatientData(regId, 'examination', { ...patientData.examination, isExamined: val })}
-              setAllExaminations={(exams) => updatePatientData(regId, 'examination', { ...patientData.examination, allExaminations: exams, isExamined: exams && exams.length > 0 })}
-            />
-          </>
+          <ExaminationForm
+            registration={selectedRegistration}
+            {...commonProps}
+            savedData={patientData.examination?.data || null}
+            allExaminations={patientData.examination?.allExaminations || []}
+            isExamined={patientData.examination?.isExamined || false}
+            setIsExamined={(val) => updatePatientData(regId, 'examination', { ...patientData.examination, isExamined: val })}
+            setAllExaminations={(exams) => updatePatientData(regId, 'examination', { ...patientData.examination, allExaminations: exams, isExamined: exams && exams.length > 0 })}
+          />
         );
       case "laboratory": {
         const labData = patientData.laboratory || { data: null, allTests: [], isRequested: false, hasResult: false };
         return (
-          <>
-            {renderPatientInfoHeader()}
-            <LaboratoryRequest
-              registration={selectedRegistration}
-              {...commonProps}
-              savedTests={labData.data}
-              allTests={labData.allTests || []}
-              isLabRequested={labData.isRequested || false}
-              hasLabResult={labData.hasResult || false}
-              setIsLabRequested={(val) => updatePatientData(regId, 'laboratory', { ...labData, isRequested: val })}
-              setAllTests={(tests) => {
-                const hasResult = tests?.some(t => t.has_result === true && t.result_details) || false;
-                updatePatientData(regId, 'laboratory', {
-                  ...labData, allTests: tests || [], isRequested: (tests || []).length > 0,
-                  data: (tests || []).length > 0 ? tests[0] : null, hasResult,
-                });
-              }}
-            />
-          </>
+          <LaboratoryRequest
+            registration={selectedRegistration}
+            {...commonProps}
+            savedTests={labData.data}
+            allTests={labData.allTests || []}
+            isLabRequested={labData.isRequested || false}
+            hasLabResult={labData.hasResult || false}
+            setIsLabRequested={(val) => updatePatientData(regId, 'laboratory', { ...labData, isRequested: val })}
+            setAllTests={(tests) => {
+              const hasResult = tests?.some(t => t.has_result === true && t.result_details) || false;
+              updatePatientData(regId, 'laboratory', {
+                ...labData, allTests: tests || [], isRequested: (tests || []).length > 0,
+                data: (tests || []).length > 0 ? tests[0] : null, hasResult,
+              });
+            }}
+          />
         );
       }
       case "radiology": {
         const radData = patientData.radiology || { data: null, allRadiology: [], isRequested: false, hasResult: false };
         return (
-          <>
-            {renderPatientInfoHeader()}
-            <RadiologyRequest
-              registration={selectedRegistration}
-              {...commonProps}
-              savedRadiology={radData.data}
-              allRadiology={radData.allRadiology || []}
-              isRadiologyRequested={radData.isRequested || false}
-              hasRadiologyResult={radData.hasResult || false}
-              setIsRadiologyRequested={(val) => updatePatientData(regId, 'radiology', { ...radData, isRequested: val })}
-              setAllRadiology={(items) => {
-                const hasResult = items?.some(t => t.has_result === true) || false;
-                updatePatientData(regId, 'radiology', {
-                  ...radData, allRadiology: items || [], isRequested: (items || []).length > 0,
-                  data: (items || []).length > 0 ? items[0] : null, hasResult,
-                });
-              }}
-            />
-          </>
+          <RadiologyRequest
+            registration={selectedRegistration}
+            {...commonProps}
+            savedRadiology={radData.data}
+            allRadiology={radData.allRadiology || []}
+            isRadiologyRequested={radData.isRequested || false}
+            hasRadiologyResult={radData.hasResult || false}
+            setIsRadiologyRequested={(val) => updatePatientData(regId, 'radiology', { ...radData, isRequested: val })}
+            setAllRadiology={(items) => {
+              const hasResult = items?.some(t => t.has_result === true) || false;
+              updatePatientData(regId, 'radiology', {
+                ...radData, allRadiology: items || [], isRequested: (items || []).length > 0,
+                data: (items || []).length > 0 ? items[0] : null, hasResult,
+              });
+            }}
+          />
         );
       }
       case "operation":
         return (
-          <>
-            {renderPatientInfoHeader()}
-            <OperationRoom
-              api={api}
-              registration={selectedRegistration}
-              registrationId={selectedPatientId}
-              patientId={selectedRegistration?.patient_id || selectedRegistration?.patient?.id}
-              regId={regId}
-              onSelectPatient={handleSelectPatient}
-              {...commonProps}
-            />
-          </>
+          <OperationRoom
+            api={api}
+            registration={selectedRegistration}
+            registrationId={selectedPatientId}
+            patientId={selectedRegistration?.patient_id || selectedRegistration?.patient?.id}
+            regId={regId}
+            onSelectPatient={handleSelectPatient}
+            {...commonProps}
+          />
         );
       case "pres_insert":
         return (
-          <>
-            {renderPatientInfoHeader()}
-            <PrescriptionRequest registration={selectedRegistration} regId={regId} {...commonProps} />
-          </>
+          <PrescriptionRequest registration={selectedRegistration} regId={regId} {...commonProps} />
         );
       case "followup":
         return (
-          <>
-            {renderPatientInfoHeader()}
-            <FollowUp registration={selectedRegistration} {...commonProps} />
-          </>
+          <FollowUp registration={selectedRegistration} {...commonProps} />
         );
       case "admission":
         return (
-          <>
-            {renderPatientInfoHeader()}
-            <Admission
-              registration={selectedRegistration}
-              {...commonProps}
-              allAdmissionRequests={allAdmissionRequests}
-              fetchAllAdmissions={fetchAllAdmissions}
-            />
-          </>
+          <Admission
+            registration={selectedRegistration}
+            {...commonProps}
+            allAdmissionRequests={allAdmissionRequests}
+            fetchAllAdmissions={fetchAllAdmissions}
+          />
         );
       default: return null;
     }

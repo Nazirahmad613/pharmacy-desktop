@@ -104,16 +104,17 @@ const formatCurrency = (n) =>
 const formatNumber = (n) =>
   new Intl.NumberFormat("fa-AF").format(Number(n) || 0);
 
-// ✅ کارت آمار
+// ✅ کارت آمار (پس‌زمینه سفید)
 function StatCard({ title, value, subtitle, icon, color = "#3b82f6" }) {
   return (
     <Card
       sx={{
-        background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+        background: "#ffffff",
         border: `1px solid ${color}40`,
         borderRadius: "12px",
         transition: "all 0.2s",
         height: "100%",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
         "&:hover": {
           transform: "translateY(-2px)",
           boxShadow: `0 8px 24px ${color}30`,
@@ -123,14 +124,14 @@ function StatCard({ title, value, subtitle, icon, color = "#3b82f6" }) {
       <CardContent>
         <Box display="flex" justifyContent="space-between" alignItems="flex-start">
           <Box flex={1}>
-            <Typography sx={{ color: "#94a3b8", fontSize: "13px", mb: 1 }}>
+            <Typography sx={{ color: "#64748b", fontSize: "13px", mb: 1 }}>
               {title}
             </Typography>
             <Typography sx={{ color: color, fontSize: "24px", fontWeight: "bold", mb: 0.5 }}>
               {value}
             </Typography>
             {subtitle && (
-              <Typography sx={{ color: "#64748b", fontSize: "12px" }}>
+              <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>
                 {subtitle}
               </Typography>
             )}
@@ -244,7 +245,7 @@ export default function PayrollDashboard() {
   const recentPayments = dashboard.recentPayments || [];
 
   return (
-    <Box dir="rtl" sx={{ p: 3, background: "#0f172a", minHeight: "100vh" }}>
+    <Box dir="rtl" sx={{ p: 3, background: "#ffffff", minHeight: "100vh" }}>
       {parentPath && (
         <Box mb={2}>
           <Button
@@ -252,9 +253,9 @@ export default function PayrollDashboard() {
             startIcon={<ArrowBackIcon />}
             onClick={() => navigate(parentPath)}
             sx={{
-              color: "#60a5fa",
+              color: "#2563eb",
               borderColor: "#3b82f6",
-              "&:hover": { borderColor: "#60a5fa", background: "rgba(59,130,246,0.1)" },
+              "&:hover": { borderColor: "#2563eb", background: "rgba(59,130,246,0.1)" },
             }}
           >
             بازگشت به صفحه قبلی
@@ -272,12 +273,12 @@ export default function PayrollDashboard() {
         gap={2}
       >
         <Box>
-          <Typography variant="h4" fontWeight="bold" sx={{ color: "#fff" }}>
+          <Typography variant="h4" fontWeight="bold" sx={{ color: "#0f172a" }}>
             📊 داشبورد معاشات
           </Typography>
           <Box display="flex" alignItems="center" gap={1} sx={{ mt: 0.75 }}>
-            <CalendarMonthIcon sx={{ color: "#60a5fa", fontSize: 18 }} />
-            <Typography variant="body2" sx={{ color: "#94a3b8" }}>
+            <CalendarMonthIcon sx={{ color: "#2563eb", fontSize: 18 }} />
+            <Typography variant="body2" sx={{ color: "#64748b" }}>
               دوره انتخابی:
             </Typography>
             <Chip
@@ -296,7 +297,7 @@ export default function PayrollDashboard() {
               <Button
                 size="small"
                 onClick={handleGoToCurrentPeriod}
-                sx={{ color: "#60a5fa", fontSize: "11px", textTransform: "none" }}
+                sx={{ color: "#2563eb", fontSize: "11px", textTransform: "none" }}
               >
                 (برگشت به دوره جاری)
               </Button>
@@ -309,10 +310,10 @@ export default function PayrollDashboard() {
           onClick={handleRefresh}
           disabled={loading}
           sx={{
-            color: "#60a5fa",
+            color: "#2563eb",
             borderColor: "#3b82f6",
             "&:hover": {
-              borderColor: "#60a5fa",
+              borderColor: "#2563eb",
               background: "rgba(59, 130, 246, 0.1)",
             },
           }}
@@ -324,10 +325,11 @@ export default function PayrollDashboard() {
       {/* فیلتر ماه و سال */}
       <Card
         sx={{
-          background: "#1e293b",
-          border: "1px solid #334155",
+          background: "#f8fafc",
+          border: "1px solid #e2e8f0",
           borderRadius: "12px",
           mb: 3,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
         }}
       >
         <CardContent>
@@ -342,14 +344,14 @@ export default function PayrollDashboard() {
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 sx={{
                   "& .MuiOutlinedInput-root": {
-                    color: "#fff",
-                    background: "#0f172a",
-                    "& fieldset": { borderColor: "#334155" },
-                    "&:hover fieldset": { borderColor: "#60a5fa" },
-                    "&.Mui-focused fieldset": { borderColor: "#3b82f6" },
+                    color: "#0f172a",
+                    background: "#ffffff",
+                    "& fieldset": { borderColor: "#cbd5e1" },
+                    "&:hover fieldset": { borderColor: "#3b82f6" },
+                    "&.Mui-focused fieldset": { borderColor: "#2563eb" },
                   },
-                  "& .MuiInputLabel-root": { color: "#94a3b8" },
-                  "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
+                  "& .MuiInputLabel-root": { color: "#64748b" },
+                  "& .MuiInputLabel-root.Mui-focused": { color: "#2563eb" },
                 }}
               >
                 {MONTHS.map((m) => (
@@ -367,14 +369,14 @@ export default function PayrollDashboard() {
                 onChange={(e) => setSelectedYear(e.target.value)}
                 sx={{
                   "& .MuiOutlinedInput-root": {
-                    color: "#fff",
-                    background: "#0f172a",
-                    "& fieldset": { borderColor: "#334155" },
-                    "&:hover fieldset": { borderColor: "#60a5fa" },
-                    "&.Mui-focused fieldset": { borderColor: "#3b82f6" },
+                    color: "#0f172a",
+                    background: "#ffffff",
+                    "& fieldset": { borderColor: "#cbd5e1" },
+                    "&:hover fieldset": { borderColor: "#3b82f6" },
+                    "&.Mui-focused fieldset": { borderColor: "#2563eb" },
                   },
-                  "& .MuiInputLabel-root": { color: "#94a3b8" },
-                  "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
+                  "& .MuiInputLabel-root": { color: "#64748b" },
+                  "& .MuiInputLabel-root.Mui-focused": { color: "#2563eb" },
                 }}
               >
                 {yearOptions.map((y) => (
@@ -389,8 +391,8 @@ export default function PayrollDashboard() {
                 onClick={handleGoToCurrentPeriod}
                 disabled={isCurrentPeriod}
                 sx={{
-                  color: isCurrentPeriod ? "#64748b" : "#10b981",
-                  borderColor: isCurrentPeriod ? "#334155" : "#10b981",
+                  color: isCurrentPeriod ? "#94a3b8" : "#10b981",
+                  borderColor: isCurrentPeriod ? "#cbd5e1" : "#10b981",
                   "&:hover": {
                     borderColor: "#10b981",
                     background: "rgba(16, 185, 129, 0.1)",
@@ -401,7 +403,7 @@ export default function PayrollDashboard() {
               </Button>
             </Grid>
             <Grid item xs={12} md={4} sx={{ textAlign: { xs: "right", md: "left" } }}>
-              <Typography sx={{ color: "#94a3b8", fontSize: "13px" }}>
+              <Typography sx={{ color: "#64748b", fontSize: "13px" }}>
                 {isCurrentPeriod
                   ? "✅ در حال مشاهده دوره جاری"
                   : `📅 در حال مشاهده ${selectedMonth} ${selectedYear}`}
@@ -467,14 +469,15 @@ export default function PayrollDashboard() {
         <Grid item xs={12} md={4}>
           <Card
             sx={{
-              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
-              border: "1px solid #334155",
+              background: "#ffffff",
+              border: "1px solid #e2e8f0",
               borderRadius: "12px",
               height: "100%",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
             }}
           >
             <CardContent>
-              <Typography sx={{ color: "#94a3b8", fontSize: "13px", mb: 1.5 }}>
+              <Typography sx={{ color: "#64748b", fontSize: "13px", mb: 1.5 }}>
                 پیشرفت پرداخت — {selectedMonth} {selectedYear}
               </Typography>
               <Box display="flex" alignItems="center" gap={2} mb={1.5}>
@@ -489,13 +492,13 @@ export default function PayrollDashboard() {
                 sx={{
                   height: 8,
                   borderRadius: 4,
-                  backgroundColor: "#334155",
+                  backgroundColor: "#e2e8f0",
                   "& .MuiLinearProgress-bar": {
                     background: "linear-gradient(90deg, #10b981, #059669)",
                   },
                 }}
               />
-              <Typography sx={{ color: "#64748b", fontSize: "12px", mt: 1.5 }}>
+              <Typography sx={{ color: "#94a3b8", fontSize: "12px", mt: 1.5 }}>
                 از {formatCurrency(stats.totalSalaries)} مجموع معاشات ماهانه
               </Typography>
             </CardContent>
@@ -504,21 +507,22 @@ export default function PayrollDashboard() {
         <Grid item xs={12} md={4}>
           <Card
             sx={{
-              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
-              border: "1px solid #334155",
+              background: "#ffffff",
+              border: "1px solid #e2e8f0",
               borderRadius: "12px",
               height: "100%",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
             }}
           >
             <CardContent>
-              <Typography sx={{ color: "#94a3b8", fontSize: "13px", mb: 2 }}>
+              <Typography sx={{ color: "#64748b", fontSize: "13px", mb: 2 }}>
                 خلاصه وضعیت
               </Typography>
               <Box display="flex" flexDirection="column" gap={1.5}>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Box display="flex" alignItems="center" gap={1}>
                     <PaymentsIcon sx={{ color: "#10b981", fontSize: 18 }} />
-                    <Typography sx={{ color: "#e2e8f0", fontSize: "13px" }}>
+                    <Typography sx={{ color: "#334155", fontSize: "13px" }}>
                       پرداخت شده
                     </Typography>
                   </Box>
@@ -526,11 +530,11 @@ export default function PayrollDashboard() {
                     {formatCurrency(stats.paidThisMonth)}
                   </Typography>
                 </Box>
-                <Divider sx={{ borderColor: "#334155" }} />
+                <Divider sx={{ borderColor: "#e2e8f0" }} />
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Box display="flex" alignItems="center" gap={1}>
                     <PendingIcon sx={{ color: "#f59e0b", fontSize: 18 }} />
-                    <Typography sx={{ color: "#e2e8f0", fontSize: "13px" }}>
+                    <Typography sx={{ color: "#334155", fontSize: "13px" }}>
                       در انتظار
                     </Typography>
                   </Box>
@@ -538,11 +542,11 @@ export default function PayrollDashboard() {
                     {formatCurrency(stats.pendingPayments)}
                   </Typography>
                 </Box>
-                <Divider sx={{ borderColor: "#334155" }} />
+                <Divider sx={{ borderColor: "#e2e8f0" }} />
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Box display="flex" alignItems="center" gap={1}>
                     <TrendingDownIcon sx={{ color: "#ec4899", fontSize: 18 }} />
-                    <Typography sx={{ color: "#e2e8f0", fontSize: "13px" }}>
+                    <Typography sx={{ color: "#334155", fontSize: "13px" }}>
                       پیش‌پرداخت‌ها
                     </Typography>
                   </Box>
@@ -559,15 +563,16 @@ export default function PayrollDashboard() {
       {/* آخرین پرداخت‌ها */}
       <Card
         sx={{
-          background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
-          border: "1px solid #334155",
+          background: "#ffffff",
+          border: "1px solid #e2e8f0",
           borderRadius: "12px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
         }}
       >
         <CardContent>
           <Box display="flex" alignItems="center" gap={1} mb={2} flexWrap="wrap">
-            <ReceiptLongIcon sx={{ color: "#60a5fa" }} />
-            <Typography variant="h6" sx={{ color: "#fff", fontWeight: "bold" }}>
+            <ReceiptLongIcon sx={{ color: "#2563eb" }} />
+            <Typography variant="h6" sx={{ color: "#0f172a", fontWeight: "bold" }}>
               آخرین پرداخت‌ها
             </Typography>
             <Chip
@@ -575,14 +580,14 @@ export default function PayrollDashboard() {
               size="small"
               sx={{
                 background: "rgba(59, 130, 246, 0.15)",
-                color: "#60a5fa",
+                color: "#2563eb",
                 fontWeight: "bold",
                 fontSize: "11px",
                 ml: 1,
               }}
             />
           </Box>
-          <Divider sx={{ borderColor: "#334155", mb: 2 }} />
+          <Divider sx={{ borderColor: "#e2e8f0", mb: 2 }} />
 
           {recentPayments.length === 0 ? (
             <Alert severity="info" sx={{ mt: 1 }}>
@@ -593,26 +598,26 @@ export default function PayrollDashboard() {
             <TableContainer component={Paper} sx={{ background: "transparent", boxShadow: "none" }}>
               <Table size="small">
                 <TableHead>
-                  <TableRow sx={{ background: "#0f172a" }}>
-                    <TableCell sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                  <TableRow sx={{ background: "#f8fafc" }}>
+                    <TableCell sx={{ color: "#2563eb", fontWeight: "bold", borderBottom: "1px solid #e2e8f0" }}>
                       کارمند
                     </TableCell>
-                    <TableCell sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                    <TableCell sx={{ color: "#2563eb", fontWeight: "bold", borderBottom: "1px solid #e2e8f0" }}>
                       تذکره
                     </TableCell>
-                    <TableCell sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                    <TableCell sx={{ color: "#2563eb", fontWeight: "bold", borderBottom: "1px solid #e2e8f0" }}>
                       نوعیت حساب
                     </TableCell>
-                    <TableCell sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                    <TableCell sx={{ color: "#2563eb", fontWeight: "bold", borderBottom: "1px solid #e2e8f0" }}>
                       بخش
                     </TableCell>
-                    <TableCell align="right" sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                    <TableCell align="right" sx={{ color: "#2563eb", fontWeight: "bold", borderBottom: "1px solid #e2e8f0" }}>
                       مبلغ
                     </TableCell>
-                    <TableCell align="right" sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                    <TableCell align="right" sx={{ color: "#2563eb", fontWeight: "bold", borderBottom: "1px solid #e2e8f0" }}>
                       تاریخ
                     </TableCell>
-                    <TableCell align="center" sx={{ color: "#60a5fa", fontWeight: "bold", borderBottom: "1px solid #334155" }}>
+                    <TableCell align="center" sx={{ color: "#2563eb", fontWeight: "bold", borderBottom: "1px solid #e2e8f0" }}>
                       وضعیت
                     </TableCell>
                   </TableRow>
@@ -622,40 +627,40 @@ export default function PayrollDashboard() {
                     <TableRow
                       key={p.id}
                       sx={{
-                        "&:hover": { background: "#0f172a" },
+                        "&:hover": { background: "#f8fafc" },
                         transition: "background 0.2s",
                       }}
                     >
-                      <TableCell sx={{ color: "#fff", borderBottom: "1px solid #1e293b" }}>
+                      <TableCell sx={{ color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>
                         <Box display="flex" alignItems="center" gap={1}>
                           <Avatar sx={{ width: 30, height: 30, bgcolor: "#8b5cf6", fontSize: 13 }}>
                             {(p.name || "?")[0]}
                           </Avatar>
-                          <Typography sx={{ color: "#fff", fontSize: "13px", fontWeight: "bold" }}>
+                          <Typography sx={{ color: "#0f172a", fontSize: "13px", fontWeight: "bold" }}>
                             {p.name || "—"}
                           </Typography>
                         </Box>
                       </TableCell>
-                      <TableCell sx={{ color: "#e2e8f0", borderBottom: "1px solid #1e293b", fontFamily: "monospace", fontSize: "12px" }}>
+                      <TableCell sx={{ color: "#334155", borderBottom: "1px solid #f1f5f9", fontFamily: "monospace", fontSize: "12px" }}>
                         {p.tazkiraNumber || "—"}
                       </TableCell>
-                      <TableCell sx={{ borderBottom: "1px solid #1e293b" }}>
+                      <TableCell sx={{ borderBottom: "1px solid #f1f5f9" }}>
                         <Chip
                           label={getAccountTypeDisplay(p)}
                           size="small"
                           sx={{ background: "#3b82f6", color: "#fff", fontWeight: "bold", fontSize: "11px" }}
                         />
                       </TableCell>
-                      <TableCell sx={{ color: "#e2e8f0", borderBottom: "1px solid #1e293b", fontSize: "13px" }}>
+                      <TableCell sx={{ color: "#334155", borderBottom: "1px solid #f1f5f9", fontSize: "13px" }}>
                         {getDepartmentDisplay(p)}
                       </TableCell>
-                      <TableCell align="right" sx={{ color: "#10b981", borderBottom: "1px solid #1e293b", fontWeight: "bold", fontSize: "13px" }}>
+                      <TableCell align="right" sx={{ color: "#10b981", borderBottom: "1px solid #f1f5f9", fontWeight: "bold", fontSize: "13px" }}>
                         {formatCurrency(p.amount)}
                       </TableCell>
-                      <TableCell align="right" sx={{ color: "#94a3b8", borderBottom: "1px solid #1e293b", fontSize: "12px" }}>
+                      <TableCell align="right" sx={{ color: "#64748b", borderBottom: "1px solid #f1f5f9", fontSize: "12px" }}>
                         {p.date || "—"}
                       </TableCell>
-                      <TableCell align="center" sx={{ borderBottom: "1px solid #1e293b" }}>
+                      <TableCell align="center" sx={{ borderBottom: "1px solid #f1f5f9" }}>
                         <Chip
                           icon={p.status === "پرداخت شده" ? <CheckCircleIcon sx={{ fontSize: 14 }} /> : <PendingIcon sx={{ fontSize: 14 }} />}
                           label={p.status}

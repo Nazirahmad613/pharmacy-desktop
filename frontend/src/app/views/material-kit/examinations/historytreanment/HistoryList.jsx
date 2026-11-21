@@ -1149,7 +1149,7 @@ export default function HistoryList({ api, onSelectHistory }) {
             {/* 👤 معلومات بیمار */}
             <div style={styles.sectionCard}>
               <h3 style={{ margin: "0 0 12px 0", color: C.success, fontSize: "14px", borderBottom: `1px solid ${C.border}`, paddingBottom: '8px' }}>
-                👤 معلومات بیمار
+                👤اطلاعات مریض  
               </h3>
               <div style={styles.infoGrid}>
                 <div style={styles.infoItem}>

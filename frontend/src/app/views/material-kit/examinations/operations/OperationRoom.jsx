@@ -25,6 +25,7 @@ export default function OperationFeeTab({ api, regId, registration }) {
   const [debugErrors, setDebugErrors] = useState(null);
   const [activeTab, setActiveTab] = useState('unpaid');
   const [doctorSignature, setDoctorSignature] = useState("دکتر علی محمدی");
+  const [patientInfo, setPatientInfo] = useState(null);
 
   const effectiveRegId = regId || registration?.reg_id;
 
@@ -39,14 +40,50 @@ export default function OperationFeeTab({ api, regId, registration }) {
     priority: "normal"
   });
 
+  // 🎨 پالت رنگ ملایم برای چشم (هماهنگ با LaboratoryRequest)
+  const C = {
+    pageBg: '#f1f5f9',
+    cardBg: '#ffffff',
+    softBg: '#f8fafc',
+    border: '#e2e8f0',
+    textPrimary: '#1e293b',
+    textSecondary: '#64748b',
+    textMuted: '#94a3b8',
+    accent: '#3b82f6',
+    accentSoft: '#eff6ff',
+    success: '#10b981',
+    successSoft: '#ecfdf5',
+    warning: '#f59e0b',
+    warningSoft: '#fffbeb',
+    danger: '#ef4444',
+    dangerSoft: '#fef2f2',
+    purple: '#8b5cf6',
+    purpleSoft: '#f5f3ff',
+    shadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
+    shadowMd: '0 2px 8px rgba(15, 23, 42, 0.08)',
+  };
+
   useEffect(() => {
     if (effectiveRegId) {
       fetchAllData();
+      fetchPatientInfo();
     } else {
       setOperationRequests([]);
       setFeeRecords([]);
+      setPatientInfo(null);
     }
   }, [effectiveRegId]);
+
+  const fetchPatientInfo = async () => {
+    if (!effectiveRegId) return;
+    try {
+      const response = await api.get(`/registrations/${effectiveRegId}`);
+      const data = response.data?.data || response.data;
+      setPatientInfo(data);
+    } catch (err) {
+      console.error("خطا در دریافت اطلاعات مریض:", err);
+    }
+  };
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -458,6 +495,12 @@ export default function OperationFeeTab({ api, regId, registration }) {
     return request.patient_name || 'نامشخص';
   };
 
+  const getGenderText = (gender) => {
+    if (!gender) return '-';
+    const genderMap = { 'male': '♂️ مرد', 'female': '♀️ زن', 'other': '⚧️ دیگر' };
+    return genderMap[gender] || gender;
+  };
+
   const toNumber = (value) => {
     const num = parseFloat(value);
     return isNaN(num) ? 0 : num;
@@ -509,12 +552,14 @@ export default function OperationFeeTab({ api, regId, registration }) {
       gap: "10px",
       marginBottom: "20px",
       padding: "15px",
-      background: "linear-gradient(135deg, #1f2937 0%, #111827 100%)",
+      background: C.cardBg,
       borderRadius: "10px",
+      border: `1px solid ${C.border}`,
+      boxShadow: C.shadow,
     },
     statBox: { textAlign: "center" },
     statValue: { fontSize: "20px", fontWeight: "bold" },
-    statLabel: { fontSize: "11px", color: "#9ca3af", marginTop: "2px" },
+    statLabel: { fontSize: "11px", color: C.textSecondary, marginTop: "2px" },
     filters: {
       display: "flex",
       gap: "10px",
@@ -524,12 +569,14 @@ export default function OperationFeeTab({ api, regId, registration }) {
     },
     filterBtn: {
       padding: "8px 16px",
-      border: "1px solid #e5e7eb",
+      border: `1px solid ${C.border}`,
       borderRadius: "8px",
       cursor: "pointer",
       fontSize: "13px",
-      background: "white",
+      background: C.cardBg,
+      color: C.textPrimary,
       transition: "all 0.2s",
+      boxShadow: C.shadow,
     },
     filterBtnActive: {
       background: "#10b981",
@@ -538,35 +585,37 @@ export default function OperationFeeTab({ api, regId, registration }) {
     },
     searchInput: {
       padding: "8px 16px",
-      border: "1px solid #e5e7eb",
+      border: `1px solid ${C.border}`,
       borderRadius: "8px",
       fontSize: "14px",
       minWidth: "250px",
       flex: 1,
-      background: "white",
-      color: "#1f2937",
+      background: C.cardBg,
+      color: C.textPrimary,
+      outline: "none",
     },
     table: {
       width: "100%",
       borderCollapse: "collapse",
       fontSize: "13px",
-      background: "white",
+      background: C.cardBg,
       borderRadius: "10px",
       overflow: "hidden",
+      boxShadow: C.shadow,
     },
     th: {
       padding: "12px",
       textAlign: "right",
-      background: "#f9fafb",
-      color: "#374151",
+      background: C.softBg,
+      color: C.textPrimary,
       fontSize: "13px",
       fontWeight: "bold",
-      borderBottom: "2px solid #e5e7eb",
+      borderBottom: `2px solid ${C.border}`,
     },
     td: {
       padding: "12px",
-      borderBottom: "1px solid #f3f4f6",
-      color: "#1f2937",
+      borderBottom: `1px solid ${C.border}`,
+      color: C.textPrimary,
     },
     btn: {
       padding: "6px 12px",
@@ -580,7 +629,7 @@ export default function OperationFeeTab({ api, regId, registration }) {
     modal: {
       position: "fixed",
       top: 0, left: 0, right: 0, bottom: 0,
-      background: "rgba(0,0,0,0.5)",
+      background: "rgba(15, 23, 42, 0.4)",
       display: "flex",
       justifyContent: "center",
       alignItems: "center",
@@ -588,37 +637,98 @@ export default function OperationFeeTab({ api, regId, registration }) {
       padding: "16px",
     },
     modalContent: {
-      background: "white",
+      background: C.cardBg,
       borderRadius: "12px",
       padding: "24px",
       maxWidth: "600px",
       width: "100%",
       maxHeight: "90vh",
       overflowY: "auto",
+      boxShadow: '0 20px 25px -5px rgba(15, 23, 42, 0.1)',
     },
     input: {
       padding: "10px 12px",
-      border: "1px solid #e5e7eb",
+      border: `1px solid ${C.border}`,
       borderRadius: "8px",
       fontSize: "14px",
       width: "100%",
       boxSizing: "border-box",
-      background: "white",
-      color: "#1f2937",
+      background: C.cardBg,
+      color: C.textPrimary,
+      outline: "none",
     },
     label: {
       display: "block",
       fontSize: "12px",
-      color: "#374151",
+      color: C.textPrimary,
       fontWeight: "bold",
       marginBottom: "6px",
       marginTop: "12px",
     },
+    infoCard: {
+      background: C.cardBg,
+      borderRadius: "10px",
+      padding: "15px 20px",
+      marginBottom: "15px",
+      border: `1px solid ${C.border}`,
+      boxShadow: C.shadow,
+    },
+    infoGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+      gap: "10px 15px",
+    },
+    infoLabel: { color: C.textSecondary, fontSize: "11px", display: "block", marginBottom: "3px" },
+    infoValue: { color: C.textPrimary, fontWeight: "bold", fontSize: "14px" },
   };
+
+  const patient = patientInfo?.patient || registration?.patient || {};
+  const visitNumber = patientInfo?.visit_number || registration?.visit_number || '-';
+  const barcode = patientInfo?.barcode || patient?.barcode || null;
 
   // ============ Render ============
   return (
-    <div style={styles.container}>
+    <div style={{ ...styles.container, background: C.pageBg, minHeight: '100vh', padding: '20px', borderRadius: '10px' }}>
+      <h3 style={{ color: C.textPrimary, marginBottom: '15px', borderBottom: `2px solid ${C.border}`, paddingBottom: '10px', fontSize: '16px', fontWeight: 'bold' }}>
+        🔪 عملیات و فیس‌ها
+      </h3>
+
+      {/* اطلاعات مریض */}
+      <div style={styles.infoCard}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: `1px solid ${C.border}`, paddingBottom: '8px' }}>
+          <h5 style={{ color: C.textPrimary, margin: 0, fontSize: '14px' }}>👤 اطلاعات مریض</h5>
+          {loading && <span style={{ color: C.textSecondary, fontSize: '11px' }}>⏳ در حال بارگذاری...</span>}
+        </div>
+        <div style={styles.infoGrid}>
+          <div>
+            <span style={styles.infoLabel}>نام کامل</span>
+            <div style={styles.infoValue}>{patient.first_name || ''} {patient.last_name || ''}</div>
+          </div>
+          <div>
+            <span style={styles.infoLabel}>کد ملی</span>
+            <div style={styles.infoValue}>{patient.national_id || '-'}</div>
+          </div>
+          <div>
+            <span style={styles.infoLabel}>سن</span>
+            <div style={styles.infoValue}>{patient.age ? `${patient.age} سال` : '-'}</div>
+          </div>
+          <div>
+            <span style={styles.infoLabel}>جنسیت</span>
+            <div style={styles.infoValue}>{getGenderText(patient.gender)}</div>
+          </div>
+          <div>
+            <span style={styles.infoLabel}>شماره مراجعه</span>
+            <div style={{ ...styles.infoValue, color: '#b45309' }}>{visitNumber}</div>
+          </div>
+          {barcode && (
+            <div>
+              <span style={styles.infoLabel}>بارکد</span>
+              <div style={{ ...styles.infoValue, color: '#b45309', fontFamily: 'monospace' }}>{barcode}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* آمار */}
       <div style={styles.statsGrid}>
         <div style={styles.statBox}>
@@ -701,11 +811,11 @@ export default function OperationFeeTab({ api, regId, registration }) {
       {activeTab === 'unpaid' && (
         <>
           {loading ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "#6b7280", background: "white", borderRadius: "10px" }}>
+            <div style={{ padding: "40px", textAlign: "center", color: C.textSecondary, background: C.cardBg, borderRadius: "10px", border: `1px solid ${C.border}` }}>
               ⏳ در حال بارگذاری...
             </div>
           ) : filteredUnpaid.length === 0 ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "#6b7280", background: "white", borderRadius: "10px" }}>
+            <div style={{ padding: "40px", textAlign: "center", color: C.textSecondary, background: C.cardBg, borderRadius: "10px", border: `1px solid ${C.border}` }}>
               <div style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
               <div>همه درخواست‌ها فیس دارند</div>
             </div>
@@ -731,7 +841,7 @@ export default function OperationFeeTab({ api, regId, registration }) {
                     <tr key={request.id || index}>
                       <td style={styles.td}>{index + 1}</td>
                       <td style={styles.td}>
-                        <code style={{ background: "#f3f4f6", padding: "3px 8px", borderRadius: "4px", fontSize: "12px" }}>
+                        <code style={{ background: C.softBg, padding: "3px 8px", borderRadius: "4px", fontSize: "12px", color: C.textPrimary }}>
                           #{request.reg_id || request.registration_id || '-'}
                         </code>
                       </td>
@@ -809,11 +919,11 @@ export default function OperationFeeTab({ api, regId, registration }) {
       {activeTab === 'paid' && (
         <>
           {loading ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "#6b7280", background: "white", borderRadius: "10px" }}>
+            <div style={{ padding: "40px", textAlign: "center", color: C.textSecondary, background: C.cardBg, borderRadius: "10px", border: `1px solid ${C.border}` }}>
               ⏳ در حال بارگذاری...
             </div>
           ) : filteredPaid.length === 0 ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "#6b7280", background: "white", borderRadius: "10px" }}>
+            <div style={{ padding: "40px", textAlign: "center", color: C.textSecondary, background: C.cardBg, borderRadius: "10px", border: `1px solid ${C.border}` }}>
               <div style={{ fontSize: "48px", marginBottom: "12px" }}>📭</div>
               <div>هیچ درخواست دارای فیس وجود ندارد</div>
             </div>
@@ -854,7 +964,7 @@ export default function OperationFeeTab({ api, regId, registration }) {
                       <tr key={request.id || index}>
                         <td style={styles.td}>{index + 1}</td>
                         <td style={styles.td}>
-                          <code style={{ background: "#f3f4f6", padding: "3px 8px", borderRadius: "4px", fontSize: "12px" }}>
+                          <code style={{ background: C.softBg, padding: "3px 8px", borderRadius: "4px", fontSize: "12px", color: C.textPrimary }}>
                             #{request.reg_id || request.registration_id || '-'}
                           </code>
                         </td>
@@ -1068,7 +1178,7 @@ export default function OperationFeeTab({ api, regId, registration }) {
         justifyContent: "center",
         marginTop: "30px",
         padding: "20px",
-        borderTop: "1px solid #e5e7eb"
+        borderTop: `1px solid ${C.border}`
       }}>
         <button
           onClick={handleOpenNewRequestForm}

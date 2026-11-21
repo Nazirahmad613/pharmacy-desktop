@@ -963,7 +963,7 @@ export default function Admission({
       {/* ====== وضعیت بیمار فعلی ====== */}
       <div style={styles.patientInfoCard}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-          <h3 style={{ margin: 0, color: "#059669", fontSize: "16px" }}>👤 معلومات بیمار فعلی</h3>
+          <h3 style={{ margin: 0, color: "#059669", fontSize: "16px" }}>👤معلومات مریض فعلی</h3>
           <span
             style={{
               padding: "4px 12px",

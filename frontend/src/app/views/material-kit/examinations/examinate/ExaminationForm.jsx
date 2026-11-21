@@ -601,7 +601,7 @@ export default function ExaminationForm({
       {/* ====== کارت معلومات بیمار ====== */}
       <div style={styles.patientInfoCard}>
         <h3 style={{ margin: "0 0 12px 0", color: "#059669", fontSize: "16px" }}>
-          👤 معلومات بیمار
+          👤 اطلاعات مریض
         </h3>
         <div style={styles.patientInfoGrid}>
           <div style={styles.infoItem}>
