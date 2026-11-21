@@ -1,7 +1,18 @@
-import { createContext, useContext, useState, useEffect } from "react";
+
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
+
 import axios from "axios";
 
-// ================= API =================
+// =====================================================
+// API CONFIGURATION
+// =====================================================
+
 const API_BASE_URL = "http://localhost:8000";
 
 const api = axios.create({
@@ -11,7 +22,10 @@ const api = axios.create({
   },
 });
 
-// ================= REQUEST INTERCEPTOR =================
+// =====================================================
+// REQUEST INTERCEPTOR
+// =====================================================
+
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -25,7 +39,10 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ================= RESPONSE INTERCEPTOR =================
+// =====================================================
+// RESPONSE INTERCEPTOR
+// =====================================================
+
 api.interceptors.response.use(
   (response) => response,
 
@@ -41,17 +58,28 @@ api.interceptors.response.use(
   }
 );
 
-// ================= CONTEXT =================
+// =====================================================
+// AUTH CONTEXT
+// =====================================================
+
 const AuthContext = createContext(null);
 
-// ================= GET AVATAR URL =================
- 
+// =====================================================
+// HELPER: AVATAR URL
+// =====================================================
 
 const getAvatarUrl = (userData) => {
   if (!userData) return null;
 
   if (userData.avatar_url) {
-    return `${userData.avatar_url}?t=${Date.now()}`;
+    if (
+      userData.avatar_url.startsWith("http://") ||
+      userData.avatar_url.startsWith("https://")
+    ) {
+      return `${userData.avatar_url}?t=${Date.now()}`;
+    }
+
+    return `${API_BASE_URL}${userData.avatar_url}?t=${Date.now()}`;
   }
 
   if (userData.avatar) {
@@ -70,60 +98,149 @@ const getAvatarUrl = (userData) => {
   return null;
 };
 
-// ================= PROCESS USER =================
+// =====================================================
+// HELPER: NORMALIZE MODULES
+// =====================================================
+
+const normalizeModules = (modules) => {
+  if (!Array.isArray(modules)) return [];
+
+  return [
+    ...new Set(
+      modules
+        .map((module) => {
+          if (typeof module === "string") {
+            return module;
+          }
+
+          if (module && typeof module === "object") {
+            return module.key || module.module_key || module.name;
+          }
+
+          return null;
+        })
+        .filter(Boolean)
+    ),
+  ];
+};
+
+// =====================================================
+// HELPER: PROCESS SYSTEM SETTINGS
+// =====================================================
+
+const processSystemSettings = (data = {}) => {
+  const settings =
+    data.system_settings ||
+    data.systemSettings ||
+    data.hospital_setup ||
+    data.hospitalSetup ||
+    data.settings ||
+    {};
+
+  const enabledModules = normalizeModules(
+    data.enabled_modules ??
+    data.enabledModules ??
+    settings.enabled_modules ??
+    settings.enabledModules
+  );
+
+  const setupCompleted =
+    data.setup_completed ??
+    data.setupCompleted ??
+    settings.setup_completed ??
+    settings.setupCompleted ??
+    false;
+
+  return {
+    ...settings,
+
+    hospital_name:
+      settings.hospital_name ??
+      settings.hospitalName ??
+      data.hospital_name ??
+      data.hospitalName ??
+      "",
+
+    logo:
+      settings.logo ??
+      data.logo ??
+      null,
+
+    enabled_modules: enabledModules,
+
+    setup_completed: Boolean(setupCompleted),
+  };
+};
+
+// =====================================================
+// PROCESS USER DATA
+// =====================================================
+
 const processUserData = (userData) => {
   if (!userData) return null;
 
-  // اگر قبلاً process شده بود
-  if (
-    userData.hasPermission &&
-    typeof userData.hasPermission === "function"
-  ) {
-    return userData;
-  }
+  // ===================================================
+  // ROLES
+  // ===================================================
 
-  // ================= ROLES =================
-  const userRoles =
-    userData.roles?.map((role) => role.name) || [];
+  const roles = Array.isArray(userData.roles)
+    ? userData.roles
+    : [];
 
-  // ================= PERMISSIONS =================
-  let allPermissions = [];
+  const userRoles = roles
+    .map((role) => {
+      if (typeof role === "string") return role;
 
-  // از roles
-  if (userData.roles && Array.isArray(userData.roles)) {
-    userData.roles.forEach((role) => {
+      return role?.name;
+    })
+    .filter(Boolean);
+
+  // ===================================================
+  // PERMISSIONS
+  // ===================================================
+
+  const allPermissions = [];
+
+  // Permissions from roles
+  roles.forEach((role) => {
+    if (!Array.isArray(role?.permissions)) return;
+
+    role.permissions.forEach((permission) => {
+      const permissionName =
+        typeof permission === "object"
+          ? permission?.name
+          : permission;
+
       if (
-        role.permissions &&
-        Array.isArray(role.permissions)
+        permissionName &&
+        !allPermissions.includes(permissionName)
       ) {
-        role.permissions.forEach((perm) => {
-          const permName =
-            typeof perm === "object" ? perm.name : perm;
+        allPermissions.push(permissionName);
+      }
+    });
+  });
 
-          if (!allPermissions.includes(permName)) {
-            allPermissions.push(permName);
-          }
-        });
+  // Direct permissions
+  if (Array.isArray(userData.permissions)) {
+    userData.permissions.forEach((permission) => {
+      const permissionName =
+        typeof permission === "object"
+          ? permission?.name
+          : permission;
+
+      if (
+        permissionName &&
+        !allPermissions.includes(permissionName)
+      ) {
+        allPermissions.push(permissionName);
       }
     });
   }
 
-  // permissions مستقیم
-  if (
-    userData.permissions &&
-    Array.isArray(userData.permissions)
-  ) {
-    userData.permissions.forEach((perm) => {
-      const permName =
-        typeof perm === "object" ? perm.name : perm;
+  // ===================================================
+  // ROLE CHECK
+  // ===================================================
 
-      if (!allPermissions.includes(permName)) {
-        allPermissions.push(permName);
-      }
-    });
-  }
-
-  // ================= ROLE CHECK =================
   const hasRole = (roleName) => {
     if (Array.isArray(roleName)) {
       return roleName.some((role) =>
@@ -134,13 +251,16 @@ const processUserData = (userData) => {
     return userRoles.includes(roleName);
   };
 
-  // ================= PERMISSION CHECK =================
+  // ===================================================
+  // PERMISSION CHECK
+  // ===================================================
+
   const hasPermission = (permissionName) => {
     if (!permissionName) return true;
 
     if (Array.isArray(permissionName)) {
-      return permissionName.some((perm) =>
-        allPermissions.includes(perm)
+      return permissionName.some((permission) =>
+        allPermissions.includes(permission)
       );
     }
 
@@ -148,31 +268,49 @@ const processUserData = (userData) => {
   };
 
   const hasAnyPermission = (permissionList) => {
-    if (!permissionList || permissionList.length === 0)
+    if (!Array.isArray(permissionList) || permissionList.length === 0) {
       return true;
+    }
 
-    return permissionList.some((perm) =>
-      allPermissions.includes(perm)
+    return permissionList.some((permission) =>
+      allPermissions.includes(permission)
     );
   };
 
   const hasAllPermissions = (permissionList) => {
-    if (!permissionList || permissionList.length === 0)
+    if (!Array.isArray(permissionList) || permissionList.length === 0) {
       return true;
+    }
 
-    return permissionList.every((perm) =>
-      allPermissions.includes(perm)
+    return permissionList.every((permission) =>
+      allPermissions.includes(permission)
     );
   };
 
-  // ================= FINAL USER =================
-  const result = {
+  // ===================================================
+  // SYSTEM SETTINGS
+  // ===================================================
+
+  const systemSettings = processSystemSettings(userData);
+
+  const enabledModules = systemSettings.enabled_modules;
+
+  const hasModule = (moduleKey) => {
+    if (!moduleKey) return false;
+
+    return enabledModules.includes(moduleKey);
+  };
+
+  // ===================================================
+  // FINAL USER OBJECT
+  // ===================================================
+
+  return {
     ...userData,
 
-    // همیشه avatar_url معتبر
     avatar_url: getAvatarUrl(userData),
 
-    roles: userData.roles || [],
+    roles,
 
     role_names: userRoles,
 
@@ -180,13 +318,26 @@ const processUserData = (userData) => {
 
     all_permissions: allPermissions,
 
-    // helpers
+    // Role helpers
     hasRole,
     hasPermission,
     hasAnyPermission,
     hasAllPermissions,
 
-    // shortcuts
+    // Module helpers
+    hasModule,
+    enabledModules,
+
+    // System settings
+    systemSettings,
+
+    setupCompleted: systemSettings.setup_completed,
+
+    hospitalName: systemSettings.hospital_name,
+
+    hospitalLogo: systemSettings.logo,
+
+    // Role shortcuts
     isAdmin:
       hasRole("admin") || hasRole("Admin"),
 
@@ -196,101 +347,192 @@ const processUserData = (userData) => {
 
     isUser: hasRole("user"),
   };
-
-  // DEBUG
-  console.log("Processed user => ", result);
-
-  return result;
 };
 
-// ================= PROVIDER =================
+// =====================================================
+// EXTRACT USER FROM API RESPONSE
+// =====================================================
+
+const extractUser = (responseData) => {
+  if (!responseData) return null;
+
+  const user = responseData.user ?? responseData;
+
+  if (!user || typeof user !== "object") {
+    return null;
+  }
+
+  // اگر تنظیمات سیستم جدا از user ارسال شده باشد
+  const systemData = {
+    ...user,
+
+    system_settings:
+      responseData.system_settings ??
+      responseData.systemSettings ??
+      responseData.hospital_setup ??
+      responseData.hospitalSetup ??
+      user.system_settings,
+
+    enabled_modules:
+      responseData.enabled_modules ??
+      responseData.enabledModules ??
+      user.enabled_modules,
+
+    setup_completed:
+      responseData.setup_completed ??
+      responseData.setupCompleted ??
+      user.setup_completed,
+  };
+
+  return systemData;
+};
+
+// =====================================================
+// AUTH PROVIDER
+// =====================================================
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
 
   const [loading, setLoading] = useState(true);
 
-  // ================= CHECK AUTH =================
-  useEffect(() => {
-    const token = localStorage.getItem("token");
+  // ===================================================
+  // SAVE USER
+  // ===================================================
 
-    if (!token) {
-      setLoading(false);
-      return;
+  const saveUser = useCallback((rawUser) => {
+    if (!rawUser) {
+      setUser(null);
+      localStorage.removeItem("user");
+      return null;
     }
 
-    // اول user ذخیره‌شده را نمایش بده
-    const storedUser = localStorage.getItem("user");
+    const processedUser = processUserData(rawUser);
 
-    if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
+    setUser(processedUser);
 
-        setUser(processUserData(parsedUser));
-      } catch (error) {
-        console.error("Stored user parse error:", error);
-      }
-    }
+    // فقط برای نمایش سریع اطلاعات کاربر
+    // منبع اصلی تنظیمات سیستم همچنان Backend است.
+    localStorage.setItem(
+      "user",
+      JSON.stringify(rawUser)
+    );
 
-    // سپس user تازه را از API بگیر
-    api
-      .get("/me")
-      .then((res) => {
-        const rawUser = res.data.user ?? res.data;
-console.log("ME RESPONSE => ", res.data);
-        const processedUser =
-          processUserData(rawUser);
-
-        setUser(processedUser);
-
-        // ذخیره user جدید
-        localStorage.setItem(
-          "user",
-          JSON.stringify(rawUser)
-        );
-
-        console.log("Fresh user loaded => ", processedUser);
-      })
-      .catch((err) => {
-        console.error("Auth check failed:", err);
-
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-
-        setUser(null);
-      })
-      .finally(() => setLoading(false));
+    return processedUser;
   }, []);
 
-  // ================= LOGIN =================
+  // ===================================================
+  // CHECK AUTHENTICATION
+  // ===================================================
+
+  useEffect(() => {
+    let mounted = true;
+
+    const checkAuthentication = async () => {
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        if (mounted) {
+          setUser(null);
+          setLoading(false);
+        }
+
+        return;
+      }
+
+      // نمایش سریع اطلاعات ذخیره‌شده
+      const storedUser = localStorage.getItem("user");
+
+      if (storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+
+          if (mounted) {
+            setUser(processUserData(parsedUser));
+          }
+        } catch (error) {
+          console.error("Stored user parse error:", error);
+          localStorage.removeItem("user");
+        }
+      }
+
+      try {
+        // دریافت اطلاعات تازه از Backend
+        const response = await api.get("/me");
+
+        const rawUser = extractUser(response.data);
+
+        if (!rawUser) {
+          throw new Error("Invalid user response from server.");
+        }
+
+        if (mounted) {
+          saveUser(rawUser);
+        }
+      } catch (error) {
+        console.error("Authentication check failed:", error);
+
+        if (error.response?.status !== 401) {
+          // خطای شبکه یا سرور: نشست را بی‌دلیل حذف نکن.
+          // اطلاعات قبلی کاربر در صورت موجود بودن باقی می‌ماند.
+        } else {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+
+          if (mounted) {
+            setUser(null);
+          }
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    checkAuthentication();
+
+    return () => {
+      mounted = false;
+    };
+  }, [saveUser]);
+
+  // ===================================================
+  // LOGIN
+  // ===================================================
+
   const login = async (email, password) => {
-    const res = await api.post("/login", {
+    const response = await api.post("/login", {
       email,
       password,
     });
 
-    localStorage.setItem("token", res.data.token);
+    const token = response.data.token;
 
-    const processedUser = processUserData(
-      res.data.user
-    );
+    if (!token) {
+      throw new Error("Login response does not contain a token.");
+    }
 
-    setUser(processedUser);
+    localStorage.setItem("token", token);
 
-    // ذخیره user
-    localStorage.setItem(
-      "user",
-      JSON.stringify(res.data.user)
-    );
+    const rawUser = extractUser(response.data);
 
-    console.log("User logged in => ", processedUser);
+    if (!rawUser) {
+      throw new Error("Login response does not contain user data.");
+    }
+
+    const processedUser = saveUser(rawUser);
 
     return {
-      ...res.data,
+      ...response.data,
       user: processedUser,
     };
   };
 
-  // ================= LOGOUT =================
+  // ===================================================
+  // LOGOUT
+  // ===================================================
+
   const logout = async () => {
     try {
       await api.post("/logout");
@@ -298,7 +540,6 @@ console.log("ME RESPONSE => ", res.data);
       console.error("Logout error:", error);
     } finally {
       localStorage.removeItem("token");
-
       localStorage.removeItem("user");
 
       setUser(null);
@@ -307,54 +548,86 @@ console.log("ME RESPONSE => ", res.data);
     }
   };
 
-  // ================= UPDATE USER =================
+  // ===================================================
+  // UPDATE USER
+  // ===================================================
+
   const updateUser = (updatedData) => {
+    if (!user) return null;
+
     const updatedUser = {
       ...user,
       ...updatedData,
     };
 
-    const processedUser =
-      processUserData(updatedUser);
+    return saveUser(updatedUser);
+  };
 
-    setUser(processedUser);
+  // ===================================================
+  // REFRESH USER AND SYSTEM SETTINGS
+  // ===================================================
 
-    // ذخیره localStorage
-    localStorage.setItem(
-      "user",
-      JSON.stringify(updatedUser)
-    );
+  const refreshUser = async () => {
+    const response = await api.get("/me");
 
-    return processedUser;
+    const rawUser = extractUser(response.data);
+
+    if (!rawUser) {
+      throw new Error("Invalid user response from server.");
+    }
+
+    return saveUser(rawUser);
+  };
+
+  // ===================================================
+  // CONTEXT VALUE
+  // ===================================================
+
+  const contextValue = {
+    user,
+    loading,
+
+    login,
+    logout,
+
+    api,
+
+    updateUser,
+    refreshUser,
+
+    // Convenient access to system setup
+    enabledModules: user?.enabledModules || [],
+
+    setupCompleted: user?.setupCompleted ?? false,
+
+    hospitalName: user?.hospitalName || "",
+
+    hospitalLogo: user?.hospitalLogo || null,
+
+    hasModule: user?.hasModule || (() => false),
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        login,
-        logout,
-        api,
-        updateUser,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-// ================= HOOK =================
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
+// =====================================================
+// AUTH HOOK
+// =====================================================
 
-  if (!ctx) {
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+
+  if (!context) {
     throw new Error(
       "useAuth باید داخل AuthProvider باشد"
     );
   }
 
-  return ctx;
+  return context;
 };
 
 export default AuthContext;

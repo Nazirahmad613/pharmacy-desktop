@@ -1,8 +1,19 @@
+
 // src/app/components/Sidenav.jsx
-import React, { useMemo, useState, useRef, useEffect, useCallback } from "react";
+
+import React, {
+  useMemo,
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+} from "react";
+
 import { useLocation, useNavigate } from "react-router-dom";
+
 import styled from "@mui/material/styles/styled";
 import { keyframes } from "@mui/system";
+
 import {
   Box,
   List,
@@ -13,17 +24,28 @@ import {
   Typography,
   Divider,
 } from "@mui/material";
+
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import ExpandMore from "@mui/icons-material/ExpandMore";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+
 import { useTranslation } from "react-i18next";
 
 import { useNavigation } from "app/contexts/NavigationContext";
 import { useAuth } from "app/contexts/AuthContext";
+
 import useBackNavigation from "../hooks/useBackNavigation";
-import defaultNavigations, { getLogicalParentPath } from "app/navigations";
+
+import defaultNavigations, {
+  getLogicalParentPath,
+} from "app/navigations";
+
+// =====================================================
+// LANTERN ANIMATIONS
+// =====================================================
 
 // انیمیشن تاب خوردن ملایم فانوس هنگام حرکت
+
 const swingAnimation = keyframes`
   0% { transform: rotate(0deg); }
   25% { transform: rotate(6deg); }
@@ -33,10 +55,22 @@ const swingAnimation = keyframes`
 `;
 
 // انیمیشن لرزش شعله داخل فانوس
+
 const flickerAnimation = keyframes`
-  0%, 100% { opacity: 0.95; transform: scale(1); }
-  50% { opacity: 0.78; transform: scale(0.94); }
+  0%, 100% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.78;
+    transform: scale(0.94);
+  }
 `;
+
+// =====================================================
+// LANTERN VIEWPORT
+// =====================================================
 
 const LanternViewport = styled(Box)(() => ({
   position: "relative",
@@ -48,24 +82,61 @@ const LanternViewport = styled(Box)(() => ({
   paddingRight: "12px",
 }));
 
-// کامپوننت SVG فانوس کلاسیک آویزان
+// =====================================================
+// HANGING LANTERN SVG
+// =====================================================
+
 function HangingLanternSVG({ isSwinging, isDragging }) {
   return (
     <Box
       sx={{
         transformOrigin: "top center",
-        animation: isSwinging ? `${swingAnimation} 0.85s ease-out` : "none",
-        transform: isDragging ? "scale(1.08)" : "scale(1)",
+
+        animation: isSwinging
+          ? `${swingAnimation} 0.85s ease-out`
+          : "none",
+
+        transform: isDragging
+          ? "scale(1.08)"
+          : "scale(1)",
+
         transition: "transform 0.15s ease",
+
         filter: isDragging
           ? "drop-shadow(0 10px 28px rgba(100, 116, 139, 0.95))"
           : "drop-shadow(0 8px 22px rgba(71, 85, 105, 0.65))",
       }}
     >
-      <svg width="36" height="58" viewBox="0 0 36 58" fill="none">
-        <circle cx="18" cy="4" r="3" stroke="#cbd5e1" strokeWidth="1.5" />
-        <path d="M11 12L18 7L25 12H11Z" fill="#1e293b" stroke="#94a3b8" strokeWidth="1" />
-        <rect x="9" y="12" width="18" height="3" rx="1.5" fill="#334155" />
+      <svg
+        width="36"
+        height="58"
+        viewBox="0 0 36 58"
+        fill="none"
+      >
+        <circle
+          cx="18"
+          cy="4"
+          r="3"
+          stroke="#cbd5e1"
+          strokeWidth="1.5"
+        />
+
+        <path
+          d="M11 12L18 7L25 12H11Z"
+          fill="#1e293b"
+          stroke="#94a3b8"
+          strokeWidth="1"
+        />
+
+        <rect
+          x="9"
+          y="12"
+          width="18"
+          height="3"
+          rx="1.5"
+          fill="#334155"
+        />
+
         <rect
           x="11"
           y="15"
@@ -76,20 +147,57 @@ function HangingLanternSVG({ isSwinging, isDragging }) {
           stroke="#64748b"
           strokeWidth="1.5"
         />
-        <line x1="15" y1="15" x2="15" y2="39" stroke="#1e293b" strokeWidth="1.2" />
-        <line x1="21" y1="15" x2="21" y2="39" stroke="#1e293b" strokeWidth="1.2" />
+
+        <line
+          x1="15"
+          y1="15"
+          x2="15"
+          y2="39"
+          stroke="#1e293b"
+          strokeWidth="1.2"
+        />
+
+        <line
+          x1="21"
+          y1="15"
+          x2="21"
+          y2="39"
+          stroke="#1e293b"
+          strokeWidth="1.2"
+        />
+
         <ellipse
           cx="18"
           cy="28"
           rx="3.2"
           ry="5.5"
           fill="#ffffff"
-          style={{ animation: `${flickerAnimation} 1.8s infinite ease-in-out` }}
+          style={{
+            animation: `${flickerAnimation} 1.8s infinite ease-in-out`,
+          }}
         />
-        <rect x="9" y="39" width="18" height="3" rx="1.5" fill="#334155" />
-        <path d="M12 42L18 47L24 42H12Z" fill="#1e293b" />
+
+        <rect
+          x="9"
+          y="39"
+          width="18"
+          height="3"
+          rx="1.5"
+          fill="#334155"
+        />
+
+        <path
+          d="M12 42L18 47L24 42H12Z"
+          fill="#1e293b"
+        />
+
         <defs>
-          <radialGradient id="lanternGlow" cx="50%" cy="55%" r="55%">
+          <radialGradient
+            id="lanternGlow"
+            cx="50%"
+            cy="55%"
+            r="55%"
+          >
             <stop offset="0%" stopColor="#ffffff" />
             <stop offset="35%" stopColor="#94a3b8" />
             <stop offset="85%" stopColor="#475569" />
@@ -101,71 +209,410 @@ function HangingLanternSVG({ isSwinging, isDragging }) {
   );
 }
 
+// =====================================================
+// NORMALIZATION HELPERS
+// =====================================================
+
 const normalizeRole = (role) => {
   if (!role) return "";
-  if (typeof role === "object") role = role.name || role.role || "";
+
+  if (typeof role === "object") {
+    role = role.name || role.role || "";
+  }
+
   return String(role).trim().toLowerCase();
 };
 
-const normalizePath = (p) => {
-  if (!p) return "";
-  return p.replace(/\/+$/, "") || "/";
+const normalizePath = (path) => {
+  if (!path) return "";
+
+  return path.replace(/\/+$/, "") || "/";
 };
 
-// ساخت کلید یکتا و پایدار برای هر آیتم (چه گروه و چه صفحه)
+const normalizeModuleKey = (key) => {
+  if (!key) return "";
+
+  return String(key)
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/_/g, "-");
+};
+
+// =====================================================
+// UNIQUE NAVIGATION KEY
+// =====================================================
+
 const getItemUniqueKey = (item) => {
   if (!item) return "";
-  return item.path ? normalizePath(item.path) : `GROUP:${item.name}`;
+
+  return item.path
+    ? normalizePath(item.path)
+    : `GROUP:${item.name}`;
 };
 
-/**
- * پیدا کردن تمام کلیدهای والد (گروه‌ها) که یک مسیر در زیرمجموعه آن‌ها قرار دارد
- */
-function findAncestorKeys(items, targetPath, parents = []) {
-  const cleanTarget = normalizePath(targetPath);
-  for (const item of items) {
-    const key = getItemUniqueKey(item);
-    if (item.path && normalizePath(item.path) === cleanTarget) {
-      return parents;
+// =====================================================
+// MODULE PATH MAPPING
+// =====================================================
+
+// اتصال مسیرهای منو به کلیدهای modules.js
+
+const MODULE_PATH_MAP = {
+  dashboard: "dashboard",
+  notifications: "notifications",
+
+  patients: "patients",
+  patient: "patients",
+
+  registrations: "registrations",
+  registration: "registrations",
+
+  followups: "follow-ups",
+  "follow-ups": "follow-ups",
+  followup: "follow-ups",
+
+  treatment: "treatment-history",
+  "treatment-history": "treatment-history",
+
+  doctor: "doctor",
+  doctors: "doctor",
+
+  examinations: "examinations",
+  examination: "examinations",
+
+  departments: "departments",
+  department: "departments",
+
+  laboratory: "laboratory",
+  lab: "laboratory",
+
+  "laboratory-requests": "laboratory-requests",
+  "lab-requests": "laboratory-requests",
+
+  "laboratory-results": "laboratory-results",
+  "lab-results": "laboratory-results",
+
+  "laboratory-fees": "laboratory-fees",
+  "lab-fees": "laboratory-fees",
+
+  radiology: "radiology-requests",
+  "radiology-requests": "radiology-requests",
+  "radiology-results": "radiology-results",
+  "radiology-fees": "radiology-fees",
+
+  operations: "operations",
+  operation: "operations",
+  "operation-fees": "operation-fees",
+
+  admissions: "admissions",
+  admission: "admissions",
+  "admission-fees": "admission-fees",
+
+  wards: "wards",
+  ward: "wards",
+
+  beds: "beds",
+  bed: "beds",
+
+  emergency: "emergency",
+  "emergency-triage": "emergency-triage",
+  triage: "emergency-triage",
+
+  prescriptions: "prescriptions",
+  prescription: "prescriptions",
+
+  "external-prescriptions": "external-prescriptions",
+  "prescription-fees": "prescription-fees",
+
+  "pharmacy-executions": "pharmacy-executions",
+
+  medications: "medications",
+  medication: "medications",
+  medicine: "medications",
+
+  stock: "stock",
+  inventory: "inventory",
+
+  purchases: "purchases",
+  purchase: "purchases",
+  parchases: "purchases",
+
+  categories: "categories",
+  category: "categories",
+
+  sales: "sales",
+  sale: "sales",
+
+  customers: "customers",
+  customer: "customers",
+
+  accounts: "accounts",
+  account: "accounts",
+
+  "account-summary": "account-summary",
+  journal: "journal",
+  "journal-ref-sources": "journal-ref-sources",
+
+  benefits: "benefits",
+  "profit-loss": "profit-loss",
+
+  payroll: "payroll",
+
+  reports: "reports-hospital",
+  "hospital-reports": "reports-hospital",
+  "reports-hospital": "reports-hospital",
+
+  "stock-reports": "stock-reports",
+  "medication-stock": "stock-reports",
+  "medication-stock-chart": "stock-reports",
+
+  users: "users",
+  user: "users",
+
+  roles: "roles",
+  permissions: "permissions",
+  logs: "logs",
+  settings: "settings",
+};
+
+// =====================================================
+// GET MODULE KEY FROM NAVIGATION ITEM
+// =====================================================
+
+const getModuleKeyFromItem = (item) => {
+  if (!item) return null;
+
+  // اولویت اول: کلید صریح ماژول
+  const explicitKey =
+    item.moduleKey ||
+    item.module_key ||
+    item.module;
+
+  if (explicitKey) {
+    return normalizeModuleKey(
+      typeof explicitKey === "object"
+        ? explicitKey.key || explicitKey.name
+        : explicitKey
+    );
+  }
+
+  // اولویت دوم: تشخیص از روی مسیر
+  if (!item.path || typeof item.path !== "string") {
+    return null;
+  }
+
+  const segments = normalizePath(item.path)
+    .toLowerCase()
+    .split("/")
+    .filter(Boolean);
+
+  // مسیرهای پروفایل شخصی به ماژول users وابسته نیستند.
+  if (
+    segments.includes("profile") ||
+    segments.includes("user-profile")
+  ) {
+    return null;
+  }
+
+  // مسیرهای گزارش‌ها
+  if (segments.includes("reports")) {
+    if (
+      segments.some((segment) =>
+        [
+          "medication-stock",
+          "medication-stock-chart",
+          "stock-reports",
+        ].includes(segment)
+      )
+    ) {
+      return "stock-reports";
     }
-    if (Array.isArray(item.children) && item.children.length > 0) {
-      const found = findAncestorKeys(item.children, cleanTarget, [...parents, key]);
-      if (found) return found;
+
+    if (segments.includes("benefits")) {
+      return "benefits";
+    }
+
+    if (segments.includes("sales-table")) {
+      return "sales";
+    }
+
+    return "reports-hospital";
+  }
+
+  // مسیرهای معمولی
+  for (const segment of segments) {
+    if (
+      segment === "material" ||
+      segment === "app" ||
+      segment === "views"
+    ) {
+      continue;
+    }
+
+    if (MODULE_PATH_MAP[segment]) {
+      return MODULE_PATH_MAP[segment];
     }
   }
-  return null;
-}
 
-/**
- * فیلتر کردن آیتم‌های منو بر اساس نقش کاربر
- */
-function filterNavByRoles(items, userRolesSet, isAdminOrSuper) {
-  if (isAdminOrSuper) return items;
+  return null;
+};
+
+// =====================================================
+// CHECK MODULE ACCESS
+// =====================================================
+
+const isModuleEnabled = (item, enabledModules) => {
+  const moduleKey = getModuleKeyFromItem(item);
+
+  // اگر کلید ماژول قابل تشخیص نباشد،
+  // آیتم را حذف نمی‌کنیم تا مسیرهای موجود آسیب نبینند.
+  if (!moduleKey) return true;
+
+  return enabledModules.has(moduleKey);
+};
+
+// =====================================================
+// FILTER NAVIGATION BY MODULES
+// =====================================================
+
+function filterNavByModules(items, enabledModules) {
+  if (!Array.isArray(items)) return [];
+
   return items
     .map((item) => {
-      if (item.roles && Array.isArray(item.roles) && item.roles.length > 0) {
-        const allowed = item.roles.some((r) => userRolesSet.has(normalizeRole(r)));
-        if (!allowed) return null;
-      }
+      if (!item) return null;
+
+      // آیتم‌های دارای زیرمجموعه
       if (Array.isArray(item.children)) {
-        const filteredChildren = filterNavByRoles(item.children, userRolesSet, isAdminOrSuper);
-        if (filteredChildren.length === 0 && !item.path) return null;
-        return { ...item, children: filteredChildren };
+        const filteredChildren = filterNavByModules(
+          item.children,
+          enabledModules
+        );
+
+        // اگر گروه خالی شد، آن را حذف می‌کنیم.
+        if (filteredChildren.length === 0 && !item.path) {
+          return null;
+        }
+
+        // اگر خود گروه به ماژول مشخصی تعلق دارد
+        // و آن ماژول غیرفعال است، گروه حذف می‌شود.
+        if (!isModuleEnabled(item, enabledModules)) {
+          return null;
+        }
+
+        return {
+          ...item,
+          children: filteredChildren,
+        };
       }
+
+      // آیتم‌های بدون زیرمجموعه
+      if (!isModuleEnabled(item, enabledModules)) {
+        return null;
+      }
+
       return item;
     })
     .filter(Boolean);
 }
 
-/**
- * محاسبه دقیق مرکز عمودی یک المان نسبت به کانتینر محتوای سایدبار (بدون خطای Collapse)
- */
+// =====================================================
+// FILTER NAVIGATION BY ROLES
+// =====================================================
+
+function filterNavByRoles(items, userRolesSet, isAdminOrSuper) {
+  if (isAdminOrSuper) return items;
+
+  return items
+    .map((item) => {
+      if (
+        item.roles &&
+        Array.isArray(item.roles) &&
+        item.roles.length > 0
+      ) {
+        const allowed = item.roles.some((role) =>
+          userRolesSet.has(normalizeRole(role))
+        );
+
+        if (!allowed) return null;
+      }
+
+      if (Array.isArray(item.children)) {
+        const filteredChildren = filterNavByRoles(
+          item.children,
+          userRolesSet,
+          isAdminOrSuper
+        );
+
+        if (filteredChildren.length === 0 && !item.path) {
+          return null;
+        }
+
+        return {
+          ...item,
+          children: filteredChildren,
+        };
+      }
+
+      return item;
+    })
+    .filter(Boolean);
+}
+
+// =====================================================
+// FIND ANCESTOR KEYS
+// =====================================================
+
+function findAncestorKeys(items, targetPath, parents = []) {
+  const cleanTarget = normalizePath(targetPath);
+
+  for (const item of items) {
+    const key = getItemUniqueKey(item);
+
+    if (
+      item.path &&
+      normalizePath(item.path) === cleanTarget
+    ) {
+      return parents;
+    }
+
+    if (
+      Array.isArray(item.children) &&
+      item.children.length > 0
+    ) {
+      const found = findAncestorKeys(
+        item.children,
+        cleanTarget,
+        [...parents, key]
+      );
+
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
+// =====================================================
+// GET RELATIVE NODE CENTER
+// =====================================================
+
 function getRelativeNodeCenter(contentEl, nodeEl) {
   if (!contentEl || !nodeEl) return 0;
+
   const contentRect = contentEl.getBoundingClientRect();
   const nodeRect = nodeEl.getBoundingClientRect();
-  return nodeRect.top - contentRect.top + nodeRect.height / 2;
+
+  return (
+    nodeRect.top -
+    contentRect.top +
+    nodeRect.height / 2
+  );
 }
+
+// =====================================================
+// NAVIGATION ITEM
+// =====================================================
 
 function NavItem({
   item,
@@ -178,17 +625,32 @@ function NavItem({
   litKey,
 }) {
   const { t } = useTranslation();
+
   const key = getItemUniqueKey(item);
+
   const isOpen = !!openMap[key];
-  const hasChildren = Array.isArray(item.children) && item.children.length > 0;
-  const isActive = item.path && normalizePath(currentPath) === normalizePath(item.path);
+
+  const hasChildren =
+    Array.isArray(item.children) &&
+    item.children.length > 0;
+
+  const isActive =
+    item.path &&
+    normalizePath(currentPath) === normalizePath(item.path);
+
   const isLit = litKey === key || isActive;
 
-  const handleClick = (e) => {
-    const clickedEl = e.currentTarget;
+  const handleClick = (event) => {
+    const clickedEl = event.currentTarget;
+
     if (hasChildren) {
       const nextState = !isOpen;
-      setOpenMap((prev) => ({ ...prev, [key]: nextState }));
+
+      setOpenMap((prev) => ({
+        ...prev,
+        [key]: nextState,
+      }));
+
       if (onGroupToggle) {
         onGroupToggle(clickedEl, key, nextState);
       }
@@ -198,7 +660,10 @@ function NavItem({
   };
 
   const textAlpha = isLit ? 1 : 0.35;
-  const navPathAttr = item.path ? normalizePath(item.path) : `GROUP:${item.name}`;
+
+  const navPathAttr = item.path
+    ? normalizePath(item.path)
+    : `GROUP:${item.name}`;
 
   if (item.type === "label" || item.label) {
     return (
@@ -217,7 +682,9 @@ function NavItem({
           transition: "color 0.2s ease",
         }}
       >
-        {(t(item.label || item.name || "") || "").toUpperCase()}
+        {(
+          t(item.label || item.name || "") || ""
+        ).toUpperCase()}
       </Typography>
     );
   }
@@ -236,20 +703,28 @@ function NavItem({
           pr: 1.5,
           py: 0.95,
           position: "relative",
+
           color: `rgba(255, 255, 255, ${textAlpha})`,
-          textShadow: isLit ? "0 0 14px rgba(255,255,255,0.85)" : "none",
+
+          textShadow: isLit
+            ? "0 0 14px rgba(255,255,255,0.85)"
+            : "none",
+
           background: isActive
             ? "linear-gradient(90deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 100%)"
             : isLit
             ? "linear-gradient(90deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.02) 100%)"
             : "transparent",
+
           boxShadow: isActive
             ? "inset 3px 0 0 #ffffff"
             : isLit
             ? "inset 2px 0 0 rgba(255,255,255,0.7)"
             : "none",
+
           transition:
             "color 0.2s ease, text-shadow 0.2s ease, background 0.2s ease, box-shadow 0.2s ease",
+
           "&:hover": {
             bgcolor: "rgba(255, 255, 255, 0.12)",
             color: "#ffffff",
@@ -262,11 +737,16 @@ function NavItem({
             sx={{
               color: `rgba(255, 255, 255, ${textAlpha})`,
               minWidth: 32,
+
               filter: isLit
                 ? "drop-shadow(0 0 8px rgba(200, 220, 255, 0.9))"
                 : "none",
+
               transition: "color 0.2s ease, filter 0.2s ease",
-              "& .MuiSvgIcon-root": { fontSize: 20 },
+
+              "& .MuiSvgIcon-root": {
+                fontSize: 20,
+              },
             }}
           >
             {item.icon}
@@ -306,17 +786,25 @@ function NavItem({
               transition: "opacity 0.2s ease",
             }}
           >
-            {isOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+            {isOpen ? (
+              <ExpandLess fontSize="small" />
+            ) : (
+              <ExpandMore fontSize="small" />
+            )}
           </Box>
         )}
       </ListItemButton>
 
       {hasChildren && (
-        <Collapse in={isOpen} timeout={200} unmountOnExit>
+        <Collapse
+          in={isOpen}
+          timeout={200}
+          unmountOnExit
+        >
           <List component="div" disablePadding>
-            {item.children.map((child, idx) => (
+            {item.children.map((child, index) => (
               <NavItem
-                key={getItemUniqueKey(child) || idx}
+                key={getItemUniqueKey(child) || index}
                 item={child}
                 level={level + 1}
                 openMap={openMap}
@@ -334,32 +822,48 @@ function NavItem({
   );
 }
 
-/**
- * پیدا کردن المان DOM متناظر با مسیر یا کلید فعلی
- */
-function resolveSyncTarget(container, rawPathOrKey) {
-  if (!container || !rawPathOrKey) return { targetNode: null, targetKey: null };
+// =====================================================
+// RESOLVE SYNC TARGET
+// =====================================================
 
-  const queryByAttr = (attr, val) => {
+function resolveSyncTarget(container, rawPathOrKey) {
+  if (!container || !rawPathOrKey) {
+    return {
+      targetNode: null,
+      targetKey: null,
+    };
+  }
+
+  const queryByAttr = (attr, value) => {
     try {
-      return container.querySelector(`[${attr}="${CSS.escape(val)}"]`);
+      return container.querySelector(
+        `[${attr}="${CSS.escape(value)}"]`
+      );
     } catch {
       return null;
     }
   };
 
-  // اگر کلید مستقیم گروه باشد (مثلاً GROUP:مدیریت مالی)
+  // تطبیق مستقیم گروه
   if (rawPathOrKey.startsWith("GROUP:")) {
-    const byKey = queryByAttr("data-nav-key", rawPathOrKey);
+    const byKey = queryByAttr(
+      "data-nav-key",
+      rawPathOrKey
+    );
+
     if (byKey) {
-      return { targetNode: byKey, targetKey: rawPathOrKey };
+      return {
+        targetNode: byKey,
+        targetKey: rawPathOrKey,
+      };
     }
   }
 
   const path = normalizePath(rawPathOrKey);
 
-  // ۱. تطبیق دقیق با مسیر فعلی
+  // تطبیق دقیق
   const exact = queryByAttr("data-nav-path", path);
+
   if (exact) {
     return {
       targetNode: exact,
@@ -367,10 +871,15 @@ function resolveSyncTarget(container, rawPathOrKey) {
     };
   }
 
-  // ۲. تطبیق با والد منطقی
+  // تطبیق والد منطقی
   const parentPath = getLogicalParentPath(path);
+
   if (parentPath) {
-    const byParent = queryByAttr("data-nav-path", normalizePath(parentPath));
+    const byParent = queryByAttr(
+      "data-nav-path",
+      normalizePath(parentPath)
+    );
+
     if (byParent) {
       return {
         targetNode: byParent,
@@ -379,18 +888,29 @@ function resolveSyncTarget(container, rawPathOrKey) {
     }
   }
 
-  // ۳. تطبیق پیشوندی (طولانی‌ترین مسیر مشترک برای صفحات جزئیات)
-  const allNodes = Array.from(container.querySelectorAll("[data-nav-path]"));
+  // تطبیق پیشوندی
+  const allNodes = Array.from(
+    container.querySelectorAll("[data-nav-path]")
+  );
+
   let bestPrefix = null;
   let bestLen = -1;
-  for (const el of allNodes) {
-    const np = el.getAttribute("data-nav-path") || "";
-    if (np.startsWith("GROUP:")) continue;
-    if ((path === np || path.startsWith(np + "/")) && np.length > bestLen) {
-      bestPrefix = el;
-      bestLen = np.length;
+
+  for (const element of allNodes) {
+    const navPath =
+      element.getAttribute("data-nav-path") || "";
+
+    if (navPath.startsWith("GROUP:")) continue;
+
+    if (
+      (path === navPath || path.startsWith(navPath + "/")) &&
+      navPath.length > bestLen
+    ) {
+      bestPrefix = element;
+      bestLen = navPath.length;
     }
   }
+
   if (bestPrefix) {
     return {
       targetNode: bestPrefix,
@@ -398,16 +918,37 @@ function resolveSyncTarget(container, rawPathOrKey) {
     };
   }
 
-  return { targetNode: null, targetKey: null };
+  return {
+    targetNode: null,
+    targetKey: null,
+  };
 }
+
+// =====================================================
+// SIDENAV COMPONENT
+// =====================================================
 
 export default function Sidenav({ children }) {
   const { t } = useTranslation();
+
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
-  const { navigationsData, groupStack } = useNavigation();
-  const { canGoBack, goBack } = useBackNavigation();
+
+  const {
+    user,
+    enabledModules,
+    setupCompleted,
+  } = useAuth();
+
+  const {
+    navigationsData,
+    groupStack,
+  } = useNavigation();
+
+  const {
+    canGoBack,
+    goBack,
+  } = useBackNavigation();
 
   const viewportRef = useRef(null);
   const contentRef = useRef(null);
@@ -420,95 +961,207 @@ export default function Sidenav({ children }) {
   const [litKey, setLitKey] = useState(null);
 
   const swingTimeout = useRef(null);
+
   const dragStartY = useRef(0);
   const dragStartLanternY = useRef(20);
 
-  // نگهداری آخرین هدف همگام‌سازی تا در صورت تغییر ارتفاع (باز شدن Collapse) فانوس دقیق روی آن بماند
   const activeSyncTargetRef = useRef(null);
+
+  // ===================================================
+  // TRIGGER SWING
+  // ===================================================
 
   const triggerSwing = useCallback(() => {
     setIsSwinging(true);
-    if (swingTimeout.current) clearTimeout(swingTimeout.current);
-    swingTimeout.current = setTimeout(() => setIsSwinging(false), 850);
-  }, []);
 
-  // محاسبه آیتم نزدیک به نور فانوس هنگام درگ یا اسکرول دستی
-  const highlightItemNearLantern = useCallback((currentLanternY, currentScroll) => {
-    if (!contentRef.current) return;
-    const beamCenterInContent = currentScroll + currentLanternY + 28;
-    const nodes = contentRef.current.querySelectorAll("[data-nav-key]");
-    let closestKey = null;
-    let minDiff = Infinity;
-
-    nodes.forEach((node) => {
-      const nodeCenter = getRelativeNodeCenter(contentRef.current, node);
-      const diff = Math.abs(nodeCenter - beamCenterInContent);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closestKey = node.getAttribute("data-nav-key");
-      }
-    });
-
-    if (closestKey && minDiff < 45) {
-      setLitKey(closestKey);
+    if (swingTimeout.current) {
+      clearTimeout(swingTimeout.current);
     }
+
+    swingTimeout.current = setTimeout(() => {
+      setIsSwinging(false);
+    }, 850);
   }, []);
+
+  // ===================================================
+  // HIGHLIGHT ITEM NEAR LANTERN
+  // ===================================================
+
+  const highlightItemNearLantern = useCallback(
+    (currentLanternY, currentScroll) => {
+      if (!contentRef.current) return;
+
+      const beamCenterInContent =
+        currentScroll + currentLanternY + 28;
+
+      const nodes =
+        contentRef.current.querySelectorAll("[data-nav-key]");
+
+      let closestKey = null;
+      let minDiff = Infinity;
+
+      nodes.forEach((node) => {
+        const nodeCenter = getRelativeNodeCenter(
+          contentRef.current,
+          node
+        );
+
+        const diff = Math.abs(
+          nodeCenter - beamCenterInContent
+        );
+
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestKey = node.getAttribute("data-nav-key");
+        }
+      });
+
+      if (closestKey && minDiff < 45) {
+        setLitKey(closestKey);
+      }
+    },
+    []
+  );
+
+  // ===================================================
+  // UPDATE POSITION BY LANTERN
+  // ===================================================
 
   const updatePositionByLantern = useCallback(
     (rawLanternY) => {
-      if (!viewportRef.current || !contentRef.current) return;
+      if (
+        !viewportRef.current ||
+        !contentRef.current
+      ) {
+        return;
+      }
 
-      const viewportHeight = viewportRef.current.clientHeight;
-      const contentHeight = contentRef.current.scrollHeight;
+      const viewportHeight =
+        viewportRef.current.clientHeight;
+
+      const contentHeight =
+        contentRef.current.scrollHeight;
 
       const minY = 16;
-      const maxY = Math.max(60, viewportHeight - 85);
-      const clampedY = Math.min(maxY, Math.max(minY, rawLanternY));
 
-      const progress = maxY > minY ? (clampedY - minY) / (maxY - minY) : 0;
-      const maxScroll = Math.max(0, contentHeight - viewportHeight + 60);
+      const maxY = Math.max(
+        60,
+        viewportHeight - 85
+      );
+
+      const clampedY = Math.min(
+        maxY,
+        Math.max(minY, rawLanternY)
+      );
+
+      const progress =
+        maxY > minY
+          ? (clampedY - minY) / (maxY - minY)
+          : 0;
+
+      const maxScroll = Math.max(
+        0,
+        contentHeight - viewportHeight + 60
+      );
+
       const syncedScroll = progress * maxScroll;
 
       setLanternY(clampedY);
       setScrollOffset(syncedScroll);
-      highlightItemNearLantern(clampedY, syncedScroll);
+
+      highlightItemNearLantern(
+        clampedY,
+        syncedScroll
+      );
     },
     [highlightItemNearLantern]
   );
 
-  // حرکت دادن خودکار فانوس و اسکرول دقیق به سمت یک المان DOM مشخص
+  // ===================================================
+  // MOVE LANTERN TO NODE
+  // ===================================================
+
   const moveLanternToNode = useCallback(
     (targetNode, targetKey, withSwing = true) => {
-      if (!viewportRef.current || !contentRef.current || !targetNode) return;
+      if (
+        !viewportRef.current ||
+        !contentRef.current ||
+        !targetNode
+      ) {
+        return;
+      }
 
-      const viewportHeight = viewportRef.current.clientHeight;
-      const contentHeight = contentRef.current.scrollHeight;
-      const maxScroll = Math.max(0, contentHeight - viewportHeight + 60);
+      const viewportHeight =
+        viewportRef.current.clientHeight;
 
-      const nodeCenter = getRelativeNodeCenter(contentRef.current, targetNode);
+      const contentHeight =
+        contentRef.current.scrollHeight;
 
-      const idealViewportY = Math.min(Math.max(nodeCenter, 80), viewportHeight * 0.45);
-      const desiredScroll = Math.min(maxScroll, Math.max(0, nodeCenter - idealViewportY));
+      const maxScroll = Math.max(
+        0,
+        contentHeight - viewportHeight + 60
+      );
+
+      const nodeCenter = getRelativeNodeCenter(
+        contentRef.current,
+        targetNode
+      );
+
+      const idealViewportY = Math.min(
+        Math.max(nodeCenter, 80),
+        viewportHeight * 0.45
+      );
+
+      const desiredScroll = Math.min(
+        maxScroll,
+        Math.max(0, nodeCenter - idealViewportY)
+      );
 
       const minY = 16;
-      const maxY = Math.max(60, viewportHeight - 85);
-      const exactLanternY = Math.min(maxY, Math.max(minY, nodeCenter - desiredScroll - 28));
+
+      const maxY = Math.max(
+        60,
+        viewportHeight - 85
+      );
+
+      const exactLanternY = Math.min(
+        maxY,
+        Math.max(
+          minY,
+          nodeCenter - desiredScroll - 28
+        )
+      );
 
       setScrollOffset(desiredScroll);
       setLanternY(exactLanternY);
-      if (targetKey) setLitKey(targetKey);
-      if (withSwing) triggerSwing();
+
+      if (targetKey) {
+        setLitKey(targetKey);
+      }
+
+      if (withSwing) {
+        triggerSwing();
+      }
     },
     [triggerSwing]
   );
 
-  // درگ فانوس
-  const handleLanternPointerDown = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
+  // ===================================================
+  // LANTERN DRAG
+  // ===================================================
+
+  const handleLanternPointerDown = (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+
     activeSyncTargetRef.current = null;
+
     setIsDragging(true);
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const clientY = event.touches
+      ? event.touches[0].clientY
+      : event.clientY;
+
     dragStartY.current = clientY;
     dragStartLanternY.current = lanternY;
   };
@@ -516,10 +1169,17 @@ export default function Sidenav({ children }) {
   useEffect(() => {
     if (!isDragging) return;
 
-    const handleMove = (e) => {
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const handleMove = (event) => {
+      const clientY = event.touches
+        ? event.touches[0].clientY
+        : event.clientY;
+
       const deltaY = clientY - dragStartY.current;
-      updatePositionByLantern(dragStartLanternY.current + deltaY);
+
+      updatePositionByLantern(
+        dragStartLanternY.current + deltaY
+      );
+
       triggerSwing();
     };
 
@@ -529,134 +1189,278 @@ export default function Sidenav({ children }) {
 
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
-    window.addEventListener("touchmove", handleMove, { passive: false });
+
+    window.addEventListener(
+      "touchmove",
+      handleMove,
+      { passive: false }
+    );
+
     window.addEventListener("touchend", handleUp);
 
     return () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
+
       window.removeEventListener("touchmove", handleMove);
       window.removeEventListener("touchend", handleUp);
     };
-  }, [isDragging, updatePositionByLantern, triggerSwing]);
+  }, [
+    isDragging,
+    updatePositionByLantern,
+    triggerSwing,
+  ]);
 
-  const handleTrackClick = (e) => {
+  // ===================================================
+  // TRACK CLICK
+  // ===================================================
+
+  const handleTrackClick = (event) => {
     if (!viewportRef.current) return;
+
     activeSyncTargetRef.current = null;
-    const rect = viewportRef.current.getBoundingClientRect();
-    const clickY = e.clientY - rect.top - 28;
+
+    const rect =
+      viewportRef.current.getBoundingClientRect();
+
+    const clickY = event.clientY - rect.top - 28;
+
     updatePositionByLantern(clickY);
+
     triggerSwing();
   };
 
-  const handleWheel = (e) => {
+  // ===================================================
+  // WHEEL
+  // ===================================================
+
+  const handleWheel = (event) => {
     activeSyncTargetRef.current = null;
-    const step = e.deltaY * 0.25;
+
+    const step = event.deltaY * 0.25;
+
     updatePositionByLantern(lanternY + step);
+
     triggerSwing();
   };
 
-  // کلیک روی گروه در سایدبار -> فانوس دقیقاً روی همان گروه قرار گیرد
+  // ===================================================
+  // GROUP TOGGLE
+  // ===================================================
+
   const handleGroupToggle = useCallback(
     (clickedEl, key) => {
       activeSyncTargetRef.current = key;
+
       setLitKey(key);
+
       if (clickedEl) {
-        moveLanternToNode(clickedEl, key, true);
+        moveLanternToNode(
+          clickedEl,
+          key,
+          true
+        );
       }
     },
     [moveLanternToNode]
   );
 
-  // استخراج رول‌های کاربر
+  // ===================================================
+  // USER ROLES
+  // ===================================================
+
   const userRoles = useMemo(() => {
     if (!user) return [];
-    const set = new Set();
-    (user.role_names || []).forEach((r) => {
-      const n = normalizeRole(r);
-      if (n) set.add(n);
+
+    const roleSet = new Set();
+
+    (user.role_names || []).forEach((role) => {
+      const normalized = normalizeRole(role);
+
+      if (normalized) {
+        roleSet.add(normalized);
+      }
     });
-    (user.roles || []).forEach((r) => {
-      const n = normalizeRole(r);
-      if (n) set.add(n);
+
+    (user.roles || []).forEach((role) => {
+      const normalized = normalizeRole(role);
+
+      if (normalized) {
+        roleSet.add(normalized);
+      }
     });
+
     if (user.role) {
-      const n = normalizeRole(user.role);
-      if (n) set.add(n);
+      const normalized = normalizeRole(user.role);
+
+      if (normalized) {
+        roleSet.add(normalized);
+      }
     }
-    return Array.from(set);
+
+    return Array.from(roleSet);
   }, [user]);
 
-  const filteredNavigations = useMemo(() => {
+  // ===================================================
+  // ROLE FILTER
+  // ===================================================
+
+  const roleFilteredNavigations = useMemo(() => {
     const source =
-      Array.isArray(navigationsData) && navigationsData.length > 0
+      Array.isArray(navigationsData) &&
+      navigationsData.length > 0
         ? navigationsData
         : defaultNavigations;
+
     const roleSet = new Set(userRoles);
+
     const isAdminOrSuper =
-      roleSet.has("admin") || roleSet.has("super_admin") || roleSet.size === 0;
-    return filterNavByRoles(source, roleSet, isAdminOrSuper);
+      roleSet.has("admin") ||
+      roleSet.has("super_admin") ||
+      roleSet.size === 0;
+
+    return filterNavByRoles(
+      source,
+      roleSet,
+      isAdminOrSuper
+    );
   }, [navigationsData, userRoles]);
 
-  // ✅ ۱. کلیک روی آیتم صفحه در سایدبار
+  // ===================================================
+  // ENABLED MODULES
+  // ===================================================
+
+  const enabledModuleSet = useMemo(() => {
+    if (!Array.isArray(enabledModules)) {
+      return new Set();
+    }
+
+    return new Set(
+      enabledModules
+        .map(normalizeModuleKey)
+        .filter(Boolean)
+    );
+  }, [enabledModules]);
+
+  // ===================================================
+  // FINAL NAVIGATION FILTER
+  // ===================================================
+
+  const filteredNavigations = useMemo(() => {
+    // تا پیش از تکمیل Setup، فیلتر ماژول‌ها اجرا نمی‌شود.
+    // بنابراین منوی فعلی برنامه در مرحله توسعه تغییر نمی‌کند.
+    if (!setupCompleted) {
+      return roleFilteredNavigations;
+    }
+
+    return filterNavByModules(
+      roleFilteredNavigations,
+      enabledModuleSet
+    );
+  }, [
+    roleFilteredNavigations,
+    enabledModuleSet,
+    setupCompleted,
+  ]);
+
+  // ===================================================
+  // LEAF CLICK
+  // ===================================================
+
   const handleLeafClick = useCallback(
     (item, clickedEl) => {
       if (!item?.path) return;
+
       const key = getItemUniqueKey(item);
+
       activeSyncTargetRef.current = key;
+
       setLitKey(key);
+
       if (clickedEl) {
-        moveLanternToNode(clickedEl, key, true);
+        moveLanternToNode(
+          clickedEl,
+          key,
+          true
+        );
       }
-      if (normalizePath(location.pathname) !== normalizePath(item.path)) {
+
+      if (
+        normalizePath(location.pathname) !==
+        normalizePath(item.path)
+      ) {
         navigate(item.path);
       }
     },
-    [location.pathname, moveLanternToNode, navigate]
+    [
+      location.pathname,
+      moveLanternToNode,
+      navigate,
+    ]
   );
 
-  // ✅ ۲. همگام‌سازی یکپارچه با مسیر فعلی (صفحات فرعی) و گروه انتخاب‌شده در وسط صفحه
-  useEffect(() => {
-    const currentPath = normalizePath(location.pathname);
+  // ===================================================
+  // SYNC LANTERN WITH CURRENT ROUTE
+  // ===================================================
 
-    // الف) اولویت اول: اگر مسیر فعلی خود یک صفحه مشخص در منو است (مثل /material/parchases)،
-    // حتماً والدهای آن را باز کن و چراغ را به خود صفحه فرعی ببر (نه سرگروه!)
-    const directMatch = resolveSyncTarget(contentRef.current, currentPath);
+  useEffect(() => {
+    const currentPath = normalizePath(
+      location.pathname
+    );
+
+    const directMatch = resolveSyncTarget(
+      contentRef.current,
+      currentPath
+    );
+
     const targetPathForAncestors =
-      directMatch.targetNode?.getAttribute("data-nav-path") ||
+      directMatch.targetNode?.getAttribute(
+        "data-nav-path"
+      ) ||
       getLogicalParentPath(currentPath) ||
       currentPath;
 
     const pathAncestors =
-      findAncestorKeys(filteredNavigations, currentPath) ||
-      findAncestorKeys(filteredNavigations, targetPathForAncestors);
+      findAncestorKeys(
+        filteredNavigations,
+        currentPath
+      ) ||
+      findAncestorKeys(
+        filteredNavigations,
+        targetPathForAncestors
+      );
 
-    // ب) گروه‌های بازشده از طریق کارت‌های وسط صفحه (NavigationHub)
     const stackKeys = Array.isArray(groupStack)
-      ? groupStack.map((grp) => getItemUniqueKey(grp)).filter(Boolean)
+      ? groupStack
+          .map((group) => getItemUniqueKey(group))
+          .filter(Boolean)
       : [];
 
-    const allKeysToOpen = new Set([...(pathAncestors || []), ...stackKeys]);
+    const allKeysToOpen = new Set([
+      ...(pathAncestors || []),
+      ...stackKeys,
+    ]);
 
     if (allKeysToOpen.size > 0) {
       setOpenMap((prev) => {
         const next = { ...prev };
+
         let changed = false;
-        allKeysToOpen.forEach((k) => {
-          if (!next[k]) {
-            next[k] = true;
+
+        allKeysToOpen.forEach((key) => {
+          if (!next[key]) {
+            next[key] = true;
             changed = true;
           }
         });
+
         return changed ? next : prev;
       });
     }
 
-    // تعیین هدف نهایی برای چراغ فانوس:
-    // اگر در یک صفحه فرعی/برگ هستیم (مثل /material/parchases)، هدف خود آن صفحه است.
-    // فقط زمانی که در صفحه هاب (/navigation-hub یا /dashboard/default) هستیم و روی کارت گروه کلیک شده، هدف آخرین گروه است.
     const isHubOrDashboard =
-      currentPath === "/navigation-hub" || currentPath === "/dashboard/default";
+      currentPath === "/navigation-hub" ||
+      currentPath === "/dashboard/default";
 
     const desiredTarget =
       isHubOrDashboard && stackKeys.length > 0
@@ -666,38 +1470,94 @@ export default function Sidenav({ children }) {
     activeSyncTargetRef.current = desiredTarget;
 
     const syncLantern = (withSwing = true) => {
-      const { targetNode, targetKey } = resolveSyncTarget(
+      const {
+        targetNode,
+        targetKey,
+      } = resolveSyncTarget(
         contentRef.current,
         desiredTarget
       );
+
       if (targetNode) {
-        moveLanternToNode(targetNode, targetKey, withSwing);
+        moveLanternToNode(
+          targetNode,
+          targetKey,
+          withSwing
+        );
       }
     };
 
-    // اجرای فوری + اجرای مجدد بعد از باز شدن انیمیشن Collapse (230ms)
     syncLantern(true);
-    const timer = setTimeout(() => syncLantern(false), 230);
+
+    const timer = setTimeout(() => {
+      syncLantern(false);
+    }, 230);
 
     return () => clearTimeout(timer);
-  }, [location.pathname, groupStack, filteredNavigations, moveLanternToNode]);
+  }, [
+    location.pathname,
+    groupStack,
+    filteredNavigations,
+    moveLanternToNode,
+  ]);
 
-  // ✅ ۳. پایش تغییر ارتفاع محتوای سایدبار (هنگام باز/بسته شدن زیرمنوها) برای تثبیت دقیق جای چراغ
+  // ===================================================
+  // RESIZE OBSERVER
+  // ===================================================
+
   useEffect(() => {
-    if (!contentRef.current || typeof ResizeObserver === "undefined") return;
+    if (
+      !contentRef.current ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
 
     const observer = new ResizeObserver(() => {
       const target = activeSyncTargetRef.current;
+
       if (!target || isDragging) return;
-      const { targetNode, targetKey } = resolveSyncTarget(contentRef.current, target);
+
+      const {
+        targetNode,
+        targetKey,
+      } = resolveSyncTarget(
+        contentRef.current,
+        target
+      );
+
       if (targetNode) {
-        moveLanternToNode(targetNode, targetKey, false);
+        moveLanternToNode(
+          targetNode,
+          targetKey,
+          false
+        );
       }
     });
 
     observer.observe(contentRef.current);
+
     return () => observer.disconnect();
-  }, [isDragging, moveLanternToNode]);
+  }, [
+    isDragging,
+    moveLanternToNode,
+  ]);
+
+  // ===================================================
+  // CLEANUP
+  // ===================================================
+
+  useEffect(() => {
+    return () => {
+      if (swingTimeout.current) {
+        clearTimeout(swingTimeout.current);
+      }
+    };
+  }, []);
+
+  // ===================================================
+  // RENDER
+  // ===================================================
 
   return (
     <Box
@@ -710,8 +1570,15 @@ export default function Sidenav({ children }) {
       }}
     >
       {/* دکمه بازگشت منطقی در بالای سایدبار */}
+
       {canGoBack && (
-        <Box sx={{ px: 2, pt: 1.5, pb: 0.5 }}>
+        <Box
+          sx={{
+            px: 2,
+            pt: 1.5,
+            pb: 0.5,
+          }}
+        >
           <ListItemButton
             onClick={goBack}
             sx={{
@@ -719,24 +1586,47 @@ export default function Sidenav({ children }) {
               py: 0.75,
               bgcolor: "rgba(255,255,255,0.08)",
               color: "#ffffff",
-              "&:hover": { bgcolor: "rgba(255,255,255,0.16)" },
+
+              "&:hover": {
+                bgcolor: "rgba(255,255,255,0.16)",
+              },
             }}
           >
-            <ListItemIcon sx={{ minWidth: 30, color: "#ffffff" }}>
+            <ListItemIcon
+              sx={{
+                minWidth: 30,
+                color: "#ffffff",
+              }}
+            >
               <ArrowBackIcon fontSize="small" />
             </ListItemIcon>
+
             <ListItemText
               primary={t("back") || "بازگشت"}
-              primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: 600 }}
+              primaryTypographyProps={{
+                fontSize: "0.85rem",
+                fontWeight: 600,
+              }}
             />
           </ListItemButton>
-          <Divider sx={{ mt: 1, borderColor: "rgba(255,255,255,0.12)" }} />
+
+          <Divider
+            sx={{
+              mt: 1,
+              borderColor: "rgba(255,255,255,0.12)",
+            }}
+          />
         </Box>
       )}
 
       {/* محوطه منو و فانوس */}
-      <LanternViewport ref={viewportRef} onWheel={handleWheel}>
+
+      <LanternViewport
+        ref={viewportRef}
+        onWheel={handleWheel}
+      >
         {/* ریل عمودی حرکت فانوس */}
+
         <Box
           onClick={handleTrackClick}
           sx={{
@@ -762,6 +1652,7 @@ export default function Sidenav({ children }) {
         </Box>
 
         {/* فانوس قابل درگ */}
+
         <Box
           onMouseDown={handleLanternPointerDown}
           onTouchStart={handleLanternPointerDown}
@@ -770,29 +1661,49 @@ export default function Sidenav({ children }) {
             left: 6,
             top: `${lanternY}px`,
             zIndex: 20,
-            cursor: isDragging ? "grabbing" : "grab",
-            transition: isDragging ? "none" : "top 0.35s cubic-bezier(0.22, 1, 0.36, 1)",
+
+            cursor: isDragging
+              ? "grabbing"
+              : "grab",
+
+            transition: isDragging
+              ? "none"
+              : "top 0.35s cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
-          <HangingLanternSVG isSwinging={isSwinging} isDragging={isDragging} />
+          <HangingLanternSVG
+            isSwinging={isSwinging}
+            isDragging={isDragging}
+          />
         </Box>
 
         {/* محتوای اسکرول‌شونده منوها */}
+
         <Box
           ref={contentRef}
           sx={{
             transform: `translateY(-${scrollOffset}px)`,
+
             transition: isDragging
               ? "none"
               : "transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)",
+
             pb: 6,
           }}
         >
           {children}
-          <List component="nav" disablePadding>
+
+          <List
+            component="nav"
+            disablePadding
+          >
             {filteredNavigations.map((item, index) => (
               <NavItem
-                key={getItemUniqueKey(item) || item.label || index}
+                key={
+                  getItemUniqueKey(item) ||
+                  item.label ||
+                  index
+                }
                 item={item}
                 openMap={openMap}
                 setOpenMap={setOpenMap}

@@ -56,6 +56,7 @@ use App\Http\Controllers\FollowUpController;
 use App\Http\Controllers\JournalRefSourceController;
 // ✅ Payroll
 use App\Http\Controllers\PayrollModelController;
+use App\Http\Controllers\HospitalSettingController;
 
 // ✅ Emergency
 use App\Http\Controllers\EmergencyController;
@@ -827,6 +828,11 @@ Route::post('/salaries/pay-bulk', [PayrollModelController::class, 'paySalariesBu
             Route::put('/{id}',    [EmergencyVitalController::class, 'update'])->where('id', '[0-9]+');
             Route::delete('/{id}', [EmergencyVitalController::class, 'destroy'])->where('id', '[0-9]+');
         });
+        Route::prefix('hospital-settings')->group(function () {
+        Route::get('/status', [HospitalSettingController::class, 'status']);
+        Route::get('/', [HospitalSettingController::class, 'show']);
+        Route::post('/', [HospitalSettingController::class, 'store']);
+    });
 
         // Main Emergency Cases
         Route::get('/statistics', [EmergencyController::class, 'statistics']);

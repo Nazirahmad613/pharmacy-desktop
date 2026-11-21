@@ -39,6 +39,9 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import ReportLayout from "../../../../components/ReportLayout";
 import { useAuth } from "app/contexts/AuthContext";
 
+// ============================================================
+// ✅ تنظیمات نمایش عملیات
+// ============================================================
 const ACTION_CONFIG = {
   create: {
     label: "ایجاد",
@@ -75,6 +78,238 @@ const ACTION_CONFIG = {
     border: "#e9d5ff",
     icon: <LogoutIcon sx={{ fontSize: 15 }} />,
   },
+};
+
+// ============================================================
+// ✅ نقشه کامل مدل‌ها → نام فارسی بخش‌ها
+// مطابق با کنترلرها و routes پروژه
+// ============================================================
+const MODEL_CONFIG = {
+  // ---------- کاربران و دسترسی ----------
+  User: "کاربران",
+  user: "کاربران",
+  users: "کاربران",
+  Auth: "احراز هویت",
+  auth: "احراز هویت",
+  Profile: "پروفایل",
+  profile: "پروفایل",
+  Role: "نقش‌ها",
+  role: "نقش‌ها",
+  roles: "نقش‌ها",
+  Permission: "دسترسی‌ها",
+  permission: "دسترسی‌ها",
+  permissions: "دسترسی‌ها",
+
+  // ---------- دپارتمان و بخش ----------
+  Department: "بخش‌ها / دیپارتمنت‌ها",
+  department: "بخش‌ها / دیپارتمنت‌ها",
+  departments: "بخش‌ها / دیپارتمنت‌ها",
+  Ward: "وارد‌ها (بخش بستری)",
+  ward: "وارد‌ها (بخش بستری)",
+  wards: "وارد‌ها (بخش بستری)",
+  Bed: "تخت‌ها",
+  bed: "تخت‌ها",
+  beds: "تخت‌ها",
+
+  // ---------- مریضان ----------
+  Patient: "مریضان",
+  patient: "مریضان",
+  patients: "مریضان",
+  Registration: "ثبت‌نام مریضان",
+  registration: "ثبت‌نام مریضان",
+  registrations: "ثبت‌نام مریضان",
+  FollowUp: "پیگیری مریضان",
+  followUp: "پیگیری مریضان",
+  follow_up: "پیگیری مریضان",
+  followup: "پیگیری مریضان",
+  TreatmentHistory: "تاریخچه معالجه",
+  treatmentHistory: "تاریخچه معالجه",
+  treatment_history: "تاریخچه معالجه",
+
+  // ---------- داکتر و معاینات ----------
+  Doctor: "داکتران",
+  doctor: "داکتران",
+  DoctorTreatment: "معالجات داکتر",
+  doctorTreatment: "معالجات داکتر",
+  Examination: "معاینات",
+  examination: "معاینات",
+  examinations: "معاینات",
+
+  // ---------- لابراتوار ----------
+  Laboratory: "لابراتوار",
+  laboratory: "لابراتوار",
+  LaboratoryRequest: "درخواست‌های لابراتوار",
+  laboratoryRequest: "درخواست‌های لابراتوار",
+  laboratory_request: "درخواست‌های لابراتوار",
+  LaboratoryResult: "نتایج لابراتوار",
+  laboratoryResult: "نتایج لابراتوار",
+  laboratory_result: "نتایج لابراتوار",
+  LaboratoryFee: "فیس لابراتوار",
+  laboratoryFee: "فیس لابراتوار",
+  laboratory_fee: "فیس لابراتوار",
+
+  // ---------- رادیولوژی ----------
+  RadiologyRequest: "درخواست‌های رادیولوژی",
+  radiologyRequest: "درخواست‌های رادیولوژی",
+  radiology_request: "درخواست‌های رادیولوژی",
+  RadiologyResult: "نتایج رادیولوژی",
+  radiologyResult: "نتایج رادیولوژی",
+  radiology_result: "نتایج رادیولوژی",
+  RadiologyFee: "فیس رادیولوژی",
+  radiologyFee: "فیس رادیولوژی",
+  radiology_fee: "فیس رادیولوژی",
+
+  // ---------- عملیات ----------
+  Operation: "عملیات‌ها",
+  operation: "عملیات‌ها",
+  operations: "عملیات‌ها",
+
+  // ---------- بستری ----------
+  Admission: "بستری",
+  admission: "بستری",
+  admissions: "بستری",
+  AdmissionRequest: "درخواست‌های بستری",
+  admissionRequest: "درخواست‌های بستری",
+  admission_request: "درخواست‌های بستری",
+  AdmissionFee: "فیس بستری",
+  admissionFee: "فیس بستری",
+  admission_fee: "فیس بستری",
+
+  // ---------- نسخه و دواخانه ----------
+  Prescription: "نسخه‌ها",
+  prescription: "نسخه‌ها",
+  prescriptions: "نسخه‌ها",
+  PrescriptionFee: "فیس نسخه",
+  prescriptionFee: "فیس نسخه",
+  prescription_fee: "فیس نسخه",
+  ExternalPrescription: "نسخه‌های بیرونی",
+  externalPrescription: "نسخه‌های بیرونی",
+  external_prescription: "نسخه‌های بیرونی",
+  PharmacyExecution: "اجراآت دواخانه",
+  pharmacyExecution: "اجراآت دواخانه",
+  pharmacy_execution: "اجراآت دواخانه",
+  Medication: "ادویه‌جات",
+  medication: "ادویه‌جات",
+  medications: "ادویه‌جات",
+  ViewMedication: "مشاهده ادویه‌جات",
+  viewMedication: "مشاهده ادویه‌جات",
+
+  // ---------- اضطراری ----------
+  Emergency: "مریضان اضطراری",
+  emergency: "مریضان اضطراری",
+  EmergencyTriage: "تریاژ اضطراری",
+  emergencyTriage: "تریاژ اضطراری",
+  emergency_triage: "تریاژ اضطراری",
+  EmergencyTreatment: "معالجات اضطراری",
+  emergencyTreatment: "معالجات اضطراری",
+  emergency_treatment: "معالجات اضطراری",
+  EmergencyVital: "علائم حیاتی اضطراری",
+  emergencyVital: "علائم حیاتی اضطراری",
+  emergency_vital: "علائم حیاتی اضطراری",
+
+  // ---------- معاشات ----------
+  Payroll: "معاشات",
+  payroll: "معاشات",
+  PayrollModel: "معاشات",
+  payrollModel: "معاشات",
+  Employee: "کارمندان",
+  employee: "کارمندان",
+  employees: "کارمندان",
+  Salary: "معاشات دوره",
+  salary: "معاشات دوره",
+  salaries: "معاشات دوره",
+  Advance: "مساعده",
+  advance: "مساعده",
+  advances: "مساعده",
+
+  // ---------- مالی و حسابداری ----------
+  Account: "حساب‌ها",
+  account: "حساب‌ها",
+  accounts: "حساب‌ها",
+  AccountSummary: "خلاصه حساب‌ها",
+  accountSummary: "خلاصه حساب‌ها",
+  account_summary: "خلاصه حساب‌ها",
+  Journal: "روزنامچه",
+  journal: "روزنامچه",
+  journals: "روزنامچه",
+  JournalRefSource: "منابع مرجع روزنامچه",
+  journalRefSource: "منابع مرجع روزنامچه",
+  journal_ref_source: "منابع مرجع روزنامچه",
+  Benefit: "مزایا",
+  benefit: "مزایا",
+  benefits: "مزایا",
+
+  // ---------- فروش و خرید ----------
+  Sale: "فروش",
+  sale: "فروش",
+  sales: "فروش",
+  SalesDetail: "جزئیات فروش",
+  salesDetail: "جزئیات فروش",
+  sales_detail: "جزئیات فروش",
+  SalesFullDetail: "جزئیات کامل فروش",
+  salesFullDetail: "جزئیات کامل فروش",
+  Purchase: "خریداری",
+  purchase: "خریداری",
+  purchases: "خریداری",
+  Parchase: "خریداری",
+  parchase: "خریداری",
+  Customer: "مشتریان",
+  customer: "مشتریان",
+  customers: "مشتریان",
+  Category: "دسته‌بندی‌ها",
+  category: "دسته‌بندی‌ها",
+  categories: "دسته‌بندی‌ها",
+
+  // ---------- گدام و گزارش‌ها ----------
+  Stock: "گدام",
+  stock: "گدام",
+  StockReport: "گزارش گدام",
+  stockReport: "گزارش گدام",
+  Inventory: "موجودی گدام",
+  inventory: "موجودی گدام",
+  ViewInventory: "مشاهده موجودی",
+  viewInventory: "مشاهده موجودی",
+  ProfitLoss: "سود و زیان",
+  profitLoss: "سود و زیان",
+  profit_loss: "سود و زیان",
+  ViewProfitLoss: "مشاهده سود و زیان",
+  viewProfitLoss: "مشاهده سود و زیان",
+  HospitalReport: "گزارش شفاخانه",
+  hospitalReport: "گزارش شفاخانه",
+  hospital_report: "گزارش شفاخانه",
+  Dashboard: "داشبورد",
+  dashboard: "داشبورد",
+  Notification: "اطلاعیه‌ها",
+  notification: "اطلاعیه‌ها",
+  notifications: "اطلاعیه‌ها",
+
+  // ---------- لاگ ----------
+  Log: "لاگ‌ها",
+  log: "لاگ‌ها",
+  logs: "لاگ‌ها",
+};
+
+// ============================================================
+// ✅ تابع تبدیل نام مدل به نام فارسی
+// ============================================================
+const getModelLabel = (model) => {
+  if (!model) return null;
+
+  // اگر نام کامل کلاس لاراول بود: App\Models\User
+  const shortName = String(model).split("\\").pop();
+
+  // جستجوی مستقیم
+  if (MODEL_CONFIG[shortName]) return MODEL_CONFIG[shortName];
+  if (MODEL_CONFIG[model]) return MODEL_CONFIG[model];
+
+  // جستجوی case-insensitive
+  const key = Object.keys(MODEL_CONFIG).find(
+    (k) => k.toLowerCase() === shortName.toLowerCase()
+  );
+  if (key) return MODEL_CONFIG[key];
+
+  // اگر پیدا نشد، خود مقدار خام را برگردان
+  return shortName;
 };
 
 export default function LogsPage() {
@@ -462,10 +697,9 @@ export default function LogsPage() {
                   <TableCell align="center" width={120}>
                     عملیات
                   </TableCell>
-                  <TableCell align="center" width={150}>
-                    مدل / بخش
+                  <TableCell align="center" width={180}>
+                       بخش
                   </TableCell>
-                  {/* ✅ هدر توضیحات — وسط‌چین */}
                   <TableCell align="center">توضیحات</TableCell>
                   <TableCell align="center" width={140}>
                     آدرس IP
@@ -546,7 +780,7 @@ export default function LogsPage() {
                           </Typography>
                         </TableCell>
 
-                        {/* ✅ ستون کاربر — وسط‌چین */}
+                        {/* ستون کاربر — وسط‌چین */}
                         <TableCell align="center">
                           <Stack
                             direction="row"
@@ -578,19 +812,22 @@ export default function LogsPage() {
                           {renderActionBadge(log.action)}
                         </TableCell>
 
+                        {/* ✅ ستون مدل / بخش — نام فارسی */}
                         <TableCell align="center">
                           {log.model ? (
-                            <Chip
-                              label={log.model}
-                              size="small"
-                              sx={{
-                                bgcolor: "#f8fafc",
-                                color: "#334155",
-                                border: "1px solid #e2e8f0",
-                                fontFamily: "monospace",
-                                fontSize: "0.78rem",
-                              }}
-                            />
+                            <Tooltip title={String(log.model)} arrow>
+                              <Chip
+                                label={getModelLabel(log.model)}
+                                size="small"
+                                sx={{
+                                  bgcolor: "#f8fafc",
+                                  color: "#334155",
+                                  border: "1px solid #e2e8f0",
+                                  fontSize: "0.78rem",
+                                  fontWeight: 500,
+                                }}
+                              />
+                            </Tooltip>
                           ) : (
                             <Typography variant="body2" color="#94a3b8">
                               —
@@ -598,7 +835,7 @@ export default function LogsPage() {
                           )}
                         </TableCell>
 
-                        {/* ✅ ستون توضیحات — وسط‌چین */}
+                        {/* ستون توضیحات — وسط‌چین */}
                         <TableCell align="center" sx={{ maxWidth: 320 }}>
                           <Tooltip title={log.description || ""} arrow>
                             <Typography
