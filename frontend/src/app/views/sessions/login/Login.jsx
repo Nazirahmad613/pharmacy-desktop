@@ -35,9 +35,29 @@ export default function Login() {
     try {
       setLoading(true);
       setLoginError("");
-      await login(values.email, values.password);
+      const response = await login(values.email, values.password);
       enqueueSnackbar("ورود موفقانه به سیستم شفاخانه انجام شد", { variant: "success" });
-      navigate("/dashboard/default");
+
+      const data = response?.data || response || {};
+      const loggedInUser = data.user || JSON.parse(localStorage.getItem("user") || "{}");
+      const isConfigured = data.is_configured;
+
+      const isSuperAdmin =
+        loggedInUser?.role === "super-admin" ||
+        loggedInUser?.role === "super_admin" ||
+        loggedInUser?.role_name === "super-admin" ||
+        loggedInUser?.role_name === "super_admin" ||
+        (Array.isArray(loggedInUser?.roles) &&
+          loggedInUser.roles.some((role) => {
+            const name = typeof role === "string" ? role : role.name;
+            return name === "super-admin" || name === "super_admin";
+          }));
+
+      if (isConfigured === false && isSuperAdmin) {
+        navigate("/setup");
+      } else {
+        navigate("/dashboard/default");
+      }
     } catch (error) {
       const message = error?.response?.data?.message || "ایمیل یا رمز عبور اشتباه است";
       setLoginError(message);

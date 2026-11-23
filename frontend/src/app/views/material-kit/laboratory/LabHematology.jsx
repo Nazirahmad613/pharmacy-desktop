@@ -48,23 +48,22 @@ import {
   Edit as EditIcon,
   Print as PrintIcon,
   Person as PersonIcon,
-  CalendarToday as CalendarIcon,
   Close as CloseIcon,
   Upload as UploadIcon,
   PictureAsPdf as PdfIcon,
   Delete as DeleteIcon,
   AttachFile as AttachFileIcon,
   Phone as PhoneIcon,
-  Email as EmailIcon,
   Badge as BadgeIcon,
   AccessTime as AccessTimeIcon,
   CheckCircle as CheckCircleIcon,
+  CheckCircleOutline as CheckCircleOutlineIcon,
   ArrowBack as ArrowBackIcon,
   BugReport as BugReportIcon,
   Psychology as PsychologyIcon,
-  Image as ImageIcon,
   LocalHospital as LocalHospitalIcon,
   Download as DownloadIcon,
+  AssignmentOutlined as AssignmentOutlinedIcon,
 } from "@mui/icons-material";
 
 export default function LabHematology() {
@@ -84,7 +83,7 @@ export default function LabHematology() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef(null);
-  
+
   // ============ State برای Toast/Snackbar ============
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -104,54 +103,54 @@ export default function LabHematology() {
   const [editingResult, setEditingResult] = useState(false);
   const [deletingResultId, setDeletingResultId] = useState(null);
 
-  // ============ دسته‌بندی تست‌ها ============
+  // ============ دسته‌بندی تست‌ها با تم رنگی پاستلی مطابق تصویر ============
   const categories = [
-    { id: "blood", title: "🩸 آزمایش خون (هماتولوژی)", icon: <BloodtypeIcon sx={{ fontSize: 40, color: "#ef4444" }} />, testType: "blood", keywords: ["خون", "blood", "هماتولوژی", "hematology"] },
-    { id: "cbc", title: "🩸 شمارش کامل خون (CBC)", icon: <BloodtypeIcon sx={{ fontSize: 40, color: "#dc2626" }} />, testType: "cbc", keywords: ["cbc", "شمارش خون", "complete blood count"] },
-    { id: "blood_sugar", title: "🩸 قند خون (FBS / BS)", icon: <MonitorHeartIcon sx={{ fontSize: 40, color: "#ec4899" }} />, testType: "blood_sugar", keywords: ["قند", "blood sugar", "گلوکز", "glucose", "FBS", "BS"] },
-    { id: "blood_group", title: "🩸 گروپ خون", icon: <BloodtypeIcon sx={{ fontSize: 40, color: "#3b82f6" }} />, testType: "blood_group", keywords: ["گروپ خون", "blood group", "ABO", "Rh"] },
-    { id: "biochemistry", title: "🧪 بیوشیمی خون", icon: <BiotechIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "biochemistry", keywords: ["بیوشیمی", "biochemistry"] },
-    { id: "lipid_profile", title: "🧪 پروفایل چربی (Lipid Profile)", icon: <BiotechIcon sx={{ fontSize: 40, color: "#7c3aed" }} />, testType: "lipid_profile", keywords: ["چربی", "lipid", "کلسترول", "cholesterol", "triglyceride"] },
-    { id: "liver_function", title: "🧪 عملکرد کبد (LFT)", icon: <BiotechIcon sx={{ fontSize: 40, color: "#f59e0b" }} />, testType: "liver_function", keywords: ["کبد", "liver", "LFT", "ALT", "AST", "ALP"] },
-    { id: "kidney_function", title: "🧪 عملکرد کلیه (RFT)", icon: <BiotechIcon sx={{ fontSize: 40, color: "#10b981" }} />, testType: "kidney_function", keywords: ["کلیه", "kidney", "RFT", "BUN", "Creatinine"] },
-    { id: "thyroid", title: "🧪 هورمون‌های تیروئید (T3/T4/TSH)", icon: <BiotechIcon sx={{ fontSize: 40, color: "#f472b6" }} />, testType: "thyroid", keywords: ["تیروئید", "thyroid", "T3", "T4", "TSH"] },
-    { id: "hormonal", title: "🧬 هورمون‌ها", icon: <PsychologyIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "hormonal", keywords: ["هورمون", "hormonal"] },
-    { id: "reproductive_hormones", title: "🧬 هورمون‌های تولیدمثل", icon: <PsychologyIcon sx={{ fontSize: 40, color: "#ec4899" }} />, testType: "reproductive_hormones", keywords: ["تولیدمثل", "reproductive", "FSH", "LH", "استروژن", "تستوسترون"] },
-    { id: "adrenal_hormones", title: "🧬 هورمون‌های آدرنال", icon: <PsychologyIcon sx={{ fontSize: 40, color: "#f59e0b" }} />, testType: "adrenal_hormones", keywords: ["آدرنال", "adrenal", "کورتیزول", "cortisol"] },
-    { id: "microbial", title: "🦠 آزمایش میکروبی", icon: <BugReportIcon sx={{ fontSize: 40, color: "#22c55e" }} />, testType: "microbial", keywords: ["میکروبی", "microbial"] },
-    { id: "bacterial_culture", title: "🦠 کشت باکتری", icon: <BugReportIcon sx={{ fontSize: 40, color: "#16a34a" }} />, testType: "bacterial_culture", keywords: ["کشت باکتری", "bacterial culture"] },
-    { id: "fungal_culture", title: "🦠 کشت قارچ", icon: <BugReportIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "fungal_culture", keywords: ["کشت قارچ", "fungal culture"] },
-    { id: "antibiotic_sensitivity", title: "🦠 آنتی‌بیوگرام", icon: <BugReportIcon sx={{ fontSize: 40, color: "#dc2626" }} />, testType: "antibiotic_sensitivity", keywords: ["آنتی‌بیوگرام", "antibiotic", "حساسیت"] },
-    { id: "serology", title: "🧫 سرولوژی", icon: <HealingIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "serology", keywords: ["سرولوژی", "serology"] },
-    { id: "hepatitis_b", title: "🧪 تست هپاتیت B (HBsAg)", icon: <HealingIcon sx={{ fontSize: 40, color: "#f97316" }} />, testType: "hepatitis_b", keywords: ["هپاتیت b", "hepatitis b", "hbsag", "HBsAg", "HBV"] },
-    { id: "hepatitis_c", title: "🧪 تست هپاتیت C (Anti-HCV)", icon: <HealingIcon sx={{ fontSize: 40, color: "#f59e0b" }} />, testType: "hepatitis_c", keywords: ["هپاتیت c", "hepatitis c", "hcv", "HCV"] },
-    { id: "hiv", title: "🧫 تست HIV / AIDS", icon: <HealingIcon sx={{ fontSize: 40, color: "#ef4444" }} />, testType: "hiv", keywords: ["hiv", "ایدز", "aids", "HIV", "AIDS"] },
-    { id: "syphilis", title: "🧫 تست سیفلیس (VDRL)", icon: <HealingIcon sx={{ fontSize: 40, color: "#ec4899" }} />, testType: "syphilis", keywords: ["سیفلیس", "syphilis", "VDRL"] },
-    { id: "rubella", title: "🧫 تست روبلا", icon: <HealingIcon sx={{ fontSize: 40, color: "#f472b6" }} />, testType: "rubella", keywords: ["روبلا", "rubella"] },
-    { id: "toxoplasmosis", title: "🧫 تست توکسوپلاسموز", icon: <HealingIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "toxoplasmosis", keywords: ["توکسوپلاسموز", "toxoplasmosis"] },
-    { id: "urine", title: "💧 آنالیز ادرار", icon: <WaterIcon sx={{ fontSize: 40, color: "#fcd34d" }} />, testType: "urine", keywords: ["ادرار", "urine", "آنالیز ادرار"] },
-    { id: "urine_culture", title: "💧 کشت ادرار", icon: <WaterIcon sx={{ fontSize: 40, color: "#fbbf24" }} />, testType: "urine_culture", keywords: ["کشت ادرار", "urine culture"] },
-    { id: "stool", title: "💩 آزمایش مدفوع", icon: <LocalHospitalIcon sx={{ fontSize: 40, color: "#92400e" }} />, testType: "stool", keywords: ["مدفوع", "stool"] },
-    { id: "stool_culture", title: "💩 کشت مدفوع", icon: <LocalHospitalIcon sx={{ fontSize: 40, color: "#78350f" }} />, testType: "stool_culture", keywords: ["کشت مدفوع", "stool culture"] },
-    { id: "occult_blood", title: "💩 خون مخفی مدفوع", icon: <LocalHospitalIcon sx={{ fontSize: 40, color: "#dc2626" }} />, testType: "occult_blood", keywords: ["خون مخفی", "occult blood", "FOBT"] },
-    { id: "pathology", title: "🔬 پاتولوژی", icon: <ScienceIcon sx={{ fontSize: 40, color: "#ef4444" }} />, testType: "pathology", keywords: ["پاتولوژی", "pathology"] },
-    { id: "biopsy", title: "🔬 بیوپسی", icon: <ScienceIcon sx={{ fontSize: 40, color: "#dc2626" }} />, testType: "biopsy", keywords: ["بیوپسی", "biopsy"] },
-    { id: "cytology", title: "🔬 سیتولوژی", icon: <ScienceIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "cytology", keywords: ["سیتولوژی", "cytology"] },
-    { id: "genetic", title: "🧬 آزمایش ژنتیک", icon: <BiotechIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "genetic", keywords: ["ژنتیک", "genetic"] },
-    { id: "pcr", title: "🧬 PCR", icon: <BiotechIcon sx={{ fontSize: 40, color: "#3b82f6" }} />, testType: "pcr", keywords: ["PCR", "pcr"] },
-    { id: "karyotyping", title: "🧬 کاریوتایپینگ", icon: <BiotechIcon sx={{ fontSize: 40, color: "#7c3aed" }} />, testType: "karyotyping", keywords: ["کاریوتایپ", "karyotyping"] },
-    { id: "malaria", title: "🦟 تست مالاریا", icon: <BugReportIcon sx={{ fontSize: 40, color: "#22c55e" }} />, testType: "malaria", keywords: ["مالاریا", "malaria", "پلاسمودیوم"] },
-    { id: "parasitology", title: "🦟 انگل‌شناسی", icon: <BugReportIcon sx={{ fontSize: 40, color: "#f59e0b" }} />, testType: "parasitology", keywords: ["انگل", "parasitology", "parasite"] },
-    { id: "kala_azar", title: "🦟 کالا آزار (لیشمانیوز احشایی)", icon: <BugReportIcon sx={{ fontSize: 40, color: "#dc2626" }} />, testType: "kala_azar", keywords: ["کالا آزار", "kala azar", "لیشمانیوز"] },
-    { id: "leishmaniasis", title: "🦟 لیشمانیوز", icon: <BugReportIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "leishmaniasis", keywords: ["لیشمانیوز", "leishmaniasis"] },
-    { id: "imaging", title: "📷 تصویربرداری", icon: <ScienceIcon sx={{ fontSize: 40, color: "#3b82f6" }} />, testType: "imaging", keywords: ["تصویربرداری", "imaging"] },
-    { id: "ultrasound", title: "📷 سونوگرافی", icon: <ScienceIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "ultrasound", keywords: ["سونوگرافی", "ultrasound"] },
-    { id: "xray", title: "📷 رادیوگرافی (X-Ray)", icon: <ScienceIcon sx={{ fontSize: 40, color: "#6b7280" }} />, testType: "xray", keywords: ["رادیوگرافی", "xray", "X-Ray"] },
-    { id: "ct_scan", title: "📷 سی‌تی اسکن (CT Scan)", icon: <ScienceIcon sx={{ fontSize: 40, color: "#3b82f6" }} />, testType: "ct_scan", keywords: ["سی‌تی اسکن", "ct scan", "CT"] },
-    { id: "mri", title: "📷 ام‌آرآی (MRI)", icon: <ScienceIcon sx={{ fontSize: 40, color: "#8b5cf6" }} />, testType: "mri", keywords: ["ام‌آرآی", "mri", "MRI"] },
-    { id: "other", title: "📋 سایر آزمایشات", icon: <ScienceIcon sx={{ fontSize: 40, color: "#6b7280" }} />, testType: "other", keywords: ["سایر", "other"] },
-    { id: "general", title: "📋 عمومی", icon: <ScienceIcon sx={{ fontSize: 40, color: "#9ca3af" }} />, testType: "general", keywords: ["عمومی", "general"] },
-    { id: "results", title: "📄 ثبت نتایج", icon: <ScienceIcon sx={{ fontSize: 40, color: "#06b6d4" }} />, testType: "", keywords: [], isSpecial: true },
+    { id: "blood", title: "آزمایش خون (هماتولوژی)", icon: <BloodtypeIcon sx={{ fontSize: 24, color: "#e11d48" }} />, iconBg: "#ffe4e6", testType: "blood", keywords: ["خون", "blood", "هماتولوژی", "hematology"] },
+    { id: "cbc", title: "شمارش کامل خون CBC", icon: <MonitorHeartIcon sx={{ fontSize: 24, color: "#2563eb" }} />, iconBg: "#dbeafe", testType: "cbc", keywords: ["cbc", "شمارش خون", "complete blood count"] },
+    { id: "blood_sugar", title: "قند خون", icon: <MonitorHeartIcon sx={{ fontSize: 24, color: "#db2777" }} />, iconBg: "#fce7f3", testType: "blood_sugar", keywords: ["قند", "blood sugar", "گلوکز", "glucose", "FBS", "BS"] },
+    { id: "blood_group", title: "گروپ خون", icon: <BloodtypeIcon sx={{ fontSize: 24, color: "#2563eb" }} />, iconBg: "#dbeafe", testType: "blood_group", keywords: ["گروپ خون", "blood group", "ABO", "Rh"] },
+    { id: "biochemistry", title: "بیوشیمی خون", icon: <ScienceIcon sx={{ fontSize: 24, color: "#7c3aed" }} />, iconBg: "#ede9fe", testType: "biochemistry", keywords: ["بیوشیمی", "biochemistry"] },
+    { id: "lipid_profile", title: "پروفایل چربی (Lipid Profile)", icon: <BiotechIcon sx={{ fontSize: 24, color: "#6d28d9" }} />, iconBg: "#ede9fe", testType: "lipid_profile", keywords: ["چربی", "lipid", "کلسترول", "cholesterol", "triglyceride"] },
+    { id: "liver_function", title: "عملکرد کبد (LFT)", icon: <BiotechIcon sx={{ fontSize: 24, color: "#d97706" }} />, iconBg: "#fef3c7", testType: "liver_function", keywords: ["کبد", "liver", "LFT", "ALT", "AST", "ALP"] },
+    { id: "kidney_function", title: "عملکرد کلیه (RFT)", icon: <BiotechIcon sx={{ fontSize: 24, color: "#059669" }} />, iconBg: "#d1fae5", testType: "kidney_function", keywords: ["کلیه", "kidney", "RFT", "BUN", "Creatinine"] },
+    { id: "thyroid", title: "هورمون‌های تیروئید (T3/T4/TSH)", icon: <BiotechIcon sx={{ fontSize: 24, color: "#db2777" }} />, iconBg: "#fce7f3", testType: "thyroid", keywords: ["تیروئید", "thyroid", "T3", "T4", "TSH"] },
+    { id: "hormonal", title: "هورمون‌ها", icon: <BiotechIcon sx={{ fontSize: 24, color: "#9333ea" }} />, iconBg: "#f3e8ff", testType: "hormonal", keywords: ["هورمون", "hormonal"] },
+    { id: "reproductive_hormones", title: "هورمون‌های تولیدمثل", icon: <PsychologyIcon sx={{ fontSize: 24, color: "#db2777" }} />, iconBg: "#fce7f3", testType: "reproductive_hormones", keywords: ["تولیدمثل", "reproductive", "FSH", "LH", "استروژن", "تستوسترون"] },
+    { id: "adrenal_hormones", title: "هورمون‌های آدرنال", icon: <PsychologyIcon sx={{ fontSize: 24, color: "#d97706" }} />, iconBg: "#fef3c7", testType: "adrenal_hormones", keywords: ["آدرنال", "adrenal", "کورتیزول", "cortisol"] },
+    { id: "microbial", title: "آزمایش میکروبی", icon: <BugReportIcon sx={{ fontSize: 24, color: "#16a34a" }} />, iconBg: "#dcfce7", testType: "microbial", keywords: ["میکروبی", "microbial"] },
+    { id: "bacterial_culture", title: "کشت باکتری", icon: <BugReportIcon sx={{ fontSize: 24, color: "#15803d" }} />, iconBg: "#dcfce7", testType: "bacterial_culture", keywords: ["کشت باکتری", "bacterial culture"] },
+    { id: "fungal_culture", title: "کشت قارچ", icon: <BugReportIcon sx={{ fontSize: 24, color: "#7c3aed" }} />, iconBg: "#ede9fe", testType: "fungal_culture", keywords: ["کشت قارچ", "fungal culture"] },
+    { id: "antibiotic_sensitivity", title: "آنتی‌بیوگرام", icon: <BugReportIcon sx={{ fontSize: 24, color: "#dc2626" }} />, iconBg: "#fee2e2", testType: "antibiotic_sensitivity", keywords: ["آنتی‌بیوگرام", "antibiotic", "حساسیت"] },
+    { id: "serology", title: "سرولوژی", icon: <HealingIcon sx={{ fontSize: 24, color: "#7c3aed" }} />, iconBg: "#ede9fe", testType: "serology", keywords: ["سرولوژی", "serology"] },
+    { id: "hepatitis_b", title: "تست هپاتیت B (HBsAg)", icon: <HealingIcon sx={{ fontSize: 24, color: "#ea580c" }} />, iconBg: "#ffedd5", testType: "hepatitis_b", keywords: ["هپاتیت b", "hepatitis b", "hbsag", "HBsAg", "HBV"] },
+    { id: "hepatitis_c", title: "تست هپاتیت C (Anti-HCV)", icon: <HealingIcon sx={{ fontSize: 24, color: "#d97706" }} />, iconBg: "#fef3c7", testType: "hepatitis_c", keywords: ["هپاتیت c", "hepatitis c", "hcv", "HCV"] },
+    { id: "hiv", title: "تست HIV / AIDS", icon: <HealingIcon sx={{ fontSize: 24, color: "#dc2626" }} />, iconBg: "#fee2e2", testType: "hiv", keywords: ["hiv", "ایدز", "aids", "HIV", "AIDS"] },
+    { id: "syphilis", title: "تست سیفلیس (VDRL)", icon: <HealingIcon sx={{ fontSize: 24, color: "#db2777" }} />, iconBg: "#fce7f3", testType: "syphilis", keywords: ["سیفلیس", "syphilis", "VDRL"] },
+    { id: "rubella", title: "تست روبلا", icon: <HealingIcon sx={{ fontSize: 24, color: "#e11d48" }} />, iconBg: "#ffe4e6", testType: "rubella", keywords: ["روبلا", "rubella"] },
+    { id: "toxoplasmosis", title: "تست توکسوپلاسموز", icon: <HealingIcon sx={{ fontSize: 24, color: "#7c3aed" }} />, iconBg: "#ede9fe", testType: "toxoplasmosis", keywords: ["توکسوپلاسموز", "toxoplasmosis"] },
+    { id: "urine", title: "آنالیز ادرار", icon: <WaterIcon sx={{ fontSize: 24, color: "#ca8a04" }} />, iconBg: "#fef9c3", testType: "urine", keywords: ["ادرار", "urine", "آنالیز ادرار"] },
+    { id: "urine_culture", title: "کشت ادرار", icon: <WaterIcon sx={{ fontSize: 24, color: "#d97706" }} />, iconBg: "#fef3c7", testType: "urine_culture", keywords: ["کشت ادرار", "urine culture"] },
+    { id: "stool", title: "آزمایش مدفوع", icon: <LocalHospitalIcon sx={{ fontSize: 24, color: "#92400e" }} />, iconBg: "#fef3c7", testType: "stool", keywords: ["مدفوع", "stool"] },
+    { id: "stool_culture", title: "کشت مدفوع", icon: <LocalHospitalIcon sx={{ fontSize: 24, color: "#78350f" }} />, iconBg: "#ffedd5", testType: "stool_culture", keywords: ["کشت مدفوع", "stool culture"] },
+    { id: "occult_blood", title: "خون مخفی مدفوع", icon: <LocalHospitalIcon sx={{ fontSize: 24, color: "#dc2626" }} />, iconBg: "#fee2e2", testType: "occult_blood", keywords: ["خون مخفی", "occult blood", "FOBT"] },
+    { id: "pathology", title: "پاتولوژی", icon: <ScienceIcon sx={{ fontSize: 24, color: "#e11d48" }} />, iconBg: "#ffe4e6", testType: "pathology", keywords: ["پاتولوژی", "pathology"] },
+    { id: "biopsy", title: "بیوپسی", icon: <ScienceIcon sx={{ fontSize: 24, color: "#dc2626" }} />, iconBg: "#fee2e2", testType: "biopsy", keywords: ["بیوپسی", "biopsy"] },
+    { id: "cytology", title: "سیتولوژی", icon: <ScienceIcon sx={{ fontSize: 24, color: "#7c3aed" }} />, iconBg: "#ede9fe", testType: "cytology", keywords: ["سیتولوژی", "cytology"] },
+    { id: "genetic", title: "آزمایش ژنتیک", icon: <BiotechIcon sx={{ fontSize: 24, color: "#7c3aed" }} />, iconBg: "#ede9fe", testType: "genetic", keywords: ["ژنتیک", "genetic"] },
+    { id: "pcr", title: "PCR", icon: <BiotechIcon sx={{ fontSize: 24, color: "#2563eb" }} />, iconBg: "#dbeafe", testType: "pcr", keywords: ["PCR", "pcr"] },
+    { id: "karyotyping", title: "کاریوتایپینگ", icon: <BiotechIcon sx={{ fontSize: 24, color: "#6d28d9" }} />, iconBg: "#ede9fe", testType: "karyotyping", keywords: ["کاریوتایپ", "karyotyping"] },
+    { id: "malaria", title: "تست مالاریا", icon: <BugReportIcon sx={{ fontSize: 24, color: "#16a34a" }} />, iconBg: "#dcfce7", testType: "malaria", keywords: ["مالاریا", "malaria", "پلاسمودیوم"] },
+    { id: "parasitology", title: "انگل‌شناسی", icon: <BugReportIcon sx={{ fontSize: 24, color: "#d97706" }} />, iconBg: "#fef3c7", testType: "parasitology", keywords: ["انگل", "parasitology", "parasite"] },
+    { id: "kala_azar", title: "کالا آزار (لیشمانیوز احشایی)", icon: <BugReportIcon sx={{ fontSize: 24, color: "#dc2626" }} />, iconBg: "#fee2e2", testType: "kala_azar", keywords: ["کالا آزار", "kala azar", "لیشمانیوز"] },
+    { id: "leishmaniasis", title: "لیشمانیوز", icon: <BugReportIcon sx={{ fontSize: 24, color: "#7c3aed" }} />, iconBg: "#ede9fe", testType: "leishmaniasis", keywords: ["لیشمانیوز", "leishmaniasis"] },
+    { id: "imaging", title: "تصویربرداری", icon: <ScienceIcon sx={{ fontSize: 24, color: "#2563eb" }} />, iconBg: "#dbeafe", testType: "imaging", keywords: ["تصویربرداری", "imaging"] },
+    { id: "ultrasound", title: "سونوگرافی", icon: <ScienceIcon sx={{ fontSize: 24, color: "#7c3aed" }} />, iconBg: "#ede9fe", testType: "ultrasound", keywords: ["سونوگرافی", "ultrasound"] },
+    { id: "xray", title: "رادیوگرافی (X-Ray)", icon: <ScienceIcon sx={{ fontSize: 24, color: "#475569" }} />, iconBg: "#f1f5f9", testType: "xray", keywords: ["رادیوگرافی", "xray", "X-Ray"] },
+    { id: "ct_scan", title: "سی‌تی اسکن (CT Scan)", icon: <ScienceIcon sx={{ fontSize: 24, color: "#2563eb" }} />, iconBg: "#dbeafe", testType: "ct_scan", keywords: ["سی‌تی اسکن", "ct scan", "CT"] },
+    { id: "mri", title: "ام‌آرآی (MRI)", icon: <ScienceIcon sx={{ fontSize: 24, color: "#7c3aed" }} />, iconBg: "#ede9fe", testType: "mri", keywords: ["ام‌آرآی", "mri", "MRI"] },
+    { id: "other", title: "سایر آزمایشات", icon: <ScienceIcon sx={{ fontSize: 24, color: "#475569" }} />, iconBg: "#f1f5f9", testType: "other", keywords: ["سایر", "other"] },
+    { id: "general", title: "عمومی", icon: <ScienceIcon sx={{ fontSize: 24, color: "#64748b" }} />, iconBg: "#f1f5f9", testType: "general", keywords: ["عمومی", "general"] },
+    { id: "results", title: "ثبت نتایج", icon: <ScienceIcon sx={{ fontSize: 24, color: "#0284c7" }} />, iconBg: "#e0f2fe", testType: "", keywords: [], isSpecial: true },
   ];
 
   // ============ دریافت نتیجه با جزئیات کامل از سرور ============
@@ -159,7 +158,7 @@ export default function LabHematology() {
     try {
       const token = localStorage.getItem("token");
       console.log("🔍 دریافت نتیجه برای درخواست:", requestId);
-      
+
       const response = await fetch(
         `http://localhost:8000/api/laboratory-results/request/${requestId}`,
         {
@@ -182,7 +181,7 @@ export default function LabHematology() {
 
       const result = await response.json();
       console.log("📋 نتیجه دریافت شد:", result);
-      
+
       if (result.success) {
         return result.data;
       } else {
@@ -199,7 +198,7 @@ export default function LabHematology() {
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
-      
+
       const response = await fetch(
         "http://localhost:8000/api/laboratory-requests/all",
         {
@@ -356,14 +355,14 @@ export default function LabHematology() {
     console.log("📋 مشاهده جزئیات درخواست:", request.id);
     setSelectedRequest(request);
     setOpenDetailDialog(true);
-    
+
     if (request.status === "completed") {
       const resultData = await fetchResultDetails(request.id);
       if (resultData) {
         console.log("✅ نتیجه دریافت شد:", resultData);
         console.log("✅ normal_range دریافت شده:", resultData.normal_range);
-        
-        setSelectedRequest(prev => ({
+
+        setSelectedRequest((prev) => ({
           ...prev,
           result_details: resultData,
           result_value: resultData.result || "",
@@ -399,7 +398,6 @@ export default function LabHematology() {
         pdf_url: request.pdf_url || request.laboratory_result?.pdf_url || "",
       });
 
-      // نتیجه کامل را از سرور می‌گیریم تا هنگام تصحیح، آخرین اطلاعات استفاده شود.
       try {
         const resultDetails = await fetchResultDetails(request.id);
         if (resultDetails) {
@@ -553,11 +551,10 @@ export default function LabHematology() {
     try {
       const token = localStorage.getItem("token");
       showToast("⏳ در حال دانلود فایل...", "info");
-      
-      // دریافت فایل با fetch و توکن
+
       const response = await fetch(pdfUrl, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -566,19 +563,17 @@ export default function LabHematology() {
       }
 
       const blob = await response.blob();
-      
-      // ایجاد URL برای دانلود
+
       const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = url;
-      link.download = pdfUrl.split('/').pop() || 'result.pdf';
+      link.download = pdfUrl.split("/").pop() || "result.pdf";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
+
       showToast("✅ دانلود فایل با موفقیت انجام شد", "success");
-      
     } catch (error) {
       console.error("❌ خطا در دانلود PDF:", error);
       showToast("❌ خطا در دانلود فایل: " + error.message, "error");
@@ -588,10 +583,10 @@ export default function LabHematology() {
   // ============ پرینت نتیجه با دریافت اطلاعات کامل از سرور ============
   const handlePrintResult = async (request) => {
     console.log("🖨️ شروع پرینت نتیجه برای:", request.id);
-    
+
     try {
       let resultData = await fetchResultDetails(request.id);
-      
+
       if (!resultData) {
         resultData = request.result_details || {};
         console.log("📋 استفاده از داده‌های موجود در request");
@@ -603,7 +598,7 @@ export default function LabHematology() {
       const test = resultData.test || {};
       const doctor = resultData.doctor || {};
       const registration = resultData.registration || {};
-      
+
       const patientName = patient.full_name || request.patient_full_name || request.patient_name || "نامشخص";
       const patientPhone = patient.mobile || request.patient_phone || "";
       const patientAge = patient.age || request.patient_age || "";
@@ -618,15 +613,15 @@ export default function LabHematology() {
       const doctorName = doctor.name || request.doctor_name || "نامشخص";
       const regId = registration.reg_id || request.registration_id || request.reg_id || "-";
       const reportNo = resultData.report_no || request.report_no || "";
-      
+
       const hasResult = !!(resultData.result || request.result_value);
       const statusLabel = hasResult ? "ثبت شده" : "تکمیل شده";
       const statusColor = hasResult ? "#10b981" : "#3b82f6";
-      
+
       const now = new Date();
-      const printDate = now.toLocaleDateString('fa-IR');
-      const printTime = now.toLocaleTimeString('fa-IR');
-      
+      const printDate = now.toLocaleDateString("fa-IR");
+      const printTime = now.toLocaleTimeString("fa-IR");
+
       const printHtml = `
         <!DOCTYPE html>
         <html dir="rtl">
@@ -811,15 +806,15 @@ export default function LabHematology() {
               </div>
               <div class="item">
                 <span class="label">📱 شماره تماس</span>
-                <span class="value">${patientPhone || '-'}</span>
+                <span class="value">${patientPhone || "-"}</span>
               </div>
               <div class="item">
                 <span class="label">🎂 سن</span>
-                <span class="value">${patientAge || '-'}</span>
+                <span class="value">${patientAge || "-"}</span>
               </div>
               <div class="item">
                 <span class="label">⚧ جنسیت</span>
-                <span class="value">${patientGender || '-'}</span>
+                <span class="value">${patientGender || "-"}</span>
               </div>
               <div class="item">
                 <span class="label">📋 شماره مراجعه</span>
@@ -834,7 +829,7 @@ export default function LabHematology() {
             <div class="result-section">
               <div class="title">
                 <span>🔬 ${testName}</span>
-                <span class="report-no">شماره گزارش: ${reportNo || '-'}</span>
+                <span class="report-no">شماره گزارش: ${reportNo || "-"}</span>
               </div>
               <div class="body">
                 <div class="result-row">
@@ -858,17 +853,17 @@ export default function LabHematology() {
                   <span class="label">یادداشت</span>
                   <span class="value">${resultNotes}</span>
                 </div>
-                ` : ''}
+                ` : ""}
                 <div class="result-row">
                   <span class="label">تاریخ نتیجه</span>
-                  <span class="value">${new Date(resultDate).toLocaleDateString('fa-IR')}</span>
+                  <span class="value">${new Date(resultDate).toLocaleDateString("fa-IR")}</span>
                 </div>
                 ${pdfUrl ? `
                 <div class="result-row">
                   <span class="label">فایل ضمیمه</span>
-                  <span class="value">📎 ${pdfFileName || 'PDF'}</span>
+                  <span class="value">📎 ${pdfFileName || "PDF"}</span>
                 </div>
-                ` : ''}
+                ` : ""}
               </div>
             </div>
 
@@ -901,16 +896,16 @@ export default function LabHematology() {
         </html>
       `;
 
-      const printWindow = window.open('', '_blank', 'width=900,height=700,scrollbars=yes');
+      const printWindow = window.open("", "_blank", "width=900,height=700,scrollbars=yes");
       if (!printWindow) {
         showToast("❌ پنجره پرینت باز نشد. لطفاً pop-up را فعال کنید.", "error");
         return;
       }
-      
+
       printWindow.document.write(printHtml);
       printWindow.document.close();
       printWindow.focus();
-      
+
       setTimeout(() => {
         try {
           printWindow.print();
@@ -919,7 +914,6 @@ export default function LabHematology() {
           showToast("❌ خطا در پرینت. لطفاً مجدداً تلاش کنید.", "error");
         }
       }, 800);
-      
     } catch (error) {
       console.error("❌ خطا در پرینت:", error);
       showToast("❌ خطا در پرینت: " + error.message, "error");
@@ -965,7 +959,6 @@ export default function LabHematology() {
         ? `http://localhost:8000/api/laboratory-results/${resultId}`
         : "http://localhost:8000/api/laboratory-results";
 
-      // Laravel برای PUT همراه با multipart معمولاً نیاز به POST + _method=PUT دارد.
       if (isEdit) {
         formData.append("_method", "PUT");
       }
@@ -1018,7 +1011,6 @@ export default function LabHematology() {
           fileInputRef.current.value = "";
         }
 
-        // داده‌های صفحه را از سرور دوباره دریافت می‌کنیم تا تعدادها و وضعیت‌ها دقیق باشند.
         const refreshedRequests = await fetchRequests();
 
         if (selectedCategory) {
@@ -1070,8 +1062,8 @@ export default function LabHematology() {
   // ============ دریافت رنگ برای Avatar ============
   const getAvatarColor = (name) => {
     const colors = [
-      "#ef4444", "#f59e0b", "#10b981", "#3b82f6", 
-      "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"
+      "#ef4444", "#f59e0b", "#10b981", "#2563eb",
+      "#7c3aed", "#db2777", "#0d9488", "#ea580c",
     ];
     if (!name || name === "نامشخص") return colors[0];
     const index = name.length % colors.length;
@@ -1088,501 +1080,732 @@ export default function LabHematology() {
     return genders[gender] || gender || "نامشخص";
   };
 
+  // ============ استایل مشترک فیلدهای متنی در پس‌زمینه سفید ============
+  const lightTextFieldSx = {
+    "& .MuiInputLabel-root": { color: "#475569", fontWeight: 600 },
+    "& .MuiOutlinedInput-root": {
+      color: "#0f172a",
+      bgcolor: "#ffffff",
+      borderRadius: 2.5,
+      "& fieldset": { borderColor: "#e2e8f0" },
+      "&:hover fieldset": { borderColor: "#3b82f6" },
+      "&.Mui-focused fieldset": { borderColor: "#2563eb", borderWidth: "2px" },
+    },
+    "& .MuiInputLabel-root.Mui-focused": { color: "#2563eb" },
+  };
+
+  // ============ محاسبات آماری هدر ============
+  const visibleRequests = selectedCategory ? filteredRequests : allRequests;
+  const totalRequestsCount = visibleRequests.length;
+  const requestsWithResultCount = visibleRequests.filter(isRequestCompleted).length;
+  const requestsWithoutResultCount = visibleRequests.filter(
+    (r) => !isRequestCompleted(r)
+  ).length;
+
   // ============ رندر ============
   if (loading) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", p: 5, minHeight: "50vh" }}>
-        <CircularProgress />
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          p: 5,
+          minHeight: "60vh",
+          bgcolor: "#f8fafc",
+        }}
+      >
+        <CircularProgress color="primary" />
       </Box>
     );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box
+      dir="rtl"
+      sx={{
+        width: "100%",
+        minHeight: "100%",
+        boxSizing: "border-box",
+        p: { xs: 2, sm: 3, md: 4 },
+        overflowX: "hidden",
+        bgcolor: "#f8fafc",
+        color: "#0f172a",
+        "& .MuiPaper-root": {
+          backgroundImage: "none",
+        },
+        "& .MuiTableContainer-root": {
+          maxWidth: "100%",
+          overflowX: "auto",
+          borderRadius: "16px",
+        },
+        "& .MuiTableCell-root": {
+          whiteSpace: "nowrap",
+        },
+        "& .MuiDialog-paper": {
+          width: { xs: "calc(100% - 20px)", sm: "100%" },
+          maxWidth: "900px",
+          margin: { xs: 1, sm: 2 },
+          borderRadius: "20px",
+        },
+        "& .MuiButton-root": {
+          borderRadius: "10px",
+          fontWeight: 700,
+          textTransform: "none",
+        },
+        "& .MuiChip-root": {
+          fontWeight: 700,
+        },
+        "@media (prefers-reduced-motion: reduce)": {
+          "& *": { transition: "none !important", animation: "none !important" },
+        },
+      }}
+    >
       <Snackbar
         open={snackbar.open}
         autoHideDuration={5000}
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: "top", horizontal: "center" }}
       >
-        <Alert 
-          onClose={handleCloseSnackbar} 
+        <Alert
+          onClose={handleCloseSnackbar}
           severity={snackbar.severity}
           variant="filled"
-          sx={{ 
+          sx={{
             width: "100%",
-            fontSize: "16px",
+            fontSize: "15px",
             fontWeight: "bold",
-            boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+            borderRadius: "12px",
+            boxShadow: "0 10px 25px rgba(15, 23, 42, 0.12)",
           }}
         >
           {snackbar.message}
         </Alert>
       </Snackbar>
 
-      <Paper
+      {/* ============ هدر صفحه مطابق تصویر ============ */}
+      <Box
         sx={{
-          p: 3,
-          mb: 3,
-          bgcolor: "#1a2a3a",
-          borderRadius: "12px",
-          border: "1px solid #374151",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          flexWrap: "wrap",
+          mb: 3,
           gap: 2,
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
           {selectedCategory && (
             <IconButton
               onClick={handleBackToCategories}
               sx={{
-                color: "#60a5fa",
-                bgcolor: "rgba(96, 165, 250, 0.1)",
-                "&:hover": { bgcolor: "rgba(96, 165, 250, 0.2)" },
+                color: "#0284c7",
+                bgcolor: "#ffffff",
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 2px 6px rgba(15, 23, 42, 0.04)",
+                "&:hover": { bgcolor: "#f1f5f9" },
               }}
             >
               <ArrowBackIcon />
             </IconButton>
           )}
-          <BloodtypeIcon sx={{ fontSize: 35, color: "#ef4444" }} />
-          <Typography variant="h5" sx={{ fontWeight: "bold", color: "white" }}>
-            {selectedCategory ? selectedCategory.title : "🧪 لابراتوار"}
-          </Typography>
+          <Box>
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: 800,
+                color: "#0f172a",
+                fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                lineHeight: 1.3,
+              }}
+            >
+              {selectedCategory ? selectedCategory.title : "لابراتوار طبی"}
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "#64748b",
+                fontSize: "0.875rem",
+                mt: 0.25,
+              }}
+            >
+              {selectedCategory
+                ? showCompletedOnly
+                  ? "لیست درخواست‌های تکمیل‌شده این بخش"
+                  : "لیست درخواست‌های در انتظار انجام نتیجه"
+                : "سیستم مدیریت آزمایشات طبی"}
+            </Typography>
+          </Box>
         </Box>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
-          {(() => {
-            const visibleRequests = selectedCategory ? filteredRequests : allRequests;
-            const totalRequests = visibleRequests.length;
-            const requestsWithResult = visibleRequests.filter(isRequestCompleted).length;
-            const requestsWithoutResult = visibleRequests.filter(
-              (r) => !isRequestCompleted(r)
-            ).length;
 
-            return (
-              <>
-                <Chip
-                  label={
-                    selectedCategory
-                      ? showCompletedOnly
-                        ? `درخواست‌های تکمیل‌شده: ${requestsWithResult}`
-                        : `درخواست‌های بدون نتیجه: ${requestsWithoutResult}`
-                      : `کل درخواست‌ها: ${totalRequests}`
-                  }
-                  color={selectedCategory && showCompletedOnly ? "success" : "info"}
-                  size="medium"
-                  sx={{ fontWeight: "bold" }}
-                />
-                {!selectedCategory && (
-                  <>
-                    <Chip
-                      label={`بدون نتیجه: ${requestsWithoutResult}`}
-                      color="warning"
-                      size="medium"
-                      sx={{ fontWeight: "bold" }}
-                    />
-                    <Chip
-                      label={`دارای نتیجه: ${requestsWithResult}`}
-                      color="success"
-                      size="medium"
-                      sx={{ fontWeight: "bold" }}
-                    />
-                  </>
-                )}
-              </>
-            );
-          })()}
+        {/* آیکون سمت چپ مطابق تصویر */}
+        <Box
+          sx={{
+            width: 44,
+            height: 44,
+            borderRadius: "12px",
+            bgcolor: "#e0f2fe",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <ScienceIcon sx={{ fontSize: 24, color: "#0284c7" }} />
         </Box>
-      </Paper>
+      </Box>
+
+      {/* ============ سه کارت آماری افقی مطابق تصویر ============ */}
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={4}>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2.5,
+              bgcolor: "#ffffff",
+              borderRadius: "16px",
+              border: "1px solid #f1f5f9",
+              boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
+              textAlign: "center",
+            }}
+          >
+            <AssignmentOutlinedIcon sx={{ fontSize: 22, color: "#0284c7", mb: 0.75 }} />
+            <Typography
+              sx={{
+                fontSize: "1.65rem",
+                fontWeight: 800,
+                color: "#0f172a",
+                lineHeight: 1.2,
+              }}
+            >
+              {totalRequestsCount}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "0.85rem",
+                color: "#64748b",
+                fontWeight: 500,
+                mt: 0.5,
+              }}
+            >
+              کل درخواست‌ها
+            </Typography>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} sm={4}>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2.5,
+              bgcolor: "#ffffff",
+              borderRadius: "16px",
+              border: "1px solid #f1f5f9",
+              boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
+              textAlign: "center",
+            }}
+          >
+            <AccessTimeIcon sx={{ fontSize: 22, color: "#d97706", mb: 0.75 }} />
+            <Typography
+              sx={{
+                fontSize: "1.65rem",
+                fontWeight: 800,
+                color: "#0f172a",
+                lineHeight: 1.2,
+              }}
+            >
+              {requestsWithoutResultCount}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "0.85rem",
+                color: "#64748b",
+                fontWeight: 500,
+                mt: 0.5,
+              }}
+            >
+              در انتظار
+            </Typography>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} sm={4}>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2.5,
+              bgcolor: "#ffffff",
+              borderRadius: "16px",
+              border: "1px solid #f1f5f9",
+              boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
+              textAlign: "center",
+            }}
+          >
+            <CheckCircleOutlineIcon sx={{ fontSize: 22, color: "#16a34a", mb: 0.75 }} />
+            <Typography
+              sx={{
+                fontSize: "1.65rem",
+                fontWeight: 800,
+                color: "#0f172a",
+                lineHeight: 1.2,
+              }}
+            >
+              {requestsWithResultCount}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "0.85rem",
+                color: "#64748b",
+                fontWeight: 500,
+                mt: 0.5,
+              }}
+            >
+              تکمیل‌شده
+            </Typography>
+          </Paper>
+        </Grid>
+      </Grid>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <Alert severity="error" sx={{ mb: 2.5, borderRadius: "12px" }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
       {successMessage && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage(null)}>
+        <Alert severity="success" sx={{ mb: 2.5, borderRadius: "12px" }} onClose={() => setSuccessMessage(null)}>
           {successMessage}
         </Alert>
       )}
 
+      {/* ============ بخش دسته‌بندی آزمایشات یا جدول درخواست‌ها ============ */}
       {!selectedCategory ? (
-        <Grid container spacing={3}>
-          {categories.map((category) => {
-            const categoryRequests = getCategoryRequests(category);
-            const pendingCount = categoryRequests.filter(
-              (r) => !isRequestCompleted(r)
-            ).length;
-            const completedCount = categoryRequests.filter(
-              isRequestCompleted
-            ).length;
+        <>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 800,
+              color: "#0f172a",
+              fontSize: "1.1rem",
+              mb: 2,
+            }}
+          >
+            دسته‌بندی آزمایشات
+          </Typography>
 
-            // عدد روی کارت فقط درخواست‌هایی است که هنوز نتیجه ندارند.
-            const count = pendingCount;
-            const hasRequests = categoryRequests.length > 0;
-            const hasPendingRequests = pendingCount > 0;
+          <Grid container spacing={2}>
+            {categories.map((category) => {
+              const categoryRequests = getCategoryRequests(category);
+              const pendingCount = categoryRequests.filter(
+                (r) => !isRequestCompleted(r)
+              ).length;
+              const completedCount = categoryRequests.filter(
+                isRequestCompleted
+              ).length;
 
-            return (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={category.id}>
-                <Card
-                  sx={{
-                    bgcolor: hasRequests ? "#1a2a3a" : "#0d1520",
-                    borderRadius: "12px",
-                    border: hasRequests ? "1px solid #374151" : "1px solid #1f2a3a",
-                    transition: "all 0.3s",
-                    cursor: hasRequests || category.isSpecial ? "pointer" : "not-allowed",
-                    opacity: hasRequests ? 1 : 0.6,
-                    "&:hover": {
-                      transform: hasRequests ? "translateY(-4px)" : "none",
-                      borderColor: hasRequests ? "#60a5fa" : "#1f2a3a",
-                      boxShadow: hasRequests ? "0 8px 25px rgba(0,0,0,0.3)" : "none",
-                      opacity: hasRequests ? 1 : 0.7,
-                    },
-                  }}
-                  onClick={() => {
-                    if (hasRequests || category.isSpecial) {
-                      handleCategoryClick(category);
-                    }
-                  }}
-                >
-                  <CardContent sx={{ textAlign: "center", p: 3 }}>
-                    <Box sx={{ 
-                      display: "flex", 
-                      justifyContent: "center", 
-                      mb: 2,
-                      opacity: hasRequests ? 1 : 0.5,
-                    }}>
-                      {category.icon}
-                    </Box>
-                    <Typography 
-                      variant="h6" 
-                      sx={{ 
-                        color: hasRequests ? "white" : "#6b7280",
-                        fontWeight: hasRequests ? "bold" : "normal",
-                        fontSize: "13px",
-                        lineHeight: 1.3,
-                        minHeight: "36px",
+              const hasRequests = categoryRequests.length > 0;
+              const hasPendingRequests = pendingCount > 0;
+              const isInteractive = hasRequests || category.isSpecial;
+
+              return (
+                <Grid item xs={12} md={6} key={category.id}>
+                  <Card
+                    elevation={0}
+                    sx={{
+                      bgcolor: "#ffffff",
+                      borderRadius: "16px",
+                      border: hasPendingRequests
+                        ? "1px solid #bfdbfe"
+                        : "1px solid #f1f5f9",
+                      boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
+                      transition: "all 0.2s ease",
+                      cursor: isInteractive ? "pointer" : "not-allowed",
+                      opacity: isInteractive ? 1 : 0.62,
+                      "&:hover": {
+                        transform: isInteractive ? "translateY(-2px)" : "none",
+                        borderColor: isInteractive ? "#93c5fd" : "#f1f5f9",
+                        boxShadow: isInteractive
+                          ? "0 8px 20px rgba(15, 23, 42, 0.06)"
+                          : "0 2px 10px rgba(15, 23, 42, 0.03)",
+                      },
+                    }}
+                    onClick={() => {
+                      if (isInteractive) {
+                        handleCategoryClick(category);
+                      }
+                    }}
+                  >
+                    <CardContent
+                      sx={{
+                        p: "16px 20px !important",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center"
+                        justifyContent: "space-between",
+                        gap: 2,
                       }}
                     >
-                      {category.title}
-                    </Typography>
-                    {category.isSpecial ? (
-                      <Typography variant="body2" sx={{ color: "#60a5fa", mt: 1, fontSize: "12px" }}>
-                        کلیک کنید →
-                      </Typography>
-                    ) : hasRequests ? (
-                      <>
-                        {hasPendingRequests ? (
-                          <Badge
-                            badgeContent={count}
-                            color="error"
+                      {/* سمت راست: باکس آیکون + عنوان و زیرعنوان */}
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0 }}>
+                        <Box
+                          sx={{
+                            width: 48,
+                            height: 48,
+                            borderRadius: "14px",
+                            bgcolor: category.iconBg || "#f1f5f9",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {category.icon}
+                        </Box>
+
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
                             sx={{
-                              mt: 1,
-                              "& .MuiBadge-badge": {
-                                fontSize: "14px",
-                                fontWeight: "bold",
-                                backgroundColor: "#ef4444",
-                                color: "white",
-                                padding: "0 8px",
+                              color: "#0f172a",
+                              fontWeight: 700,
+                              fontSize: "0.95rem",
+                              lineHeight: 1.4,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {category.title}
+                          </Typography>
+
+                          <Typography
+                            sx={{
+                              color: category.isSpecial
+                                ? "#0284c7"
+                                : hasPendingRequests
+                                ? "#d97706"
+                                : hasRequests
+                                ? "#16a34a"
+                                : "#64748b",
+                              fontSize: "0.8rem",
+                              fontWeight: 500,
+                              mt: 0.35,
+                            }}
+                          >
+                            {category.isSpecial
+                              ? "مشاهده و ثبت نتایج"
+                              : hasPendingRequests
+                              ? `${pendingCount} در انتظار • ${completedCount} تکمیل‌شده`
+                              : hasRequests
+                              ? `مشاهده درخواست‌ها (${completedCount} تکمیل‌شده)`
+                              : "مشاهده درخواست‌ها"}
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      {/* سمت چپ: نشانگر تعداد درخواست‌های در انتظار یا وضعیت */}
+                      {!category.isSpecial && hasPendingRequests && (
+                        <Chip
+                          label={pendingCount}
+                          size="small"
+                          sx={{
+                            bgcolor: "#fee2e2",
+                            color: "#dc2626",
+                            fontWeight: 800,
+                            fontSize: "0.8rem",
+                            height: 26,
+                            minWidth: 28,
+                          }}
+                        />
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </>
+      ) : filteredRequests.length === 0 ? (
+        <Paper
+          elevation={0}
+          sx={{
+            p: 5,
+            textAlign: "center",
+            bgcolor: "#ffffff",
+            borderRadius: "16px",
+            border: "1px solid #f1f5f9",
+            boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
+          }}
+        >
+          <ScienceIcon sx={{ fontSize: 56, color: "#94a3b8", mb: 1.5 }} />
+          <Typography variant="h6" sx={{ color: "#0f172a", fontWeight: 700 }}>
+            هیچ درخواستی برای {selectedCategory.title} یافت نشد
+          </Typography>
+          <Typography variant="body2" sx={{ color: "#64748b", mt: 0.75 }}>
+            درخواست‌های جدید پس از پرداخت فیس در اینجا نمایش داده می‌شوند
+          </Typography>
+        </Paper>
+      ) : (
+        <TableContainer
+          component={Paper}
+          elevation={0}
+          sx={{
+            bgcolor: "#ffffff",
+            borderRadius: "16px",
+            border: "1px solid #f1f5f9",
+            boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
+            overflowX: "auto",
+          }}
+        >
+          <Table>
+            <TableHead>
+              <TableRow sx={{ bgcolor: "#f8fafc" }}>
+                <TableCell sx={{ color: "#475569", fontWeight: 800, borderBottom: "1px solid #e2e8f0" }}>
+                  #
+                </TableCell>
+                <TableCell sx={{ color: "#475569", fontWeight: 800, borderBottom: "1px solid #e2e8f0" }}>
+                  اطلاعات بیمار
+                </TableCell>
+                <TableCell sx={{ color: "#475569", fontWeight: 800, borderBottom: "1px solid #e2e8f0" }}>
+                  نوع تست
+                </TableCell>
+                <TableCell sx={{ color: "#475569", fontWeight: 800, borderBottom: "1px solid #e2e8f0" }}>
+                  تاریخ درخواست
+                </TableCell>
+                <TableCell sx={{ color: "#475569", fontWeight: 800, borderBottom: "1px solid #e2e8f0" }}>
+                  وضعیت
+                </TableCell>
+                <TableCell sx={{ color: "#475569", fontWeight: 800, borderBottom: "1px solid #e2e8f0" }}>
+                  PDF
+                </TableCell>
+                <TableCell
+                  sx={{ color: "#475569", fontWeight: 800, borderBottom: "1px solid #e2e8f0" }}
+                  align="center"
+                >
+                  عملیات
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredRequests.map((req, index) => {
+                const patientName = req.patient_name || "نامشخص";
+                const patientPhone = req.patient_phone || "";
+                const isCompleted = req.status === "completed";
+                const hasResult = !!(req.laboratory_result?.result || req.result);
+
+                return (
+                  <TableRow
+                    key={req.id}
+                    sx={{
+                      bgcolor: "#ffffff",
+                      "&:hover": { bgcolor: "#f8fafc" },
+                      borderBottom: "1px solid #f1f5f9",
+                    }}
+                  >
+                    <TableCell sx={{ color: "#64748b", fontWeight: 600 }}>{index + 1}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.75 }}>
+                        <Avatar
+                          sx={{
+                            bgcolor: getAvatarColor(patientName),
+                            width: 42,
+                            height: 42,
+                            fontSize: 16,
+                            fontWeight: "bold",
+                            color: "#ffffff",
+                          }}
+                        >
+                          {getInitials(patientName)}
+                        </Avatar>
+                        <Box>
+                          <Typography sx={{ color: "#0f172a", fontWeight: 700, fontSize: "14.5px" }}>
+                            {patientName}
+                          </Typography>
+                          {patientPhone && (
+                            <Typography sx={{ color: "#64748b", fontSize: "12px", mt: 0.25 }}>
+                              <PhoneIcon sx={{ fontSize: 12, verticalAlign: "middle", ml: 0.5 }} />
+                              {patientPhone}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={req.test_name || req.test_type || "نامشخص"}
+                        size="small"
+                        sx={{
+                          bgcolor: isCompleted ? "#dcfce7" : "#e0f2fe",
+                          color: isCompleted ? "#166534" : "#0369a1",
+                          fontWeight: 700,
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ color: "#475569", fontWeight: 500 }}>
+                      {new Date(req.created_at).toLocaleDateString("fa-IR")}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={isCompleted && hasResult ? "✅ ثبت شده" : isCompleted ? "✅ تکمیل شده" : "⏳ در انتظار"}
+                        size="small"
+                        sx={{
+                          fontWeight: 700,
+                          bgcolor: isCompleted && hasResult ? "#dcfce7" : isCompleted ? "#dbeafe" : "#fef3c7",
+                          color: isCompleted && hasResult ? "#166534" : isCompleted ? "#1e40af" : "#92400e",
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {req.pdf_url ? (
+                        <Stack direction="row" spacing={0.5}>
+                          <Tooltip title="دانلود PDF">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDownloadPdf(req.pdf_url)}
+                              sx={{
+                                color: "#16a34a",
+                                bgcolor: "#dcfce7",
+                                "&:hover": { bgcolor: "#bbf7d0" },
+                              }}
+                            >
+                              <DownloadIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      ) : (
+                        <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>
+                          ندارد
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="center">
+                      <Stack direction="row" spacing={1} justifyContent="center" alignItems="center">
+                        <Tooltip title="مشاهده جزئیات">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<VisibilityIcon />}
+                            onClick={() => handleViewDetails(req)}
+                            sx={{
+                              color: "#0284c7",
+                              borderColor: "#bae6fd",
+                              bgcolor: "#f0f9ff",
+                              "&:hover": {
+                                borderColor: "#0284c7",
+                                backgroundColor: "#e0f2fe",
                               },
                             }}
                           >
-                            <Typography variant="body2" sx={{ color: "#9ca3af", visibility: "hidden" }}>
-                              -
-                            </Typography>
-                          </Badge>
-                        ) : (
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              color: "#22c55e",
-                              mt: 1,
-                              fontSize: "12px",
-                              fontWeight: "bold",
-                            }}
-                          >
-                            ✅ بدون درخواست بدون نتیجه
-                          </Typography>
-                        )}
-
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color: hasPendingRequests ? "#f59e0b" : "#22c55e",
-                            mt: 1,
-                            fontSize: "12px",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {hasPendingRequests
-                            ? `${pendingCount} درخواست بدون نتیجه • ${completedCount} تکمیل‌شده`
-                            : `همه ${completedCount} درخواست تکمیل شده‌اند • کلیک برای مشاهده`}
-                        </Typography>
-                      </>
-                    ) : (
-                      <Typography variant="body2" sx={{ color: "#4b5563", mt: 1, fontSize: "12px" }}>
-                        ◻️ بدون درخواست
-                      </Typography>
-                    )}
-                  </CardContent>
-                </Card>
-              </Grid>
-            );
-          })}
-        </Grid>
-      ) : (
-        filteredRequests.length === 0 ? (
-          <Paper
-            sx={{
-              p: 5,
-              textAlign: "center",
-              bgcolor: "#1a2a3a",
-              borderRadius: "12px",
-              border: "1px solid #374151",
-            }}
-          >
-            <ScienceIcon sx={{ fontSize: 60, color: "#6b7280", mb: 2 }} />
-            <Typography variant="h6" sx={{ color: "#9ca3af" }}>
-              هیچ درخواستی برای {selectedCategory.title} یافت نشد
-            </Typography>
-            <Typography variant="body2" sx={{ color: "#6b7280", mt: 1 }}>
-              درخواست‌های جدید پس از پرداخت فیس در اینجا نمایش داده می‌شوند
-            </Typography>
-          </Paper>
-        ) : (
-          <TableContainer
-            component={Paper}
-            sx={{
-              bgcolor: "#1a2a3a",
-              borderRadius: "12px",
-              border: "1px solid #374151",
-              overflowX: "auto",
-            }}
-          >
-            <Table>
-              <TableHead>
-                <TableRow sx={{ bgcolor: "#0d1b2a" }}>
-                  <TableCell sx={{ color: "white", fontWeight: "bold" }}>#</TableCell>
-                  <TableCell sx={{ color: "white", fontWeight: "bold" }}>اطلاعات بیمار</TableCell>
-                  <TableCell sx={{ color: "white", fontWeight: "bold" }}>نوع تست</TableCell>
-                  <TableCell sx={{ color: "white", fontWeight: "bold" }}>تاریخ درخواست</TableCell>
-                  <TableCell sx={{ color: "white", fontWeight: "bold" }}>وضعیت</TableCell>
-                  <TableCell sx={{ color: "white", fontWeight: "bold" }}>PDF</TableCell>
-                  <TableCell sx={{ color: "white", fontWeight: "bold" }} align="center">عملیات</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredRequests.map((req, index) => {
-                  const patientName = req.patient_name || "نامشخص";
-                  const patientPhone = req.patient_phone || "";
-                  const isCompleted = req.status === "completed";
-                  const hasResult = !!(req.laboratory_result?.result || req.result);
-                  
-                  return (
-                    <TableRow
-                      key={req.id}
-                      sx={{
-                        "&:hover": { bgcolor: "#243647" },
-                        borderBottom: "1px solid #374151",
-                        opacity: isCompleted ? 0.7 : 1,
-                      }}
-                    >
-                      <TableCell sx={{ color: "#9ca3af" }}>{index + 1}</TableCell>
-                      <TableCell>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                          <Avatar
-                            sx={{
-                              bgcolor: getAvatarColor(patientName),
-                              width: 45,
-                              height: 45,
-                              fontSize: 18,
-                              fontWeight: "bold",
-                            }}
-                          >
-                            {getInitials(patientName)}
-                          </Avatar>
-                          <Box>
-                            <Typography sx={{ color: "white", fontWeight: "bold", fontSize: "15px" }}>
-                              {patientName}
-                            </Typography>
-                            {patientPhone && (
-                              <Typography sx={{ color: "#9ca3af", fontSize: "12px" }}>
-                                <PhoneIcon sx={{ fontSize: 12, verticalAlign: "middle" }} />
-                                {patientPhone}
-                              </Typography>
-                            )}
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={req.test_name || req.test_type || "نامشخص"}
-                          size="small"
-                          sx={{
-                            bgcolor: isCompleted ? "rgba(34, 197, 94, 0.2)" : "rgba(96, 165, 250, 0.2)",
-                            color: isCompleted ? "#22c55e" : "#60a5fa",
-                            fontWeight: "bold",
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell sx={{ color: "#9ca3af" }}>
-                        {new Date(req.created_at).toLocaleDateString("fa-IR")}
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={isCompleted && hasResult ? "✅ ثبت شده" : isCompleted ? "✅ تکمیل شده" : "⏳ در انتظار"}
-                          color={isCompleted && hasResult ? "success" : isCompleted ? "primary" : "warning"}
-                          size="small"
-                          sx={{ fontWeight: "bold" }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {req.pdf_url ? (
-                          <Stack direction="row" spacing={0.5}>
-                            <Tooltip title="دانلود PDF">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleDownloadPdf(req.pdf_url)}
-                                sx={{ color: "#22c55e" }}
-                              >
-                                <DownloadIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
-                        ) : (
-                          <Typography sx={{ color: "#6b7280", fontSize: "12px" }}>
-                            ندارد
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        <Stack direction="row" spacing={1} justifyContent="center">
-                          <Tooltip title="مشاهده جزئیات">
+                            جزئیات
+                          </Button>
+                        </Tooltip>
+                        {!isCompleted && (
+                          <Tooltip title="ثبت نتیجه">
                             <Button
                               size="small"
-                              variant="outlined"
-                              startIcon={<VisibilityIcon />}
-                              onClick={() => handleViewDetails(req)}
+                              variant="contained"
+                              startIcon={<EditIcon />}
+                              onClick={() => handleOpenResultDialog(req)}
                               sx={{
-                                color: "#60a5fa",
-                                borderColor: "#60a5fa",
-                                "&:hover": {
-                                  borderColor: "#93c5fd",
-                                  backgroundColor: "rgba(96, 165, 250, 0.1)",
-                                },
+                                bgcolor: "#16a34a",
+                                color: "#ffffff",
+                                boxShadow: "none",
+                                "&:hover": { bgcolor: "#15803d", boxShadow: "none" },
                               }}
                             >
-                              جزئیات
+                              ثبت نتیجه
                             </Button>
                           </Tooltip>
-                          {!isCompleted && (
-                            <Tooltip title="ثبت نتیجه">
+                        )}
+                        {isCompleted && (
+                          <>
+                            <Tooltip title="تصحیح نتیجه">
                               <Button
                                 size="small"
-                                variant="contained"
+                                variant="outlined"
                                 startIcon={<EditIcon />}
-                                onClick={() => handleOpenResultDialog(req)}
+                                onClick={() => handleEditResult(req)}
+                                disabled={!hasResult}
                                 sx={{
-                                  bgcolor: "#22c55e",
-                                  "&:hover": { bgcolor: "#16a34a" },
+                                  color: "#d97706",
+                                  borderColor: "#fde68a",
+                                  bgcolor: "#fffbeb",
+                                  "&:hover": {
+                                    borderColor: "#d97706",
+                                    backgroundColor: "#fef3c7",
+                                  },
                                 }}
                               >
-                                ثبت نتیجه
+                                تصحیح
                               </Button>
                             </Tooltip>
-                          )}
-                          {isCompleted && (
-                            <>
-                              <Tooltip title="تصحیح نتیجه">
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  startIcon={<EditIcon />}
-                                  onClick={() => handleEditResult(req)}
-                                  disabled={!hasResult}
-                                  sx={{
-                                    color: "#f59e0b",
-                                    borderColor: "#f59e0b",
-                                    "&:hover": {
-                                      borderColor: "#fbbf24",
-                                      backgroundColor: "rgba(245, 158, 11, 0.1)",
-                                    },
-                                  }}
-                                >
-                                  تصحیح
-                                </Button>
-                              </Tooltip>
 
-                              <Tooltip title="حذف نتیجه">
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  startIcon={
-                                    deletingResultId ? (
-                                      <CircularProgress size={14} color="inherit" />
-                                    ) : (
-                                      <DeleteIcon />
-                                    )
-                                  }
-                                  onClick={() => handleDeleteResult(req)}
-                                  disabled={!hasResult || deletingResultId === (req.result_details?.id || req.laboratory_result?.id || req.result_id)}
-                                  sx={{
-                                    color: "#ef4444",
-                                    borderColor: "#ef4444",
-                                    "&:hover": {
-                                      borderColor: "#f87171",
-                                      backgroundColor: "rgba(239, 68, 68, 0.1)",
-                                    },
-                                  }}
-                                >
-                                  حذف
-                                </Button>
-                              </Tooltip>
-
-                              <Tooltip title="پرینت نتیجه">
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  startIcon={<PrintIcon />}
-                                  onClick={() => handlePrintResult(req)}
-                                  sx={{
-                                    color: "#8b5cf6",
-                                    borderColor: "#8b5cf6",
-                                    "&:hover": {
-                                      borderColor: "#a78bfa",
-                                      backgroundColor: "rgba(139, 92, 246, 0.1)",
-                                    },
-                                  }}
-                                >
-                                  پرینت
-                                </Button>
-                              </Tooltip>
-
-                              <Chip
-                                label={hasResult ? "نتیجه ثبت شده" : "تکمیل شده"}
+                            <Tooltip title="حذف نتیجه">
+                              <Button
                                 size="small"
+                                variant="outlined"
+                                startIcon={
+                                  deletingResultId ? (
+                                    <CircularProgress size={14} color="inherit" />
+                                  ) : (
+                                    <DeleteIcon />
+                                  )
+                                }
+                                onClick={() => handleDeleteResult(req)}
+                                disabled={
+                                  !hasResult ||
+                                  deletingResultId ===
+                                    (req.result_details?.id || req.laboratory_result?.id || req.result_id)
+                                }
                                 sx={{
-                                  bgcolor: hasResult ? "rgba(34, 197, 94, 0.2)" : "rgba(59, 130, 246, 0.2)",
-                                  color: hasResult ? "#22c55e" : "#3b82f6",
-                                  fontWeight: "bold",
+                                  color: "#dc2626",
+                                  borderColor: "#fecaca",
+                                  bgcolor: "#fef2f2",
+                                  "&:hover": {
+                                    borderColor: "#dc2626",
+                                    backgroundColor: "#fee2e2",
+                                  },
                                 }}
-                              />
-                            </>
-                          )}
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )
+                              >
+                                حذف
+                              </Button>
+                            </Tooltip>
+
+                            <Tooltip title="پرینت نتیجه">
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<PrintIcon />}
+                                onClick={() => handlePrintResult(req)}
+                                sx={{
+                                  color: "#7c3aed",
+                                  borderColor: "#ddd6fe",
+                                  bgcolor: "#f5f3ff",
+                                  "&:hover": {
+                                    borderColor: "#7c3aed",
+                                    backgroundColor: "#ede9fe",
+                                  },
+                                }}
+                              >
+                                پرینت
+                              </Button>
+                            </Tooltip>
+
+                            <Chip
+                              label={hasResult ? "نتیجه ثبت شده" : "تکمیل شده"}
+                              size="small"
+                              sx={{
+                                bgcolor: hasResult ? "#dcfce7" : "#dbeafe",
+                                color: hasResult ? "#166534" : "#1e40af",
+                                fontWeight: "bold",
+                              }}
+                            />
+                          </>
+                        )}
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
       {/* ============ دیالوگ جزئیات با نمایش کامل نتیجه ============ */}
@@ -1593,66 +1816,81 @@ export default function LabHematology() {
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: "#1a2a3a",
-            color: "white",
-            borderRadius: "16px",
-            border: "1px solid #374151",
+            bgcolor: "#ffffff",
+            color: "#0f172a",
+            borderRadius: "20px",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 20px 40px rgba(15, 23, 42, 0.12)",
           },
         }}
       >
-        <DialogTitle sx={{ borderBottom: "1px solid #374151", pb: 2 }}>
+        <DialogTitle sx={{ borderBottom: "1px solid #f1f5f9", bgcolor: "#ffffff", pb: 2 }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Typography variant="h6" sx={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
-              <PersonIcon sx={{ color: "#60a5fa" }} />
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: 800, color: "#0f172a", display: "flex", alignItems: "center", gap: 1 }}
+            >
+              <PersonIcon sx={{ color: "#0284c7" }} />
               جزئیات درخواست
             </Typography>
-            <IconButton onClick={() => setOpenDetailDialog(false)} sx={{ color: "#9ca3af" }}>
+            <IconButton
+              onClick={() => setOpenDetailDialog(false)}
+              sx={{ color: "#64748b", "&:hover": { bgcolor: "#f1f5f9" } }}
+            >
               <CloseIcon />
             </IconButton>
           </Box>
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           {selectedRequest && (
-            <Grid container spacing={3}>
+            <Grid container spacing={2.5}>
               <Grid item xs={12}>
-                <Card sx={{ bgcolor: "#0d1b2a", border: "1px solid #374151" }}>
+                <Card
+                  elevation={0}
+                  sx={{ bgcolor: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: "16px" }}
+                >
                   <CardContent>
-                    <Typography variant="subtitle2" sx={{ color: "#9ca3af", mb: 1 }}>
-                      <PersonIcon sx={{ fontSize: 16, verticalAlign: "middle", mr: 0.5 }} />
+                    <Typography variant="subtitle2" sx={{ color: "#475569", fontWeight: 700, mb: 1 }}>
+                      <PersonIcon sx={{ fontSize: 16, verticalAlign: "middle", ml: 0.5, color: "#0284c7" }} />
                       اطلاعات بیمار
                     </Typography>
-                    <Divider sx={{ mb: 2, borderColor: "#374151" }} />
+                    <Divider sx={{ mb: 2, borderColor: "#e2e8f0" }} />
                     <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                       <Avatar
                         sx={{
-                          bgcolor: getAvatarColor(selectedRequest.patient_full_name || selectedRequest.patient_name || "User"),
-                          width: 60,
-                          height: 60,
-                          fontSize: 24,
+                          bgcolor: getAvatarColor(
+                            selectedRequest.patient_full_name || selectedRequest.patient_name || "User"
+                          ),
+                          width: 58,
+                          height: 58,
+                          fontSize: 22,
                           fontWeight: "bold",
+                          color: "#ffffff",
                         }}
                       >
-                        {getInitials(selectedRequest.patient_full_name || selectedRequest.patient_name || "کاربر")}
+                        {getInitials(
+                          selectedRequest.patient_full_name || selectedRequest.patient_name || "کاربر"
+                        )}
                       </Avatar>
                       <Box>
-                        <Typography sx={{ color: "white", fontWeight: "bold", fontSize: "18px" }}>
+                        <Typography sx={{ color: "#0f172a", fontWeight: 800, fontSize: "17px" }}>
                           {selectedRequest.patient_full_name || selectedRequest.patient_name || "نامشخص"}
                         </Typography>
                         {selectedRequest.patient_phone && (
-                          <Typography sx={{ color: "#9ca3af", fontSize: "14px" }}>
-                            <PhoneIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
+                          <Typography sx={{ color: "#475569", fontSize: "13.5px", mt: 0.25 }}>
+                            <PhoneIcon sx={{ fontSize: 14, verticalAlign: "middle", ml: 0.5 }} />
                             {selectedRequest.patient_phone}
                           </Typography>
                         )}
                         {selectedRequest.patient_age && (
-                          <Typography sx={{ color: "#9ca3af", fontSize: "14px" }}>
-                            <AccessTimeIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
+                          <Typography sx={{ color: "#475569", fontSize: "13.5px", mt: 0.25 }}>
+                            <AccessTimeIcon sx={{ fontSize: 14, verticalAlign: "middle", ml: 0.5 }} />
                             سن: {selectedRequest.patient_age} سال
                           </Typography>
                         )}
                         {selectedRequest.patient_gender && (
-                          <Typography sx={{ color: "#9ca3af", fontSize: "14px" }}>
-                            <BadgeIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
+                          <Typography sx={{ color: "#475569", fontSize: "13.5px", mt: 0.25 }}>
+                            <BadgeIcon sx={{ fontSize: 14, verticalAlign: "middle", ml: 0.5 }} />
                             جنسیت: {getGenderLabel(selectedRequest.patient_gender)}
                           </Typography>
                         )}
@@ -1661,67 +1899,79 @@ export default function LabHematology() {
                   </CardContent>
                 </Card>
               </Grid>
-              
+
               <Grid item xs={12}>
-                <Card sx={{ bgcolor: "#0d1b2a", border: "1px solid #374151" }}>
+                <Card
+                  elevation={0}
+                  sx={{ bgcolor: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: "16px" }}
+                >
                   <CardContent>
-                    <Typography variant="subtitle2" sx={{ color: "#9ca3af", mb: 1 }}>
-                      <ScienceIcon sx={{ fontSize: 16, verticalAlign: "middle", mr: 0.5 }} />
+                    <Typography variant="subtitle2" sx={{ color: "#475569", fontWeight: 700, mb: 1 }}>
+                      <ScienceIcon sx={{ fontSize: 16, verticalAlign: "middle", ml: 0.5, color: "#7c3aed" }} />
                       اطلاعات آزمایش
                     </Typography>
-                    <Divider sx={{ mb: 2, borderColor: "#374151" }} />
+                    <Divider sx={{ mb: 2, borderColor: "#e2e8f0" }} />
                     <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography sx={{ color: "#9ca3af" }}>نوع تست:</Typography>
-                        <Typography sx={{ color: "white", fontWeight: "bold" }}>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <Typography sx={{ color: "#64748b", fontWeight: 600 }}>نوع تست:</Typography>
+                        <Typography sx={{ color: "#0f172a", fontWeight: 700 }}>
                           {selectedRequest.test_name || selectedRequest.test_type || "نامشخص"}
                         </Typography>
                       </Box>
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography sx={{ color: "#9ca3af" }}>وضعیت:</Typography>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <Typography sx={{ color: "#64748b", fontWeight: 600 }}>وضعیت:</Typography>
                         <Chip
                           label={selectedRequest.status === "completed" ? "تکمیل شده" : "در انتظار"}
-                          color={selectedRequest.status === "completed" ? "success" : "warning"}
                           size="small"
+                          sx={{
+                            fontWeight: 700,
+                            bgcolor: selectedRequest.status === "completed" ? "#dcfce7" : "#fef3c7",
+                            color: selectedRequest.status === "completed" ? "#166534" : "#92400e",
+                          }}
                         />
                       </Box>
                       {selectedRequest.status === "completed" && (
                         <>
-                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                            <Typography sx={{ color: "#9ca3af" }}>شماره گزارش:</Typography>
-                            <Typography sx={{ color: "#fcd34d", fontWeight: "bold" }}>
+                          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <Typography sx={{ color: "#64748b", fontWeight: 600 }}>شماره گزارش:</Typography>
+                            <Typography sx={{ color: "#b45309", fontWeight: 700 }}>
                               {selectedRequest.report_no || "-"}
                             </Typography>
                           </Box>
-                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                            <Typography sx={{ color: "#9ca3af" }}>نتیجه:</Typography>
-                            <Typography sx={{ color: "#22c55e", fontWeight: "bold" }}>
-                              {selectedRequest.result_value || selectedRequest.result || selectedRequest.laboratory_result?.result || "ثبت شده"}
+                          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <Typography sx={{ color: "#64748b", fontWeight: 600 }}>نتیجه:</Typography>
+                            <Typography sx={{ color: "#16a34a", fontWeight: 800 }}>
+                              {selectedRequest.result_value ||
+                                selectedRequest.result ||
+                                selectedRequest.laboratory_result?.result ||
+                                "ثبت شده"}
                             </Typography>
                           </Box>
-                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                            <Typography sx={{ color: "#9ca3af" }}>محدوده نرمال:</Typography>
-                            <Typography sx={{ color: "white", fontWeight: "bold" }}>
+                          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <Typography sx={{ color: "#64748b", fontWeight: 600 }}>محدوده نرمال:</Typography>
+                            <Typography sx={{ color: "#0f172a", fontWeight: 700 }}>
                               {selectedRequest.normal_range || "-"}
                             </Typography>
                           </Box>
                           {selectedRequest.result_remarks && (
-                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                              <Typography sx={{ color: "#9ca3af" }}>یادداشت:</Typography>
-                              <Typography sx={{ color: "white" }}>
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <Typography sx={{ color: "#64748b", fontWeight: 600 }}>یادداشت:</Typography>
+                              <Typography sx={{ color: "#1e293b" }}>
                                 {selectedRequest.result_remarks}
                               </Typography>
                             </Box>
                           )}
-                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                            <Typography sx={{ color: "#9ca3af" }}>تاریخ نتیجه:</Typography>
-                            <Typography sx={{ color: "white" }}>
-                              {selectedRequest.result_date ? new Date(selectedRequest.result_date).toLocaleDateString("fa-IR") : "-"}
+                          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <Typography sx={{ color: "#64748b", fontWeight: 600 }}>تاریخ نتیجه:</Typography>
+                            <Typography sx={{ color: "#1e293b", fontWeight: 600 }}>
+                              {selectedRequest.result_date
+                                ? new Date(selectedRequest.result_date).toLocaleDateString("fa-IR")
+                                : "-"}
                             </Typography>
                           </Box>
                           {selectedRequest.pdf_url && (
                             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <Typography sx={{ color: "#9ca3af" }}>فایل PDF:</Typography>
+                              <Typography sx={{ color: "#64748b", fontWeight: 600 }}>فایل PDF:</Typography>
                               <Stack direction="row" spacing={1}>
                                 <Button
                                   size="small"
@@ -1729,11 +1979,12 @@ export default function LabHematology() {
                                   startIcon={<DownloadIcon />}
                                   onClick={() => handleDownloadPdf(selectedRequest.pdf_url)}
                                   sx={{
-                                    color: "#22c55e",
-                                    borderColor: "#22c55e",
+                                    color: "#16a34a",
+                                    borderColor: "#bbf7d0",
+                                    bgcolor: "#f0fdf4",
                                     "&:hover": {
-                                      borderColor: "#4ade80",
-                                      backgroundColor: "rgba(34, 197, 94, 0.1)",
+                                      borderColor: "#16a34a",
+                                      backgroundColor: "#dcfce7",
                                     },
                                   }}
                                 >
@@ -1751,8 +2002,11 @@ export default function LabHematology() {
             </Grid>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: "1px solid #374151", p: 2 }}>
-          <Button onClick={() => setOpenDetailDialog(false)} sx={{ color: "#9ca3af" }}>
+        <DialogActions sx={{ borderTop: "1px solid #f1f5f9", bgcolor: "#ffffff", p: 2, gap: 1 }}>
+          <Button
+            onClick={() => setOpenDetailDialog(false)}
+            sx={{ color: "#475569", "&:hover": { bgcolor: "#f1f5f9" } }}
+          >
             بستن
           </Button>
           {selectedRequest?.status !== "completed" && (
@@ -1764,8 +2018,10 @@ export default function LabHematology() {
                 handleOpenResultDialog(selectedRequest);
               }}
               sx={{
-                bgcolor: "#22c55e",
-                "&:hover": { bgcolor: "#16a34a" },
+                bgcolor: "#16a34a",
+                color: "#ffffff",
+                boxShadow: "none",
+                "&:hover": { bgcolor: "#15803d", boxShadow: "none" },
               }}
             >
               ثبت نتیجه
@@ -1778,11 +2034,12 @@ export default function LabHematology() {
                 startIcon={<EditIcon />}
                 onClick={() => handleEditResult(selectedRequest)}
                 sx={{
-                  color: "#f59e0b",
-                  borderColor: "#f59e0b",
+                  color: "#d97706",
+                  borderColor: "#fde68a",
+                  bgcolor: "#fffbeb",
                   "&:hover": {
-                    borderColor: "#fbbf24",
-                    backgroundColor: "rgba(245, 158, 11, 0.1)",
+                    borderColor: "#d97706",
+                    backgroundColor: "#fef3c7",
                   },
                 }}
               >
@@ -1795,11 +2052,12 @@ export default function LabHematology() {
                 onClick={() => handleDeleteResult(selectedRequest)}
                 disabled={!!deletingResultId}
                 sx={{
-                  color: "#ef4444",
-                  borderColor: "#ef4444",
+                  color: "#dc2626",
+                  borderColor: "#fecaca",
+                  bgcolor: "#fef2f2",
                   "&:hover": {
-                    borderColor: "#f87171",
-                    backgroundColor: "rgba(239, 68, 68, 0.1)",
+                    borderColor: "#dc2626",
+                    backgroundColor: "#fee2e2",
                   },
                 }}
               >
@@ -1811,11 +2069,12 @@ export default function LabHematology() {
                 startIcon={<PrintIcon />}
                 onClick={() => handlePrintResult(selectedRequest)}
                 sx={{
-                  color: "#8b5cf6",
-                  borderColor: "#8b5cf6",
+                  color: "#7c3aed",
+                  borderColor: "#ddd6fe",
+                  bgcolor: "#f5f3ff",
                   "&:hover": {
-                    borderColor: "#a78bfa",
-                    backgroundColor: "rgba(139, 92, 246, 0.1)",
+                    borderColor: "#7c3aed",
+                    backgroundColor: "#ede9fe",
                   },
                 }}
               >
@@ -1834,22 +2093,26 @@ export default function LabHematology() {
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: "#1a2a3a",
-            color: "white",
-            borderRadius: "16px",
-            border: "1px solid #374151",
+            bgcolor: "#ffffff",
+            color: "#0f172a",
+            borderRadius: "20px",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 20px 40px rgba(15, 23, 42, 0.12)",
           },
         }}
       >
-        <DialogTitle sx={{ borderBottom: "1px solid #374151", pb: 2 }}>
+        <DialogTitle sx={{ borderBottom: "1px solid #f1f5f9", bgcolor: "#ffffff", pb: 2 }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Typography variant="h6" sx={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
-              <EditIcon sx={{ color: "#22c55e" }} />
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: 800, color: "#0f172a", display: "flex", alignItems: "center", gap: 1 }}
+            >
+              <EditIcon sx={{ color: "#16a34a" }} />
               {editingResult ? "تصحیح نتیجه آزمایش" : "ثبت نتیجه آزمایش"}
             </Typography>
-            <IconButton 
-              onClick={() => !uploading && setOpenResultDialog(false)} 
-              sx={{ color: "#9ca3af" }}
+            <IconButton
+              onClick={() => !uploading && setOpenResultDialog(false)}
+              sx={{ color: "#64748b", "&:hover": { bgcolor: "#f1f5f9" } }}
               disabled={uploading}
             >
               <CloseIcon />
@@ -1859,45 +2122,48 @@ export default function LabHematology() {
         <DialogContent sx={{ mt: 2 }}>
           {uploading && (
             <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ color: "#9ca3af", mb: 1 }}>
+              <Typography variant="body2" sx={{ color: "#475569", mb: 1, fontWeight: 600 }}>
                 در حال آپلود فایل...
               </Typography>
-              <LinearProgress 
-                variant="determinate" 
-                value={uploadProgress} 
-                sx={{ 
-                  height: 8, 
+              <LinearProgress
+                variant="determinate"
+                value={uploadProgress}
+                sx={{
+                  height: 8,
                   borderRadius: 4,
-                  bgcolor: "#374151",
+                  bgcolor: "#e2e8f0",
                   "& .MuiLinearProgress-bar": {
-                    bgcolor: "#22c55e",
-                  }
+                    bgcolor: "#16a34a",
+                  },
                 }}
               />
-              <Typography variant="caption" sx={{ color: "#6b7280", mt: 0.5 }}>
+              <Typography variant="caption" sx={{ color: "#64748b", mt: 0.5 }}>
                 {uploadProgress}%
               </Typography>
             </Box>
           )}
-          
+
           {selectedRequest && (
-            <Grid container spacing={3}>
+            <Grid container spacing={2.5}>
               <Grid item xs={12}>
-                <Card sx={{ bgcolor: "#0d1b2a", border: "1px solid #374151", p: 2 }}>
+                <Card
+                  elevation={0}
+                  sx={{ bgcolor: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: "16px", p: 2 }}
+                >
                   <Grid container spacing={2}>
                     <Grid item xs={12} md={6}>
-                      <Typography variant="body2" sx={{ color: "#9ca3af" }}>
+                      <Typography variant="body2" sx={{ color: "#64748b", fontWeight: 600 }}>
                         نام بیمار:
                       </Typography>
-                      <Typography sx={{ color: "white", fontWeight: "bold", mt: 0.5 }}>
+                      <Typography sx={{ color: "#0f172a", fontWeight: 800, mt: 0.5 }}>
                         {selectedRequest.patient_name || "نامشخص"}
                       </Typography>
                     </Grid>
                     <Grid item xs={12} md={6}>
-                      <Typography variant="body2" sx={{ color: "#9ca3af" }}>
+                      <Typography variant="body2" sx={{ color: "#64748b", fontWeight: 600 }}>
                         نوع تست:
                       </Typography>
-                      <Typography sx={{ color: "white", fontWeight: "bold", mt: 0.5 }}>
+                      <Typography sx={{ color: "#0f172a", fontWeight: 800, mt: 0.5 }}>
                         {selectedRequest.test_name || selectedRequest.test_type || "نامشخص"}
                       </Typography>
                     </Grid>
@@ -1912,21 +2178,10 @@ export default function LabHematology() {
                   multiline
                   rows={4}
                   value={resultData.result}
-                  onChange={(e) =>
-                    setResultData({ ...resultData, result: e.target.value })
-                  }
+                  onChange={(e) => setResultData({ ...resultData, result: e.target.value })}
                   placeholder="مقدار نتیجه آزمایش را وارد کنید..."
                   disabled={uploading}
-                  sx={{
-                    "& .MuiInputLabel-root": { color: "#9ca3af" },
-                    "& .MuiOutlinedInput-root": {
-                      color: "white",
-                      "& fieldset": { borderColor: "#374151" },
-                      "&:hover fieldset": { borderColor: "#60a5fa" },
-                      "&.Mui-focused fieldset": { borderColor: "#60a5fa" },
-                    },
-                    "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
-                  }}
+                  sx={lightTextFieldSx}
                 />
               </Grid>
 
@@ -1935,21 +2190,10 @@ export default function LabHematology() {
                   fullWidth
                   label="محدوده نرمال"
                   value={resultData.normal_range}
-                  onChange={(e) =>
-                    setResultData({ ...resultData, normal_range: e.target.value })
-                  }
+                  onChange={(e) => setResultData({ ...resultData, normal_range: e.target.value })}
                   placeholder="مثلاً: 10-20"
                   disabled={uploading}
-                  sx={{
-                    "& .MuiInputLabel-root": { color: "#9ca3af" },
-                    "& .MuiOutlinedInput-root": {
-                      color: "white",
-                      "& fieldset": { borderColor: "#374151" },
-                      "&:hover fieldset": { borderColor: "#60a5fa" },
-                      "&.Mui-focused fieldset": { borderColor: "#60a5fa" },
-                    },
-                    "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
-                  }}
+                  sx={lightTextFieldSx}
                 />
               </Grid>
 
@@ -1959,46 +2203,30 @@ export default function LabHematology() {
                   select
                   label="وضعیت"
                   value={resultData.status}
-                  onChange={(e) =>
-                    setResultData({ ...resultData, status: e.target.value })
-                  }
+                  onChange={(e) => setResultData({ ...resultData, status: e.target.value })}
                   disabled={uploading}
-                  sx={{
-                    "& .MuiInputLabel-root": { color: "#9ca3af" },
-                    "& .MuiOutlinedInput-root": {
-                      color: "white",
-                      "& fieldset": { borderColor: "#374151" },
-                      "&:hover fieldset": { borderColor: "#60a5fa" },
-                      "&.Mui-focused fieldset": { borderColor: "#60a5fa" },
-                    },
-                    "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
-                  }}
+                  sx={lightTextFieldSx}
                 >
-                  <MenuItem value="Draft" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
-                    پیش‌نویس
-                  </MenuItem>
-                  <MenuItem value="Completed" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
-                    تکمیل شده
-                  </MenuItem>
-                  <MenuItem value="Verified" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
-                    تأیید شده
-                  </MenuItem>
-                  <MenuItem value="Cancelled" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
-                    لغو شده
-                  </MenuItem>
+                  <MenuItem value="Draft">پیش‌نویس</MenuItem>
+                  <MenuItem value="Completed">تکمیل شده</MenuItem>
+                  <MenuItem value="Verified">تأیید شده</MenuItem>
+                  <MenuItem value="Cancelled">لغو شده</MenuItem>
                 </TextField>
               </Grid>
 
               <Grid item xs={12}>
                 <Paper
+                  elevation={0}
                   sx={{
-                    p: 2,
-                    bgcolor: "#0d1b2a",
-                    border: "2px dashed #374151",
-                    borderRadius: "8px",
+                    p: 2.5,
+                    bgcolor: "#f8fafc",
+                    border: "2px dashed #cbd5e1",
+                    borderRadius: "16px",
                     textAlign: "center",
+                    transition: "all 0.2s ease",
                     "&:hover": {
-                      borderColor: "#60a5fa",
+                      borderColor: "#0284c7",
+                      bgcolor: "#f0f9ff",
                     },
                   }}
                 >
@@ -2011,28 +2239,29 @@ export default function LabHematology() {
                     id="pdf-upload"
                     disabled={uploading}
                   />
-                  
+
                   {resultData.pdf_file_name || resultData.pdf_url ? (
                     <Box>
                       <List>
                         <ListItem
                           sx={{
-                            bgcolor: "#1a2a3a",
-                            borderRadius: "8px",
+                            bgcolor: "#ffffff",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "12px",
                             mb: 1,
                           }}
                         >
                           <ListItemIcon>
-                            <PdfIcon sx={{ color: "#ef4444" }} />
+                            <PdfIcon sx={{ color: "#e11d48" }} />
                           </ListItemIcon>
                           <ListItemText
                             primary={resultData.pdf_file_name || "فایل PDF"}
-                            sx={{ color: "white" }}
+                            sx={{ color: "#0f172a", "& .MuiTypography-root": { fontWeight: 700 } }}
                           />
                           <IconButton
                             onClick={handleRemoveFile}
                             disabled={uploading}
-                            sx={{ color: "#ef4444" }}
+                            sx={{ color: "#dc2626", "&:hover": { bgcolor: "#fef2f2" } }}
                           >
                             <DeleteIcon />
                           </IconButton>
@@ -2044,11 +2273,12 @@ export default function LabHematology() {
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploading}
                         sx={{
-                          color: "#60a5fa",
-                          borderColor: "#60a5fa",
+                          color: "#0284c7",
+                          borderColor: "#bae6fd",
+                          bgcolor: "#ffffff",
                           "&:hover": {
-                            borderColor: "#93c5fd",
-                            backgroundColor: "rgba(96, 165, 250, 0.1)",
+                            borderColor: "#0284c7",
+                            backgroundColor: "#f0f9ff",
                           },
                         }}
                       >
@@ -2057,11 +2287,11 @@ export default function LabHematology() {
                     </Box>
                   ) : (
                     <Box>
-                      <AttachFileIcon sx={{ fontSize: 48, color: "#6b7280", mb: 1 }} />
-                      <Typography variant="body1" sx={{ color: "#9ca3af", mb: 1 }}>
+                      <AttachFileIcon sx={{ fontSize: 42, color: "#64748b", mb: 1 }} />
+                      <Typography variant="body1" sx={{ color: "#0f172a", fontWeight: 700, mb: 0.5 }}>
                         برای آپلود فایل PDF کلیک کنید
                       </Typography>
-                      <Typography variant="caption" sx={{ color: "#6b7280" }}>
+                      <Typography variant="caption" sx={{ color: "#64748b", display: "block" }}>
                         فقط فایل‌های PDF پذیرفته می‌شوند (حداکثر 10 مگابایت)
                       </Typography>
                       <Box sx={{ mt: 2 }}>
@@ -2071,8 +2301,10 @@ export default function LabHematology() {
                           onClick={() => fileInputRef.current?.click()}
                           disabled={uploading}
                           sx={{
-                            bgcolor: "#3b82f6",
-                            "&:hover": { bgcolor: "#2563eb" },
+                            bgcolor: "#0284c7",
+                            color: "#ffffff",
+                            boxShadow: "none",
+                            "&:hover": { bgcolor: "#0369a1", boxShadow: "none" },
                           }}
                         >
                           انتخاب فایل PDF
@@ -2090,31 +2322,20 @@ export default function LabHematology() {
                   multiline
                   rows={2}
                   value={resultData.notes}
-                  onChange={(e) =>
-                    setResultData({ ...resultData, notes: e.target.value })
-                  }
+                  onChange={(e) => setResultData({ ...resultData, notes: e.target.value })}
                   placeholder="یادداشت اضافی..."
                   disabled={uploading}
-                  sx={{
-                    "& .MuiInputLabel-root": { color: "#9ca3af" },
-                    "& .MuiOutlinedInput-root": {
-                      color: "white",
-                      "& fieldset": { borderColor: "#374151" },
-                      "&:hover fieldset": { borderColor: "#60a5fa" },
-                      "&.Mui-focused fieldset": { borderColor: "#60a5fa" },
-                    },
-                    "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
-                  }}
+                  sx={lightTextFieldSx}
                 />
               </Grid>
             </Grid>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: "1px solid #374151", p: 2, gap: 1 }}>
+        <DialogActions sx={{ borderTop: "1px solid #f1f5f9", bgcolor: "#ffffff", p: 2, gap: 1 }}>
           <Button
             onClick={() => setOpenResultDialog(false)}
             disabled={uploading}
-            sx={{ color: "#9ca3af" }}
+            sx={{ color: "#475569", "&:hover": { bgcolor: "#f1f5f9" } }}
           >
             لغو
           </Button>
@@ -2124,11 +2345,13 @@ export default function LabHematology() {
             startIcon={uploading ? <CircularProgress size={20} color="inherit" /> : <CheckCircleIcon />}
             disabled={uploading}
             sx={{
-              bgcolor: "#22c55e",
-              "&:hover": { bgcolor: "#16a34a" },
+              bgcolor: "#16a34a",
+              color: "#ffffff",
+              boxShadow: "none",
+              "&:hover": { bgcolor: "#15803d", boxShadow: "none" },
               "&.Mui-disabled": {
-                bgcolor: "#4b5563",
-                color: "#9ca3af",
+                bgcolor: "#cbd5e1",
+                color: "#64748b",
               },
             }}
           >
@@ -2138,4 +2361,4 @@ export default function LabHematology() {
       </Dialog>
     </Box>
   );
-}  
+}

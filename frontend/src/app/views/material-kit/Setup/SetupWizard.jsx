@@ -104,7 +104,7 @@ export default function SetupWizard() {
         logo_url: res.data.logo_url,
       });
 
-      navigate("/dashboard", { replace: true });
+      navigate("/dashboard/default", { replace: true });
     } catch (err) {
       setErrorMsg(
         err?.response?.data?.message ||

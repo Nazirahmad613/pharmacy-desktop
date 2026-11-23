@@ -30,7 +30,7 @@ class HospitalSettingController extends Controller
         $user = $request->user();
 
         // فقط سوپر ادمین
-        if (!$user || !$user->hasRole('super-admin')) {
+        if (!$user || !$user->hasRole('super_admin')) {
             return response()->json([
                 'message' => 'فقط سوپر ادمین می‌تواند این تنظیمات را ثبت کند.',
             ], 403);

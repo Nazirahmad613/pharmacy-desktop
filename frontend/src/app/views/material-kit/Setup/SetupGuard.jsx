@@ -1,4 +1,3 @@
-// app/components/SetupGuard.jsx
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { CircularProgress, Box } from "@mui/material";
@@ -9,6 +8,18 @@ export default function SetupGuard({ children }) {
   const location = useLocation();
   const [checking, setChecking] = useState(true);
   const [isConfigured, setIsConfigured] = useState(false);
+
+  // تشخیص سوپر ادمین با هر دو فرمت (super-admin و super_admin)
+  const isSuperAdmin =
+    user?.role === "super-admin" ||
+    user?.role === "super_admin" ||
+    user?.role_name === "super-admin" ||
+    user?.role_name === "super_admin" ||
+    (Array.isArray(user?.roles) &&
+      user.roles.some((r) => {
+        const name = typeof r === "string" ? r : r.name;
+        return name === "super-admin" || name === "super_admin";
+      }));
 
   useEffect(() => {
     let mounted = true;
@@ -66,12 +77,14 @@ export default function SetupGuard({ children }) {
     );
   }
 
-  if (!isConfigured && location.pathname !== "/setup") {
+  // اگر تنظیمات انجام نشده و کاربر سوپر ادمین است -> برو به /setup
+  if (!isConfigured && isSuperAdmin && location.pathname !== "/setup") {
     return <Navigate to="/setup" replace />;
   }
 
+  // اگر تنظیمات قبلاً انجام شده -> برو به داشبورد اصلی پروژه
   if (isConfigured && location.pathname === "/setup") {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/dashboard/default" replace />;
   }
 
   return children;

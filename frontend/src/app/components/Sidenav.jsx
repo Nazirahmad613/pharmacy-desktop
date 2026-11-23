@@ -1,4 +1,3 @@
-
 // src/app/components/Sidenav.jsx
 
 import React, {
@@ -934,10 +933,13 @@ export default function Sidenav({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ✅ برند شفاخانه از AuthContext
   const {
     user,
     enabledModules,
     setupCompleted,
+    hospitalName,
+    hospitalLogo,
   } = useAuth();
 
   const {
@@ -1348,7 +1350,6 @@ export default function Sidenav({ children }) {
 
   const filteredNavigations = useMemo(() => {
     // تا پیش از تکمیل Setup، فیلتر ماژول‌ها اجرا نمی‌شود.
-    // بنابراین منوی فعلی برنامه در مرحله توسعه تغییر نمی‌کند.
     if (!setupCompleted) {
       return roleFilteredNavigations;
     }
@@ -1569,6 +1570,55 @@ export default function Sidenav({ children }) {
         color: "#ffffff",
       }}
     >
+      {/* ✅ برند شفاخانه — بالای سایدبار */}
+      {(hospitalName || hospitalLogo) && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1.2,
+            px: 2,
+            pt: 1.5,
+            pb: 0.5,
+          }}
+        >
+          {hospitalLogo && (
+            <Box
+              component="img"
+              src={hospitalLogo}
+              alt={hospitalName || "logo"}
+              sx={{
+                width: 34,
+                height: 34,
+                borderRadius: "8px",
+                objectFit: "cover",
+                bgcolor: "rgba(255,255,255,0.1)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                flexShrink: 0,
+              }}
+            />
+          )}
+
+          {hospitalName && (
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 700,
+                fontSize: "0.85rem",
+                color: "#ffffff",
+                textShadow: "0 1px 6px rgba(0,0,0,0.4)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                flex: 1,
+              }}
+            >
+              {hospitalName}
+            </Typography>
+          )}
+        </Box>
+      )}
+
       {/* دکمه بازگشت منطقی در بالای سایدبار */}
 
       {canGoBack && (

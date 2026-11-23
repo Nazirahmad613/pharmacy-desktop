@@ -66,7 +66,7 @@ export default function LabBasePage({
 }) {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
-  
+
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -75,7 +75,7 @@ export default function LabBasePage({
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  
+
   const [resultData, setResultData] = useState({
     result: "",
     status: "completed",
@@ -111,16 +111,16 @@ export default function LabBasePage({
       if (result.success) {
         if (Array.isArray(result.data)) {
           allRequests = result.data;
-        } else if (result.data?.all_requests && Array.isArray(result.data.all_requests)) {
+        } else if (
+          result.data?.all_requests &&
+          Array.isArray(result.data.all_requests)
+        ) {
           allRequests = result.data.all_requests;
         }
       }
 
-      console.log("📋 همه درخواست‌ها از API:", JSON.stringify(allRequests, null, 2));
-
       // ✅ پردازش و استخراج اطلاعات بیمار
       const processedRequests = allRequests.map((req) => {
-        // استخراج اطلاعات بیمار از منابع مختلف
         let patientName = "نامشخص";
         let patientPhone = "";
         let patientEmail = "";
@@ -129,7 +129,6 @@ export default function LabBasePage({
         let patientNationalId = "";
         let patientFullName = "";
 
-        // 1. از رابطه patient (که در API وجود دارد)
         if (req.patient) {
           const p = req.patient;
           if (p.full_name) {
@@ -148,7 +147,6 @@ export default function LabBasePage({
           if (p.national_id) patientNationalId = p.national_id;
         }
 
-        // 2. اگر از طریق registration هم داده وجود دارد
         if (req.registration && req.registration.patient) {
           const regPatient = req.registration.patient;
           if (!patientName || patientName === "نامشخص") {
@@ -161,10 +159,10 @@ export default function LabBasePage({
           if (!patientEmail && regPatient.email) patientEmail = regPatient.email;
           if (!patientAge && regPatient.age) patientAge = regPatient.age;
           if (!patientGender && regPatient.gender) patientGender = regPatient.gender;
-          if (!patientNationalId && regPatient.national_id) patientNationalId = regPatient.national_id;
+          if (!patientNationalId && regPatient.national_id)
+            patientNationalId = regPatient.national_id;
         }
 
-        // 3. از فیلدهای مستقیم درخواست (اگر وجود داشته باشد)
         if (!patientName || patientName === "نامشخص") {
           if (req.patient_name) patientName = req.patient_name;
           else if (req.patientName) patientName = req.patientName;
@@ -173,7 +171,6 @@ export default function LabBasePage({
 
         return {
           ...req,
-          // اطلاعات بیمار به صورت کامل
           patient_name: patientName,
           patient_full_name: patientFullName,
           patient_phone: patientPhone,
@@ -181,60 +178,51 @@ export default function LabBasePage({
           patient_age: patientAge,
           patient_gender: patientGender,
           patient_national_id: patientNationalId,
-          // اطلاعات مراجعه
           registration_id: req.registration?.reg_id || req.reg_id || null,
           visit_number: req.registration?.visit_number || null,
-          // اطلاعات داکتر
           doctor_name: req.doctor?.name || null,
         };
       });
 
-      console.log("✅ درخواست‌های پردازش شده:", processedRequests);
-
-      // ============================================================
-      // ✅ فیلتر بر اساس نوع تست - بخش مهم
-      // ============================================================
+      // ✅ فیلتر بر اساس نوع تست
       const filteredRequests = processedRequests.filter((r) => {
-        // اگر testType مشخص شده باشد، دقیقاً بر اساس آن فیلتر کن
         if (testType) {
-          // بررسی test_type مستقیم
           if (r.test_type === testType) {
             return true;
           }
-          // بررسی test_name (برای مواردی که test_type درست ثبت نشده)
           const testName = (r.test_name || "").toLowerCase();
           const testTypeName = (r.test_type || "").toLowerCase();
-          
-          // اگر testType با test_name یا test_type مطابقت داشته باشد
-          if (testName.includes(testType.toLowerCase()) || 
-              testTypeName.includes(testType.toLowerCase())) {
+
+          if (
+            testName.includes(testType.toLowerCase()) ||
+            testTypeName.includes(testType.toLowerCase())
+          ) {
             return true;
           }
-          
-          // بررسی کلمات کلیدی
+
           if (testKeywords.length > 0) {
-            return testKeywords.some((keyword) =>
-              testName.includes(keyword.toLowerCase()) ||
-              testTypeName.includes(keyword.toLowerCase())
+            return testKeywords.some(
+              (keyword) =>
+                testName.includes(keyword.toLowerCase()) ||
+                testTypeName.includes(keyword.toLowerCase())
             );
           }
           return false;
         }
-        
-        // اگر testType مشخص نشده، از کلمات کلیدی استفاده کن
+
         if (testKeywords.length > 0) {
           const testName = (r.test_name || "").toLowerCase();
           const testTypeName = (r.test_type || "").toLowerCase();
-          return testKeywords.some((keyword) =>
-            testName.includes(keyword.toLowerCase()) ||
-            testTypeName.includes(keyword.toLowerCase())
+          return testKeywords.some(
+            (keyword) =>
+              testName.includes(keyword.toLowerCase()) ||
+              testTypeName.includes(keyword.toLowerCase())
           );
         }
-        
+
         return false;
       });
 
-      console.log(`✅ درخواست‌های فیلتر شده برای ${testType || title}:`, filteredRequests.length);
       setRequests(filteredRequests);
 
       if (onBadgeCountChange) {
@@ -258,7 +246,6 @@ export default function LabBasePage({
 
   // ============ مشاهده جزئیات ============
   const handleViewDetails = (request) => {
-    console.log("🔍 جزئیات درخواست:", request);
     setSelectedRequest(request);
     setOpenDetailDialog(true);
   };
@@ -308,9 +295,13 @@ export default function LabBasePage({
       formData.append("request_id", requestId);
 
       const xhr = new XMLHttpRequest();
-      
+
       return new Promise((resolve, reject) => {
-        xhr.open("POST", "http://localhost:8000/api/laboratory-requests/upload-pdf", true);
+        xhr.open(
+          "POST",
+          "http://localhost:8000/api/laboratory-requests/upload-pdf",
+          true
+        );
         xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
         xhr.upload.onprogress = (event) => {
@@ -365,7 +356,7 @@ export default function LabBasePage({
   const handleSaveResult = async () => {
     try {
       setUploading(true);
-      
+
       const token = localStorage.getItem("token");
       let pdfUrl = resultData.pdf_url;
 
@@ -426,11 +417,17 @@ export default function LabBasePage({
     return name.substring(0, 2).toUpperCase();
   };
 
-  // ============ دریافت رنگ برای Avatar ============
+  // ============ دریافت رنگ برای Avatar (پالت پاستلی و مدرن روی پس‌زمینه سفید) ============
   const getAvatarColor = (name) => {
     const colors = [
-      "#ef4444", "#f59e0b", "#10b981", "#3b82f6", 
-      "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"
+      { bg: "#e0f2fe", text: "#0369a1" }, // آبی آسمانی
+      { bg: "#dcfce7", text: "#15803d" }, // سبز زمردی
+      { bg: "#ede9fe", text: "#6d28d9" }, // بنفش ملایم
+      { bg: "#fef3c7", text: "#b45309" }, // کهربایی
+      { bg: "#fce7f3", text: "#be185d" }, // صورتی
+      { bg: "#ccfbf1", text: "#0f766e" }, // فیروزه‌ای
+      { bg: "#ffedd5", text: "#c2410c" }, // نارنجی
+      { bg: "#e0e7ff", text: "#3730a3" }, // نیلی
     ];
     if (!name || name === "نامشخص") return colors[0];
     const index = name.length % colors.length;
@@ -447,68 +444,149 @@ export default function LabBasePage({
     return genders[gender] || gender || "نامشخص";
   };
 
+  // استایل مشترک فیلدهای متنی در تم روشن
+  const lightInputSx = {
+    "& .MuiOutlinedInput-root": {
+      bgcolor: "#ffffff",
+      borderRadius: "10px",
+      color: "#0f172a",
+      "& fieldset": { borderColor: "#cbd5e1" },
+      "&:hover fieldset": { borderColor: "#0284c7" },
+      "&.Mui-focused fieldset": { borderColor: "#0284c7", borderWidth: "1.5px" },
+    },
+    "& .MuiInputLabel-root": { color: "#64748b" },
+    "& .MuiInputLabel-root.Mui-focused": { color: "#0284c7" },
+  };
+
   // ============ رندر ============
   if (loading) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", p: 5, minHeight: "50vh" }}>
-        <CircularProgress />
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          p: 5,
+          minHeight: "60vh",
+          bgcolor: "#f8fafc",
+        }}
+      >
+        <CircularProgress sx={{ color: "#0284c7" }} />
       </Box>
     );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box
+      sx={{
+        p: { xs: 2, md: 3.5 },
+        minHeight: "100vh",
+        bgcolor: "#f8fafc", // پس‌زمینه سفید یخی بسیار آرام‌بخش
+      }}
+    >
       {/* Header */}
       <Paper
+        elevation={0}
         sx={{
-          p: 3,
+          p: { xs: 2, md: 3 },
           mb: 3,
-          bgcolor: "#1a2a3a",
-          borderRadius: "12px",
-          border: "1px solid #374151",
+          bgcolor: "#ffffff",
+          borderRadius: "16px",
+          border: "1px solid #e2e8f0",
+          boxShadow: "0 4px 20px -2px rgba(15, 23, 42, 0.04)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           flexWrap: "wrap",
           gap: 2,
+          position: "relative",
+          overflow: "hidden",
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            top: 0,
+            right: 0,
+            width: "5px",
+            height: "100%",
+            bgcolor: "#0284c7",
+          },
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
           <IconButton
             onClick={() => navigate(backPath)}
             sx={{
-              color: "#60a5fa",
-              bgcolor: "rgba(96, 165, 250, 0.1)",
-              "&:hover": { bgcolor: "rgba(96, 165, 250, 0.2)" },
+              color: "#0284c7",
+              bgcolor: "#f0f9ff",
+              border: "1px solid #bae6fd",
+              borderRadius: "12px",
+              "&:hover": { bgcolor: "#e0f2fe" },
             }}
           >
             <ArrowBackIcon />
           </IconButton>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            {icon}
-            <Typography variant="h5" sx={{ fontWeight: "bold", color: "white" }}>
-              {title}
-            </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box
+              sx={{
+                p: 1.2,
+                borderRadius: "12px",
+                bgcolor: "#eff6ff",
+                color: "#1d4ed8",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {icon}
+            </Box>
+            <Box>
+              <Typography
+                variant="h5"
+                sx={{ fontWeight: 800, color: "#0f172a", letterSpacing: "-0.3px" }}
+              >
+                {title}
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#64748b" }}>
+                مدیریت درخواست‌ها و ثبت نتایج آزمایشگاهی
+              </Typography>
+            </Box>
           </Box>
         </Box>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
           <Chip
-            label={`${requests.length} درخواست`}
-            color="info"
-            size="medium"
-            sx={{ fontWeight: "bold" }}
+            label={`${requests.length} کل درخواست‌ها`}
+            sx={{
+              bgcolor: "#eff6ff",
+              color: "#1d4ed8",
+              border: "1px solid #bfdbfe",
+              fontWeight: 700,
+              px: 1,
+            }}
           />
           <Chip
-            label={`${requests.filter(r => r.status !== "completed").length} در انتظار`}
-            color="warning"
-            size="medium"
-            sx={{ fontWeight: "bold" }}
+            label={`${requests.filter((r) => r.status !== "completed").length} در انتظار انجام`}
+            sx={{
+              bgcolor: "#fffbeb",
+              color: "#b45309",
+              border: "1px solid #fde68a",
+              fontWeight: 700,
+              px: 1,
+            }}
           />
         </Box>
       </Paper>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <Alert
+          severity="error"
+          sx={{
+            mb: 2.5,
+            borderRadius: "12px",
+            border: "1px solid #fecaca",
+          }}
+          onClose={() => setError(null)}
+        >
           {error}
         </Alert>
       )}
@@ -516,47 +594,83 @@ export default function LabBasePage({
       {/* Table */}
       {requests.length === 0 ? (
         <Paper
+          elevation={0}
           sx={{
-            p: 5,
+            p: 6,
             textAlign: "center",
-            bgcolor: "#1a2a3a",
-            borderRadius: "12px",
-            border: "1px solid #374151",
+            bgcolor: "#ffffff",
+            borderRadius: "16px",
+            border: "1px dashed #cbd5e1",
           }}
         >
-          <ScienceIcon sx={{ fontSize: 60, color: "#6b7280", mb: 2 }} />
-          <Typography variant="h6" sx={{ color: "#9ca3af" }}>
+          <Box
+            sx={{
+              width: 72,
+              height: 72,
+              borderRadius: "50%",
+              bgcolor: "#f1f5f9",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              mx: "auto",
+              mb: 2,
+            }}
+          >
+            <ScienceIcon sx={{ fontSize: 38, color: "#94a3b8" }} />
+          </Box>
+          <Typography variant="h6" sx={{ color: "#334155", fontWeight: 700 }}>
             هیچ درخواستی برای {title} یافت نشد
           </Typography>
-          <Typography variant="body2" sx={{ color: "#6b7280", mt: 1 }}>
-            درخواست‌های جدید پس از پرداخت فیس در اینجا نمایش داده می‌شوند
+          <Typography variant="body2" sx={{ color: "#64748b", mt: 0.8 }}>
+            درخواست‌های جدید پس از پرداخت فیس در این جدول نمایش داده می‌شوند
           </Typography>
         </Paper>
       ) : (
         <TableContainer
           component={Paper}
+          elevation={0}
           sx={{
-            bgcolor: "#1a2a3a",
-            borderRadius: "12px",
-            border: "1px solid #374151",
+            bgcolor: "#ffffff",
+            borderRadius: "16px",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 4px 20px -2px rgba(15, 23, 42, 0.04)",
             overflowX: "auto",
           }}
         >
           <Table>
             <TableHead>
-              <TableRow sx={{ bgcolor: "#0d1b2a" }}>
-                <TableCell sx={{ color: "white", fontWeight: "bold" }}>#</TableCell>
-                <TableCell sx={{ color: "white", fontWeight: "bold" }}>اطلاعات بیمار</TableCell>
-                <TableCell sx={{ color: "white", fontWeight: "bold" }}>نوع تست</TableCell>
-                <TableCell sx={{ color: "white", fontWeight: "bold" }}>تاریخ درخواست</TableCell>
-                <TableCell sx={{ color: "white", fontWeight: "bold" }}>وضعیت</TableCell>
-                <TableCell sx={{ color: "white", fontWeight: "bold" }}>PDF</TableCell>
-                <TableCell sx={{ color: "white", fontWeight: "bold" }} align="center">عملیات</TableCell>
+              <TableRow
+                sx={{
+                  bgcolor: "#f1f5f9",
+                  borderBottom: "2px solid #e2e8f0",
+                }}
+              >
+                <TableCell sx={{ color: "#334155", fontWeight: 800 }}>#</TableCell>
+                <TableCell sx={{ color: "#334155", fontWeight: 800 }}>
+                  اطلاعات بیمار
+                </TableCell>
+                <TableCell sx={{ color: "#334155", fontWeight: 800 }}>
+                  نوع تست
+                </TableCell>
+                <TableCell sx={{ color: "#334155", fontWeight: 800 }}>
+                  تاریخ درخواست
+                </TableCell>
+                <TableCell sx={{ color: "#334155", fontWeight: 800 }}>
+                  وضعیت
+                </TableCell>
+                <TableCell sx={{ color: "#334155", fontWeight: 800 }}>
+                  فایل PDF
+                </TableCell>
+                <TableCell
+                  sx={{ color: "#334155", fontWeight: 800 }}
+                  align="center"
+                >
+                  عملیات
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {requests.map((req, index) => {
-                // دریافت اطلاعات بیمار از داده‌های پردازش شده
                 const patientName = req.patient_name || "نامشخص";
                 const patientPhone = req.patient_phone || "";
                 const patientAge = req.patient_age || "";
@@ -564,65 +678,115 @@ export default function LabBasePage({
                 const patientNationalId = req.patient_national_id || "";
                 const registrationId = req.registration_id || req.reg_id || "";
                 const doctorName = req.doctor_name || "";
-                
+
                 const initials = getInitials(patientName);
-                const avatarColor = getAvatarColor(patientName);
+                const avatarTheme = getAvatarColor(patientName);
                 const genderLabel = getGenderLabel(patientGender);
-                
+
                 return (
                   <TableRow
                     key={req.id}
                     sx={{
-                      "&:hover": { bgcolor: "#243647" },
-                      borderBottom: "1px solid #374151",
+                      transition: "background-color 0.15s ease",
+                      "&:hover": { bgcolor: "#f8fafc" },
+                      borderBottom: "1px solid #f1f5f9",
                     }}
                   >
-                    <TableCell sx={{ color: "#9ca3af" }}>{index + 1}</TableCell>
+                    <TableCell sx={{ color: "#64748b", fontWeight: 600 }}>
+                      {index + 1}
+                    </TableCell>
                     <TableCell>
                       <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                         <Avatar
                           sx={{
-                            bgcolor: avatarColor,
-                            width: 45,
-                            height: 45,
-                            fontSize: 18,
-                            fontWeight: "bold",
+                            bgcolor: avatarTheme.bg,
+                            color: avatarTheme.text,
+                            border: `1px solid ${avatarTheme.text}30`,
+                            width: 44,
+                            height: 44,
+                            fontSize: 16,
+                            fontWeight: 800,
                           }}
                         >
                           {initials}
                         </Avatar>
                         <Box>
-                          <Typography sx={{ color: "white", fontWeight: "bold", fontSize: "15px" }}>
+                          <Typography
+                            sx={{
+                              color: "#0f172a",
+                              fontWeight: 700,
+                              fontSize: "14.5px",
+                            }}
+                          >
                             {patientName}
                           </Typography>
-                          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 0.5 }}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 1.2,
+                              mt: 0.4,
+                            }}
+                          >
                             {patientPhone && (
-                              <Typography sx={{ color: "#9ca3af", fontSize: "12px", display: "flex", alignItems: "center", gap: 0.5 }}>
-                                <PhoneIcon sx={{ fontSize: 12 }} />
+                              <Typography
+                                sx={{
+                                  color: "#475569",
+                                  fontSize: "12px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 0.4,
+                                }}
+                              >
+                                <PhoneIcon sx={{ fontSize: 13, color: "#0284c7" }} />
                                 {patientPhone}
                               </Typography>
                             )}
                             {patientAge && (
-                              <Typography sx={{ color: "#9ca3af", fontSize: "12px", display: "flex", alignItems: "center", gap: 0.5 }}>
-                                <AccessTimeIcon sx={{ fontSize: 12 }} />
+                              <Typography
+                                sx={{
+                                  color: "#475569",
+                                  fontSize: "12px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 0.4,
+                                }}
+                              >
+                                <AccessTimeIcon
+                                  sx={{ fontSize: 13, color: "#0284c7" }}
+                                />
                                 {patientAge} سال
                               </Typography>
                             )}
                             {patientGender && (
-                              <Typography sx={{ color: "#9ca3af", fontSize: "12px", display: "flex", alignItems: "center", gap: 0.5 }}>
-                                <BadgeIcon sx={{ fontSize: 12 }} />
+                              <Typography
+                                sx={{
+                                  color: "#475569",
+                                  fontSize: "12px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 0.4,
+                                }}
+                              >
+                                <BadgeIcon sx={{ fontSize: 13, color: "#0284c7" }} />
                                 {genderLabel}
                               </Typography>
                             )}
                           </Box>
                           {patientNationalId && (
-                            <Typography sx={{ color: "#6b7280", fontSize: "11px" }}>
+                            <Typography sx={{ color: "#64748b", fontSize: "11px" }}>
                               تذکره: {patientNationalId}
                             </Typography>
                           )}
-                          <Typography sx={{ color: "#4b5563", fontSize: "10px" }}>
+                          <Typography
+                            sx={{
+                              color: "#94a3b8",
+                              fontSize: "11px",
+                              mt: 0.2,
+                            }}
+                          >
                             مراجعه: {registrationId || "N/A"}
-                            {doctorName && ` | داکتر: ${doctorName}`}
+                            {doctorName && ` • داکتر: ${doctorName}`}
                           </Typography>
                         </Box>
                       </Box>
@@ -632,24 +796,38 @@ export default function LabBasePage({
                         label={req.test_name || req.test_type || "نامشخص"}
                         size="small"
                         sx={{
-                          bgcolor: "rgba(96, 165, 250, 0.2)",
-                          color: "#60a5fa",
-                          fontWeight: "bold",
+                          bgcolor: "#f0f9ff",
+                          color: "#0369a1",
+                          border: "1px solid #bae6fd",
+                          fontWeight: 700,
                         }}
                       />
                     </TableCell>
-                    <TableCell sx={{ color: "#9ca3af" }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <CalendarIcon sx={{ fontSize: 16, color: "#6b7280" }} />
+                    <TableCell sx={{ color: "#475569", fontSize: "13px" }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
+                        <CalendarIcon sx={{ fontSize: 15, color: "#94a3b8" }} />
                         {new Date(req.created_at).toLocaleDateString("fa-IR")}
                       </Box>
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={req.status === "completed" ? "✅ تکمیل شده" : "⏳ در انتظار"}
-                        color={req.status === "completed" ? "success" : "warning"}
+                        label={
+                          req.status === "completed"
+                            ? "تکمیل شده"
+                            : "در انتظار"
+                        }
                         size="small"
-                        sx={{ fontWeight: "bold" }}
+                        sx={{
+                          fontWeight: 700,
+                          bgcolor:
+                            req.status === "completed" ? "#dcfce7" : "#fef3c7",
+                          color:
+                            req.status === "completed" ? "#15803d" : "#b45309",
+                          border:
+                            req.status === "completed"
+                              ? "1px solid #bbf7d0"
+                              : "1px solid #fde68a",
+                        }}
                       />
                     </TableCell>
                     <TableCell>
@@ -660,24 +838,31 @@ export default function LabBasePage({
                           startIcon={<PdfIcon />}
                           onClick={() => handleDownloadPdf(req.pdf_url)}
                           sx={{
-                            color: "#ef4444",
-                            borderColor: "#ef4444",
+                            color: "#dc2626",
+                            borderColor: "#fca5a5",
+                            bgcolor: "#fef2f2",
+                            borderRadius: "8px",
+                            fontWeight: 600,
                             "&:hover": {
-                              borderColor: "#f87171",
-                              backgroundColor: "rgba(239, 68, 68, 0.1)",
+                              borderColor: "#ef4444",
+                              bgcolor: "#fee2e2",
                             },
                           }}
                         >
                           PDF
                         </Button>
                       ) : (
-                        <Typography sx={{ color: "#6b7280", fontSize: "12px" }}>
+                        <Typography sx={{ color: "#94a3b8", fontSize: "12px" }}>
                           ندارد
                         </Typography>
                       )}
                     </TableCell>
                     <TableCell align="center">
-                      <Stack direction="row" spacing={1} justifyContent="center">
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        justifyContent="center"
+                      >
                         <Tooltip title="مشاهده جزئیات">
                           <Button
                             size="small"
@@ -685,11 +870,14 @@ export default function LabBasePage({
                             startIcon={<VisibilityIcon />}
                             onClick={() => handleViewDetails(req)}
                             sx={{
-                              color: "#60a5fa",
-                              borderColor: "#60a5fa",
+                              color: "#0284c7",
+                              borderColor: "#bae6fd",
+                              bgcolor: "#f0f9ff",
+                              borderRadius: "8px",
+                              fontWeight: 600,
                               "&:hover": {
-                                borderColor: "#93c5fd",
-                                backgroundColor: "rgba(96, 165, 250, 0.1)",
+                                borderColor: "#0284c7",
+                                bgcolor: "#e0f2fe",
                               },
                             }}
                           >
@@ -701,11 +889,14 @@ export default function LabBasePage({
                             <Button
                               size="small"
                               variant="contained"
+                              disableElevation
                               startIcon={<EditIcon />}
                               onClick={() => handleOpenResultDialog(req)}
                               sx={{
-                                bgcolor: "#22c55e",
-                                "&:hover": { bgcolor: "#16a34a" },
+                                bgcolor: "#16a34a",
+                                borderRadius: "8px",
+                                fontWeight: 600,
+                                "&:hover": { bgcolor: "#15803d" },
                               }}
                             >
                               ثبت نتیجه
@@ -720,11 +911,14 @@ export default function LabBasePage({
                               startIcon={<PrintIcon />}
                               onClick={handlePrint}
                               sx={{
-                                color: "#f59e0b",
-                                borderColor: "#f59e0b",
+                                color: "#d97706",
+                                borderColor: "#fde68a",
+                                bgcolor: "#fffbeb",
+                                borderRadius: "8px",
+                                fontWeight: 600,
                                 "&:hover": {
-                                  borderColor: "#fbbf24",
-                                  backgroundColor: "rgba(245, 158, 11, 0.1)",
+                                  borderColor: "#d97706",
+                                  bgcolor: "#fef3c7",
                                 },
                               }}
                             >
@@ -750,20 +944,45 @@ export default function LabBasePage({
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: "#1a2a3a",
-            color: "white",
-            borderRadius: "16px",
-            border: "1px solid #374151",
+            bgcolor: "#ffffff",
+            color: "#0f172a",
+            borderRadius: "18px",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 20px 40px -10px rgba(15, 23, 42, 0.12)",
           },
         }}
       >
-        <DialogTitle sx={{ borderBottom: "1px solid #374151", pb: 2 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Typography variant="h6" sx={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
-              <PersonIcon sx={{ color: "#60a5fa" }} />
-              جزئیات درخواست
+        <DialogTitle
+          sx={{
+            borderBottom: "1px solid #e2e8f0",
+            bgcolor: "#f8fafc",
+            pb: 2,
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 800,
+                color: "#0f172a",
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+              }}
+            >
+              <PersonIcon sx={{ color: "#0284c7" }} />
+              جزئیات درخواست آزمایش
             </Typography>
-            <IconButton onClick={() => setOpenDetailDialog(false)} sx={{ color: "#9ca3af" }}>
+            <IconButton
+              onClick={() => setOpenDetailDialog(false)}
+              sx={{ color: "#64748b", "&:hover": { bgcolor: "#e2e8f0" } }}
+            >
               <CloseIcon />
             </IconButton>
           </Box>
@@ -772,39 +991,94 @@ export default function LabBasePage({
           {selectedRequest && (
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
-                <Card sx={{ bgcolor: "#0d1b2a", border: "1px solid #374151" }}>
+                <Card
+                  elevation={0}
+                  sx={{
+                    bgcolor: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "14px",
+                  }}
+                >
                   <CardContent>
-                    <Typography variant="subtitle2" sx={{ color: "#9ca3af", mb: 1 }}>
-                      <PersonIcon sx={{ fontSize: 16, verticalAlign: "middle", mr: 0.5 }} />
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ color: "#475569", fontWeight: 700, mb: 1 }}
+                    >
+                      <PersonIcon
+                        sx={{
+                          fontSize: 16,
+                          verticalAlign: "middle",
+                          mr: 0.5,
+                          color: "#0284c7",
+                        }}
+                      />
                       اطلاعات بیمار
                     </Typography>
-                    <Divider sx={{ mb: 2, borderColor: "#374151" }} />
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                        <Avatar
-                          sx={{
-                            bgcolor: getAvatarColor(selectedRequest.patient_name || "User"),
-                            width: 60,
-                            height: 60,
-                            fontSize: 24,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {getInitials(selectedRequest.patient_name || "کاربر")}
-                        </Avatar>
+                    <Divider sx={{ mb: 2, borderColor: "#e2e8f0" }} />
+                    <Box
+                      sx={{ display: "flex", flexDirection: "column", gap: 2 }}
+                    >
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 2 }}
+                      >
+                        {(() => {
+                          const avTheme = getAvatarColor(
+                            selectedRequest.patient_name || "User"
+                          );
+                          return (
+                            <Avatar
+                              sx={{
+                                bgcolor: avTheme.bg,
+                                color: avTheme.text,
+                                width: 56,
+                                height: 56,
+                                fontSize: 22,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {getInitials(
+                                selectedRequest.patient_name || "کاربر"
+                              )}
+                            </Avatar>
+                          );
+                        })()}
                         <Box>
-                          <Typography sx={{ color: "white", fontWeight: "bold", fontSize: "18px" }}>
+                          <Typography
+                            sx={{
+                              color: "#0f172a",
+                              fontWeight: 800,
+                              fontSize: "17px",
+                            }}
+                          >
                             {selectedRequest.patient_name || "نامشخص"}
                           </Typography>
                           {selectedRequest.patient_phone && (
-                            <Typography sx={{ color: "#9ca3af", fontSize: "14px" }}>
-                              <PhoneIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
+                            <Typography
+                              sx={{ color: "#475569", fontSize: "13.5px" }}
+                            >
+                              <PhoneIcon
+                                sx={{
+                                  fontSize: 14,
+                                  verticalAlign: "middle",
+                                  mr: 0.5,
+                                  color: "#0284c7",
+                                }}
+                              />
                               {selectedRequest.patient_phone}
                             </Typography>
                           )}
                           {selectedRequest.patient_email && (
-                            <Typography sx={{ color: "#9ca3af", fontSize: "14px" }}>
-                              <EmailIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
+                            <Typography
+                              sx={{ color: "#475569", fontSize: "13.5px" }}
+                            >
+                              <EmailIcon
+                                sx={{
+                                  fontSize: 14,
+                                  verticalAlign: "middle",
+                                  mr: 0.5,
+                                  color: "#0284c7",
+                                }}
+                              />
                               {selectedRequest.patient_email}
                             </Typography>
                           )}
@@ -812,20 +1086,32 @@ export default function LabBasePage({
                       </Box>
                       <Grid container spacing={1}>
                         <Grid item xs={6}>
-                          <Typography variant="body2" sx={{ color: "#6b7280" }}>سن:</Typography>
-                          <Typography sx={{ color: "white" }}>
+                          <Typography variant="body2" sx={{ color: "#64748b" }}>
+                            سن:
+                          </Typography>
+                          <Typography
+                            sx={{ color: "#0f172a", fontWeight: 600 }}
+                          >
                             {selectedRequest.patient_age || "ندارد"}
                           </Typography>
                         </Grid>
                         <Grid item xs={6}>
-                          <Typography variant="body2" sx={{ color: "#6b7280" }}>جنسیت:</Typography>
-                          <Typography sx={{ color: "white" }}>
+                          <Typography variant="body2" sx={{ color: "#64748b" }}>
+                            جنسیت:
+                          </Typography>
+                          <Typography
+                            sx={{ color: "#0f172a", fontWeight: 600 }}
+                          >
                             {getGenderLabel(selectedRequest.patient_gender)}
                           </Typography>
                         </Grid>
                         <Grid item xs={12}>
-                          <Typography variant="body2" sx={{ color: "#6b7280" }}>تذکره:</Typography>
-                          <Typography sx={{ color: "white" }}>
+                          <Typography variant="body2" sx={{ color: "#64748b" }}>
+                            تذکره:
+                          </Typography>
+                          <Typography
+                            sx={{ color: "#0f172a", fontWeight: 600 }}
+                          >
                             {selectedRequest.patient_national_id || "ندارد"}
                           </Typography>
                         </Grid>
@@ -836,65 +1122,164 @@ export default function LabBasePage({
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Card sx={{ bgcolor: "#0d1b2a", border: "1px solid #374151" }}>
+                <Card
+                  elevation={0}
+                  sx={{
+                    bgcolor: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "14px",
+                  }}
+                >
                   <CardContent>
-                    <Typography variant="subtitle2" sx={{ color: "#9ca3af", mb: 1 }}>
-                      <ScienceIcon sx={{ fontSize: 16, verticalAlign: "middle", mr: 0.5 }} />
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ color: "#475569", fontWeight: 700, mb: 1 }}
+                    >
+                      <ScienceIcon
+                        sx={{
+                          fontSize: 16,
+                          verticalAlign: "middle",
+                          mr: 0.5,
+                          color: "#0284c7",
+                        }}
+                      />
                       اطلاعات آزمایش
                     </Typography>
-                    <Divider sx={{ mb: 2, borderColor: "#374151" }} />
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography sx={{ color: "#9ca3af" }}>نوع تست:</Typography>
-                        <Typography sx={{ color: "white", fontWeight: "bold" }}>
-                          {selectedRequest.test_name || selectedRequest.test_type || "نامشخص"}
+                    <Divider sx={{ mb: 2, borderColor: "#e2e8f0" }} />
+                    <Box
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1.5,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <Typography sx={{ color: "#64748b" }}>
+                          نوع تست:
+                        </Typography>
+                        <Typography sx={{ color: "#0f172a", fontWeight: 700 }}>
+                          {selectedRequest.test_name ||
+                            selectedRequest.test_type ||
+                            "نامشخص"}
                         </Typography>
                       </Box>
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography sx={{ color: "#9ca3af" }}>شماره مراجعه:</Typography>
-                        <Typography sx={{ color: "white" }}>
-                          {selectedRequest.registration_id || selectedRequest.reg_id || "N/A"}
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <Typography sx={{ color: "#64748b" }}>
+                          شماره مراجعه:
+                        </Typography>
+                        <Typography sx={{ color: "#0f172a", fontWeight: 600 }}>
+                          {selectedRequest.registration_id ||
+                            selectedRequest.reg_id ||
+                            "N/A"}
                         </Typography>
                       </Box>
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography sx={{ color: "#9ca3af" }}>داکتر:</Typography>
-                        <Typography sx={{ color: "white" }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <Typography sx={{ color: "#64748b" }}>
+                          داکتر:
+                        </Typography>
+                        <Typography sx={{ color: "#0f172a", fontWeight: 600 }}>
                           {selectedRequest.doctor_name || "نامشخص"}
                         </Typography>
                       </Box>
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography sx={{ color: "#9ca3af" }}>تاریخ درخواست:</Typography>
-                        <Typography sx={{ color: "white" }}>
-                          {new Date(selectedRequest.created_at).toLocaleDateString("fa-IR")}
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <Typography sx={{ color: "#64748b" }}>
+                          تاریخ درخواست:
+                        </Typography>
+                        <Typography sx={{ color: "#0f172a", fontWeight: 600 }}>
+                          {new Date(
+                            selectedRequest.created_at
+                          ).toLocaleDateString("fa-IR")}
                         </Typography>
                       </Box>
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography sx={{ color: "#9ca3af" }}>وضعیت:</Typography>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <Typography sx={{ color: "#64748b" }}>
+                          وضعیت:
+                        </Typography>
                         <Chip
-                          label={selectedRequest.status === "completed" ? "تکمیل شده" : "در انتظار"}
-                          color={selectedRequest.status === "completed" ? "success" : "warning"}
+                          label={
+                            selectedRequest.status === "completed"
+                              ? "تکمیل شده"
+                              : "در انتظار"
+                          }
                           size="small"
+                          sx={{
+                            fontWeight: 700,
+                            bgcolor:
+                              selectedRequest.status === "completed"
+                                ? "#dcfce7"
+                                : "#fef3c7",
+                            color:
+                              selectedRequest.status === "completed"
+                                ? "#15803d"
+                                : "#b45309",
+                          }}
                         />
                       </Box>
                       {selectedRequest.result && (
-                        <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                          <Typography sx={{ color: "#9ca3af" }}>نتیجه:</Typography>
-                          <Typography sx={{ color: "#22c55e", fontWeight: "bold" }}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <Typography sx={{ color: "#64748b" }}>
+                            نتیجه:
+                          </Typography>
+                          <Typography
+                            sx={{ color: "#16a34a", fontWeight: 700 }}
+                          >
                             {selectedRequest.result}
                           </Typography>
                         </Box>
                       )}
                       {selectedRequest.pdf_url && (
-                        <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                          <Typography sx={{ color: "#9ca3af" }}>فایل PDF:</Typography>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Typography sx={{ color: "#64748b" }}>
+                            فایل PDF:
+                          </Typography>
                           <Button
                             size="small"
                             variant="outlined"
                             startIcon={<PdfIcon />}
-                            onClick={() => handleDownloadPdf(selectedRequest.pdf_url)}
+                            onClick={() =>
+                              handleDownloadPdf(selectedRequest.pdf_url)
+                            }
                             sx={{
-                              color: "#ef4444",
-                              borderColor: "#ef4444",
+                              color: "#dc2626",
+                              borderColor: "#fca5a5",
+                              bgcolor: "#fef2f2",
+                              borderRadius: "8px",
                             }}
                           >
                             مشاهده PDF
@@ -908,13 +1293,23 @@ export default function LabBasePage({
 
               {selectedRequest.notes && (
                 <Grid item xs={12}>
-                  <Card sx={{ bgcolor: "#0d1b2a", border: "1px solid #374151" }}>
+                  <Card
+                    elevation={0}
+                    sx={{
+                      bgcolor: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "14px",
+                    }}
+                  >
                     <CardContent>
-                      <Typography variant="subtitle2" sx={{ color: "#9ca3af", mb: 1 }}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{ color: "#475569", fontWeight: 700, mb: 1 }}
+                      >
                         یادداشت‌ها
                       </Typography>
-                      <Divider sx={{ mb: 2, borderColor: "#374151" }} />
-                      <Typography sx={{ color: "white" }}>
+                      <Divider sx={{ mb: 1.5, borderColor: "#e2e8f0" }} />
+                      <Typography sx={{ color: "#334155" }}>
                         {selectedRequest.notes}
                       </Typography>
                     </CardContent>
@@ -924,24 +1319,33 @@ export default function LabBasePage({
             </Grid>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: "1px solid #374151", p: 2 }}>
+        <DialogActions
+          sx={{
+            borderTop: "1px solid #e2e8f0",
+            bgcolor: "#f8fafc",
+            p: 2,
+          }}
+        >
           <Button
             onClick={() => setOpenDetailDialog(false)}
-            sx={{ color: "#9ca3af" }}
+            sx={{ color: "#64748b", fontWeight: 600 }}
           >
             بستن
           </Button>
           {selectedRequest?.status !== "completed" && (
             <Button
               variant="contained"
+              disableElevation
               startIcon={<EditIcon />}
               onClick={() => {
                 setOpenDetailDialog(false);
                 handleOpenResultDialog(selectedRequest);
               }}
               sx={{
-                bgcolor: "#22c55e",
-                "&:hover": { bgcolor: "#16a34a" },
+                bgcolor: "#16a34a",
+                borderRadius: "10px",
+                fontWeight: 700,
+                "&:hover": { bgcolor: "#15803d" },
               }}
             >
               ثبت نتیجه
@@ -958,22 +1362,44 @@ export default function LabBasePage({
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: "#1a2a3a",
-            color: "white",
-            borderRadius: "16px",
-            border: "1px solid #374151",
+            bgcolor: "#ffffff",
+            color: "#0f172a",
+            borderRadius: "18px",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 20px 40px -10px rgba(15, 23, 42, 0.12)",
           },
         }}
       >
-        <DialogTitle sx={{ borderBottom: "1px solid #374151", pb: 2 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Typography variant="h6" sx={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
-              <EditIcon sx={{ color: "#22c55e" }} />
+        <DialogTitle
+          sx={{
+            borderBottom: "1px solid #e2e8f0",
+            bgcolor: "#f8fafc",
+            pb: 2,
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 800,
+                color: "#0f172a",
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+              }}
+            >
+              <EditIcon sx={{ color: "#16a34a" }} />
               ثبت نتیجه آزمایش
             </Typography>
-            <IconButton 
-              onClick={() => !uploading && setOpenResultDialog(false)} 
-              sx={{ color: "#9ca3af" }}
+            <IconButton
+              onClick={() => !uploading && setOpenResultDialog(false)}
+              sx={{ color: "#64748b", "&:hover": { bgcolor: "#e2e8f0" } }}
               disabled={uploading}
             >
               <CloseIcon />
@@ -982,81 +1408,136 @@ export default function LabBasePage({
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           {uploading && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ color: "#9ca3af", mb: 1 }}>
+            <Box sx={{ mb: 2.5 }}>
+              <Typography variant="body2" sx={{ color: "#475569", mb: 1 }}>
                 در حال آپلود فایل...
               </Typography>
-              <LinearProgress 
-                variant="determinate" 
-                value={uploadProgress} 
-                sx={{ 
-                  height: 8, 
+              <LinearProgress
+                variant="determinate"
+                value={uploadProgress}
+                sx={{
+                  height: 8,
                   borderRadius: 4,
-                  bgcolor: "#374151",
+                  bgcolor: "#e2e8f0",
                   "& .MuiLinearProgress-bar": {
-                    bgcolor: "#22c55e",
-                  }
+                    bgcolor: "#16a34a",
+                  },
                 }}
               />
-              <Typography variant="caption" sx={{ color: "#6b7280", mt: 0.5 }}>
+              <Typography variant="caption" sx={{ color: "#64748b", mt: 0.5 }}>
                 {uploadProgress}%
               </Typography>
             </Box>
           )}
-          
+
           {selectedRequest && (
-            <Grid container spacing={3}>
+            <Grid container spacing={2.5}>
               <Grid item xs={12}>
-                <Card sx={{ bgcolor: "#0d1b2a", border: "1px solid #374151", p: 2 }}>
+                <Card
+                  elevation={0}
+                  sx={{
+                    bgcolor: "#f0f9ff",
+                    border: "1px solid #bae6fd",
+                    borderRadius: "12px",
+                    p: 2,
+                  }}
+                >
                   <Grid container spacing={2}>
                     <Grid item xs={12} md={6}>
-                      <Typography variant="body2" sx={{ color: "#9ca3af" }}>
+                      <Typography variant="caption" sx={{ color: "#0369a1" }}>
                         نام بیمار:
                       </Typography>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
-                        <Avatar
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                          mt: 0.5,
+                        }}
+                      >
+                        {(() => {
+                          const avTheme = getAvatarColor(
+                            selectedRequest.patient_name || "User"
+                          );
+                          return (
+                            <Avatar
+                              sx={{
+                                bgcolor: avTheme.bg,
+                                color: avTheme.text,
+                                width: 32,
+                                height: 32,
+                                fontSize: 13,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {getInitials(
+                                selectedRequest.patient_name || "کاربر"
+                              )}
+                            </Avatar>
+                          );
+                        })()}
+                        <Typography
                           sx={{
-                            bgcolor: getAvatarColor(selectedRequest.patient_name || "User"),
-                            width: 32,
-                            height: 32,
-                            fontSize: 14,
-                            fontWeight: "bold",
+                            color: "#0f172a",
+                            fontWeight: 800,
+                            fontSize: "15px",
                           }}
                         >
-                          {getInitials(selectedRequest.patient_name || "کاربر")}
-                        </Avatar>
-                        <Typography sx={{ color: "white", fontWeight: "bold", fontSize: "16px" }}>
                           {selectedRequest.patient_name || "نامشخص"}
                         </Typography>
                         {selectedRequest.patient_phone && (
-                          <Typography sx={{ color: "#9ca3af", fontSize: "12px", ml: 1 }}>
-                            <PhoneIcon sx={{ fontSize: 12, verticalAlign: "middle" }} />
+                          <Typography
+                            sx={{ color: "#475569", fontSize: "12px", ml: 1 }}
+                          >
+                            <PhoneIcon
+                              sx={{ fontSize: 12, verticalAlign: "middle" }}
+                            />
                             {selectedRequest.patient_phone}
                           </Typography>
                         )}
                       </Box>
                       <Box sx={{ display: "flex", gap: 2, mt: 0.5 }}>
                         {selectedRequest.patient_age && (
-                          <Typography sx={{ color: "#6b7280", fontSize: "12px" }}>
+                          <Typography
+                            sx={{ color: "#475569", fontSize: "12px" }}
+                          >
                             سن: {selectedRequest.patient_age} سال
                           </Typography>
                         )}
                         {selectedRequest.patient_gender && (
-                          <Typography sx={{ color: "#6b7280", fontSize: "12px" }}>
-                            جنسیت: {getGenderLabel(selectedRequest.patient_gender)}
+                          <Typography
+                            sx={{ color: "#475569", fontSize: "12px" }}
+                          >
+                            جنسیت:{" "}
+                            {getGenderLabel(selectedRequest.patient_gender)}
                           </Typography>
                         )}
                       </Box>
                     </Grid>
                     <Grid item xs={12} md={6}>
-                      <Typography variant="body2" sx={{ color: "#9ca3af" }}>
+                      <Typography variant="caption" sx={{ color: "#0369a1" }}>
                         نوع تست:
                       </Typography>
-                      <Typography sx={{ color: "white", fontWeight: "bold", mt: 0.5, fontSize: "16px" }}>
-                        {selectedRequest.test_name || selectedRequest.test_type || "نامشخص"}
+                      <Typography
+                        sx={{
+                          color: "#0f172a",
+                          fontWeight: 800,
+                          mt: 0.5,
+                          fontSize: "15px",
+                        }}
+                      >
+                        {selectedRequest.test_name ||
+                          selectedRequest.test_type ||
+                          "نامشخص"}
                       </Typography>
-                      <Typography variant="body2" sx={{ color: "#6b7280", mt: 0.5 }}>
-                        شماره مراجعه: {selectedRequest.registration_id || selectedRequest.reg_id || "N/A"}
+                      <Typography
+                        variant="body2"
+                        sx={{ color: "#475569", mt: 0.5, fontSize: "12px" }}
+                      >
+                        شماره مراجعه:{" "}
+                        {selectedRequest.registration_id ||
+                          selectedRequest.reg_id ||
+                          "N/A"}
                       </Typography>
                     </Grid>
                   </Grid>
@@ -1075,16 +1556,7 @@ export default function LabBasePage({
                   }
                   placeholder="مقدار نتیجه آزمایش را وارد کنید..."
                   disabled={uploading}
-                  sx={{
-                    "& .MuiInputLabel-root": { color: "#9ca3af" },
-                    "& .MuiOutlinedInput-root": {
-                      color: "white",
-                      "& fieldset": { borderColor: "#374151" },
-                      "&:hover fieldset": { borderColor: "#60a5fa" },
-                      "&.Mui-focused fieldset": { borderColor: "#60a5fa" },
-                    },
-                    "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
-                  }}
+                  sx={lightInputSx}
                 />
               </Grid>
 
@@ -1094,20 +1566,14 @@ export default function LabBasePage({
                   label="محدوده نرمال"
                   value={resultData.normal_range}
                   onChange={(e) =>
-                    setResultData({ ...resultData, normal_range: e.target.value })
+                    setResultData({
+                      ...resultData,
+                      normal_range: e.target.value,
+                    })
                   }
                   placeholder="مثلاً: 10-20"
                   disabled={uploading}
-                  sx={{
-                    "& .MuiInputLabel-root": { color: "#9ca3af" },
-                    "& .MuiOutlinedInput-root": {
-                      color: "white",
-                      "& fieldset": { borderColor: "#374151" },
-                      "&:hover fieldset": { borderColor: "#60a5fa" },
-                      "&.Mui-focused fieldset": { borderColor: "#60a5fa" },
-                    },
-                    "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
-                  }}
+                  sx={lightInputSx}
                 />
               </Grid>
 
@@ -1121,40 +1587,28 @@ export default function LabBasePage({
                     setResultData({ ...resultData, status: e.target.value })
                   }
                   disabled={uploading}
-                  sx={{
-                    "& .MuiInputLabel-root": { color: "#9ca3af" },
-                    "& .MuiOutlinedInput-root": {
-                      color: "white",
-                      "& fieldset": { borderColor: "#374151" },
-                      "&:hover fieldset": { borderColor: "#60a5fa" },
-                      "&.Mui-focused fieldset": { borderColor: "#60a5fa" },
-                    },
-                    "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
-                  }}
+                  sx={lightInputSx}
                 >
-                  <MenuItem value="pending" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
-                    در انتظار
-                  </MenuItem>
-                  <MenuItem value="completed" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
-                    تکمیل شده
-                  </MenuItem>
-                  <MenuItem value="cancelled" sx={{ color: "white", bgcolor: "#1a2a3a" }}>
-                    لغو شده
-                  </MenuItem>
+                  <MenuItem value="pending">در انتظار</MenuItem>
+                  <MenuItem value="completed">تکمیل شده</MenuItem>
+                  <MenuItem value="cancelled">لغو شده</MenuItem>
                 </TextField>
               </Grid>
 
               {/* ============ بخش آپلود PDF ============ */}
               <Grid item xs={12}>
                 <Paper
+                  elevation={0}
                   sx={{
-                    p: 2,
-                    bgcolor: "#0d1b2a",
-                    border: "2px dashed #374151",
-                    borderRadius: "8px",
+                    p: 2.5,
+                    bgcolor: "#f8fafc",
+                    border: "2px dashed #cbd5e1",
+                    borderRadius: "12px",
                     textAlign: "center",
+                    transition: "all 0.2s ease",
                     "&:hover": {
-                      borderColor: "#60a5fa",
+                      borderColor: "#0284c7",
+                      bgcolor: "#f0f9ff",
                     },
                   }}
                 >
@@ -1167,28 +1621,29 @@ export default function LabBasePage({
                     id="pdf-upload"
                     disabled={uploading}
                   />
-                  
+
                   {resultData.pdf_file_name || resultData.pdf_url ? (
                     <Box>
                       <List>
                         <ListItem
                           sx={{
-                            bgcolor: "#1a2a3a",
-                            borderRadius: "8px",
+                            bgcolor: "#ffffff",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "10px",
                             mb: 1,
                           }}
                         >
                           <ListItemIcon>
-                            <PdfIcon sx={{ color: "#ef4444" }} />
+                            <PdfIcon sx={{ color: "#dc2626" }} />
                           </ListItemIcon>
                           <ListItemText
                             primary={resultData.pdf_file_name || "فایل PDF"}
-                            sx={{ color: "white" }}
+                            sx={{ color: "#0f172a" }}
                           />
                           <IconButton
                             onClick={handleRemoveFile}
                             disabled={uploading}
-                            sx={{ color: "#ef4444" }}
+                            sx={{ color: "#dc2626" }}
                           >
                             <DeleteIcon />
                           </IconButton>
@@ -1200,11 +1655,11 @@ export default function LabBasePage({
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploading}
                         sx={{
-                          color: "#60a5fa",
-                          borderColor: "#60a5fa",
+                          color: "#0284c7",
+                          borderColor: "#0284c7",
+                          borderRadius: "8px",
                           "&:hover": {
-                            borderColor: "#93c5fd",
-                            backgroundColor: "rgba(96, 165, 250, 0.1)",
+                            bgcolor: "#e0f2fe",
                           },
                         }}
                       >
@@ -1213,22 +1668,30 @@ export default function LabBasePage({
                     </Box>
                   ) : (
                     <Box>
-                      <AttachFileIcon sx={{ fontSize: 48, color: "#6b7280", mb: 1 }} />
-                      <Typography variant="body1" sx={{ color: "#9ca3af", mb: 1 }}>
+                      <AttachFileIcon
+                        sx={{ fontSize: 42, color: "#94a3b8", mb: 1 }}
+                      />
+                      <Typography
+                        variant="body1"
+                        sx={{ color: "#334155", fontWeight: 600, mb: 0.5 }}
+                      >
                         برای آپلود فایل PDF کلیک کنید
                       </Typography>
-                      <Typography variant="caption" sx={{ color: "#6b7280" }}>
+                      <Typography variant="caption" sx={{ color: "#64748b" }}>
                         فقط فایل‌های PDF پذیرفته می‌شوند
                       </Typography>
                       <Box sx={{ mt: 2 }}>
                         <Button
                           variant="contained"
+                          disableElevation
                           startIcon={<UploadIcon />}
                           onClick={() => fileInputRef.current?.click()}
                           disabled={uploading}
                           sx={{
-                            bgcolor: "#3b82f6",
-                            "&:hover": { bgcolor: "#2563eb" },
+                            bgcolor: "#0284c7",
+                            borderRadius: "8px",
+                            fontWeight: 600,
+                            "&:hover": { bgcolor: "#0369a1" },
                           }}
                         >
                           انتخاب فایل PDF
@@ -1251,40 +1714,47 @@ export default function LabBasePage({
                   }
                   placeholder="یادداشت اضافی..."
                   disabled={uploading}
-                  sx={{
-                    "& .MuiInputLabel-root": { color: "#9ca3af" },
-                    "& .MuiOutlinedInput-root": {
-                      color: "white",
-                      "& fieldset": { borderColor: "#374151" },
-                      "&:hover fieldset": { borderColor: "#60a5fa" },
-                      "&.Mui-focused fieldset": { borderColor: "#60a5fa" },
-                    },
-                    "& .MuiInputLabel-root.Mui-focused": { color: "#60a5fa" },
-                  }}
+                  sx={lightInputSx}
                 />
               </Grid>
             </Grid>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: "1px solid #374151", p: 2, gap: 1 }}>
+        <DialogActions
+          sx={{
+            borderTop: "1px solid #e2e8f0",
+            bgcolor: "#f8fafc",
+            p: 2,
+            gap: 1,
+          }}
+        >
           <Button
             onClick={() => setOpenResultDialog(false)}
             disabled={uploading}
-            sx={{ color: "#9ca3af" }}
+            sx={{ color: "#64748b", fontWeight: 600 }}
           >
             لغو
           </Button>
           <Button
             onClick={handleSaveResult}
             variant="contained"
-            startIcon={uploading ? <CircularProgress size={20} color="inherit" /> : <CheckCircleIcon />}
+            disableElevation
+            startIcon={
+              uploading ? (
+                <CircularProgress size={20} color="inherit" />
+              ) : (
+                <CheckCircleIcon />
+              )
+            }
             disabled={uploading}
             sx={{
-              bgcolor: "#22c55e",
-              "&:hover": { bgcolor: "#16a34a" },
+              bgcolor: "#16a34a",
+              borderRadius: "10px",
+              fontWeight: 700,
+              "&:hover": { bgcolor: "#15803d" },
               "&.Mui-disabled": {
-                bgcolor: "#4b5563",
-                color: "#9ca3af",
+                bgcolor: "#cbd5e1",
+                color: "#64748b",
               },
             }}
           >

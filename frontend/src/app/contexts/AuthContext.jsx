@@ -1,4 +1,4 @@
-
+// src/app/contexts/AuthContext.jsx
 import {
   createContext,
   useContext,
@@ -45,13 +45,19 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
 
-      window.location.href = "#/session/signin";
+      // فقط اگر در صفحه setup یا signin نیستیم هدایت کن
+      const currentHash = window.location.hash || "";
+      if (
+        !currentHash.includes("/session/signin") &&
+        !currentHash.includes("/setup")
+      ) {
+        window.location.href = "#/session/signin";
+      }
     }
 
     return Promise.reject(error);
@@ -78,24 +84,45 @@ const getAvatarUrl = (userData) => {
     ) {
       return `${userData.avatar_url}?t=${Date.now()}`;
     }
-
     return `${API_BASE_URL}${userData.avatar_url}?t=${Date.now()}`;
   }
 
   if (userData.avatar) {
     const cleanPath = userData.avatar.replace(/^\/+/, "");
-
     if (
       cleanPath.startsWith("http://") ||
       cleanPath.startsWith("https://")
     ) {
       return `${cleanPath}?t=${Date.now()}`;
     }
-
     return `${API_BASE_URL}/storage/${cleanPath}?t=${Date.now()}`;
   }
 
   return null;
+};
+
+// =====================================================
+// HELPER: LOGO URL
+// =====================================================
+
+const getLogoUrl = (logoPath) => {
+  if (!logoPath) return null;
+
+  if (
+    logoPath.startsWith("http://") ||
+    logoPath.startsWith("https://")
+  ) {
+    return logoPath;
+  }
+
+  const cleanPath = logoPath.replace(/^\/+/, "");
+
+  // اگر با storage شروع شود، دوباره اضافه نکن
+  if (cleanPath.startsWith("storage/")) {
+    return `${API_BASE_URL}/${cleanPath}`;
+  }
+
+  return `${API_BASE_URL}/storage/${cleanPath}`;
 };
 
 // =====================================================
@@ -109,14 +136,10 @@ const normalizeModules = (modules) => {
     ...new Set(
       modules
         .map((module) => {
-          if (typeof module === "string") {
-            return module;
-          }
-
+          if (typeof module === "string") return module;
           if (module && typeof module === "object") {
             return module.key || module.module_key || module.name;
           }
-
           return null;
         })
         .filter(Boolean)
@@ -139,9 +162,9 @@ const processSystemSettings = (data = {}) => {
 
   const enabledModules = normalizeModules(
     data.enabled_modules ??
-    data.enabledModules ??
-    settings.enabled_modules ??
-    settings.enabledModules
+      data.enabledModules ??
+      settings.enabled_modules ??
+      settings.enabledModules
   );
 
   const setupCompleted =
@@ -151,23 +174,26 @@ const processSystemSettings = (data = {}) => {
     settings.setupCompleted ??
     false;
 
+  const hospitalName =
+    settings.hospital_name ??
+    settings.hospitalName ??
+    data.hospital_name ??
+    data.hospitalName ??
+    "";
+
+  const rawLogo =
+    settings.logo ??
+    settings.hospital_logo ??
+    data.logo ??
+    data.hospital_logo ??
+    null;
+
   return {
     ...settings,
-
-    hospital_name:
-      settings.hospital_name ??
-      settings.hospitalName ??
-      data.hospital_name ??
-      data.hospitalName ??
-      "",
-
-    logo:
-      settings.logo ??
-      data.logo ??
-      null,
-
+    hospital_name: hospitalName,
+    logo: rawLogo,
+    logo_url: getLogoUrl(rawLogo),
     enabled_modules: enabledModules,
-
     setup_completed: Boolean(setupCompleted),
   };
 };
@@ -179,91 +205,52 @@ const processSystemSettings = (data = {}) => {
 const processUserData = (userData) => {
   if (!userData) return null;
 
-  // ===================================================
-  // ROLES
-  // ===================================================
-
-  const roles = Array.isArray(userData.roles)
-    ? userData.roles
-    : [];
+  const roles = Array.isArray(userData.roles) ? userData.roles : [];
 
   const userRoles = roles
     .map((role) => {
       if (typeof role === "string") return role;
-
       return role?.name;
     })
     .filter(Boolean);
 
-  // ===================================================
-  // PERMISSIONS
-  // ===================================================
-
+  // Permissions
   const allPermissions = [];
 
-  // Permissions from roles
   roles.forEach((role) => {
     if (!Array.isArray(role?.permissions)) return;
-
     role.permissions.forEach((permission) => {
       const permissionName =
-        typeof permission === "object"
-          ? permission?.name
-          : permission;
-
-      if (
-        permissionName &&
-        !allPermissions.includes(permissionName)
-      ) {
+        typeof permission === "object" ? permission?.name : permission;
+      if (permissionName && !allPermissions.includes(permissionName)) {
         allPermissions.push(permissionName);
       }
     });
   });
 
-  // Direct permissions
   if (Array.isArray(userData.permissions)) {
     userData.permissions.forEach((permission) => {
       const permissionName =
-        typeof permission === "object"
-          ? permission?.name
-          : permission;
-
-      if (
-        permissionName &&
-        !allPermissions.includes(permissionName)
-      ) {
+        typeof permission === "object" ? permission?.name : permission;
+      if (permissionName && !allPermissions.includes(permissionName)) {
         allPermissions.push(permissionName);
       }
     });
   }
 
-  // ===================================================
-  // ROLE CHECK
-  // ===================================================
-
+  // Role helpers
   const hasRole = (roleName) => {
     if (Array.isArray(roleName)) {
-      return roleName.some((role) =>
-        userRoles.includes(role)
-      );
+      return roleName.some((role) => userRoles.includes(role));
     }
-
     return userRoles.includes(roleName);
   };
 
-  // ===================================================
-  // PERMISSION CHECK
-  // ===================================================
-
   const hasPermission = (permissionName) => {
     if (!permissionName) return true;
-
     if (Array.isArray(permissionName)) {
-      return permissionName.some((permission) =>
-        allPermissions.includes(permission)
-      );
+      return permissionName.some((p) => allPermissions.includes(p));
     }
-
     return allPermissions.includes(permissionName);
   };
 
@@ -271,80 +258,49 @@ const processUserData = (userData) => {
     if (!Array.isArray(permissionList) || permissionList.length === 0) {
       return true;
     }
-
-    return permissionList.some((permission) =>
-      allPermissions.includes(permission)
-    );
+    return permissionList.some((p) => allPermissions.includes(p));
   };
 
   const hasAllPermissions = (permissionList) => {
     if (!Array.isArray(permissionList) || permissionList.length === 0) {
       return true;
     }
-
-    return permissionList.every((permission) =>
-      allPermissions.includes(permission)
-    );
+    return permissionList.every((p) => allPermissions.includes(p));
   };
 
-  // ===================================================
-  // SYSTEM SETTINGS
-  // ===================================================
-
+  // System settings
   const systemSettings = processSystemSettings(userData);
-
   const enabledModules = systemSettings.enabled_modules;
 
   const hasModule = (moduleKey) => {
     if (!moduleKey) return false;
-
     return enabledModules.includes(moduleKey);
   };
 
-  // ===================================================
-  // FINAL USER OBJECT
-  // ===================================================
-
   return {
     ...userData,
-
     avatar_url: getAvatarUrl(userData),
-
     roles,
-
     role_names: userRoles,
-
     permissions: userData.permissions || [],
-
     all_permissions: allPermissions,
 
-    // Role helpers
     hasRole,
     hasPermission,
     hasAnyPermission,
     hasAllPermissions,
 
-    // Module helpers
     hasModule,
     enabledModules,
 
-    // System settings
     systemSettings,
-
     setupCompleted: systemSettings.setup_completed,
-
     hospitalName: systemSettings.hospital_name,
+    hospitalLogo: systemSettings.logo_url,
 
-    hospitalLogo: systemSettings.logo,
-
-    // Role shortcuts
-    isAdmin:
-      hasRole("admin") || hasRole("Admin"),
-
+    isAdmin: hasRole("admin") || hasRole("Admin"),
     isSuperAdmin: hasRole("super_admin"),
-
     isHospitalHead: hasRole("hospital_head"),
-
     isUser: hasRole("user"),
   };
 };
@@ -358,14 +314,10 @@ const extractUser = (responseData) => {
 
   const user = responseData.user ?? responseData;
 
-  if (!user || typeof user !== "object") {
-    return null;
-  }
+  if (!user || typeof user !== "object") return null;
 
-  // اگر تنظیمات سیستم جدا از user ارسال شده باشد
-  const systemData = {
+  return {
     ...user,
-
     system_settings:
       responseData.system_settings ??
       responseData.systemSettings ??
@@ -382,9 +334,17 @@ const extractUser = (responseData) => {
       responseData.setup_completed ??
       responseData.setupCompleted ??
       user.setup_completed,
-  };
 
-  return systemData;
+    hospital_name:
+      responseData.hospital_name ??
+      responseData.hospitalName ??
+      user.hospital_name,
+
+    hospital_logo:
+      responseData.hospital_logo ??
+      responseData.hospitalLogo ??
+      user.hospital_logo,
+  };
 };
 
 // =====================================================
@@ -393,7 +353,6 @@ const extractUser = (responseData) => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-
   const [loading, setLoading] = useState(true);
 
   // ===================================================
@@ -408,15 +367,9 @@ export const AuthProvider = ({ children }) => {
     }
 
     const processedUser = processUserData(rawUser);
-
     setUser(processedUser);
 
-    // فقط برای نمایش سریع اطلاعات کاربر
-    // منبع اصلی تنظیمات سیستم همچنان Backend است.
-    localStorage.setItem(
-      "user",
-      JSON.stringify(rawUser)
-    );
+    localStorage.setItem("user", JSON.stringify(rawUser));
 
     return processedUser;
   }, []);
@@ -436,17 +389,14 @@ export const AuthProvider = ({ children }) => {
           setUser(null);
           setLoading(false);
         }
-
         return;
       }
 
-      // نمایش سریع اطلاعات ذخیره‌شده
       const storedUser = localStorage.getItem("user");
 
       if (storedUser) {
         try {
           const parsedUser = JSON.parse(storedUser);
-
           if (mounted) {
             setUser(processUserData(parsedUser));
           }
@@ -457,9 +407,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
-        // دریافت اطلاعات تازه از Backend
         const response = await api.get("/me");
-
         const rawUser = extractUser(response.data);
 
         if (!rawUser) {
@@ -472,21 +420,13 @@ export const AuthProvider = ({ children }) => {
       } catch (error) {
         console.error("Authentication check failed:", error);
 
-        if (error.response?.status !== 401) {
-          // خطای شبکه یا سرور: نشست را بی‌دلیل حذف نکن.
-          // اطلاعات قبلی کاربر در صورت موجود بودن باقی می‌ماند.
-        } else {
+        if (error.response?.status === 401) {
           localStorage.removeItem("token");
           localStorage.removeItem("user");
-
-          if (mounted) {
-            setUser(null);
-          }
+          if (mounted) setUser(null);
         }
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     };
 
@@ -502,13 +442,9 @@ export const AuthProvider = ({ children }) => {
   // ===================================================
 
   const login = async (email, password) => {
-    const response = await api.post("/login", {
-      email,
-      password,
-    });
+    const response = await api.post("/login", { email, password });
 
     const token = response.data.token;
-
     if (!token) {
       throw new Error("Login response does not contain a token.");
     }
@@ -516,7 +452,6 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem("token", token);
 
     const rawUser = extractUser(response.data);
-
     if (!rawUser) {
       throw new Error("Login response does not contain user data.");
     }
@@ -541,9 +476,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-
       setUser(null);
-
       window.location.href = "#/session/signin";
     }
   };
@@ -555,21 +488,16 @@ export const AuthProvider = ({ children }) => {
   const updateUser = (updatedData) => {
     if (!user) return null;
 
-    const updatedUser = {
-      ...user,
-      ...updatedData,
-    };
-
-    return saveUser(updatedUser);
+    const merged = { ...user, ...updatedData };
+    return saveUser(merged);
   };
 
   // ===================================================
-  // REFRESH USER AND SYSTEM SETTINGS
+  // REFRESH USER
   // ===================================================
 
   const refreshUser = async () => {
     const response = await api.get("/me");
-
     const rawUser = extractUser(response.data);
 
     if (!rawUser) {
@@ -578,6 +506,42 @@ export const AuthProvider = ({ children }) => {
 
     return saveUser(rawUser);
   };
+
+  // ===================================================
+  // SET HOSPITAL SETTINGS (پس از Setup)
+  // ===================================================
+
+  const setHospitalSettings = useCallback((settings) => {
+    if (!settings) return;
+
+    setUser((prevUser) => {
+      if (!prevUser) return prevUser;
+
+      const newEnabledModules = normalizeModules(
+        settings.enabled_modules ?? prevUser.enabledModules
+      );
+
+      const newSystemSettings = {
+        ...(prevUser.systemSettings || {}),
+        hospital_name:
+          settings.hospital_name ?? prevUser.systemSettings?.hospital_name,
+        logo: settings.logo_url ?? prevUser.systemSettings?.logo,
+        logo_url: settings.logo_url ?? prevUser.systemSettings?.logo_url,
+        enabled_modules: newEnabledModules,
+        setup_completed: true,
+      };
+
+      return {
+        ...prevUser,
+        enabledModules: newEnabledModules,
+        setupCompleted: true,
+        hospitalName:
+          settings.hospital_name ?? prevUser.hospitalName,
+        hospitalLogo: settings.logo_url ?? prevUser.hospitalLogo,
+        systemSettings: newSystemSettings,
+      };
+    });
+  }, []);
 
   // ===================================================
   // CONTEXT VALUE
@@ -594,15 +558,14 @@ export const AuthProvider = ({ children }) => {
 
     updateUser,
     refreshUser,
+    setHospitalSettings,
 
-    // Convenient access to system setup
+    // System setup
     enabledModules: user?.enabledModules || [],
-
     setupCompleted: user?.setupCompleted ?? false,
-
     hospitalName: user?.hospitalName || "",
-
     hospitalLogo: user?.hospitalLogo || null,
+    hospitalSettings: user?.systemSettings || null,
 
     hasModule: user?.hasModule || (() => false),
   };
@@ -620,13 +583,9 @@ export const AuthProvider = ({ children }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-
   if (!context) {
-    throw new Error(
-      "useAuth باید داخل AuthProvider باشد"
-    );
+    throw new Error("useAuth باید داخل AuthProvider باشد");
   }
-
   return context;
 };
 
