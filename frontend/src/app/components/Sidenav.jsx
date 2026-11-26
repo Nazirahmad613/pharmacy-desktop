@@ -1566,7 +1566,7 @@ export default function Sidenav({ children }) {
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        bgcolor: "#0f294a",
+        bgcolor: "#0e1450",
         color: "#ffffff",
       }}
     >

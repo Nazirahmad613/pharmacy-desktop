@@ -631,15 +631,30 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ============================================================
-    // ✅ Purchases
+    // ✅ Purchases (اصلاح‌شده)
     // ============================================================
+    // ⚠️ اصلاح: مسیرهای `purchases` باید با کنترلر `ParchasesController` و
+    //     متدهای HTTP صحیح (GET, POST, PUT, DELETE) تعریف شوند.
     Route::prefix('purchases')->group(function () {
         Route::get('/statistics', [ParchasesController::class, 'statistics']);
 
         Route::get('/', [ParchasesController::class, 'index']);
-        Route::post('/', [ParchasesController::class, 'store']);
+        Route::post('/', [ParchasesController::class, 'store']);           // ✅ POST برای ایجاد خرید
         Route::get('/{id}', [ParchasesController::class, 'show'])->where('id', '[0-9]+');
         Route::put('/{id}', [ParchasesController::class, 'update'])->where('id', '[0-9]+');
+        Route::patch('/{id}', [ParchasesController::class, 'update'])->where('id', '[0-9]+'); // ✅ پشتیبانی از PATCH
+        Route::delete('/{id}', [ParchasesController::class, 'destroy'])->where('id', '[0-9]+');
+    });
+
+    // ✅ اضافه: مسیر جایگزین `parchases` (برای سازگاری با فرانت‌اند قدیمی)
+    Route::prefix('parchases')->group(function () {
+        Route::get('/statistics', [ParchasesController::class, 'statistics']);
+
+        Route::get('/', [ParchasesController::class, 'index']);
+        Route::post('/', [ParchasesController::class, 'store']);           // ✅ POST برای ایجاد خرید
+        Route::get('/{id}', [ParchasesController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('/{id}', [ParchasesController::class, 'update'])->where('id', '[0-9]+');
+        Route::patch('/{id}', [ParchasesController::class, 'update'])->where('id', '[0-9]+');
         Route::delete('/{id}', [ParchasesController::class, 'destroy'])->where('id', '[0-9]+');
     });
 
@@ -737,7 +752,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ============================================================
-    // ✅ Payroll (معاشات) — هماهنگ با فرانت
+    // ✅ Payroll (معاشات)
     // ============================================================
     Route::prefix('payroll')->group(function () {
         // 📊 داشبورد
@@ -750,8 +765,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/employees/{id}',     [PayrollModelController::class, 'updateEmployee']);
         Route::post('/employees/{id}',    [PayrollModelController::class, 'updateEmployee']);
         Route::delete('/employees/{id}',  [PayrollModelController::class, 'deleteEmployee']);
-        
-Route::post('/salaries/pay-bulk', [PayrollModelController::class, 'paySalariesBulk']);
+
+        Route::post('/salaries/pay-bulk', [PayrollModelController::class, 'paySalariesBulk']);
 
         // 💵 تولید و دریافت معاشات دوره
         Route::post('/salaries/generate', [PayrollModelController::class, 'generateSalaries']);
@@ -828,11 +843,13 @@ Route::post('/salaries/pay-bulk', [PayrollModelController::class, 'paySalariesBu
             Route::put('/{id}',    [EmergencyVitalController::class, 'update'])->where('id', '[0-9]+');
             Route::delete('/{id}', [EmergencyVitalController::class, 'destroy'])->where('id', '[0-9]+');
         });
+
+        // Hospital Settings (زیرمجموعه emergency)
         Route::prefix('hospital-settings')->group(function () {
-        Route::get('/status', [HospitalSettingController::class, 'status']);
-        Route::get('/', [HospitalSettingController::class, 'show']);
-        Route::post('/', [HospitalSettingController::class, 'store']);
-    });
+            Route::get('/status', [HospitalSettingController::class, 'status']);
+            Route::get('/', [HospitalSettingController::class, 'show']);
+            Route::post('/', [HospitalSettingController::class, 'store']);
+        });
 
         // Main Emergency Cases
         Route::get('/statistics', [EmergencyController::class, 'statistics']);
